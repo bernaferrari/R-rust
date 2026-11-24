@@ -1416,6 +1416,21 @@ mod tests {
         }
     }
 
+    #[test]
+    fn exact_and_approximate_matchers_stop_at_legacy_nul() {
+        unsafe {
+            let (mut preg, rc) = compile("a", REG_EXTENDED);
+            assert_eq!(rc, REG_OK);
+            let mut capture = regmatch_t::default();
+            let input = b"x\0a\0";
+            for flags in [0, REG_APPROX_MATCHER] {
+                let status = tre_regexec(&preg, input.as_ptr().cast(), 1, &mut capture, flags);
+                assert_eq!(status, REG_NOMATCH);
+            }
+            tre_regfree(&mut preg);
+        }
+    }
+
     // ==================================================================
     // Extended coverage: capture groups and submatches
     // ==================================================================
@@ -2047,5 +2062,26 @@ mod owned_match_tests {
         let empty = compile(r"(a*)\1b");
         assert_eq!(empty.match_bytes(b"b", &mut matches, 0), REG_OK);
         assert_eq!(matches.map(|m| (m.rm_so, m.rm_eo)), [(0, 1), (0, 0)]);
+    }
+
+    #[test]
+    fn exact_and_approximate_matchers_use_bounded_input() {
+        let regex = compile::tre_compile_owned_slice(
+            &[u32::from(b'a')],
+            REG_EXTENDED,
+            RegexWorkspace::unbounded(),
+        )
+        .unwrap();
+        let mut matches = [regmatch_t::default(); 1];
+        for flags in [0, REG_APPROX_MATCHER] {
+            assert_eq!(regex.match_bytes(b"x\0a", &mut matches, flags), REG_OK);
+            assert_eq!((matches[0].rm_so, matches[0].rm_eo), (2, 3));
+            assert_eq!(
+                regex.match_wide(&[0xe9, 0, 97], &mut matches, flags),
+                REG_OK
+            );
+            assert_eq!((matches[0].rm_so, matches[0].rm_eo), (2, 3));
+            assert_eq!(regex.match_wide(&[], &mut matches, flags), REG_NOMATCH);
+        }
     }
 }

@@ -11,6 +11,7 @@ use std::os::raw::{c_int, c_void};
 use std::ptr;
 
 use super::ast::*;
+use super::match_input::MatchInput;
 use super::match_parallel::{TagRows, apply_tags, filled};
 use crate::mainutils::grep::{RegexWorkspace, WorkspaceBuffer};
 
@@ -253,8 +254,13 @@ pub(super) unsafe fn run_approx(
     match_end_ofs: *mut c_int,
     workspace: &RegexWorkspace,
 ) -> c_int {
+    // SAFETY: the raw matcher contract supplies the input extent or terminator.
+    let input = match unsafe { MatchInput::from_raw(string, len, type_) } {
+        Ok(input) => input,
+        Err(status) => return status,
+    };
+    let input_len = input.len() as c_int;
     unsafe {
-        let str_byte = string as *const u8;
         let mut pos: c_int = -1;
         let reg_notbol = eflags & REG_NOTBOL;
         let reg_noteol = eflags & REG_NOTEOL;
@@ -320,13 +326,7 @@ pub(super) unsafe fn run_approx(
         // GET_NEXT_WCHAR
         prev_c = next_c;
         pos = 0;
-        if len >= 0 && pos >= len {
-            next_c = 0;
-        } else if type_ == tre_str_type_t::STR_BYTE && !str_byte.is_null() {
-            next_c = *str_byte as tre_cint_t;
-        } else {
-            next_c = 0;
-        }
+        next_c = input.at(pos);
 
         loop {
             // Add initial states
@@ -565,28 +565,13 @@ pub(super) unsafe fn run_approx(
                 }
             }
 
-            // Check for end of string
-            if len < 0 {
-                if next_c == 0 {
-                    break;
-                }
-            } else {
-                if pos >= len {
-                    break;
-                }
+            if pos >= input_len {
+                break;
             }
-
             prev_pos = pos;
-            // GET_NEXT_WCHAR
             prev_c = next_c;
             pos += 1;
-            if len >= 0 && pos >= len {
-                next_c = 0;
-            } else if type_ == tre_str_type_t::STR_BYTE && !str_byte.is_null() {
-                next_c = *str_byte.add(pos as usize) as tre_cint_t;
-            } else {
-                next_c = 0;
-            }
+            next_c = input.at(pos);
 
             // The current position becomes the source for exact matches and substitutions.
             // Keep each capture-tag row paired with its reach table.

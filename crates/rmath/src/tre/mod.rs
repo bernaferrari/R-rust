@@ -2,6 +2,7 @@ pub mod ast;
 pub mod compile;
 pub mod match_approx;
 pub mod match_backtrack;
+mod match_input;
 pub mod match_parallel;
 pub mod mem;
 mod owned_arena;

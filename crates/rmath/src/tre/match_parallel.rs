@@ -11,6 +11,7 @@ use std::os::raw::{c_int, c_void};
 use std::ptr;
 
 use super::ast::*;
+use super::match_input::MatchInput;
 use crate::mainutils::grep::{RegexWorkspace, WorkspaceBuffer};
 
 #[derive(Clone, Copy)]
@@ -233,16 +234,16 @@ pub(super) unsafe fn run_parallel(
     match_end_ofs: *mut c_int,
     workspace: &RegexWorkspace,
 ) -> c_int {
+    // SAFETY: the raw matcher contract supplies the input extent or terminator.
+    let input = match unsafe { MatchInput::from_raw(string, len, type_) } {
+        Ok(input) => input,
+        Err(status) => return status,
+    };
+    let input_len = input.len() as c_int;
     unsafe {
-        let str_byte = string as *const u8;
-        let mut pos: c_int = -1;
-        let pos_add_next: u32 = 1;
         let reg_notbol = eflags & REG_NOTBOL;
         let reg_noteol = eflags & REG_NOTEOL;
         let reg_newline = (*tnfa).cflags & REG_NEWLINE;
-
-        let mut prev_c: tre_cint_t = 0;
-        let mut next_c: tre_cint_t = 0;
 
         let tag_count = match_tags.len();
         let Ok(compiled_tag_count) = usize::try_from((*tnfa).num_tags) else {
@@ -303,47 +304,16 @@ pub(super) unsafe fn run_parallel(
         };
 
         // First character optimization
-        if (*tnfa).first_char >= 0 && type_ == tre_str_type_t::STR_BYTE && !str_byte.is_null() {
-            let first = (*tnfa).first_char as u8;
-            let mut found = false;
-            let limit = if len >= 0 { len as usize } else { usize::MAX };
-            let mut j = 0;
-            while j < limit {
-                let ch = *str_byte.add(j);
-                if len < 0 && ch == 0 {
-                    break;
-                }
-                if ch == first {
-                    found = true;
-                    break;
-                }
-                j += 1;
-            }
-            if !found {
+        let mut pos = if (*tnfa).first_char >= 0 && type_ == tre_str_type_t::STR_BYTE {
+            let Some(first) = input.first_byte((*tnfa).first_char as u8) else {
                 return REG_NOMATCH;
-            }
-            if j >= 1 {
-                prev_c = *str_byte.add(j - 1) as tre_cint_t;
-            }
-            next_c = *str_byte.add(j) as tre_cint_t;
-            pos = j as c_int;
-            if len < 0 || pos < len {
-                // str_byte already advanced
-            }
+            };
+            first as c_int
         } else {
-            // GET_NEXT_WCHAR - simplified for STR_BYTE
-            prev_c = next_c;
-            pos = 0;
-            if len >= 0 && pos >= len {
-                next_c = 0;
-            } else if type_ == tre_str_type_t::STR_WIDE {
-                next_c = *(string as *const tre_char_t);
-            } else if !str_byte.is_null() {
-                next_c = *str_byte as tre_cint_t;
-            } else {
-                next_c = 0;
-            }
-        }
+            0
+        };
+        let mut prev_c = input.at(pos - 1);
+        let mut next_c = input.at(pos);
 
         let mut match_eo: c_int = -1;
         let mut new_match: c_int = 0;
@@ -400,29 +370,12 @@ pub(super) unsafe fn run_parallel(
                 break;
             }
 
-            // Check for end of string
-            if len < 0 {
-                if next_c == 0 {
-                    break;
-                }
-            } else {
-                if pos >= len {
-                    break;
-                }
+            if pos >= input_len {
+                break;
             }
-
-            // GET_NEXT_WCHAR
             prev_c = next_c;
             pos += 1;
-            if len >= 0 && pos >= len {
-                next_c = 0;
-            } else if type_ == tre_str_type_t::STR_WIDE {
-                next_c = *(string as *const tre_char_t).add(pos as usize);
-            } else if type_ == tre_str_type_t::STR_BYTE && !str_byte.is_null() {
-                next_c = *str_byte.add(pos as usize) as tre_cint_t;
-            } else {
-                next_c = 0;
-            }
+            next_c = input.at(pos);
 
             // Swap reach and reach_next
             std::mem::swap(&mut reach, &mut reach_next);
