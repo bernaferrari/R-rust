@@ -6,6 +6,7 @@
 
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
+use std::ffi::CStr;
 use std::mem::MaybeUninit;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
@@ -15,7 +16,6 @@ use super::compile;
 use super::match_approx;
 use super::match_backtrack;
 use super::match_parallel;
-use super::mem;
 use crate::mainutils::grep::RegexWorkspace;
 
 #[cfg(test)]
@@ -283,108 +283,86 @@ pub(super) unsafe fn tre_match_with_workspace(
 // ===== regcomp functions =====
 
 /// # Safety
-///
-/// `preg` must be valid for writes of a `regex_t`; `regex` must be valid for reads of `n` bytes.
+/// `preg` must be valid for writes of a `regex_t`.
+unsafe fn compile_byte_pattern(
+    preg: *mut regex_t,
+    pattern: &[u8],
+    cflags: c_int,
+    workspace: RegexWorkspace,
+) -> c_int {
+    if c_int::try_from(pattern.len()).is_err() {
+        return REG_ESPACE;
+    }
+    let Some(capacity) = pattern.len().checked_add(1) else {
+        return REG_ESPACE;
+    };
+    let Ok(mut wide) = match_parallel::filled(&workspace, capacity, 0) else {
+        return REG_ESPACE;
+    };
+    for (slot, &byte) in wide.iter_mut().zip(pattern) {
+        *slot = tre_char_t::from(byte);
+    }
+    // SAFETY: `preg` is writable; the initialized wide buffer outlives compilation.
+    // The last zero is lookahead storage, not part of the pattern.
+    unsafe { compile::tre_compile_with_workspace(preg, wide.as_ptr(), pattern.len(), cflags, workspace) }
+}
+
+/// # Safety
+/// `preg` must be writable; for nonzero `n`, `regex` must be valid for `n`
+/// byte reads within a single allocation for the duration of the call.
 pub unsafe fn tre_regncomp(
     preg: *mut regex_t,
     regex: *const c_char,
     n: usize,
     cflags: c_int,
 ) -> c_int {
-    unsafe {
-        let wregex = mem::xmalloc(std::mem::size_of::<tre_char_t>() * (n + 1)) as *mut tre_char_t;
-        if wregex.is_null() {
-            return REG_ESPACE as c_int;
-        }
-
-        let str = regex as *const u8;
-        let wstr = wregex;
-        for i in 0..n {
-            *wstr.add(i) = *str.add(i) as tre_char_t;
-        }
-        *wstr.add(n) = 0;
-
-        let ret = compile::tre_compile(preg, wregex, n, cflags);
-        mem::xfree(wregex as *mut c_void);
-        ret
+    if c_int::try_from(n).is_err() {
+        return REG_ESPACE;
     }
+    let pattern = if n == 0 {
+        &[]
+    } else {
+        // SAFETY: the caller provides the readable range and its length fits a slice.
+        unsafe { std::slice::from_raw_parts(regex.cast::<u8>(), n) }
+    };
+    // SAFETY: the caller provides the writable descriptor.
+    unsafe { compile_byte_pattern(preg, pattern, cflags, RegexWorkspace::unbounded()) }
 }
 
 /// # Safety
-///
-/// `preg` must be valid for writes of a `regex_t`; `regex` must be valid for reads of `n` bytes.
+/// Same requirements as [`tre_regncomp`].
 pub unsafe fn tre_regncompb(
     preg: *mut regex_t,
     regex: *const c_char,
     n: usize,
     cflags: c_int,
 ) -> c_int {
-    unsafe {
-        let wregex = mem::xmalloc(std::mem::size_of::<tre_char_t>() * n) as *mut tre_char_t;
-        if wregex.is_null() {
-            return REG_ESPACE as c_int;
-        }
-
-        let str = regex as *const u8;
-        for i in 0..n {
-            *wregex.add(i) = *str.add(i) as tre_char_t;
-        }
-
-        let ret = compile::tre_compile(preg, wregex, n, cflags | REG_USEBYTES);
-        mem::xfree(wregex as *mut c_void);
-        ret
+    if n == 0 {
+        // The legacy byte adapter returned REG_ESPACE for a zero-size allocation.
+        return REG_ESPACE;
     }
+    // SAFETY: forwards the original writable descriptor and readable pattern.
+    unsafe { tre_regncomp(preg, regex, n, cflags | REG_USEBYTES) }
 }
 
 /// # Safety
-///
-/// `preg` must be valid for writes of a `regex_t`; `regex` must be null or a NUL-terminated string.
+/// `preg` must be writable; `regex` must be null or a live NUL-terminated string.
 pub unsafe fn tre_regcomp(preg: *mut regex_t, regex: *const c_char, cflags: c_int) -> c_int {
-    unsafe {
-        let n: usize = if !regex.is_null() {
-            let mut len: isize = 0;
-            while *regex.offset(len) != 0 {
-                len += 1;
-            }
-            len as usize
-        } else {
-            0
-        };
-        tre_regncomp(preg, regex, n, cflags)
-    }
+    let pattern = if regex.is_null() {
+        &[]
+    } else {
+        // SAFETY: the caller guarantees a live NUL-terminated string.
+        unsafe { CStr::from_ptr(regex) }.to_bytes()
+    };
+    // SAFETY: the caller provides the writable descriptor.
+    unsafe { compile_byte_pattern(preg, pattern, cflags, RegexWorkspace::unbounded()) }
 }
 
 /// # Safety
-///
-/// `preg` must be valid for writes of a `regex_t`; `regex` must be null or a NUL-terminated string.
+/// Same requirements as [`tre_regcomp`].
 pub unsafe fn tre_regcompb(preg: *mut regex_t, regex: *const c_char, cflags: c_int) -> c_int {
-    unsafe {
-        let n: usize = if !regex.is_null() {
-            let mut len: isize = 0;
-            while *regex.offset(len) != 0 {
-                len += 1;
-            }
-            len as usize
-        } else {
-            0
-        };
-
-        let wregex = mem::xmalloc(std::mem::size_of::<tre_char_t>() * (n + 1)) as *mut tre_char_t;
-        if wregex.is_null() {
-            return REG_ESPACE as c_int;
-        }
-
-        let str = regex as *const u8;
-        let wstr = wregex;
-        for i in 0..n {
-            *wstr.add(i) = *str.add(i) as tre_char_t;
-        }
-        *wstr.add(n) = 0;
-
-        let ret = compile::tre_compile(preg, wregex, n, cflags | REG_USEBYTES);
-        mem::xfree(wregex as *mut c_void);
-        ret
-    }
+    // SAFETY: forwards the original writable descriptor and NUL-terminated input.
+    unsafe { tre_regcomp(preg, regex, cflags | REG_USEBYTES) }
 }
 
 /// # Safety
@@ -787,6 +765,103 @@ mod tests {
             assert_eq!(m.rm_so, 0);
             assert_eq!(m.rm_eo, 0);
         }
+    }
+
+    #[test]
+    fn legacy_compile_adapters_preserve_bounded_and_terminated_patterns() {
+        let bytes = [b'a', 0, 0xff];
+        let mut compiled = regex_t {
+            re_nsub: 0,
+            value: ptr::null_mut(),
+        };
+        // SAFETY: the byte array is both bounded and NUL-terminated and the descriptor is writable.
+        unsafe {
+            for compile in [tre_regncomp, tre_regncompb] {
+                assert_eq!(
+                    compile(&mut compiled, bytes.as_ptr().cast(), bytes.len(), REG_EXTENDED),
+                    REG_OK
+                );
+                let mut out = regmatch_t::default();
+                assert_eq!(
+                    tre_regnexec(&compiled, bytes.as_ptr().cast(), bytes.len(), 1, &mut out, 0),
+                    REG_OK
+                );
+                assert_eq!((out.rm_so, out.rm_eo), (0, 3));
+                tre_regfree(&mut compiled);
+            }
+            for compile in [tre_regcomp, tre_regcompb] {
+                assert_eq!(
+                    compile(&mut compiled, bytes.as_ptr().cast(), REG_EXTENDED),
+                    REG_OK
+                );
+                let mut out = regmatch_t::default();
+                assert_eq!(
+                    tre_regnexec(&compiled, bytes.as_ptr().cast(), bytes.len(), 1, &mut out, 0),
+                    REG_OK
+                );
+                assert_eq!((out.rm_so, out.rm_eo), (0, 1));
+                tre_regfree(&mut compiled);
+                assert_eq!(compile(&mut compiled, ptr::null(), REG_EXTENDED), REG_OK);
+                tre_regfree(&mut compiled);
+            }
+            assert_eq!(
+                tre_regncomp(&mut compiled, ptr::null(), 0, REG_EXTENDED),
+                REG_OK
+            );
+            tre_regfree(&mut compiled);
+            assert_eq!(
+                tre_regncompb(&mut compiled, ptr::null(), 0, REG_EXTENDED),
+                REG_ESPACE
+            );
+            assert!(compiled.value.is_null());
+        }
+    }
+
+    #[test]
+    fn legacy_compile_adapter_releases_widening_workspace() {
+        use crate::sexp::{memory::ArenaBudget, session::RSession};
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let owner = session.owner_token().unwrap();
+            let workspace = crate::mainutils::grep::regex_workspace();
+            let baseline = owner.with_arena(|arena| arena.workspace_bytes()).unwrap();
+            owner
+                .with_arena(|arena| {
+                    arena.set_budget(ArenaBudget::new(
+                        arena.total_bytes_allocated() + baseline + 1,
+                        0,
+                    ));
+                })
+                .unwrap();
+            let mut regex = regex_t {
+                re_nsub: 0,
+                value: ptr::null_mut(),
+            };
+            // SAFETY: the original writable descriptor remains live through each compile.
+            unsafe {
+                assert_eq!(
+                    compile_byte_pattern(&mut regex, b"(ab)", REG_EXTENDED, workspace.clone()),
+                    REG_ESPACE
+                );
+                assert!(regex.value.is_null());
+                assert_eq!(
+                    owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+                    baseline
+                );
+                owner
+                    .with_arena(|arena| arena.set_budget(ArenaBudget::unlimited()))
+                    .unwrap();
+                assert_eq!(
+                    compile_byte_pattern(&mut regex, b"(ab)", REG_EXTENDED, workspace),
+                    REG_OK
+                );
+                assert_eq!(
+                    owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+                    baseline
+                );
+                tre_regfree(&mut regex);
+            }
+        });
     }
 
     #[test]

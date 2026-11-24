@@ -1,4 +1,5 @@
 use super::*;
+use crate::tre::mem;
 use std::ffi::CString;
 
 unsafe fn assert_compile_error_then_recover(pattern: &str, expected: c_int) {
