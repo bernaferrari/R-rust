@@ -309,9 +309,9 @@ pub(crate) fn format_table(x: Sexp<'_>) -> Option<String> {
 /// (R_print.width, R_print.gap, R_print.max). Width comes from the
 /// active `print.default` data so `print(x, width = 120)` wraps like GNU.
 pub(crate) fn vector_print_settings() -> (std::os::raw::c_int, std::os::raw::c_int, i64) {
-    let width = crate::mainutils::print::get_R_print_data().width;
+    let width = crate::mainutils::print::with_current_print_data(|data| data.width);
     let max = print_max_cells();
-    let gap = crate::mainutils::print::get_R_print_data().gap;
+    let gap = crate::mainutils::print::with_current_print_data(|data| data.gap);
     (width, gap, max as i64)
 }
 
@@ -491,7 +491,9 @@ pub(crate) fn print_named_vector_stock(
     if (0..n_pr).any(|index| {
         crate::sexp::accessors::STRING_ELT(names_raw, index) == crate::sexp::globals::R_NaString()
     }) {
-        wn = wn.max(crate::mainutils::print::get_R_print_data().na_width_noquote);
+        wn = wn.max(
+            crate::mainutils::print::with_current_print_data(|data| data.na_width_noquote),
+        );
     }
     if w < wn {
         w = wn;

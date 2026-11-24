@@ -181,15 +181,7 @@ pub(crate) unsafe fn mark_instance_roots(instance: *mut instance::RInstance) {
                 mark_checked_root_snapshot(stack.checked_roots_for_marking())
             })
             .expect("live collector root store");
-        // Context and bytecode values own exact-generation automatic roots.
-
-        // Error-state values own exact-generation automatic roots.
-
-        MARK_WHERE.with(|w| w.set("eval_state"));
-        mark_reachable((*instance).eval_state.print.data.na_string);
-        mark_reachable((*instance).eval_state.print.data.na_string_noquote);
-        mark_reachable((*instance).eval_state.print.data.env);
-        mark_reachable((*instance).eval_state.print.data.callArgs);
+        // Context, bytecode, error-state, and print values own automatic roots.
 
         MARK_WHERE.with(|w| w.set("symbols"));
         for &obj in (*instance).symbols.values() {

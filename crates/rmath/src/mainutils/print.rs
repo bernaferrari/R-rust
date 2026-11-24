@@ -21,6 +21,7 @@ use crate::sexp::attrib_core::{
 use crate::sexp::constructors::Rf_cons;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, NA_REAL, R_IsNA, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_NilValue, R_UnboundValue};
+use crate::sexp::instance::{RuntimeValue, with_print_data_in, with_required_current_instance};
 use crate::sexp::object::SexpResult;
 use crate::sexp::owner::OwnerToken;
 use crate::sexp::protect::{ProtectGuard, protect};
@@ -41,7 +42,6 @@ const DEFAULTDEPARSE: c_int = 1;
 const USESOURCE: c_int = 8;
 
 pub(crate) struct PrintRuntimeState {
-    pub data: R_PrintData,
     tagbuf: [u8; TAGBUFLEN0 * 2],
     active_values: Vec<SEXP>,
 }
@@ -49,7 +49,6 @@ pub(crate) struct PrintRuntimeState {
 impl Default for PrintRuntimeState {
     fn default() -> Self {
         PrintRuntimeState {
-            data: R_PRINT_INIT.clone(),
             tagbuf: [0; TAGBUFLEN0 * 2],
             active_values: Vec::new(),
         }
@@ -101,19 +100,94 @@ where
     })
 }
 
-fn with_current_print_data_mut<F, R>(f: F) -> R
-where
-    F: FnOnce(&mut R_PrintData) -> R,
-{
-    with_print_runtime(|state| f(&mut state.data))
+/// Retain exact allocations alongside the raw view used by translated printers.
+#[derive(Clone)]
+pub(crate) struct PrintDataSnapshot {
+    raw: R_PrintData,
+    _roots: [RuntimeValue; 4],
+}
+
+impl Default for PrintDataSnapshot {
+    fn default() -> Self {
+        Self {
+            raw: R_PRINT_INIT.clone(),
+            _roots: Default::default(),
+        }
+    }
+}
+
+impl PrintDataSnapshot {
+    fn capture(owner: OwnerToken<'_>, mut raw: R_PrintData) -> SexpResult<Self> {
+        owner.require_active()?;
+        let retain = |pointer: SEXP| -> SexpResult<RuntimeValue> {
+            if pointer.is_null() {
+                return Ok(RuntimeValue::empty());
+            }
+            owner
+                .sexp(pointer)
+                .and_then(|value| value.into_owned())
+                .map(RuntimeValue::from_owned)
+        };
+        let roots = [
+            retain(raw.na_string)?,
+            retain(raw.na_string_noquote)?,
+            retain(raw.env)?,
+            retain(raw.callArgs)?,
+        ];
+        raw.na_string = roots[0].as_raw();
+        raw.na_string_noquote = roots[1].as_raw();
+        raw.env = roots[2].as_raw();
+        raw.callArgs = roots[3].as_raw();
+        Ok(Self {
+            raw,
+            _roots: roots,
+        })
+    }
+
+    pub(crate) fn read<R>(&self, f: impl FnOnce(&R_PrintData) -> R) -> R {
+        f(&self.raw)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn clear_roots_for_gc_fixture(&mut self, nil: RuntimeValue) -> Self {
+        let mut raw = self.raw.clone();
+        let nil_ptr = nil.as_raw();
+        raw.na_string = nil_ptr;
+        raw.na_string_noquote = nil_ptr;
+        raw.env = nil_ptr;
+        raw.callArgs = nil_ptr;
+        let next = Self {
+            raw,
+            _roots: std::array::from_fn(|_| nil.clone()),
+        };
+        std::mem::replace(self, next)
+    }
 }
 
 fn set_current_print_data(data: &R_PrintData) {
-    with_current_print_data_mut(|current| *current = data.clone());
+    print_checked(OwnerToken::with_current(|owner| {
+        let next = print_checked(PrintDataSnapshot::capture(owner, data.clone()));
+        // SAFETY: the token keeps the original owner live for this short swap.
+        let old =
+            unsafe { with_print_data_in(owner.as_ptr(), |state| std::mem::replace(state, next)) };
+        drop(old);
+    }));
 }
 
-pub(crate) fn get_R_print_data() -> R_PrintData {
-    with_current_print_data_mut(|current| current.clone())
+/// Read print fields without copying their roots. The raw values are valid
+/// only during the read; use a snapshot when calling code that can reenter R.
+pub(crate) fn with_current_print_data<R>(f: impl FnOnce(&R_PrintData) -> R) -> R {
+    with_required_current_instance(|inst| {
+        // SAFETY: the current owner is pinned for this local checked lend.
+        unsafe { with_print_data_in(inst, |state| state.read(f)) }
+    })
+}
+
+fn print_data_snapshot() -> PrintDataSnapshot {
+    with_required_current_instance(|inst| {
+        // SAFETY: the owner is pinned and cloning retains the original leases.
+        unsafe { with_print_data_in(inst, |state| state.clone()) }
+    })
 }
 
 /// Length of the NUL-terminated prefix of `buf` (C `strlen`, bounded).
@@ -1575,8 +1649,8 @@ pub unsafe fn PrintValueRec(s: SEXP, _data: *mut std::ffi::c_void) {
         let data = _data as *const R_PrintData;
         if data.is_null() {
             PrintDefaults();
-            let data = get_R_print_data();
-            PrintValueRec_inner(s, &data);
+            let data = print_data_snapshot();
+            PrintValueRec_inner(s, &data.raw);
         } else {
             PrintValueRec_inner(s, &*data);
         }
@@ -2096,17 +2170,20 @@ pub fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
     }
 
-    with_current_print_data_mut(|data| data.right = right);
+    with_required_current_instance(|inst| {
+        // SAFETY: instance is pinned and this updates only a scalar.
+        unsafe { with_print_data_in(inst, |state| state.raw.right = right) }
+    });
 
     if Rf_isNull(naprint) == 0 && isString(naprint) != 0 && LENGTH(naprint) >= 1 {
         let na_str = STRING_ELT(naprint, 0);
         let na_width = crate::mainutils::printutils::Rstrlen(na_str, 0);
-        with_current_print_data_mut(|ds| {
-            ds.na_string = na_str;
-            ds.na_string_noquote = na_str;
-            ds.na_width = na_width;
-            ds.na_width_noquote = na_width;
-        });
+        let mut data = with_current_print_data(Clone::clone);
+        data.na_string = na_str;
+        data.na_string_noquote = na_str;
+        data.na_width = na_width;
+        data.na_width_noquote = na_width;
+        set_current_print_data(&data);
     }
 
     let mut rowlab_use = rowlab;
@@ -2118,7 +2195,7 @@ pub fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         collab_use = R_NilValue();
     }
 
-    let right_val = with_current_print_data_mut(|data| data.right);
+    let right_val = with_current_print_data(|data| data.right);
     crate::mainutils::printarray::printMatrix(
         x,
         0,
@@ -2336,9 +2413,10 @@ mod tests {
         let _session = RSession::new();
         unsafe {
             PrintDefaults();
-            let pd = get_R_print_data();
-            assert!(pd.digits > 0);
-            assert!(pd.width > 0);
+            with_current_print_data(|pd| {
+                assert!(pd.digits > 0);
+                assert!(pd.width > 0);
+            });
         }
     }
 
@@ -2360,9 +2438,10 @@ mod tests {
             fn element<'s>(&self, cx: &AltrepContext<'s>, _: i64) -> SexpResult<AltrepElement<'s>> {
                 self.0.set(self.0.get() + 1);
                 cx.gc()?;
-                let current = get_R_print_data();
-                assert_eq!(current.digits, R_PRINT_INIT.digits);
-                assert!(current.na_string_noquote.is_null());
+                with_current_print_data(|current| {
+                    assert_eq!(current.digits, R_PRINT_INIT.digits);
+                    assert!(current.na_string_noquote.is_null());
+                });
                 Ok(AltrepElement::Integer(11))
             }
         }
@@ -2378,9 +2457,60 @@ mod tests {
             assert_eq!(reads.get(), 0);
             PrintDefaults();
             assert_eq!(reads.get(), 1);
-            let current = get_R_print_data();
-            assert_eq!(current.digits, 11);
-            assert_eq!(char_bytes(current.na_string_noquote), b"<NA>");
+            let current = print_data_snapshot();
+            assert_eq!(current.raw.digits, 11);
+            assert_eq!(char_bytes(current.raw.na_string_noquote), b"<NA>");
+        });
+    }
+
+    #[test]
+    fn owned_print_data_survives_gc_and_replacement() {
+        use crate::sexp::memory::checked_projection;
+
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let owner = session.owner_token().unwrap();
+            let factory = owner.node_factory();
+            let pointers = {
+                let quoted = factory.character("custom quoted NA label").unwrap();
+                let unquoted = factory.character("custom unquoted NA label").unwrap();
+                let env = factory
+                    .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::ENVSXP)))
+                    .unwrap();
+                let args = factory
+                    .pairlist_cell(&factory.nil(), &factory.nil(), &factory.nil())
+                    .unwrap();
+                let raw = R_PrintData {
+                    na_string: quoted.as_raw(),
+                    na_string_noquote: unquoted.as_raw(),
+                    env: env.as_raw(),
+                    callArgs: args.as_raw(),
+                    ..R_PRINT_INIT
+                };
+                set_current_print_data(&raw);
+                [
+                    raw.na_string,
+                    raw.na_string_noquote,
+                    raw.env,
+                    raw.callArgs,
+                ]
+            };
+            owner.full_gc().unwrap();
+            assert!(pointers.iter().all(|&ptr| checked_projection(ptr).is_some()));
+            let retained = print_data_snapshot();
+            set_current_print_data(&R_PRINT_INIT);
+            owner.full_gc().unwrap();
+            assert!(pointers.iter().all(|&ptr| checked_projection(ptr).is_some()));
+            assert_eq!(char_bytes(retained.raw.na_string), b"custom quoted NA label");
+            assert_eq!(
+                char_bytes(retained.raw.na_string_noquote),
+                b"custom unquoted NA label"
+            );
+            assert_eq!(TYPEOF(retained.raw.env), SEXPTYPE::ENVSXP);
+            assert_eq!(TYPEOF(retained.raw.callArgs), SEXPTYPE::LISTSXP);
+            drop(retained);
+            owner.full_gc().unwrap();
+            assert!(pointers.iter().all(|&ptr| checked_projection(ptr).is_none()));
         });
     }
 

@@ -176,14 +176,6 @@ pub(crate) unsafe fn update_instance_roots_in(
                 .expect("invalid protection root remap");
         }
 
-        update_field(&mut (*instance).eval_state.print.data.na_string, old_to_new);
-        update_field(
-            &mut (*instance).eval_state.print.data.na_string_noquote,
-            old_to_new,
-        );
-        update_field(&mut (*instance).eval_state.print.data.env, old_to_new);
-        update_field(&mut (*instance).eval_state.print.data.callArgs, old_to_new);
-
         for obj in (*instance).symbols.values_mut() {
             update_field(obj, old_to_new);
         }

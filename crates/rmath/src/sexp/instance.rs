@@ -432,6 +432,8 @@ pub struct RInstance {
     finalizer_state: RefCell<crate::mainutils::memory_main::FinalizerState>,
     /// Per-instance evaluator and REPL control state.
     pub(crate) eval_state: EvalControlState,
+    /// Print defaults snapshot owning exact-generation roots for its raw view.
+    print_data: RefCell<crate::mainutils::print::PrintDataSnapshot>,
     /// REPL and compatibility scalar flags; shared Cell access, no state lend.
     repl_flags: ReplFlags,
     /// Result visibility, copied without lending evaluator state.
@@ -674,6 +676,7 @@ impl RInstance {
             memory_state: RefCell::default(),
             finalizer_state: RefCell::default(),
             eval_state: EvalControlState::default(),
+            print_data: RefCell::default(),
             repl_flags: ReplFlags::default(),
             visibility: Cell::new(super::ffi::TRUE),
             execution_state: RefCell::default(),
@@ -901,6 +904,7 @@ impl Drop for RInstance {
         // Release canonical evaluator values while their original arena still
         // exists. Borrowed projections never participate in this teardown.
         *self.assignment_expr.get_mut() = RuntimeValue::empty();
+        *self.print_data.get_mut() = crate::mainutils::print::PrintDataSnapshot::default();
         self.parse_diagnostics.get_mut().file = RuntimeValue::empty();
         *self.exec_token.get_mut() = RuntimeValue::empty();
         profiling.sref = RuntimeValue::empty();
@@ -1047,6 +1051,19 @@ pub(crate) unsafe fn with_execution_state_in<R>(
 ) -> R {
     // SAFETY: the caller retains the allocation; project only this field.
     let cell = unsafe { &(*instance).execution_state };
+    f(&mut cell.borrow_mut())
+}
+
+/// Lend print data for a strictly local read or update.
+///
+/// # Safety
+/// The original instance remains allocated and has no active whole-instance loan.
+pub(crate) unsafe fn with_print_data_in<R>(
+    instance: *mut RInstance,
+    f: impl FnOnce(&mut crate::mainutils::print::PrintDataSnapshot) -> R,
+) -> R {
+    // SAFETY: project only the checked cell from the retained instance.
+    let cell = unsafe { &(*instance).print_data };
     f(&mut cell.borrow_mut())
 }
 

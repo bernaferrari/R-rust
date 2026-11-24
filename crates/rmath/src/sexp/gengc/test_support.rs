@@ -64,10 +64,10 @@ pub(crate) fn reset_gc_test_arena(arena: &mut RArena) {
             )
         });
         drop(displaced);
-        (*instance).eval_state.print.data.na_string = nil;
-        (*instance).eval_state.print.data.na_string_noquote = nil;
-        (*instance).eval_state.print.data.env = nil;
-        (*instance).eval_state.print.data.callArgs = nil;
+        let print_nil = instance::RuntimeValue::from_raw_in(instance, nil);
+        drop(instance::with_print_data_in(instance, |state| {
+            state.clear_roots_for_gc_fixture(print_nil)
+        }));
         (*instance).symbols.clear();
         (*instance).symbol_nodes.clear();
         (*instance).names_state.ddval_symbols.clear();

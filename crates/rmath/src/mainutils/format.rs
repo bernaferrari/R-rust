@@ -61,18 +61,22 @@ fn current_R_print() -> RPrint {
             .map(|p| p.digits)
             .filter(|&d| d > 0)
             .unwrap_or_else(|| crate::mainutils::options::GetOptionDigits());
-        let print = crate::mainutils::print::get_R_print_data();
+        let (na_width, na_width_noquote) =
+            crate::mainutils::print::with_current_print_data(|print| {
+                let na_width = if print.na_string.is_null()
+                    || print.na_string == crate::sexp::globals::R_NaString()
+                {
+                    2
+                } else {
+                    print.na_width
+                };
+                (na_width, print.na_width_noquote)
+            });
         RPrint {
             digits,
             scipen: crate::mainutils::options::GetOptionScipen(),
-            na_width: if print.na_string.is_null()
-                || print.na_string == crate::sexp::globals::R_NaString()
-            {
-                2
-            } else {
-                print.na_width
-            },
-            na_width_noquote: print.na_width_noquote,
+            na_width,
+            na_width_noquote,
         }
     }
 }

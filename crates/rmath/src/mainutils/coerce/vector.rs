@@ -518,13 +518,16 @@ pub fn coerceToString(v: SEXP) -> SEXP {
             };
             crate::mainutils::print::PrintDefaults();
             check();
-            let defaults = crate::mainutils::print::get_R_print_data();
-            guard.entry_digits = defaults.digits;
+            let (digits, scipen, na_width, na_width_noquote) =
+                crate::mainutils::print::with_current_print_data(|data| {
+                    (data.digits, data.scipen, data.na_width, data.na_width_noquote)
+                });
+            guard.entry_digits = digits;
             (*owner.as_ptr()).eval_state.format_print = crate::mainutils::format::RPrint {
                 digits: 15,
-                scipen: defaults.scipen,
-                na_width: defaults.na_width,
-                na_width_noquote: defaults.na_width_noquote,
+                scipen,
+                na_width,
+                na_width_noquote,
             };
             (*owner.as_ptr()).eval_state.character_print_active = true;
             guard
