@@ -155,6 +155,14 @@ pub unsafe fn tre_fill_pmatch(
 
 // ===== Internal match dispatch =====
 
+fn match_input_length(len: usize) -> Result<c_int, c_int> {
+    if len == usize::MAX {
+        Ok(-1)
+    } else {
+        c_int::try_from(len).map_err(|_| REG_ESPACE)
+    }
+}
+
 /// # Safety
 ///
 /// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
@@ -198,17 +206,18 @@ pub(super) unsafe fn tre_match_with_workspace(
     eflags: c_int,
     workspace: &RegexWorkspace,
 ) -> c_int {
+    let len = match match_input_length(len) {
+        Ok(len) => len,
+        Err(status) => return status,
+    };
     unsafe {
         let Ok(count) = usize::try_from((*tnfa).num_tags) else {
             return REG_ESPACE;
         };
         let count = if nmatch == 0 { 0 } else { count };
-        let Ok(mut tag_buffer) = workspace.try_buffer(count) else {
+        let Ok(mut tag_buffer) = match_parallel::filled(workspace, count, -1) else {
             return REG_ESPACE;
         };
-        if tag_buffer.try_resize(count, -1).is_err() {
-            return REG_ESPACE;
-        }
         let tags = if count == 0 {
             ptr::null_mut()
         } else {
@@ -221,7 +230,7 @@ pub(super) unsafe fn tre_match_with_workspace(
             status = match_backtrack::tre_tnfa_run_backtrack(
                 tnfa,
                 string,
-                len as c_int,
+                len,
                 type_,
                 tags,
                 eflags,
@@ -236,7 +245,7 @@ pub(super) unsafe fn tre_match_with_workspace(
             status = match_approx::run_approx(
                 tnfa,
                 string,
-                len as c_int,
+                len,
                 type_,
                 tags,
                 &mut amatch,
@@ -249,7 +258,7 @@ pub(super) unsafe fn tre_match_with_workspace(
             status = match_parallel::run_parallel(
                 tnfa,
                 string,
-                len as c_int,
+                len,
                 type_,
                 &mut tag_buffer,
                 eflags,
@@ -607,10 +616,11 @@ unsafe fn tre_match_approx(
     amatch: *mut regamatch_t,
     params: regaparams_t,
     eflags: c_int,
+    workspace: &RegexWorkspace,
 ) -> c_int {
     unsafe {
         if params.max_cost == 0 && (*tnfa).have_approx == 0 && eflags & REG_APPROX_MATCHER == 0 {
-            return tre_match(
+            return tre_match_with_workspace(
                 tnfa,
                 string,
                 len,
@@ -618,6 +628,7 @@ unsafe fn tre_match_approx(
                 (*amatch).nmatch,
                 (*amatch).pmatch,
                 eflags,
+                workspace,
             );
         }
 
@@ -625,52 +636,46 @@ unsafe fn tre_match_approx(
             return REG_BADPAT as c_int;
         }
 
-        let mut tags: *mut c_int = ptr::null_mut();
-        if (*tnfa).num_tags > 0 && (*amatch).nmatch > 0 {
-            tags = mem::xmalloc(std::mem::size_of::<c_int>() * (*tnfa).num_tags as usize)
-                as *mut c_int;
-            if tags.is_null() {
-                return REG_ESPACE as c_int;
-            }
-        }
-
-        let mut eo: c_int = 0;
-        let status = match_approx::tre_tnfa_run_approx(
-            tnfa,
-            string,
-            len as c_int,
-            type_,
-            tags,
-            amatch,
-            params,
-            eflags,
-            &mut eo,
+        let len = match match_input_length(len) {
+            Ok(len) => len,
+            Err(status) => return status,
+        };
+        let nmatch = (*amatch).nmatch;
+        let count = if nmatch == 0 {
+            0
+        } else {
+            let Ok(count) = usize::try_from((*tnfa).num_tags) else {
+                return REG_ESPACE;
+            };
+            count
+        };
+        let Ok(mut tag_buffer) = match_parallel::filled(workspace, count, -1) else {
+            return REG_ESPACE;
+        };
+        let tags = if tag_buffer.is_empty() {
+            ptr::null_mut()
+        } else {
+            tag_buffer.as_mut_ptr()
+        };
+        let mut eo = 0;
+        let status = match_approx::run_approx(
+            tnfa, string, len, type_, tags, amatch, params, eflags, &mut eo, workspace,
         );
-
-        if status == REG_OK as c_int {
-            tre_fill_pmatch(
-                (*amatch).nmatch,
-                (*amatch).pmatch,
-                (*tnfa).cflags,
-                tnfa,
-                tags,
-                eo,
-            );
+        if status == REG_OK {
+            tre_fill_pmatch(nmatch, (*amatch).pmatch, (*tnfa).cflags, tnfa, tags, eo);
         }
-
-        if !tags.is_null() {
-            mem::xfree(tags as *mut c_void);
-        }
-
         status
     }
 }
 
+/// Match a byte buffer, or a NUL-terminated string when `len == usize::MAX`.
+///
 /// # Safety
 ///
-/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
-/// sized per the accompanying length/count arguments) valid for the reads and writes performed
-/// here; null is accepted only where the original C TRE API accepts it.
+/// `preg` must point to a live compiled regex. `str` must be valid for reads
+/// of `len` bytes, or through the terminating NUL for the sentinel length.
+/// `amatch` must be writable with initialized `nmatch` and `pmatch` fields.
+/// `pmatch` must be valid for `nmatch` writes, or null if `nmatch` is zero.
 pub unsafe fn tre_reganexec(
     preg: *const regex_t,
     str: *const c_char,
@@ -679,6 +684,11 @@ pub unsafe fn tre_reganexec(
     params: regaparams_t,
     eflags: c_int,
 ) -> c_int {
+    let workspace = if crate::sexp::instance::current_instance_ptr().is_some() {
+        crate::mainutils::grep::regex_workspace()
+    } else {
+        RegexWorkspace::unbounded()
+    };
     unsafe {
         let tnfa = (*preg).value as *const tre_tnfa_t;
         tre_match_approx(
@@ -689,6 +699,7 @@ pub unsafe fn tre_reganexec(
             amatch,
             params,
             eflags,
+            &workspace,
         )
     }
 }
@@ -721,18 +732,8 @@ pub unsafe fn tre_regaexecb(
     params: regaparams_t,
     eflags: c_int,
 ) -> c_int {
-    unsafe {
-        let tnfa = (*preg).value as *const tre_tnfa_t;
-        tre_match_approx(
-            tnfa,
-            str as *const c_void,
-            usize::MAX,
-            tre_str_type_t::STR_BYTE,
-            amatch,
-            params,
-            eflags,
-        )
-    }
+    // SAFETY: both entry points match a NUL-terminated byte string with the same contracts.
+    unsafe { tre_regaexec(preg, str, amatch, params, eflags) }
 }
 
 // ===========================================================================
@@ -1557,6 +1558,117 @@ mod tests {
             tre_regfree(&mut anchored);
             tre_regfree(&mut unanchored);
         }
+    }
+
+    #[test]
+    fn match_input_length_reserves_only_the_nul_terminated_sentinel() {
+        assert_eq!(match_input_length(0), Ok(0));
+        assert_eq!(match_input_length(c_int::MAX as usize), Ok(c_int::MAX));
+        assert_eq!(match_input_length(c_int::MAX as usize + 1), Err(REG_ESPACE));
+        assert_eq!(match_input_length(usize::MAX - 1), Err(REG_ESPACE));
+        assert_eq!(match_input_length(usize::MAX), Ok(-1));
+    }
+
+    #[test]
+    fn legacy_approximate_adapter_releases_session_workspace_and_retains_output_contract() {
+        use crate::sexp::{memory::ArenaBudget, session::RSession};
+
+        // SAFETY: the test helper compiles this valid pattern into an owned descriptor.
+        let (mut regex, rc) = unsafe { compile("^(ab)(cd)$", REG_EXTENDED) };
+        assert_eq!(rc, REG_OK);
+        let params = regaparams_t {
+            cost_ins: 1,
+            cost_del: 1,
+            cost_subst: 1,
+            max_cost: 1,
+            max_ins: 1,
+            max_del: 1,
+            max_subst: 1,
+            max_err: 1,
+        };
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let owner = session.owner_token().unwrap();
+            let baseline = owner.with_arena(|arena| arena.workspace_bytes()).unwrap();
+            owner
+                .with_arena(|arena| {
+                    arena.set_budget(ArenaBudget::new(
+                        arena.total_bytes_allocated() + baseline + 1,
+                        0,
+                    ));
+                })
+                .unwrap();
+
+            let mut output = [MaybeUninit::<regmatch_t>::uninit(); 4];
+            output[3].write(regmatch_t {
+                rm_so: 99,
+                rm_eo: 99,
+            });
+            let mut matched = regamatch_t {
+                nmatch: 3,
+                pmatch: output.as_mut_ptr().cast(),
+                cost: -1,
+                num_ins: -1,
+                num_del: -1,
+                num_subst: -1,
+            };
+            // SAFETY: the descriptor, NUL-terminated input and writable prefix are live.
+            assert_eq!(
+                unsafe { tre_regaexec(&regex, c"abXcd".as_ptr(), &mut matched, params, 0) },
+                REG_ESPACE
+            );
+            assert_eq!(matched.cost, -1);
+            assert_eq!(
+                owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+                baseline
+            );
+            owner
+                .with_arena(|arena| arena.set_budget(ArenaBudget::unlimited()))
+                .unwrap();
+
+            // SAFETY: the same descriptor, input and writable prefix remain live.
+            assert_eq!(
+                unsafe { tre_regaexecb(&regex, c"abXcd".as_ptr(), &mut matched, params, 0) },
+                REG_OK
+            );
+            // SAFETY: success initializes the requested prefix; slot 3 is initialized separately.
+            let pairs = output.map(|slot| {
+                let m = unsafe { slot.assume_init() };
+                (m.rm_so, m.rm_eo)
+            });
+            assert_eq!(pairs, [(0, 5), (0, 2), (2, 5), (99, 99)]);
+            assert_eq!(
+                (
+                    matched.cost,
+                    matched.num_ins,
+                    matched.num_del,
+                    matched.num_subst
+                ),
+                (1, 1, 0, 0)
+            );
+            matched.nmatch = 0;
+            matched.pmatch = ptr::null_mut();
+            // SAFETY: a null output pointer is allowed for zero captures.
+            assert_eq!(
+                unsafe { tre_regaexec(&regex, c"abxd".as_ptr(), &mut matched, params, 0) },
+                REG_OK
+            );
+            assert_eq!(
+                (
+                    matched.cost,
+                    matched.num_ins,
+                    matched.num_del,
+                    matched.num_subst
+                ),
+                (1, 0, 0, 1)
+            );
+            assert_eq!(
+                owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+                baseline
+            );
+        });
+        // SAFETY: the descriptor was compiled successfully and has no borrowers.
+        unsafe { tre_regfree(&mut regex) };
     }
 
     #[test]
