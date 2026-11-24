@@ -6,8 +6,10 @@
 //! Faithfully follows R's print.c logic with simplifications for features
 //! not yet available (S4 dispatch, source references, Win32 UTF8, etc.).
 
+use std::cell::{Cell, RefCell};
 use std::os::raw::{c_char, c_int};
 use std::ptr;
+use std::rc::Rc;
 
 use crate::mainutils::r_format::{CArg, r_sprintf};
 use crate::sexp::accessors::{
@@ -43,52 +45,81 @@ const USESOURCE: c_int = 8;
 
 pub(crate) struct PrintRuntimeState {
     tagbuf: [u8; TAGBUFLEN0 * 2],
-    active_values: Vec<SEXP>,
+    recursion: PrintRecursionStack,
 }
 
 impl Default for PrintRuntimeState {
     fn default() -> Self {
         PrintRuntimeState {
             tagbuf: [0; TAGBUFLEN0 * 2],
-            active_values: Vec::new(),
+            recursion: Rc::default(),
         }
     }
 }
 
-struct PrintRecursionGuard {
+struct PrintFrame {
     value: SEXP,
-    instance: *mut crate::sexp::instance::RInstance,
+    suspended: Cell<bool>,
+}
+
+type PrintRecursionStack = Rc<RefCell<Vec<Rc<PrintFrame>>>>;
+
+struct PrintRecursionGuard {
+    stack: PrintRecursionStack,
+    frame: Rc<PrintFrame>,
 }
 
 impl Drop for PrintRecursionGuard {
     fn drop(&mut self) {
-        if self.instance.is_null() {
-            return;
-        }
-        unsafe {
-            let state = &mut (*self.instance).eval_state.print;
-            if let Some(index) = state
-                .active_values
-                .iter()
-                .rposition(|&value| value == self.value)
-            {
-                state.active_values.remove(index);
-            }
+        let mut frames = self.stack.borrow_mut();
+        if let Some(index) = frames
+            .iter()
+            .rposition(|frame| Rc::ptr_eq(frame, &self.frame))
+        {
+            frames.remove(index);
         }
     }
 }
 
+fn print_recursion_stack() -> PrintRecursionStack {
+    with_print_runtime(|state| state.recursion.clone())
+}
+
 fn enter_print_value(value: SEXP) -> Option<PrintRecursionGuard> {
-    let instance = crate::sexp::instance::with_required_current_instance(|instance| instance);
-    unsafe {
-        let state = &mut (*instance).eval_state.print;
-        if state.active_values.contains(&value) {
-            None
-        } else {
-            state.active_values.push(value);
-            Some(PrintRecursionGuard { value, instance })
-        }
+    let stack = print_recursion_stack();
+    let mut frames = stack.borrow_mut();
+    if frames
+        .iter()
+        .any(|frame| !frame.suspended.get() && frame.value == value)
+    {
+        return None;
     }
+    let frame = Rc::new(PrintFrame {
+        value,
+        suspended: Cell::new(false),
+    });
+    frames.push(frame.clone());
+    drop(frames);
+    Some(PrintRecursionGuard { stack, frame })
+}
+
+// showDefault may print the current object's data without discarding its outer frame.
+struct SuspendedPrintFrame(Rc<PrintFrame>);
+
+impl Drop for SuspendedPrintFrame {
+    fn drop(&mut self) {
+        self.0.suspended.set(false);
+    }
+}
+
+fn suspend_print_value(value: SEXP) -> Option<SuspendedPrintFrame> {
+    let stack = print_recursion_stack();
+    let frames = stack.borrow();
+    let frame = frames
+        .iter()
+        .rfind(|frame| !frame.suspended.get() && frame.value == value)?;
+    frame.suspended.set(true);
+    Some(SuspendedPrintFrame(frame.clone()))
 }
 
 fn with_print_runtime<F, R>(f: F) -> R
@@ -976,7 +1007,11 @@ fn emit_print_default(x: SEXP, data: &R_PrintData, show_s4: bool) {
 }
 
 fn PrintObjectS4(s: SEXP, data: &R_PrintData) {
-    let depth = with_print_runtime(|state| state.active_values.len());
+    let depth = print_recursion_stack()
+        .borrow()
+        .iter()
+        .filter(|frame| !frame.suspended.get())
+        .count();
     if depth > 8 {
         print_s4_data_part(s, data);
         return;
@@ -1663,18 +1698,8 @@ pub unsafe fn PrintValueRec(s: SEXP, _data: *mut std::ffi::c_void) {
 /// true nested-element cycles (re-entry from *within* element printing) must
 /// stay recoverable errors, so temporarily lift the outer guard.
 fn PrintValueRec_reroot(s: SEXP, data: &R_PrintData) {
-    let reentered = with_print_runtime(|state| {
-        if let Some(index) = state.active_values.iter().rposition(|&value| value == s) {
-            state.active_values.remove(index);
-            true
-        } else {
-            false
-        }
-    });
+    let _suspended = suspend_print_value(s);
     PrintValueRec_inner(s, data);
-    if reentered {
-        with_print_runtime(|state| state.active_values.push(s));
-    }
 }
 
 fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
@@ -1683,7 +1708,7 @@ fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
     }
 
     // GNU showDefault's `print(object, useS4 = FALSE)` lands here.
-    // Printing the data part must not re-enter show() (active_values)
+    // Printing the data part must not re-enter show() (the recursion stack)
     // and must use the capture-aware printer. With methods dispatch
     // on, GNU PrintValueRec prints S4 objects by TYPEOF (deparse
     // renders `new("Class", ...)` for closures) followed by
@@ -2326,6 +2351,57 @@ mod tests {
     }
 
     #[test]
+    fn print_recursion_guard_cleans_up_after_original_session_is_destroyed() {
+        let mut original = RSession::new_for_gc_tests();
+        let (guard, original_stack) = original.with_active(|| {
+            let value = R_NilValue();
+            let guard = enter_print_value(value).unwrap();
+            assert!(enter_print_value(value).is_none());
+            (guard, print_recursion_stack())
+        });
+        original.close();
+        drop(original);
+
+        let foreign = RSession::new_for_gc_tests();
+        foreign.with_active(|| {
+            let value = R_NilValue();
+            let _foreign_guard = enter_print_value(value).unwrap();
+            drop(guard);
+            assert!(original_stack.borrow().is_empty());
+            assert!(enter_print_value(value).is_none());
+        });
+    }
+
+    #[test]
+    fn print_recursion_suspension_restores_original_frame_on_unwind() {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+
+        let original = RSession::new_for_gc_tests();
+        let foreign = RSession::new_for_gc_tests();
+        original.with_active(|| {
+            let value = R_NilValue();
+            let outer = enter_print_value(value).unwrap();
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                let _suspended = suspend_print_value(value).unwrap();
+                {
+                    let _inner = enter_print_value(value).unwrap();
+                    assert!(enter_print_value(value).is_none());
+                }
+                foreign.with_active(|| {
+                    let _foreign_guard = enter_print_value(value).unwrap();
+                    panic!("forced print unwind");
+                });
+            }));
+            assert!(result.is_err());
+            assert!(enter_print_value(value).is_none());
+            assert_eq!(print_recursion_stack().borrow().len(), 1);
+            drop(outer);
+            assert!(print_recursion_stack().borrow().is_empty());
+        });
+        foreign.with_active(|| assert!(print_recursion_stack().borrow().is_empty()));
+    }
+
+    #[test]
     fn test_do_printdefault_null() {
         unsafe {
             let result = do_printdefault(
@@ -2565,7 +2641,7 @@ mod tests {
     fn legacy_print_scalar_without_attributes_terminates() {
         const CHILD: &str = "RPORT_LEGACY_PRINT_PROBE_CHILD";
         if std::env::var_os(CHILD).is_some() {
-            let session = RSession::new();
+            let session = RSession::new_for_gc_tests();
             session.with_active(|| unsafe {
                 let value = crate::sexp::constructors::Rf_ScalarReal(1.0);
                 let _value_root = protect(value);
@@ -2585,10 +2661,7 @@ mod tests {
             .stderr(std::process::Stdio::null())
             .spawn()
             .unwrap();
-        // Measured on this tree: child boot ~5.2s (the base-source loader
-        // made startup slower — recorded, not hidden) + cyclic work ~4s.
-        // 20s is 2x the observed total: catches a real termination hang
-        // without the 60s no-op the review rejected.
+        // Keep a deadline in case printing fails to terminate.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
         loop {
             if let Some(status) = child.try_wait().unwrap() {
@@ -2598,7 +2671,7 @@ mod tests {
             if std::time::Instant::now() >= deadline {
                 child.kill().unwrap();
                 let _ = child.wait();
-                panic!("legacy scalar printing did not terminate within sixty seconds");
+                panic!("legacy scalar printing did not terminate within 20 seconds");
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
@@ -2608,7 +2681,7 @@ mod tests {
     fn legacy_print_cyclic_pairlists_terminate() {
         const CHILD: &str = "RPORT_LEGACY_PRINT_CYCLE_CHILD";
         if std::env::var_os(CHILD).is_some() {
-            let session = RSession::new();
+            let session = RSession::new_for_gc_tests();
             session.with_active(|| unsafe {
                 let cell = Rf_cons(crate::sexp::constructors::Rf_ScalarInteger(1), R_NilValue());
                 let _root = protect(cell);
@@ -2640,10 +2713,7 @@ mod tests {
             .stderr(std::process::Stdio::null())
             .spawn()
             .unwrap();
-        // Measured on this tree: child boot ~5.2s (the base-source loader
-        // made startup slower — recorded, not hidden) + cyclic work ~4s.
-        // 20s is 2x the observed total: catches a real termination hang
-        // without the 60s no-op the review rejected.
+        // Keep a deadline in case cyclic traversal fails to terminate.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
         loop {
             if let Some(status) = child.try_wait().unwrap() {
@@ -2653,7 +2723,7 @@ mod tests {
             if std::time::Instant::now() >= deadline {
                 child.kill().unwrap();
                 let _ = child.wait();
-                panic!("cyclic legacy printing did not terminate within sixty seconds");
+                panic!("cyclic legacy printing did not terminate within 20 seconds");
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
@@ -2663,7 +2733,7 @@ mod tests {
     fn legacy_print_cyclic_nested_vectors_terminate() {
         const CHILD: &str = "RPORT_LEGACY_PRINT_NESTED_CYCLE_CHILD";
         if std::env::var_os(CHILD).is_some() {
-            let session = RSession::new();
+            let session = RSession::new_for_gc_tests();
             session.with_active(|| unsafe {
                 let value = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::VECSXP, 1);
                 let _root = protect(value);
@@ -2694,10 +2764,7 @@ mod tests {
             .stderr(std::process::Stdio::null())
             .spawn()
             .unwrap();
-        // Measured on this tree: child boot ~5.2s (the base-source loader
-        // made startup slower — recorded, not hidden) + cyclic work ~4s.
-        // 20s is 2x the observed total: catches a real termination hang
-        // without the 60s no-op the review rejected.
+        // Keep a deadline in case cyclic traversal fails to terminate.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
         loop {
             if let Some(status) = child.try_wait().unwrap() {
@@ -2707,7 +2774,7 @@ mod tests {
             if std::time::Instant::now() >= deadline {
                 child.kill().unwrap();
                 let _ = child.wait();
-                panic!("nested cyclic printing did not terminate within sixty seconds");
+                panic!("nested cyclic printing did not terminate within 20 seconds");
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
