@@ -11,7 +11,10 @@ use std::os::raw::{c_int, c_void};
 use std::ptr;
 
 use super::ast::*;
-use super::mem;
+use crate::mainutils::grep::RegexWorkspace;
+
+use super::match_parallel::{apply_tags, filled};
+use super::owned_arena::OwnedArena;
 
 #[repr(C)]
 struct tre_backtrack_item_t {
@@ -86,7 +89,6 @@ unsafe fn CHECK_CHAR_CLASSES(
             && unsafe { super::parse::tre_neg_char_classes_match(trans_i.neg_classes, prev_c, icase) } != 0)
 }
 
-#[allow(clippy::if_same_then_else)]
 /// # Safety
 ///
 /// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
@@ -100,6 +102,34 @@ pub unsafe fn tre_tnfa_run_backtrack(
     match_tags: *mut c_int,
     eflags: c_int,
     match_end_ofs: *mut c_int,
+) -> c_int {
+    // SAFETY: forward the legacy pointer contracts unchanged.
+    unsafe {
+        run_backtrack(
+            tnfa,
+            string,
+            len,
+            type_,
+            match_tags,
+            eflags,
+            match_end_ofs,
+            &RegexWorkspace::unbounded(),
+        )
+    }
+}
+
+#[allow(clippy::if_same_then_else)]
+/// # Safety
+/// Same raw pointer requirements as [`tre_tnfa_run_backtrack`].
+pub(super) unsafe fn run_backtrack(
+    tnfa: *const tre_tnfa_t,
+    string: *const c_void,
+    len: c_int,
+    type_: tre_str_type_t,
+    match_tags: *mut c_int,
+    eflags: c_int,
+    match_end_ofs: *mut c_int,
+    workspace: &RegexWorkspace,
 ) -> c_int {
     unsafe {
         let mut str_byte = string as *const u8;
@@ -118,66 +148,35 @@ pub unsafe fn tre_tnfa_run_backtrack(
         let mut next_tags: *const c_int = ptr::null();
         let mut state: *mut tre_tnfa_transition_t = ptr::null_mut();
 
-        let mem_ctx = mem::tre_mem_new();
-        if mem_ctx.is_null() {
-            return REG_ESPACE as c_int;
-        }
-
-        let mut stack: tre_backtrack_t =
-            mem::tre_mem_alloc(mem_ctx, std::mem::size_of::<tre_backtrack_struct>())
-                as tre_backtrack_t;
-        if stack.is_null() {
-            mem::tre_mem_destroy(mem_ctx);
-            return REG_ESPACE as c_int;
-        }
+        let (Ok(tag_count), Ok(state_count)) = (
+            usize::try_from((*tnfa).num_tags),
+            usize::try_from((*tnfa).num_states),
+        ) else {
+            return REG_BADPAT;
+        };
+        let Ok(mut tags) = filled(workspace, tag_count, -1) else {
+            return REG_ESPACE;
+        };
+        let Ok(mut pmatch) = filled(
+            workspace,
+            (*tnfa).num_submatches as usize,
+            regmatch_t::default(),
+        ) else {
+            return REG_ESPACE;
+        };
+        let Ok(mut states_seen) = filled(workspace, state_count, false) else {
+            return REG_ESPACE;
+        };
+        let Ok(mut arena) = OwnedArena::new(workspace.clone()) else {
+            return REG_ESPACE;
+        };
+        let Ok(base) = arena.allocate(std::mem::size_of::<tre_backtrack_struct>()) else {
+            return REG_ESPACE;
+        };
+        let mut stack: tre_backtrack_t = base.cast();
         (*stack).prev = ptr::null_mut();
         (*stack).next = ptr::null_mut();
-
-        let tags: *mut c_int = if (*tnfa).num_tags > 0 {
-            let t = mem::xmalloc(std::mem::size_of::<c_int>() * (*tnfa).num_tags as usize)
-                as *mut c_int;
-            if t.is_null() {
-                mem::tre_mem_destroy(mem_ctx);
-                return REG_ESPACE as c_int;
-            }
-            t
-        } else {
-            ptr::null_mut()
-        };
-
-        let pmatch: *mut regmatch_t = if (*tnfa).num_submatches > 0 {
-            let p =
-                mem::xmalloc(std::mem::size_of::<regmatch_t>() * (*tnfa).num_submatches as usize)
-                    as *mut regmatch_t;
-            if p.is_null() {
-                if !tags.is_null() {
-                    mem::xfree(tags as *mut c_void);
-                }
-                mem::tre_mem_destroy(mem_ctx);
-                return REG_ESPACE as c_int;
-            }
-            p
-        } else {
-            ptr::null_mut()
-        };
-
-        let states_seen: *mut c_int = if (*tnfa).num_states > 0 {
-            let s = mem::xmalloc(std::mem::size_of::<c_int>() * (*tnfa).num_states as usize)
-                as *mut c_int;
-            if s.is_null() {
-                if !tags.is_null() {
-                    mem::xfree(tags as *mut c_void);
-                }
-                if !pmatch.is_null() {
-                    mem::xfree(pmatch as *mut c_void);
-                }
-                mem::tre_mem_destroy(mem_ctx);
-                return REG_ESPACE as c_int;
-            }
-            s
-        } else {
-            ptr::null_mut()
-        };
+        let tag_bytes = std::mem::size_of_val(&tags[..]);
 
         let mut prev_c: tre_cint_t = 0;
         let mut next_c: tre_cint_t = 0;
@@ -185,15 +184,13 @@ pub unsafe fn tre_tnfa_run_backtrack(
         // retry label
         loop {
             // Initialize tags and states_seen
-            for i in 0..(*tnfa).num_tags {
-                *tags.offset(i as isize) = -1;
-                if !match_tags.is_null() && match_eo < 0 {
-                    *match_tags.offset(i as isize) = -1;
+            tags.fill(-1);
+            if !match_tags.is_null() && match_eo < 0 {
+                for i in 0..tags.len() {
+                    match_tags.add(i).write(-1);
                 }
             }
-            for i in 0..(*tnfa).num_states {
-                *states_seen.offset(i as isize) = 0;
-            }
+            states_seen.fill(false);
 
             state = ptr::null_mut();
             pos = pos_start;
@@ -253,92 +250,50 @@ pub unsafe fn tre_tnfa_run_backtrack(
                     // Backtrack to this state
                     // BT_STACK_PUSH
                     if (*stack).next.is_null() {
-                        let s = mem::tre_mem_alloc(
-                            mem_ctx,
-                            std::mem::size_of::<tre_backtrack_struct>(),
-                        ) as tre_backtrack_t;
-                        if s.is_null() {
-                            mem::tre_mem_destroy(mem_ctx);
-                            if !tags.is_null() {
-                                mem::xfree(tags as *mut c_void);
-                            }
-                            if !pmatch.is_null() {
-                                mem::xfree(pmatch as *mut c_void);
-                            }
-                            if !states_seen.is_null() {
-                                mem::xfree(states_seen as *mut c_void);
-                            }
-                            return REG_ESPACE as c_int;
-                        }
-                        (*s).prev = stack;
-                        (*s).next = ptr::null_mut();
-                        (*s).item.tags = mem::tre_mem_alloc(
-                            mem_ctx,
-                            std::mem::size_of::<c_int>() * (*tnfa).num_tags as usize,
-                        ) as *mut c_int;
-                        if (*s).item.tags.is_null() {
-                            mem::tre_mem_destroy(mem_ctx);
-                            if !tags.is_null() {
-                                mem::xfree(tags as *mut c_void);
-                            }
-                            if !pmatch.is_null() {
-                                mem::xfree(pmatch as *mut c_void);
-                            }
-                            if !states_seen.is_null() {
-                                mem::xfree(states_seen as *mut c_void);
-                            }
-                            return REG_ESPACE as c_int;
-                        }
-                        (*stack).next = s;
-                        stack = s;
-                    } else {
-                        stack = (*stack).next;
+                        let Ok(frame) = arena.allocate(std::mem::size_of::<tre_backtrack_struct>())
+                        else {
+                            return REG_ESPACE;
+                        };
+                        let Ok(row) = arena.allocate(tag_bytes) else {
+                            return REG_ESPACE;
+                        };
+                        let frame: tre_backtrack_t = frame.cast();
+                        (*frame).prev = stack;
+                        (*frame).next = ptr::null_mut();
+                        (*frame).item.tags = row.cast();
+                        (*stack).next = frame;
                     }
+                    stack = (*stack).next;
                     (*stack).item.pos = pos;
                     (*stack).item.str_byte = str_byte;
                     (*stack).item.state = (*trans_i).state;
                     (*stack).item.state_id = (*trans_i).state_id;
                     (*stack).item.next_c = next_c;
-                    for i in 0..(*tnfa).num_tags {
-                        *(*stack).item.tags.offset(i as isize) = *tags.offset(i as isize);
-                    }
-
-                    // Apply tags from this transition
-                    let mut tmp = (*trans_i).tags;
-                    if !tmp.is_null() {
-                        while *tmp >= 0 {
-                            if *tmp < (*tnfa).num_tags {
-                                *(*stack).item.tags.offset(*tmp as isize) = pos;
-                            }
-                            tmp = tmp.add(1);
-                        }
-                    }
+                    let row = std::slice::from_raw_parts_mut((*stack).item.tags, tags.len());
+                    row.copy_from_slice(&tags);
+                    apply_tags((*trans_i).tags, row, pos);
                 }
                 trans_i = trans_i.add(1);
             }
 
-            if !next_tags.is_null() {
-                let mut nt = next_tags;
-                while *nt >= 0 {
-                    *tags.offset(*nt as isize) = pos;
-                    nt = nt.add(1);
-                }
-            }
+            apply_tags(next_tags, &mut tags, pos);
 
             if state.is_null() {
                 // goto backtrack
                 if !(*stack).prev.is_null() {
                     if (*(*stack).item.state).assertions & ASSERT_BACKREF != 0 {
-                        *states_seen.offset((*stack).item.state_id as isize) = 0;
+                        let Some(seen) = states_seen.get_mut((*stack).item.state_id as usize)
+                        else {
+                            return REG_BADPAT;
+                        };
+                        *seen = false;
                     }
                     // BT_STACK_POP
                     pos = (*stack).item.pos;
                     str_byte = (*stack).item.str_byte;
                     state = (*stack).item.state;
                     next_c = (*stack).item.next_c as tre_cint_t;
-                    for i in 0..(*tnfa).num_tags {
-                        *tags.offset(i as isize) = *(*stack).item.tags.offset(i as isize);
-                    }
+                    tags.copy_from_slice(std::slice::from_raw_parts((*stack).item.tags, tag_count));
                     stack = (*stack).prev;
                     continue; // Back to main loop
                 } else if match_eo < 0 {
@@ -367,37 +322,34 @@ pub unsafe fn tre_tnfa_run_backtrack(
                             && tre_tag_order(
                                 std::slice::from_raw_parts(
                                     ptr_or_dangling((*tnfa).tag_directions),
-                                    (*tnfa).num_tags as usize,
+                                    tag_count,
                                 ),
-                                std::slice::from_raw_parts(
-                                    ptr_or_dangling(tags),
-                                    (*tnfa).num_tags as usize,
-                                ),
-                                std::slice::from_raw_parts(
-                                    ptr_or_dangling(match_tags),
-                                    (*tnfa).num_tags as usize,
-                                ),
+                                &tags,
+                                std::slice::from_raw_parts(ptr_or_dangling(match_tags), tag_count),
                             ) != 0)
                     {
                         match_eo = pos;
                         if !match_tags.is_null() {
-                            for i in 0..(*tnfa).num_tags {
-                                *match_tags.offset(i as isize) = *tags.offset(i as isize);
-                            }
+                            ptr::copy_nonoverlapping(tags.as_ptr(), match_tags, tags.len());
                         }
                     }
                     // goto backtrack
                     if !(*stack).prev.is_null() {
                         if (*(*stack).item.state).assertions & ASSERT_BACKREF != 0 {
-                            *states_seen.offset((*stack).item.state_id as isize) = 0;
+                            let Some(seen) = states_seen.get_mut((*stack).item.state_id as usize)
+                            else {
+                                return REG_BADPAT;
+                            };
+                            *seen = false;
                         }
                         pos = (*stack).item.pos;
                         str_byte = (*stack).item.str_byte;
                         state = (*stack).item.state;
                         next_c = (*stack).item.next_c as tre_cint_t;
-                        for i in 0..(*tnfa).num_tags {
-                            *tags.offset(i as isize) = *(*stack).item.tags.offset(i as isize);
-                        }
+                        tags.copy_from_slice(std::slice::from_raw_parts(
+                            (*stack).item.tags,
+                            tag_count,
+                        ));
                         stack = (*stack).prev;
                         continue;
                     } else if match_eo < 0 {
@@ -421,21 +373,26 @@ pub unsafe fn tre_tnfa_run_backtrack(
 
                 if !(*trans_i).state.is_null() && (*trans_i).assertions & ASSERT_BACKREF != 0 {
                     // Back reference
-                    let bt = (*trans_i).u.get_backref();
-                    let bt_len: c_int;
-
+                    let Ok(bt) = usize::try_from((*trans_i).u.get_backref()) else {
+                        return REG_BADPAT;
+                    };
+                    let Some(prefix) = pmatch.get_mut(..=bt) else {
+                        return REG_BADPAT;
+                    };
                     // Get the substring to match against
                     super::regapi::tre_fill_pmatch(
-                        (bt + 1) as usize,
-                        pmatch,
+                        prefix.len(),
+                        prefix.as_mut_ptr(),
                         (*tnfa).cflags & !REG_NOSUB,
                         tnfa,
-                        tags,
+                        tags.as_ptr(),
                         pos,
                     );
-                    let so = (*pmatch.offset(bt as isize)).rm_so;
-                    let eo = (*pmatch.offset(bt as isize)).rm_eo;
-                    bt_len = eo - so;
+                    let regmatch_t {
+                        rm_so: so,
+                        rm_eo: eo,
+                    } = prefix[bt];
+                    let bt_len = eo - so;
 
                     let result: c_int;
                     if len < 0 {
@@ -475,22 +432,28 @@ pub unsafe fn tre_tnfa_run_backtrack(
                         if bt_len == 0 {
                             empty_br_match = 1;
                         }
-                        if empty_br_match != 0
-                            && *states_seen.offset((*trans_i).state_id as isize) != 0
-                        {
+                        let Some(&seen) = states_seen.get((*trans_i).state_id as usize) else {
+                            return REG_BADPAT;
+                        };
+                        if empty_br_match != 0 && seen {
                             // goto backtrack
                             if !(*stack).prev.is_null() {
                                 if (*(*stack).item.state).assertions & ASSERT_BACKREF != 0 {
-                                    *states_seen.offset((*stack).item.state_id as isize) = 0;
+                                    let Some(seen) =
+                                        states_seen.get_mut((*stack).item.state_id as usize)
+                                    else {
+                                        return REG_BADPAT;
+                                    };
+                                    *seen = false;
                                 }
                                 pos = (*stack).item.pos;
                                 str_byte = (*stack).item.str_byte;
                                 state = (*stack).item.state;
                                 next_c = (*stack).item.next_c as tre_cint_t;
-                                for i in 0..(*tnfa).num_tags {
-                                    *tags.offset(i as isize) =
-                                        *(*stack).item.tags.offset(i as isize);
-                                }
+                                tags.copy_from_slice(std::slice::from_raw_parts(
+                                    (*stack).item.tags,
+                                    tag_count,
+                                ));
                                 stack = (*stack).prev;
                                 continue;
                             } else if match_eo < 0 {
@@ -505,7 +468,7 @@ pub unsafe fn tre_tnfa_run_backtrack(
                             }
                             continue;
                         }
-                        *states_seen.offset((*trans_i).state_id as isize) = empty_br_match;
+                        states_seen[(*trans_i).state_id as usize] = empty_br_match != 0;
                         // Advance in input string
                         if type_ == tre_str_type_t::STR_BYTE && !str_byte.is_null() {
                             str_byte = str_byte.offset(bt_len as isize - 1);
@@ -527,15 +490,21 @@ pub unsafe fn tre_tnfa_run_backtrack(
                         // goto backtrack
                         if !(*stack).prev.is_null() {
                             if (*(*stack).item.state).assertions & ASSERT_BACKREF != 0 {
-                                *states_seen.offset((*stack).item.state_id as isize) = 0;
+                                let Some(seen) =
+                                    states_seen.get_mut((*stack).item.state_id as usize)
+                                else {
+                                    return REG_BADPAT;
+                                };
+                                *seen = false;
                             }
                             pos = (*stack).item.pos;
                             str_byte = (*stack).item.str_byte;
                             state = (*stack).item.state;
                             next_c = (*stack).item.next_c as tre_cint_t;
-                            for i in 0..(*tnfa).num_tags {
-                                *tags.offset(i as isize) = *(*stack).item.tags.offset(i as isize);
-                            }
+                            tags.copy_from_slice(std::slice::from_raw_parts(
+                                (*stack).item.tags,
+                                tag_count,
+                            ));
                             stack = (*stack).prev;
                             continue;
                         } else if match_eo < 0 {
@@ -556,15 +525,21 @@ pub unsafe fn tre_tnfa_run_backtrack(
                         // goto backtrack
                         if !(*stack).prev.is_null() {
                             if (*(*stack).item.state).assertions & ASSERT_BACKREF != 0 {
-                                *states_seen.offset((*stack).item.state_id as isize) = 0;
+                                let Some(seen) =
+                                    states_seen.get_mut((*stack).item.state_id as usize)
+                                else {
+                                    return REG_BADPAT;
+                                };
+                                *seen = false;
                             }
                             pos = (*stack).item.pos;
                             str_byte = (*stack).item.str_byte;
                             state = (*stack).item.state;
                             next_c = (*stack).item.next_c as tre_cint_t;
-                            for i in 0..(*tnfa).num_tags {
-                                *tags.offset(i as isize) = *(*stack).item.tags.offset(i as isize);
-                            }
+                            tags.copy_from_slice(std::slice::from_raw_parts(
+                                (*stack).item.tags,
+                                tag_count,
+                            ));
                             stack = (*stack).prev;
                             continue;
                         } else if match_eo < 0 {
@@ -583,15 +558,21 @@ pub unsafe fn tre_tnfa_run_backtrack(
                         // goto backtrack
                         if !(*stack).prev.is_null() {
                             if (*(*stack).item.state).assertions & ASSERT_BACKREF != 0 {
-                                *states_seen.offset((*stack).item.state_id as isize) = 0;
+                                let Some(seen) =
+                                    states_seen.get_mut((*stack).item.state_id as usize)
+                                else {
+                                    return REG_BADPAT;
+                                };
+                                *seen = false;
                             }
                             pos = (*stack).item.pos;
                             str_byte = (*stack).item.str_byte;
                             state = (*stack).item.state;
                             next_c = (*stack).item.next_c as tre_cint_t;
-                            for i in 0..(*tnfa).num_tags {
-                                *tags.offset(i as isize) = *(*stack).item.tags.offset(i as isize);
-                            }
+                            tags.copy_from_slice(std::slice::from_raw_parts(
+                                (*stack).item.tags,
+                                tag_count,
+                            ));
                             stack = (*stack).prev;
                             continue;
                         } else if match_eo < 0 {
@@ -640,65 +621,30 @@ pub unsafe fn tre_tnfa_run_backtrack(
                         } else {
                             // BT_STACK_PUSH
                             if (*stack).next.is_null() {
-                                let s = mem::tre_mem_alloc(
-                                    mem_ctx,
-                                    std::mem::size_of::<tre_backtrack_struct>(),
-                                ) as tre_backtrack_t;
-                                if s.is_null() {
-                                    mem::tre_mem_destroy(mem_ctx);
-                                    if !tags.is_null() {
-                                        mem::xfree(tags as *mut c_void);
-                                    }
-                                    if !pmatch.is_null() {
-                                        mem::xfree(pmatch as *mut c_void);
-                                    }
-                                    if !states_seen.is_null() {
-                                        mem::xfree(states_seen as *mut c_void);
-                                    }
-                                    return REG_ESPACE as c_int;
-                                }
-                                (*s).prev = stack;
-                                (*s).next = ptr::null_mut();
-                                (*s).item.tags = mem::tre_mem_alloc(
-                                    mem_ctx,
-                                    std::mem::size_of::<c_int>() * (*tnfa).num_tags as usize,
-                                ) as *mut c_int;
-                                if (*s).item.tags.is_null() {
-                                    mem::tre_mem_destroy(mem_ctx);
-                                    if !tags.is_null() {
-                                        mem::xfree(tags as *mut c_void);
-                                    }
-                                    if !pmatch.is_null() {
-                                        mem::xfree(pmatch as *mut c_void);
-                                    }
-                                    if !states_seen.is_null() {
-                                        mem::xfree(states_seen as *mut c_void);
-                                    }
-                                    return REG_ESPACE as c_int;
-                                }
-                                (*stack).next = s;
-                                stack = s;
-                            } else {
-                                stack = (*stack).next;
+                                let Ok(frame) =
+                                    arena.allocate(std::mem::size_of::<tre_backtrack_struct>())
+                                else {
+                                    return REG_ESPACE;
+                                };
+                                let Ok(row) = arena.allocate(tag_bytes) else {
+                                    return REG_ESPACE;
+                                };
+                                let frame: tre_backtrack_t = frame.cast();
+                                (*frame).prev = stack;
+                                (*frame).next = ptr::null_mut();
+                                (*frame).item.tags = row.cast();
+                                (*stack).next = frame;
                             }
+                            stack = (*stack).next;
                             (*stack).item.pos = pos;
                             (*stack).item.str_byte = str_byte;
                             (*stack).item.state = (*trans_i).state;
                             (*stack).item.state_id = (*trans_i).state_id;
                             (*stack).item.next_c = next_c;
-                            for i in 0..(*tnfa).num_tags {
-                                *(*stack).item.tags.offset(i as isize) = *tags.offset(i as isize);
-                            }
-                            // Apply tags
-                            let mut tmp = (*trans_i).tags;
-                            if !tmp.is_null() {
-                                while *tmp >= 0 {
-                                    if *tmp < (*tnfa).num_tags {
-                                        *(*stack).item.tags.offset(*tmp as isize) = pos;
-                                    }
-                                    tmp = tmp.add(1);
-                                }
-                            }
+                            let row =
+                                std::slice::from_raw_parts_mut((*stack).item.tags, tags.len());
+                            row.copy_from_slice(&tags);
+                            apply_tags((*trans_i).tags, row, pos);
                         }
                     }
                     trans_i = trans_i.add(1);
@@ -706,26 +652,25 @@ pub unsafe fn tre_tnfa_run_backtrack(
 
                 if !next_state.is_null() {
                     state = next_state;
-                    if !next_tags.is_null() {
-                        let mut nt = next_tags;
-                        while *nt >= 0 {
-                            *tags.offset(*nt as isize) = pos;
-                            nt = nt.add(1);
-                        }
-                    }
+                    apply_tags(next_tags, &mut tags, pos);
                 } else {
                     // goto backtrack
                     if !(*stack).prev.is_null() {
                         if (*(*stack).item.state).assertions & ASSERT_BACKREF != 0 {
-                            *states_seen.offset((*stack).item.state_id as isize) = 0;
+                            let Some(seen) = states_seen.get_mut((*stack).item.state_id as usize)
+                            else {
+                                return REG_BADPAT;
+                            };
+                            *seen = false;
                         }
                         pos = (*stack).item.pos;
                         str_byte = (*stack).item.str_byte;
                         state = (*stack).item.state;
                         next_c = (*stack).item.next_c as tre_cint_t;
-                        for i in 0..(*tnfa).num_tags {
-                            *tags.offset(i as isize) = *(*stack).item.tags.offset(i as isize);
-                        }
+                        tags.copy_from_slice(std::slice::from_raw_parts(
+                            (*stack).item.tags,
+                            tag_count,
+                        ));
                         stack = (*stack).prev;
                     } else if match_eo < 0 {
                         if len >= 0 && pos >= len {
@@ -742,6 +687,10 @@ pub unsafe fn tre_tnfa_run_backtrack(
                     }
                 }
             }
+            // Only an explicit retry advances to another starting position.
+            if !done {
+                break;
+            }
         }
 
         let ret = if match_eo >= 0 {
@@ -750,17 +699,6 @@ pub unsafe fn tre_tnfa_run_backtrack(
             REG_NOMATCH as c_int
         };
         *match_end_ofs = match_eo;
-
-        mem::tre_mem_destroy(mem_ctx);
-        if !tags.is_null() {
-            mem::xfree(tags as *mut c_void);
-        }
-        if !pmatch.is_null() {
-            mem::xfree(pmatch as *mut c_void);
-        }
-        if !states_seen.is_null() {
-            mem::xfree(states_seen as *mut c_void);
-        }
 
         ret
     }

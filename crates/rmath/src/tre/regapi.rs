@@ -227,14 +227,8 @@ pub(super) unsafe fn tre_match_with_workspace(
 
         let status: c_int;
         if (*tnfa).have_backrefs != 0 || eflags & REG_BACKTRACKING_MATCHER != 0 {
-            status = match_backtrack::tre_tnfa_run_backtrack(
-                tnfa,
-                string,
-                len,
-                type_,
-                tags,
-                eflags,
-                &mut eo,
+            status = match_backtrack::run_backtrack(
+                tnfa, string, len, type_, tags, eflags, &mut eo, workspace,
             );
         } else if (*tnfa).have_approx != 0 || eflags & REG_APPROX_MATCHER != 0 {
             let mut amatch: regamatch_t = std::mem::zeroed();
@@ -1961,6 +1955,52 @@ mod owned_match_tests {
                 owner.with_arena(|a| a.workspace_bytes()).unwrap(),
                 baseline
             );
+        });
+    }
+
+    #[test]
+    fn owned_backtrack_releases_workspace_after_denial() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        session.with_active(|| {
+            let pattern: Vec<_> = "(ab|ac)d".chars().map(u32::from).collect();
+            let regex = compile::tre_compile_owned_slice(
+                &pattern,
+                REG_EXTENDED,
+                crate::mainutils::grep::regex_workspace(),
+            )
+            .unwrap();
+            let baseline = owner.with_arena(|a| a.workspace_bytes()).unwrap();
+            let mut matches = [regmatch_t {
+                rm_so: 99,
+                rm_eo: 99,
+            }; 2];
+            owner
+                .with_arena(|a| {
+                    // The small scratch rows fit, but the first frame slab does not.
+                    let used = a.total_bytes_allocated();
+                    a.set_budget(crate::sexp::memory::ArenaBudget::new(used + 256, 0));
+                })
+                .unwrap();
+            assert_eq!(
+                regex.match_bytes(b"xacd", &mut matches, REG_BACKTRACKING_MATCHER),
+                REG_ESPACE
+            );
+            assert_eq!(matches.map(|m| (m.rm_so, m.rm_eo)), [(99, 99); 2]);
+            assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), baseline);
+            owner
+                .with_arena(|a| a.set_budget(crate::sexp::memory::ArenaBudget::unlimited()))
+                .unwrap();
+            assert_eq!(
+                regex.match_bytes(b"xacd", &mut matches, REG_BACKTRACKING_MATCHER),
+                REG_OK
+            );
+            assert_eq!(matches.map(|m| (m.rm_so, m.rm_eo)), [(1, 4), (1, 3)]);
+            assert_eq!(
+                regex.match_bytes(b"xad", &mut matches, REG_BACKTRACKING_MATCHER),
+                REG_NOMATCH
+            );
+            assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), baseline);
         });
     }
 }
