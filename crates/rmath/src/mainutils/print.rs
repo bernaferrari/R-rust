@@ -21,7 +21,9 @@ use crate::sexp::attrib_core::{
 use crate::sexp::constructors::Rf_cons;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, NA_REAL, R_IsNA, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_NilValue, R_UnboundValue};
-use crate::sexp::protect::protect;
+use crate::sexp::object::SexpResult;
+use crate::sexp::owner::OwnerToken;
+use crate::sexp::protect::{ProtectGuard, protect};
 use crate::sexp::symbol::install_str;
 
 // ---------------------------------------------------------------------------
@@ -472,28 +474,45 @@ pub unsafe fn PrintInit(data: *mut std::ffi::c_void, env: SEXP) {
         return;
     }
     // SAFETY: the caller passes a live, exclusively borrowed R_PrintData.
-    print_init(unsafe { &mut *d }, env);
+    drop(print_init(unsafe { &mut *d }, env));
 }
 
-/// Safe body of [`PrintInit`].
-fn print_init(d: &mut R_PrintData, env: SEXP) {
-    {
+struct PrintInitRoots {
+    _environment: ProtectGuard<'static>,
+    _na_string_noquote: ProtectGuard<'static>,
+}
+
+fn print_checked<T>(result: SexpResult<T>) -> T {
+    result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Initialize a local print snapshot and keep its heap values live for the caller.
+fn print_init(d: &mut R_PrintData, env: SEXP) -> PrintInitRoots {
+    print_checked(OwnerToken::with_current(|owner| {
+        let environment = protect(env);
         d.na_string = NA_STRING_local();
         d.na_string_noquote = mk_char_nul(b"<NA>\0");
+        print_checked(owner.require_active());
+        let na_string_noquote = protect(d.na_string_noquote);
         d.na_width = crate::mainutils::printutils::Rstrlen(d.na_string, 0);
         d.na_width_noquote = crate::mainutils::printutils::Rstrlen(d.na_string_noquote, 0);
         d.quote = 1;
         d.right = Rprt_adj_left;
         d.digits = crate::mainutils::options::GetOptionDigits();
+        print_checked(owner.require_active());
 
         let scipen_sym = install_str("scipen");
+        print_checked(owner.require_active());
         d.scipen = asInteger(crate::mainutils::options::GetOption1(scipen_sym));
+        print_checked(owner.require_active());
         if d.scipen == NA_INTEGER {
             d.scipen = 0;
         }
 
         let maxprint_sym = install_str("max.print");
+        print_checked(owner.require_active());
         d.max = asInteger(crate::mainutils::options::GetOption1(maxprint_sym));
+        print_checked(owner.require_active());
         if d.max == NA_INTEGER || d.max < 0 {
             d.max = 99999;
         } else if d.max == c_int::MAX {
@@ -501,11 +520,17 @@ fn print_init(d: &mut R_PrintData, env: SEXP) {
         }
         d.gap = 1;
         d.width = crate::mainutils::options::GetOptionWidth();
+        print_checked(owner.require_active());
         d.useSource = USESOURCE;
         d.cutoff = crate::mainutils::options::GetOptionCutoff();
+        print_checked(owner.require_active());
         d.env = env;
         d.callArgs = R_NilValue();
-    }
+        PrintInitRoots {
+            _environment: environment,
+            _na_string_noquote: na_string_noquote,
+        }
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -513,17 +538,16 @@ fn print_init(d: &mut R_PrintData, env: SEXP) {
 // ---------------------------------------------------------------------------
 
 pub fn PrintDefaults() {
-    let env = R_GlobalEnv();
-    let defaults = with_current_print_data_mut(|data| {
-        print_init(data, env);
-        crate::mainutils::format::RPrint {
-            digits: data.digits,
-            scipen: data.scipen,
-            na_width: data.na_width,
-            na_width_noquote: data.na_width_noquote,
-        }
-    });
-    // End the print-data borrow before resolving the ambient instance.
+    let mut data = R_PRINT_INIT.clone();
+    // Option coercion can collect or run callbacks before defaults are complete.
+    let _roots = print_init(&mut data, R_GlobalEnv());
+    let defaults = crate::mainutils::format::RPrint {
+        digits: data.digits,
+        scipen: data.scipen,
+        na_width: data.na_width,
+        na_width_noquote: data.na_width_noquote,
+    };
+    set_current_print_data(&data);
     // GNU nested printing resets only the active conversion's defaults.
     crate::sexp::instance::with_current_instance(|inst| {
         // SAFETY: `inst` is the pinned current instance; these primitive
@@ -1790,13 +1814,13 @@ pub fn PrintValueEnv(s: SEXP, env: SEXP) {
     }
 
     validate_print_chain(ATTRIB(s));
+    let _s_guard = protect(s);
+    let _env_guard = protect(env);
     PrintDefaults();
     tagbuf_clear();
 
-    let _s_guard = protect(s);
-
     let mut data = R_PRINT_INIT.clone();
-    print_init(&mut data, env);
+    let _roots = print_init(&mut data, env);
 
     if isFunction(s) != 0 {
         PrintObject(s, &data);
@@ -1823,7 +1847,7 @@ pub fn CustomPrintValue(s: SEXP, env: SEXP) {
     tagbuf_clear();
 
     let mut data = R_PRINT_INIT.clone();
-    print_init(&mut data, env);
+    let _roots = print_init(&mut data, env);
     PrintValueRec_inner(s, &data);
 }
 
@@ -1840,7 +1864,7 @@ pub fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let args_rest = CDR(args);
 
     let mut data = R_PRINT_INIT.clone();
-    print_init(&mut data, rho);
+    let _roots = print_init(&mut data, rho);
 
     // GNU: x = CAR(args); args = CDR(args);
     // missingArg = LOGICAL(CADR(args)); args = CAR(args);
@@ -2076,11 +2100,12 @@ pub fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
     if Rf_isNull(naprint) == 0 && isString(naprint) != 0 && LENGTH(naprint) >= 1 {
         let na_str = STRING_ELT(naprint, 0);
+        let na_width = crate::mainutils::printutils::Rstrlen(na_str, 0);
         with_current_print_data_mut(|ds| {
             ds.na_string = na_str;
             ds.na_string_noquote = na_str;
-            ds.na_width = crate::mainutils::printutils::Rstrlen(ds.na_string, 0);
-            ds.na_width_noquote = ds.na_width;
+            ds.na_width = na_width;
+            ds.na_width_noquote = na_width;
         });
     }
 
@@ -2315,6 +2340,48 @@ mod tests {
             assert!(pd.digits > 0);
             assert!(pd.width > 0);
         }
+    }
+
+    #[test]
+    fn print_defaults_publishes_after_collecting_option_read() {
+        use crate::sexp::altrep::{AltrepBuilder, AltrepClass, AltrepContext, AltrepElement};
+        use std::{cell::Cell, rc::Rc};
+
+        struct Digits(Rc<Cell<usize>>);
+        impl AltrepClass for Digits {
+            fn vector_type(&self) -> SEXPTYPE {
+                SEXPTYPE::INTSXP
+            }
+
+            fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+                Ok(1)
+            }
+
+            fn element<'s>(&self, cx: &AltrepContext<'s>, _: i64) -> SexpResult<AltrepElement<'s>> {
+                self.0.set(self.0.get() + 1);
+                cx.gc()?;
+                let current = get_R_print_data();
+                assert_eq!(current.digits, R_PRINT_INIT.digits);
+                assert!(current.na_string_noquote.is_null());
+                Ok(AltrepElement::Integer(11))
+            }
+        }
+
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let reads = Rc::new(Cell::new(0));
+            let class = session
+                .register_altrep_class("print-default-digits", Digits(reads.clone()))
+                .unwrap();
+            let option = AltrepBuilder::new(class).build().unwrap();
+            crate::mainutils::options::SetOptionByName("digits", option.as_raw());
+            assert_eq!(reads.get(), 0);
+            PrintDefaults();
+            assert_eq!(reads.get(), 1);
+            let current = get_R_print_data();
+            assert_eq!(current.digits, 11);
+            assert_eq!(char_bytes(current.na_string_noquote), b"<NA>");
+        });
     }
 
     #[test]
