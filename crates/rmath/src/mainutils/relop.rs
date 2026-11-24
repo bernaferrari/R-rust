@@ -579,30 +579,6 @@ pub fn do_relop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // compute_lang_equal
 // ---------------------------------------------------------------------------
 
-/// Initialize the language comparison option from environment.
-fn init_relop_lang_option() {
-    // GNU default since PR#18676: == and != use identical(), ignoring srcref.
-    set_relop_lang_option(2);
-}
-
-/// Store the instance-scoped language comparison mode.
-fn set_relop_lang_option(value: c_int) {
-    crate::sexp::instance::with_required_current_instance(|inst| {
-        // SAFETY: the current instance pointer is live for the closure; this
-        // is a single scalar field write with no allocation or reentry.
-        unsafe { (*inst).eval_state.relop_lang_option = value };
-    });
-}
-
-/// Read the instance-scoped language comparison mode.
-fn relop_lang_option() -> c_int {
-    crate::sexp::instance::with_required_current_instance(|inst| {
-        // SAFETY: the current instance pointer is live for the closure; this
-        // is a single scalar field read with no allocation or reentry.
-        unsafe { (*inst).eval_state.relop_lang_option }
-    })
-}
-
 /// `identical(x, y)` with the language-comparison flags (ignore srcref).
 fn identical_lang(x: SEXP, y: SEXP) -> bool {
     R_compute_identical(x, y, 16) != 0
@@ -623,110 +599,15 @@ fn compute_lang_equal(x: SEXP, y: SEXP) -> bool {
     identical_lang(x, y)
 }
 
-/// Handle language object comparison based on `_R_COMPARE_LANG_OBJECTS` option.
-fn compute_language_relop(call: SEXP, op: SEXP, x: SEXP, y: SEXP) -> SEXP {
-    if relop_lang_option() == 0 {
-        init_relop_lang_option();
-    }
-
-    match relop_lang_option() {
-        // EQONLY
-        1 => match PRIMVAL(op) {
-            EQOP | NEOP => return ptr::null_mut(),
-            _ => language_comparison_error(op),
-        },
-        // IDENTICAL_CALLS
-        2 => {
-            let eq = compute_lang_equal(x, y);
-            match PRIMVAL(op) {
-                EQOP => {
-                    if eq {
-                        R_TrueValue()
-                    } else {
-                        R_FalseValue()
-                    }
-                }
-                NEOP => {
-                    if eq {
-                        R_FalseValue()
-                    } else {
-                        R_TrueValue()
-                    }
-                }
-                _ => language_comparison_error(op),
-            }
-        }
-        // IDENTICAL_CALLS_ATTR
-        3 => {
-            let mut x = x;
-            let mut y = y;
-            if isSymbol(x) != 0 && is_scalar_string(y) {
-                y = if Seql(STRING_ELT(y, 0), PRINTNAME(x)) != 0 {
-                    x
-                } else {
-                    R_NilValue()
-                };
-            } else if isSymbol(y) != 0 && is_scalar_string(x) {
-                x = if Seql(STRING_ELT(x, 0), PRINTNAME(y)) != 0 {
-                    y
-                } else {
-                    R_NilValue()
-                };
-            }
-            let id = identical_lang(x, y);
-            match PRIMVAL(op) {
-                EQOP => {
-                    if id {
-                        R_TrueValue()
-                    } else {
-                        R_FalseValue()
-                    }
-                }
-                NEOP => {
-                    if id {
-                        R_FalseValue()
-                    } else {
-                        R_TrueValue()
-                    }
-                }
-                _ => language_comparison_error(op),
-            }
-        }
-        // IDENTICAL
-        4 => {
-            // SYMBOL_STRING_MATCH check omitted (stubs)
-            let id = identical_lang(x, y);
-            match PRIMVAL(op) {
-                EQOP => {
-                    if id {
-                        R_TrueValue()
-                    } else {
-                        R_FalseValue()
-                    }
-                }
-                NEOP => {
-                    if id {
-                        R_FalseValue()
-                    } else {
-                        R_TrueValue()
-                    }
-                }
-                _ => language_comparison_error(op),
-            }
-        }
-        // ERROR_CALLS
-        5 => {
-            if TYPEOF(x) == SEXPTYPE::LANGSXP || TYPEOF(y) == SEXPTYPE::LANGSXP {
-                relop_error("comparison of call objects is not supported");
-            }
-            ptr::null_mut()
-        }
-        // ERROR
-        6 => {
-            relop_error("comparison of language objects is not supported");
-        }
-        _ => ptr::null_mut(),
-    }
+/// Compare language objects for equality, ignoring source references.
+fn compute_language_relop(op: SEXP, x: SEXP, y: SEXP) -> SEXP {
+    let eq = compute_lang_equal(x, y);
+    let result = match PRIMVAL(op) {
+        EQOP => eq,
+        NEOP => !eq,
+        _ => language_comparison_error(op),
+    };
+    if result { R_TrueValue() } else { R_FalseValue() }
 }
 
 // ---------------------------------------------------------------------------
@@ -794,10 +675,7 @@ pub fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> SEXP {
         || isSymbol(y) != 0
         || TYPEOF(y) == SEXPTYPE::LANGSXP
     {
-        let ans = compute_language_relop(call, op, x, y);
-        if !ans.is_null() {
-            return ans;
-        }
+        return compute_language_relop(op, x, y);
     }
 
     let mut held = Vec::new();
@@ -1909,6 +1787,15 @@ mod tests {
                 .unwrap_or("");
             assert!(message.contains("comparison (<) is not possible for language types"));
         }
+    }
+
+    #[test]
+    fn language_comparison_matches_symbols_and_calls() {
+        let mut session = crate::sexp::session::RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture(
+            r#"quote(foo) == "foo" && quote(a+b) == quote(a+b) && quote(a+b) != quote(b+a)"#,
+        );
+        assert_eq!(result.unwrap().logical_elt(0), Some(1));
     }
 
     #[test]

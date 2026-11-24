@@ -321,11 +321,22 @@ pub(crate) struct ScalarPrintState {
     pub(crate) character_active: bool,
 }
 
+pub(crate) struct TraceDebugFlags {
+    pub(crate) tracing: Cell<c_int>,
+    pub(crate) debugging: Cell<c_int>,
+}
+
+impl Default for TraceDebugFlags {
+    fn default() -> Self {
+        Self {
+            tracing: Cell::new(super::ffi::TRUE),
+            debugging: Cell::new(super::ffi::TRUE),
+        }
+    }
+}
+
 pub(crate) struct EvalControlState {
     pub capabilities: SessionCapabilities,
-    pub relop_lang_option: c_int,
-    pub tracing_state: c_int,
-    pub debugging_state: c_int,
     pub print: crate::mainutils::print::PrintRuntimeState,
     pub(crate) portable_primitive_names: Vec<String>,
 }
@@ -334,9 +345,6 @@ impl Default for EvalControlState {
     fn default() -> Self {
         EvalControlState {
             capabilities: SessionCapabilities::default(),
-            relop_lang_option: 0,
-            tracing_state: crate::sexp::ffi::TRUE,
-            debugging_state: crate::sexp::ffi::TRUE,
             print: crate::mainutils::print::PrintRuntimeState::default(),
             portable_primitive_names: Vec::new(),
         }
@@ -439,6 +447,8 @@ pub struct RInstance {
     deparse_state: RefCell<crate::mainutils::deparse::DeparseRuntimeState>,
     /// REPL and compatibility scalar flags; shared Cell access, no state lend.
     repl_flags: ReplFlags,
+    /// Session-wide trace and debug switches.
+    trace_debug_flags: TraceDebugFlags,
     /// Result visibility, copied without lending evaluator state.
     visibility: Cell<c_int>,
     /// Evaluation limits and counters; borrows end before runtime reentry.
@@ -684,6 +694,7 @@ impl RInstance {
             scalar_print: Cell::default(),
             deparse_state: RefCell::default(),
             repl_flags: ReplFlags::default(),
+            trace_debug_flags: TraceDebugFlags::default(),
             visibility: Cell::new(super::ffi::TRUE),
             execution_state: RefCell::default(),
             exec_token: RefCell::default(),
@@ -1658,6 +1669,12 @@ pub(crate) fn with_repl_flags<R>(f: impl FnOnce(&ReplFlags) -> R) -> Option<R> {
 #[inline]
 pub(crate) fn with_required_repl_flags<R>(f: impl FnOnce(&ReplFlags) -> R) -> R {
     with_repl_flags(f).expect("mutable R runtime state requires an active RInstance")
+}
+
+/// Access the active session's trace and debug cells without lending evaluator state.
+pub(crate) fn with_trace_debug_flags<R>(f: impl FnOnce(&TraceDebugFlags) -> R) -> Option<R> {
+    // SAFETY: the active allocation is retained; this projects only the two cells.
+    with_current_instance(|instance| f(unsafe { &(*instance).trace_debug_flags }))
 }
 
 /// Return whether the active session has requested cooperative cancellation.

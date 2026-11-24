@@ -16,6 +16,7 @@ use crate::sexp::constructors::Rf_ScalarLogical;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::globals::set_R_Visible;
+use crate::sexp::instance::with_trace_debug_flags;
 
 // ---------------------------------------------------------------------------
 // Local stub functions for debug/trace gp-bit accessors
@@ -191,17 +192,9 @@ fn trace_or_debug_state(args: SEXP, tracing: bool) -> SEXP {
     } else {
         0
     };
-    let prev = with_trace_debug_state(|tracing_state, debugging_state| {
-        let slot = if tracing {
-            tracing_state
-        } else {
-            debugging_state
-        };
-        let prev = *slot;
-        if !query_only {
-            *slot = state;
-        }
-        prev
+    let prev = with_trace_debug_flags(|flags| {
+        let slot = if tracing { &flags.tracing } else { &flags.debugging };
+        if query_only { slot.get() } else { slot.replace(state) }
     })
     .expect("mutable R runtime state requires an active RInstance");
     Rf_ScalarLogical(prev)
@@ -217,7 +210,7 @@ pub fn do_traceOnOff(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub extern "C" fn R_current_debug_state() -> c_int {
-    with_trace_debug_state(|_, debugging| *debugging).unwrap_or(TRUE)
+    with_trace_debug_flags(|flags| flags.debugging.get()).unwrap_or(TRUE)
 }
 
 // ---------------------------------------------------------------------------
@@ -225,18 +218,7 @@ pub extern "C" fn R_current_debug_state() -> c_int {
 // ---------------------------------------------------------------------------
 
 pub extern "C" fn R_current_trace_state() -> c_int {
-    with_trace_debug_state(|tracing, _| *tracing).unwrap_or(TRUE)
-}
-
-/// Lend the session's `(tracing_state, debugging_state)` scalars, or `None`
-/// without an active instance.
-fn with_trace_debug_state<R>(f: impl FnOnce(&mut c_int, &mut c_int) -> R) -> Option<R> {
-    crate::sexp::instance::with_current_instance(|inst| {
-        // SAFETY: the current instance pointer is live for the closure; the
-        // two disjoint scalar fields are lent without allocation or reentry.
-        let state = unsafe { &mut (*inst).eval_state };
-        f(&mut state.tracing_state, &mut state.debugging_state)
-    })
+    with_trace_debug_flags(|flags| flags.tracing.get()).unwrap_or(TRUE)
 }
 
 // ---------------------------------------------------------------------------
@@ -537,32 +519,42 @@ mod tests {
         SET_RSTEP(ptr::null_mut(), 1);
     }
 
-    /// Test that the tracing/debugging state functions work correctly.
     #[test]
-    fn test_trace_state() {
-        let session = RSession::new();
-        session.with_protected(|| {
-            // Initial state should be TRUE
-            assert_eq!(R_current_trace_state(), TRUE);
-            assert_eq!(R_current_debug_state(), TRUE);
+    fn trace_and_debug_flags_are_independent_across_sessions() {
+        use crate::sexp::accessors::LOGICAL_ELT;
+        use crate::sexp::constructors::Rf_cons;
+        use crate::sexp::ffi::NA_LOGICAL;
 
-            crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-                (*inst).eval_state.tracing_state = FALSE;
+        let original = RSession::construct_detached(RSession::new_for_gc_tests);
+        let other = RSession::construct_detached(RSession::new_for_gc_tests);
+        assert_eq!(R_current_trace_state(), TRUE);
+        assert_eq!(R_current_debug_state(), TRUE);
+        original.with_active(|| {
+            let set_flag = |tracing, value| {
+                let args = Rf_cons(Rf_ScalarLogical(value), R_NilValue());
+                LOGICAL_ELT(trace_or_debug_state(args, tracing), 0)
+            };
+            assert_eq!(set_flag(true, FALSE), TRUE);
+            assert_eq!(R_current_debug_state(), TRUE);
+            assert_eq!(set_flag(false, NA_LOGICAL), TRUE);
+            other.with_active(|| {
+                assert_eq!(R_current_trace_state(), TRUE);
+                assert_eq!(R_current_debug_state(), TRUE);
+                assert_eq!(set_flag(false, FALSE), TRUE);
             });
+            assert_eq!(
+                LOGICAL_ELT(trace_or_debug_state(R_NilValue(), false), 0),
+                NA_LOGICAL
+            );
             assert_eq!(R_current_trace_state(), FALSE);
-
-            crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-                (*inst).eval_state.debugging_state = FALSE;
-            });
-            assert_eq!(R_current_debug_state(), FALSE);
-
-            crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-                (*inst).eval_state.tracing_state = TRUE;
-                (*inst).eval_state.debugging_state = TRUE;
-            });
-            assert_eq!(R_current_trace_state(), TRUE);
-            assert_eq!(R_current_debug_state(), TRUE);
+            assert_eq!(set_flag(true, TRUE), FALSE);
+            assert_eq!(R_current_debug_state(), NA_LOGICAL);
         });
+        other.with_active(|| {
+            assert_eq!(R_current_trace_state(), TRUE);
+            assert_eq!(R_current_debug_state(), FALSE);
+        });
+        assert_eq!(R_current_debug_state(), TRUE);
     }
 
     /// The tracemem entry point is linked. Behavior is covered by the
