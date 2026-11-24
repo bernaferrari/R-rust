@@ -1597,7 +1597,7 @@ fn test_cache_only_namespace_survives_full_gc_and_colon_lookup() {
 /// mark/remap contract as the namespace cache.
 #[test]
 fn test_auxiliary_instance_sexp_roots_are_traced_and_remapped() {
-    let _session = RSession::new_without_default_packages();
+    let _session = RSession::new_for_gc_tests();
     const NAMESPACE_ROOT: usize = 3;
     let roots = unsafe {
         /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
@@ -1607,13 +1607,14 @@ fn test_auxiliary_instance_sexp_roots_are_traced_and_remapped() {
                 .collect::<Vec<_>>()
         })
     };
+    let mut bytecode_stack = crate::eval::bc_stack::R_bcstack_t::new(1);
+    bytecode_stack.push(roots[2]);
 
     instance::with_required_current_instance(|inst| unsafe {
         let warning_call = instance::RuntimeValue::from_raw_in(inst, roots[0]);
         instance::with_error_state_in(inst, |state| state.warning_call = warning_call);
         (*inst).objects_state.deferred_default_object =
             instance::RuntimeValue::from_raw_in(inst, roots[1]);
-        unsafe { (*inst).eval_state.bc_stack.push(roots[2]) };
         (*inst).package_namespace_cache.insert(
             "rootProbePkg".to_string(),
             (
@@ -1664,18 +1665,17 @@ fn test_auxiliary_instance_sexp_roots_are_traced_and_remapped() {
             roots[1],
             "owning S4 fields preserve original allocation identity"
         );
-        let bytecode_root = Some((*inst).eval_state.bc_stack.at_owned(0).as_raw());
-        assert_eq!(
-            bytecode_root,
-            Some(roots[2]),
-            "owning bytecode entries preserve original allocation identity"
-        );
         let cached_root = {
             let cache = unsafe { &(*inst).package_namespace_cache };
             cache["rootProbePkg"].1
         };
         assert_eq!(cached_root, replacements[NAMESPACE_ROOT]);
     });
+    assert_eq!(
+        bytecode_stack.at_owned(0).as_raw(),
+        roots[2],
+        "owning bytecode entries preserve original allocation identity"
+    );
 }
 
 /// Active-binding values must be traced while their entry exists, and an

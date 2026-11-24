@@ -326,8 +326,6 @@ pub(crate) struct EvalControlState {
     pub printutils: crate::mainutils::printutils::PrintUtilsState,
     pub print: crate::mainutils::print::PrintRuntimeState,
     pub deparse: crate::mainutils::deparse::DeparseRuntimeState,
-    pub bc_stack: crate::eval::bc_stack::R_bcstack_t,
-    pub bc_int_active: c_int,
     pub(crate) portable_primitive_names: Vec<String>,
 }
 
@@ -343,8 +341,6 @@ impl Default for EvalControlState {
             printutils: crate::mainutils::printutils::PrintUtilsState::default(),
             print: crate::mainutils::print::PrintRuntimeState::default(),
             deparse: crate::mainutils::deparse::DeparseRuntimeState::default(),
-            bc_stack: crate::eval::bc_stack::R_bcstack_t::new(256),
-            bc_int_active: 0,
             portable_primitive_names: Vec::new(),
         }
     }

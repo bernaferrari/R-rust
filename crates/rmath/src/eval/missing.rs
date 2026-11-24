@@ -38,7 +38,6 @@ use crate::sexp::envir::{R_findVarInFrame, defineVar};
 
 use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
-use crate::sexp::instance::{RInstance, with_required_current_instance};
 use crate::sexp::memory_ext::{NewEnvironment, allocLang, vmaxget, vmaxset};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::{R_DotsSymbol, Rf_install};
@@ -1176,40 +1175,6 @@ pub fn evalseq(expr: SEXP, rho: SEXP, forcelocal: c_int) -> SEXP {
 }
 
 // ---------------------------------------------------------------------------
-// R_BCIntActive -- bytecode interpreter reentrancy flag
-// ---------------------------------------------------------------------------
-
-/// Get whether the bytecode interpreter is active.
-#[inline]
-pub fn get_R_BCIntActive() -> c_int {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { get_R_BCIntActive_in(inst) })
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-pub(crate) unsafe fn get_R_BCIntActive_in(inst: *mut RInstance) -> c_int {
-    unsafe { (*inst).eval_state.bc_int_active }
-}
-
-/// Set whether the bytecode interpreter is active.
-#[inline]
-pub fn set_R_BCIntActive(val: c_int) {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { set_R_BCIntActive_in(inst, val) });
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-pub(crate) unsafe fn set_R_BCIntActive_in(inst: *mut RInstance, val: c_int) {
-    unsafe { (*inst).eval_state.bc_int_active = val };
-}
-
-// ---------------------------------------------------------------------------
 // markSpecialArgs -- mark arguments that need special handling
 // ---------------------------------------------------------------------------
 
@@ -1373,56 +1338,4 @@ pub fn R_ensureNamed(x: SEXP, n: c_int) {
 /// Ensure a value has NAMED == NAMEDMAX.
 pub fn R_ensureNamedMax(x: SEXP) {
     R_ensureNamed(x, 2);
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::sexp::instance::RInstance;
-    use crate::sexp::session::RSession;
-
-    use super::*;
-
-    #[test]
-    fn test_session_bc_int_active_is_local_on_same_thread() {
-        let left = RSession::new();
-        let right = RSession::new();
-
-        left.with_active(|| {
-            set_R_BCIntActive(1);
-            assert_eq!(get_R_BCIntActive(), 1);
-        });
-
-        right.with_active(|| {
-            assert_eq!(get_R_BCIntActive(), 0);
-            set_R_BCIntActive(2);
-            assert_eq!(get_R_BCIntActive(), 2);
-        });
-
-        left.with_active(|| {
-            assert_eq!(get_R_BCIntActive(), 1);
-            set_R_BCIntActive(0);
-        });
-    }
-
-    #[test]
-    fn test_bc_int_active_can_target_instance_explicitly() {
-        let mut left = RInstance::new();
-        let mut right = RInstance::new();
-
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        unsafe { set_R_BCIntActive_in(&mut left as *mut RInstance, 1) };
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        unsafe { set_R_BCIntActive_in(&mut right as *mut RInstance, 2) };
-
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        assert_eq!(
-            unsafe { get_R_BCIntActive_in(&mut left as *mut RInstance) },
-            1
-        );
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        assert_eq!(
-            unsafe { get_R_BCIntActive_in(&mut right as *mut RInstance) },
-            2
-        );
-    }
 }

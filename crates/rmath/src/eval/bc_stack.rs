@@ -5,7 +5,6 @@
 
 use crate::sexp::context::RError;
 use crate::sexp::ffi::SEXP;
-use crate::sexp::instance::{RInstance, with_required_current_instance};
 use crate::sexp::object::Sexp;
 
 fn stack_error(message: impl Into<String>) -> ! {
@@ -14,10 +13,7 @@ fn stack_error(message: impl Into<String>) -> ! {
     });
 }
 
-/// Validate a native projection and acquire its actual original heap lease.
-///
-/// # Safety
-/// `value` must be a live native projection at this boundary.
+/// Resolve an operand through the active owner and retain its heap lease.
 pub(super) fn own_operand(value: SEXP) -> Sexp<'static> {
     crate::sexp::owner::OwnerToken::current()
         .and_then(|owner| owner.sexp(value))
@@ -39,7 +35,7 @@ impl R_bcstack_t {
     }
 
     /// Native instruction adapter. Ownership is acquired before publication.
-    pub unsafe fn push(&mut self, value: SEXP) {
+    pub fn push(&mut self, value: SEXP) {
         self.push_owned(own_operand(value));
     }
 
@@ -96,7 +92,7 @@ impl R_bcstack_t {
         self.items.truncate(depth);
     }
 
-    pub unsafe fn set(&mut self, index: usize, value: SEXP) {
+    pub fn set(&mut self, index: usize, value: SEXP) {
         let value = { own_operand(value) };
         self.set_owned(index, value);
     }
@@ -114,35 +110,10 @@ impl R_bcstack_t {
     }
 }
 
-impl Default for R_bcstack_t {
-    fn default() -> Self {
-        Self::new(256)
-    }
-}
-
-/// # Safety
-/// The closure is a local stack operation and cannot reenter R or collect.
-pub fn with_bc_stack<F, R>(f: F) -> R
-where
-    F: FnOnce(&mut R_bcstack_t) -> R,
-{
-    with_required_current_instance(|inst| unsafe { with_bc_stack_in(inst, f) })
-}
-
-/// # Safety
-/// The original instance must stay physically pinned for this strictly local
-/// stack operation. `f` may not allocate, evaluate, or reenter the interpreter.
-pub(crate) unsafe fn with_bc_stack_in<F, R>(inst: *mut RInstance, f: F) -> R
-where
-    F: FnOnce(&mut R_bcstack_t) -> R,
-{
-    f(unsafe { &mut (*inst).eval_state.bc_stack })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sexp::accessors::{INTEGER, INTEGER_ELT};
+    use crate::sexp::accessors::INTEGER_ELT;
     use crate::sexp::constructors::Rf_ScalarInteger;
     use crate::sexp::session::RSession;
     use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -150,7 +121,7 @@ mod tests {
     #[test]
     fn owned_bytecode_stack_transfers_popped_values_and_releases_truncation() {
         let session = RSession::new_for_gc_tests();
-        session.with_active(|| unsafe {
+        session.with_active(|| {
             let mut stack = R_bcstack_t::new(2);
             let a = Rf_ScalarInteger(11);
             let b = Rf_ScalarInteger(22);
@@ -171,7 +142,7 @@ mod tests {
     #[test]
     fn owned_bytecode_stack_rejects_invalid_depth_slots_and_unwinds_without_stale_roots() {
         let session = RSession::new_for_gc_tests();
-        session.with_active(|| unsafe {
+        session.with_active(|| {
             let mut stack = R_bcstack_t::new(1);
             stack.push(Rf_ScalarInteger(3));
             for op in [0, 1, 2] {
@@ -205,20 +176,28 @@ mod tests {
     }
 
     #[test]
-    fn owned_bytecode_stacks_are_session_local() {
+    fn owned_bytecode_stack_rejects_foreign_operands_without_changing_slots() {
         let left = RSession::new_for_gc_tests();
         let right = RSession::new_for_gc_tests();
-        left.with_active(|| unsafe {
-            let value = Rf_ScalarInteger(17);
-            with_bc_stack(|stack| stack.push(value));
-        });
-        right.with_active(|| with_bc_stack(|stack| assert!(stack.is_empty())));
-        left.with_active(|| {
-            with_bc_stack(|stack| {
-                assert_eq!(stack.depth(), 1);
-                let value = stack.pop_owned();
-                assert_eq!({ INTEGER_ELT(value.as_raw(), 0) }, 17);
-            })
+        right.with_active(|| {
+            let foreign = Rf_ScalarInteger(17);
+            left.with_active(|| {
+                let mut stack = R_bcstack_t::new(1);
+                stack.push(Rf_ScalarInteger(42));
+                for replace in [false, true] {
+                    let error = catch_unwind(AssertUnwindSafe(|| {
+                        if replace {
+                            stack.set(0, foreign);
+                        } else {
+                            stack.push(foreign);
+                        }
+                    }))
+                    .unwrap_err();
+                    assert!(error.downcast_ref::<RError>().is_some());
+                    assert_eq!(stack.depth(), 1);
+                    assert_eq!(INTEGER_ELT(stack.top(), 0), 42);
+                }
+            });
         });
     }
 }

@@ -198,15 +198,13 @@ fn empty_env(arena: &mut crate::sexp::memory::RArena) -> SEXP {
 fn test_bc_stack_basic() {
     let _session = crate::sexp::session::RSession::new_without_default_packages();
     let mut stack = R_bcstack_t::new(4);
-    unsafe {
-        let a = Rf_ScalarInteger(1);
-        let b = Rf_ScalarInteger(2);
-        stack.push(a);
-        stack.push(b);
-        assert_eq!(stack.depth(), 2);
-        assert_eq!(stack.pop_owned().as_raw(), b);
-        assert_eq!(stack.depth(), 1);
-    }
+    let a = Rf_ScalarInteger(1);
+    let b = Rf_ScalarInteger(2);
+    stack.push(a);
+    stack.push(b);
+    assert_eq!(stack.depth(), 2);
+    assert_eq!(stack.pop_owned().as_raw(), b);
+    assert_eq!(stack.depth(), 1);
 }
 
 #[test]
@@ -324,50 +322,44 @@ fn gnu_doloopnext_outside_a_loop_errors() {
 fn test_bc_push_pop_sequence() {
     let _session = crate::sexp::session::RSession::new_without_default_packages();
     let mut stack = R_bcstack_t::new(8);
-    unsafe {
-        stack.push(R_NilValue());
-        stack.push(Rf_ScalarInteger(1));
-        stack.push(Rf_ScalarInteger(2));
-        assert_eq!(stack.depth(), 3);
-        let top_owned = stack.pop_owned();
-        let top = top_owned.as_raw();
-        assert!(!top.is_null());
-        assert_eq!(stack.depth(), 2);
-    }
+    stack.push(R_NilValue());
+    stack.push(Rf_ScalarInteger(1));
+    stack.push(Rf_ScalarInteger(2));
+    assert_eq!(stack.depth(), 3);
+    let top_owned = stack.pop_owned();
+    let top = top_owned.as_raw();
+    assert!(!top.is_null());
+    assert_eq!(stack.depth(), 2);
 }
 
 #[test]
 fn test_bc_dup2() {
     let _session = crate::sexp::session::RSession::new_without_default_packages();
     let mut stack = R_bcstack_t::new(8);
-    unsafe {
-        stack.push(Rf_ScalarInteger(10));
-        stack.push(Rf_ScalarInteger(20));
-        assert_eq!(stack.depth(), 2);
-        let top = stack.top();
-        let s1 = stack.depth();
-        let next = stack.at(s1 - 2);
-        stack.push(next);
-        stack.push(top);
-        assert_eq!(stack.depth(), 4);
-    }
+    stack.push(Rf_ScalarInteger(10));
+    stack.push(Rf_ScalarInteger(20));
+    assert_eq!(stack.depth(), 2);
+    let top = stack.top();
+    let s1 = stack.depth();
+    let next = stack.at(s1 - 2);
+    stack.push(next);
+    stack.push(top);
+    assert_eq!(stack.depth(), 4);
 }
 
 #[test]
 fn test_bc_goto_and_branch() {
     let _session = crate::sexp::session::RSession::new_without_default_packages();
     let mut stack = R_bcstack_t::new(8);
-    unsafe {
-        stack.push(Rf_ScalarLogical(TRUE));
-        let val = stack.top();
-        let cond = eval_bc_condition(val);
-        assert!(cond);
+    stack.push(Rf_ScalarLogical(TRUE));
+    let val = stack.top();
+    let cond = eval_bc_condition(val);
+    assert!(cond);
 
-        stack.push(Rf_ScalarLogical(FALSE));
-        let val2 = stack.top();
-        let cond2 = eval_bc_condition(val2);
-        assert!(!cond2);
-    }
+    stack.push(Rf_ScalarLogical(FALSE));
+    let val2 = stack.top();
+    let cond2 = eval_bc_condition(val2);
+    assert!(!cond2);
 }
 
 #[test]
@@ -608,12 +600,16 @@ fn test_bc_eval_operand_stack_survives_gc_in_callee() {
     // Detached arena keeps the bytecode alive for the whole test but is
     // invisible to the instance collector.
     let mut arena = fixture_arena();
-    let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
+    let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
     arena.set_reference_element(consts, 0, gc_closure).unwrap();
+    let operand_expr = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+    crate::sexp::accessors::SET_INTEGER_ELT(operand_expr, 0, 42);
+    arena.set_reference_element(consts, 1, operand_expr).unwrap();
     let bcode = bcode_with(
         &mut arena,
         &[
-            opcodes::OP_PUSHTRUE, // fresh young scalar: operand-stack-only
+            opcodes::OP_MAKEPROMISE, // fresh arena allocation owned only by the operand stack
+            1,
             opcodes::OP_PUSHCONST,
             0, // push the gc() closure
             opcodes::OP_CALL,
@@ -626,8 +622,7 @@ fn test_bc_eval_operand_stack_survives_gc_in_callee() {
     let env = empty_env(&mut arena);
 
     let result = bcEval(bcode, env);
-    // The residual operand value must survive the collection that ran
-    // inside the callee: still active, still the TRUE logical.
+    // The caller's unforced promise must still be live after the callee's GC.
     let still_active = session
         .with_arena(|a| a.active_nodes().any(|node| node == result))
         .expect("session active");
@@ -636,8 +631,8 @@ fn test_bc_eval_operand_stack_survives_gc_in_callee() {
         "operand-stack value was swept by the GC run inside the callee"
     );
 
-    assert_eq!(TYPEOF(result), SEXPTYPE::LGLSXP);
-    assert_eq!(LOGICAL_ELT(result, 0), TRUE);
+    assert_eq!(TYPEOF(result), SEXPTYPE::PROMSXP);
+    assert_eq!(crate::sexp::accessors::PRCODE(result), operand_expr);
 }
 #[test]
 fn test_bc_eval_operand_stack_survives_gc_during_lookup() {
@@ -652,14 +647,18 @@ fn test_bc_eval_operand_stack_survives_gc_during_lookup() {
         (symbol, env)
     });
     let mut arena = fixture_arena();
-    let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
+    let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
 
     crate::sexp::accessors::SET_VECTOR_ELT(consts, 0, symbol);
+    let operand_expr = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+    crate::sexp::accessors::SET_INTEGER_ELT(operand_expr, 0, 42);
+    arena.set_reference_element(consts, 1, operand_expr).unwrap();
 
     let bcode = bcode_with(
         &mut arena,
         &[
-            opcodes::OP_PUSHTRUE,
+            opcodes::OP_MAKEPROMISE,
+            1,
             opcodes::OP_GETVAR,
             0,
             opcodes::OP_POP,
@@ -674,8 +673,8 @@ fn test_bc_eval_operand_stack_survives_gc_during_lookup() {
             .unwrap()
     );
 
-    assert_eq!(TYPEOF(result), SEXPTYPE::LGLSXP);
-    assert_eq!(LOGICAL_ELT(result, 0), TRUE);
+    assert_eq!(TYPEOF(result), SEXPTYPE::PROMSXP);
+    assert_eq!(crate::sexp::accessors::PRCODE(result), operand_expr);
 }
 #[test]
 fn owned_bytecode_gnu_deep_stack_executes_above_legacy_cutoff() {

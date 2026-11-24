@@ -29,7 +29,6 @@ pub(crate) fn reset_gc_test_arena(arena: &mut RArena) {
         (*instance).objects_state.deferred_default_object = instance::RuntimeValue::empty();
         (*instance).objects_state.s4_validity.clear();
         (*instance).objects_state.s4_extends_table = instance::RuntimeValue::empty();
-        (*instance).eval_state.bc_stack.set_depth(0);
         (*instance).context_stack.clear();
         with_gc_state_in(instance, |state| state.remembered_set.clear());
         instance::with_error_state_in(instance, |state| {
