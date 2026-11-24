@@ -205,6 +205,32 @@ fn test_browse_lines_initial() {
 }
 
 #[test]
+fn browse_lines_borrow_checks_reentry_per_session() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    let original = RSession::new_for_gc_tests();
+    let other = RSession::new_for_gc_tests();
+    original.with_active(|| {
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            with_deparse_runtime(|state| {
+                state.browse_lines = 9;
+                other.with_active(|| {
+                    assert_eq!(get_browse_lines(), 0);
+                    set_browse_lines(4);
+                });
+                assert_eq!(state.browse_lines, 9);
+                set_browse_lines(15);
+            });
+        }));
+        assert!(result.is_err());
+        assert_eq!(get_browse_lines(), 9);
+        set_browse_lines(8);
+        assert_eq!(get_browse_lines(), 8);
+    });
+    other.with_active(|| assert_eq!(get_browse_lines(), 4));
+}
+
+#[test]
 fn test_is_valid_name() {
     unsafe {
         assert!(isValidName(b"foo\0".as_ptr() as *const c_char));

@@ -40,19 +40,14 @@ struct RestoreBrowseLines {
 
 impl RestoreBrowseLines {
     fn enter(owner: OwnerPin, value: c_int) -> Self {
-        let old = unsafe {
-            std::mem::replace(
-                &mut (*owner.as_ptr()).eval_state.deparse.browse_lines,
-                value,
-            )
-        };
+        let old = owner.replace_browse_lines(value);
         Self { old, owner }
     }
 }
 
 impl Drop for RestoreBrowseLines {
     fn drop(&mut self) {
-        unsafe { (*self.owner.as_ptr()).eval_state.deparse.browse_lines = self.old };
+        self.owner.replace_browse_lines(self.old);
     }
 }
 
@@ -689,6 +684,7 @@ pub unsafe fn Rf_isValidName(s: *const c_char) -> c_int {
 #[cfg(test)]
 mod ownership_tests {
     use super::*;
+    use crate::sexp::instance::with_deparse_state_in;
     use crate::sexp::object::{SessionNodeFactory, Sexp};
     use crate::sexp::session::RSession;
     use std::cell::{Cell, RefCell};
@@ -712,7 +708,7 @@ mod ownership_tests {
                 na_width: 17,
                 na_width_noquote: 22,
             };
-            (*owner).eval_state.deparse.browse_lines = 9;
+            with_deparse_state_in(owner, |state| state.browse_lines = 9);
             crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
         }
     }
@@ -729,7 +725,7 @@ mod ownership_tests {
                 ),
                 (6, 8, 17, 22)
             );
-            assert_eq!((*owner).eval_state.deparse.browse_lines, 9);
+            assert_eq!(with_deparse_state_in(owner, |state| state.browse_lines), 9);
         }
     }
 
@@ -751,15 +747,18 @@ mod ownership_tests {
         unsafe {
             (*other_pointer).eval_state.format_print.digits = 3;
         }
+        other.with_active(|| set_browse_lines(4));
         original.with_active_in(|owner| unsafe {
             install_original_state(owner);
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                 assert_eq!((*owner).eval_state.format_print.digits, 15);
+                assert_eq!(get_browse_lines(), 0);
                 crate::sexp::instance::set_current_instance(other_pointer);
                 assert_eq!(
                     crate::sexp::instance::current_instance_ptr(),
                     Some(other_pointer)
                 );
+                assert_eq!(get_browse_lines(), 4);
             }));
             // GC notifications run inside with_instance_active. Its owning
             // scope restores the original runtime after each callback, making

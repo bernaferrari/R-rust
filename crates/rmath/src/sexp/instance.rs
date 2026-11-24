@@ -325,7 +325,6 @@ pub(crate) struct EvalControlState {
     pub character_print_active: bool,
     pub printutils: crate::mainutils::printutils::PrintUtilsState,
     pub print: crate::mainutils::print::PrintRuntimeState,
-    pub deparse: crate::mainutils::deparse::DeparseRuntimeState,
     pub(crate) portable_primitive_names: Vec<String>,
 }
 
@@ -340,7 +339,6 @@ impl Default for EvalControlState {
             character_print_active: false,
             printutils: crate::mainutils::printutils::PrintUtilsState::default(),
             print: crate::mainutils::print::PrintRuntimeState::default(),
-            deparse: crate::mainutils::deparse::DeparseRuntimeState::default(),
             portable_primitive_names: Vec::new(),
         }
     }
@@ -434,6 +432,8 @@ pub struct RInstance {
     pub(crate) eval_state: EvalControlState,
     /// Print defaults snapshot owning exact-generation roots for its raw view.
     print_data: RefCell<crate::mainutils::print::PrintDataSnapshot>,
+    /// Deparse line limit, separate from the evaluator state.
+    deparse_state: RefCell<crate::mainutils::deparse::DeparseRuntimeState>,
     /// REPL and compatibility scalar flags; shared Cell access, no state lend.
     repl_flags: ReplFlags,
     /// Result visibility, copied without lending evaluator state.
@@ -677,6 +677,7 @@ impl RInstance {
             finalizer_state: RefCell::default(),
             eval_state: EvalControlState::default(),
             print_data: RefCell::default(),
+            deparse_state: RefCell::default(),
             repl_flags: ReplFlags::default(),
             visibility: Cell::new(super::ffi::TRUE),
             execution_state: RefCell::default(),
@@ -932,6 +933,16 @@ impl Drop for RInstance {
 }
 
 impl OwnerPin {
+    /// The pin still retains this storage when restoring a revoked session.
+    pub(crate) fn replace_browse_lines(&self, value: c_int) -> c_int {
+        // SAFETY: the pin retains the allocation; only the deparse cell is borrowed.
+        unsafe {
+            with_deparse_state_in(self.as_ptr(), |state| {
+                std::mem::replace(&mut state.browse_lines, value)
+            })
+        }
+    }
+
     fn imported_bytecode_cache(&self) -> SexpResult<&RefCell<Option<ImportedBytecodeMetadata>>> {
         self.require_live()?;
         // SAFETY: this pin retains the original allocation. Only this shared
@@ -1064,6 +1075,20 @@ pub(crate) unsafe fn with_print_data_in<R>(
 ) -> R {
     // SAFETY: project only the checked cell from the retained instance.
     let cell = unsafe { &(*instance).print_data };
+    f(&mut cell.borrow_mut())
+}
+
+/// Lend deparse bookkeeping for a local operation.
+///
+/// # Safety
+/// The original instance remains allocated and has no overlapping exclusive
+/// whole-instance borrow.
+pub(crate) unsafe fn with_deparse_state_in<R>(
+    instance: *mut RInstance,
+    f: impl FnOnce(&mut crate::mainutils::deparse::DeparseRuntimeState) -> R,
+) -> R {
+    // SAFETY: project only the checked cell from the retained instance.
+    let cell = unsafe { &(*instance).deparse_state };
     f(&mut cell.borrow_mut())
 }
 

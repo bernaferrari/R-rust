@@ -3,6 +3,7 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 use super::*;
+use crate::sexp::instance::{with_deparse_state_in, with_required_current_instance};
 
 // ---------------------------------------------------------------------------
 // Constants from deparse.c
@@ -257,12 +258,16 @@ pub struct DeparseRuntimeState {
     pub browse_lines: c_int,
 }
 
+/// Borrow this session's deparse settings for a local operation.
+///
+/// Reentering the same session's deparse settings during the borrow panics.
 pub fn with_deparse_runtime<F, R>(f: F) -> R
 where
     F: FnOnce(&mut DeparseRuntimeState) -> R,
 {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        f(&mut (*inst).eval_state.deparse)
+    with_required_current_instance(|instance| {
+        // SAFETY: the active allocation is retained for this checked borrow.
+        unsafe { with_deparse_state_in(instance, f) }
     })
 }
 
