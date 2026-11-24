@@ -43,15 +43,17 @@ const SIMPLEDEPARSE: c_int = 0;
 const DEFAULTDEPARSE: c_int = 1;
 const USESOURCE: c_int = 8;
 
+type PrintTagBytes = [u8; TAGBUFLEN0 * 2];
+
 pub(crate) struct PrintRuntimeState {
-    tagbuf: [u8; TAGBUFLEN0 * 2],
+    tagbuf: Rc<RefCell<PrintTagBytes>>,
     recursion: PrintRecursionStack,
 }
 
 impl Default for PrintRuntimeState {
     fn default() -> Self {
         PrintRuntimeState {
-            tagbuf: [0; TAGBUFLEN0 * 2],
+            tagbuf: Rc::new(RefCell::new([0; TAGBUFLEN0 * 2])),
             recursion: Rc::default(),
         }
     }
@@ -122,12 +124,10 @@ fn suspend_print_value(value: SEXP) -> Option<SuspendedPrintFrame> {
     Some(SuspendedPrintFrame(frame.clone()))
 }
 
-fn with_print_runtime<F, R>(f: F) -> R
-where
-    F: FnOnce(&mut PrintRuntimeState) -> R,
-{
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        f(&mut (*inst).eval_state.print)
+fn with_print_runtime<R>(f: impl FnOnce(&PrintRuntimeState) -> R) -> R {
+    with_required_current_instance(|inst| {
+        // SAFETY: the active owner is retained and callers only access the checked cells or clone their handles.
+        f(unsafe { &(*inst).eval_state.print })
     })
 }
 
@@ -227,25 +227,23 @@ fn nul_len(buf: &[u8]) -> usize {
 }
 
 fn tagbuf_strlen() -> usize {
-    with_print_runtime(|state| nul_len(&state.tagbuf))
+    with_print_runtime(|state| nul_len(&*state.tagbuf.borrow()))
 }
 
 fn tagbuf_set(idx: usize, val: c_char) {
     with_print_runtime(|state| {
-        if idx < state.tagbuf.len() {
-            state.tagbuf[idx] = val as u8;
+        if let Some(byte) = state.tagbuf.borrow_mut().get_mut(idx) {
+            *byte = val as u8;
         }
-    })
-}
-
-fn tagbuf_clear() {
-    with_print_runtime(|state| {
-        state.tagbuf[0] = 0;
     });
 }
 
+fn tagbuf_clear() {
+    tagbuf_set(0, 0);
+}
+
 fn tagbuf_byte_at(offset: usize) -> u8 {
-    with_print_runtime(|state| state.tagbuf.get(offset).copied().unwrap_or(0))
+    with_print_runtime(|state| state.tagbuf.borrow().get(offset).copied().unwrap_or(0))
 }
 
 /// Bounded, NUL-terminated write into the tag buffer at byte `offset`,
@@ -256,19 +254,24 @@ fn write_tag(offset: usize, sz: usize, s: &str) {
         return;
     }
     with_print_runtime(|state| {
-        let Some(room) = state.tagbuf.len().checked_sub(offset + 1) else {
+        let mut buf = state.tagbuf.borrow_mut();
+        let Some(tail) = buf.get_mut(offset..) else {
+            return;
+        };
+        let Some(room) = tail.len().checked_sub(1) else {
             return;
         };
         let bytes = s.as_bytes();
         let n = (sz - 1).min(bytes.len()).min(room);
-        state.tagbuf[offset..offset + n].copy_from_slice(&bytes[..n]);
-        state.tagbuf[offset + n] = 0;
+        tail[..n].copy_from_slice(&bytes[..n]);
+        tail[n] = 0;
     });
 }
 
 fn tagbuf_string() -> String {
     with_print_runtime(|state| {
-        String::from_utf8_lossy(&state.tagbuf[..nul_len(&state.tagbuf)]).into_owned()
+        let buf = state.tagbuf.borrow();
+        String::from_utf8_lossy(&buf[..nul_len(&*buf)]).into_owned()
     })
 }
 
@@ -692,24 +695,38 @@ fn advancePrintArgs(
 // Internal: save/restore tagbuf
 // ---------------------------------------------------------------------------
 
-fn save_tagbuf(save: &mut [u8; TAGBUFLEN0 * 2]) {
-    with_print_runtime(|state| {
-        let len = nul_len(&state.tagbuf);
-        if len < save.len() {
-            save[..=len].copy_from_slice(&state.tagbuf[..=len]);
-        } else {
-            save[0] = 0;
-        }
-    });
+struct PrintTagGuard {
+    buffer: Rc<RefCell<PrintTagBytes>>,
+    saved: PrintTagBytes,
+    length: usize,
 }
 
-fn restore_tagbuf(save: &[u8; TAGBUFLEN0 * 2]) {
-    with_print_runtime(|state| {
-        let len = nul_len(save);
-        if len < TAGBUFLEN0 * 2 {
-            state.tagbuf[..=len].copy_from_slice(&save[..=len]);
+impl PrintTagGuard {
+    fn save() -> Self {
+        let buffer = with_print_runtime(|state| state.tagbuf.clone());
+        let mut saved = [0; TAGBUFLEN0 * 2];
+        let length = {
+            let current = buffer.borrow();
+            let length = nul_len(&*current);
+            if length < saved.len() {
+                saved[..=length].copy_from_slice(&current[..=length]);
+                length + 1
+            } else {
+                1
+            }
+        };
+        Self {
+            buffer,
+            saved,
+            length,
         }
-    });
+    }
+}
+
+impl Drop for PrintTagGuard {
+    fn drop(&mut self) {
+        self.buffer.borrow_mut()[..self.length].copy_from_slice(&self.saved[..self.length]);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1040,8 +1057,7 @@ fn PrintObjectS4(s: SEXP, data: &R_PrintData) {
 }
 
 fn PrintObject(s: SEXP, data: &R_PrintData) {
-    let mut save = [0u8; TAGBUFLEN0 * 2];
-    save_tagbuf(&mut save);
+    let _tag_guard = PrintTagGuard::save();
     if isMethodsDispatchOn() != 0 && IS_S4_OBJECT(s) != 0 {
         match enter_print_value(s) {
             Some(_guard) => PrintObjectS4(s, data),
@@ -1057,7 +1073,6 @@ fn PrintObject(s: SEXP, data: &R_PrintData) {
         PrintObjectS3(s, data);
     }
     set_current_print_data(data);
-    restore_tagbuf(&save);
 }
 
 // ---------------------------------------------------------------------------
@@ -1588,8 +1603,7 @@ fn printAttributes(s: SEXP, data: &R_PrintData, useSlots: bool) {
         return;
     }
 
-    let mut save = [0u8; TAGBUFLEN0 * 2];
-    save_tagbuf(&mut save);
+    let _tag_guard = PrintTagGuard::save();
 
     // Remove list tag if it looks like a list, not an attribute
     if current_len > 0 {
@@ -1671,8 +1685,6 @@ fn printAttributes(s: SEXP, data: &R_PrintData, useSlots: bool) {
         tagbuf_set(tag_start, 0);
         a = CDR(a);
     }
-
-    restore_tagbuf(&save);
 }
 
 // ---------------------------------------------------------------------------
@@ -2472,16 +2484,16 @@ mod tests {
 
     #[test]
     fn test_tagbuf_session_owned() {
-        let _session = RSession::new();
-        unsafe {
-            tagbuf_clear();
-            with_print_runtime(|state| {
-                let src = b"hello\0";
-                state.tagbuf[..src.len()].copy_from_slice(src);
+        let original = RSession::new_for_gc_tests();
+        let other = RSession::new_for_gc_tests();
+        original.with_active(|| {
+            write_tag(0, 6, "hello");
+            other.with_active(|| {
+                assert_eq!(tagbuf_string(), "");
+                write_tag(0, 6, "other");
             });
             assert_eq!(tagbuf_string(), "hello");
-            tagbuf_clear();
-        }
+        });
     }
 
     #[test]
@@ -2831,26 +2843,43 @@ mod tests {
 
     #[test]
     fn test_save_restore_tagbuf() {
-        let _session = RSession::new();
-        unsafe {
-            tagbuf_clear();
-            with_print_runtime(|state| {
-                let src = b"test_prefix$\0";
-                state.tagbuf[..src.len()].copy_from_slice(src);
-            });
-            let mut save = [0u8; TAGBUFLEN0 * 2];
-            save_tagbuf(&mut save);
-
-            tagbuf_clear();
-            with_print_runtime(|state| {
-                let src = b"modified\0";
-                state.tagbuf[..src.len()].copy_from_slice(src);
-            });
-
-            restore_tagbuf(&save);
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            write_tag(0, 13, "test_prefix$");
+            {
+                let _saved = PrintTagGuard::save();
+                write_tag(0, 9, "modified");
+                assert_eq!(tagbuf_string(), "modified");
+            }
             assert_eq!(tagbuf_string(), "test_prefix$");
-            tagbuf_clear();
-        }
+        });
+    }
+
+    #[test]
+    fn tagbuf_unwind_restores_destroyed_original_only() {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+
+        let mut original = RSession::new_for_gc_tests();
+        let (guard, buffer) = original.with_active(|| {
+            write_tag(0, 7, "prefix");
+            let guard = PrintTagGuard::save();
+            write_tag(0, 9, "modified");
+            (guard, with_print_runtime(|state| state.tagbuf.clone()))
+        });
+        original.close();
+        drop(original);
+
+        let other = RSession::new_for_gc_tests();
+        other.with_active(|| {
+            write_tag(0, 6, "other");
+            let result = catch_unwind(AssertUnwindSafe(move || {
+                let _saved = guard;
+                panic!("forced print unwind");
+            }));
+            assert!(result.is_err());
+            assert_eq!(&buffer.borrow()[..7], b"prefix\0");
+            assert_eq!(tagbuf_string(), "other");
+        });
     }
 
     #[test]
