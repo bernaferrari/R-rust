@@ -292,14 +292,31 @@ pub struct SessionCapabilities {
     pub allow_environment_mutation: bool,
 }
 
+pub(crate) struct ReplFlags {
+    pub(crate) no_echo: Cell<c_int>,
+    pub(crate) quiet: Cell<c_int>,
+    pub(crate) interactive: Cell<c_int>,
+    pub(crate) verbose: Cell<c_int>,
+    // These compatibility values do not own protection roots or deferred warnings.
+    pub(crate) pp_stack_top: Cell<c_int>,
+    pub(crate) collect_warnings: Cell<c_int>,
+}
+
+impl Default for ReplFlags {
+    fn default() -> Self {
+        Self {
+            no_echo: Cell::new(0),
+            quiet: Cell::new(0),
+            interactive: Cell::new(1),
+            verbose: Cell::new(0),
+            pp_stack_top: Cell::new(0),
+            collect_warnings: Cell::new(0),
+        }
+    }
+}
+
 pub(crate) struct EvalControlState {
     pub capabilities: SessionCapabilities,
-    pub no_echo: c_int,
-    pub quiet: c_int,
-    pub interactive: c_int,
-    pub verbose: c_int,
-    pub pp_stack_top: c_int,
-    pub collect_warnings: c_int,
     pub relop_lang_option: c_int,
     pub tracing_state: c_int,
     pub debugging_state: c_int,
@@ -318,12 +335,6 @@ impl Default for EvalControlState {
     fn default() -> Self {
         EvalControlState {
             capabilities: SessionCapabilities::default(),
-            no_echo: 0,
-            quiet: 0,
-            interactive: 1,
-            verbose: 0,
-            pp_stack_top: 0,
-            collect_warnings: 0,
             relop_lang_option: 0,
             tracing_state: crate::sexp::ffi::TRUE,
             debugging_state: crate::sexp::ffi::TRUE,
@@ -425,6 +436,8 @@ pub struct RInstance {
     finalizer_state: RefCell<crate::mainutils::memory_main::FinalizerState>,
     /// Per-instance evaluator and REPL control state.
     pub(crate) eval_state: EvalControlState,
+    /// REPL and compatibility scalar flags; shared Cell access, no state lend.
+    repl_flags: ReplFlags,
     /// Result visibility, copied without lending evaluator state.
     visibility: Cell<c_int>,
     /// Evaluation limits and counters; borrows end before runtime reentry.
@@ -665,6 +678,7 @@ impl RInstance {
             memory_state: RefCell::default(),
             finalizer_state: RefCell::default(),
             eval_state: EvalControlState::default(),
+            repl_flags: ReplFlags::default(),
             visibility: Cell::new(super::ffi::TRUE),
             execution_state: RefCell::default(),
             exec_token: RefCell::default(),
@@ -1539,6 +1553,18 @@ where
     F: FnOnce(*mut RInstance) -> R,
 {
     with_current_instance(f).expect("mutable R runtime state requires an active RInstance")
+}
+
+/// Read or update the active session's scalar REPL flags without lending evaluator state.
+#[inline]
+pub(crate) fn with_repl_flags<R>(f: impl FnOnce(&ReplFlags) -> R) -> Option<R> {
+    // SAFETY: the active allocation is retained and this projection touches only Cells.
+    with_current_instance(|instance| f(unsafe { &(*instance).repl_flags }))
+}
+
+#[inline]
+pub(crate) fn with_required_repl_flags<R>(f: impl FnOnce(&ReplFlags) -> R) -> R {
+    with_repl_flags(f).expect("mutable R runtime state requires an active RInstance")
 }
 
 /// Return whether the active session has requested cooperative cancellation.

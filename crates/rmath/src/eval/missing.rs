@@ -895,21 +895,19 @@ pub fn signalMissingArgError(call: SEXP, _rho: SEXP, arg_sym: SEXP) {
 // check_stack_balance -- check protect stack balance
 // ---------------------------------------------------------------------------
 
-/// Check that the protect stack is balanced after a primitive call.
+/// Check the legacy stack-top compatibility value after a primitive call.
 ///
 /// Ported from R's `check_stack_balance()` in eval.c.
 pub fn check_stack_balance(op: SEXP, save: c_int) {
-    unsafe {
-        let current = crate::mainutils::main::R_PPStackTop();
-        if save == current {
-            return;
-        }
-        let name = PRIMNAME(op);
-        eprintln!(
-            "Warning: stack imbalance in '{}', {} then {}",
-            name, save, current
-        );
+    let current = crate::mainutils::main::R_PPStackTop();
+    if save == current {
+        return;
     }
+    let name = PRIMNAME(op);
+    eprintln!(
+        "Warning: stack imbalance in '{}', {} then {}",
+        name, save, current
+    );
 }
 
 // ---------------------------------------------------------------------------

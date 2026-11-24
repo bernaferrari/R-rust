@@ -18,7 +18,9 @@ use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{
     R_NilValue, R_Visible, R_Visible_in, set_R_Visible, set_R_Visible_in,
 };
-use crate::sexp::instance::{with_parse_diagnostics, with_required_current_instance};
+use crate::sexp::instance::{
+    with_parse_diagnostics, with_required_current_instance, with_required_repl_flags,
+};
 use crate::sexp::protect::protect;
 
 /// Console buffer size.
@@ -49,16 +51,6 @@ pub(crate) use task_callback_registration::install as install_task_callback_symb
 // Global symbols (initialized lazily)
 // ---------------------------------------------------------------------------
 
-#[inline]
-fn with_eval_state<F, R>(f: F) -> R
-where
-    F: FnOnce(&mut crate::sexp::instance::EvalControlState) -> R,
-{
-    // SAFETY: `with_required_current_instance` lends the live instance for
-    // the duration of the closure; no other borrow escapes.
-    with_required_current_instance(|inst| unsafe { f(&mut (*inst).eval_state) })
-}
-
 /// Get the .Last.value symbol.
 pub fn R_LastvalueSymbol() -> SEXP {
     crate::sexp::symbol::install_str(".Last.value")
@@ -87,32 +79,32 @@ pub fn R_SetVisible(v: c_int) {
 
 /// Get R_Interactive flag.
 pub fn R_Interactive() -> c_int {
-    with_eval_state(|state| state.interactive)
+    with_required_repl_flags(|flags| flags.interactive.get())
 }
 
 /// Set R_Interactive flag.
 pub fn R_SetInteractive(v: c_int) {
-    with_eval_state(|state| state.interactive = v);
+    with_required_repl_flags(|flags| flags.interactive.set(v));
 }
 
 /// Get R_Quiet flag.
 pub fn R_Quiet() -> c_int {
-    with_eval_state(|state| state.quiet)
+    with_required_repl_flags(|flags| flags.quiet.get())
 }
 
 /// Set R_Quiet flag.
 pub fn R_SetQuiet(v: c_int) {
-    with_eval_state(|state| state.quiet = v);
+    with_required_repl_flags(|flags| flags.quiet.set(v));
 }
 
 /// Get R_NoEcho flag.
 pub fn R_NoEcho() -> c_int {
-    with_eval_state(|state| state.no_echo)
+    with_required_repl_flags(|flags| flags.no_echo.get())
 }
 
 /// Get R_Verbose flag.
 pub fn R_Verbose() -> c_int {
-    with_eval_state(|state| state.verbose)
+    with_required_repl_flags(|flags| flags.verbose.get())
 }
 
 // ---------------------------------------------------------------------------
@@ -127,25 +119,25 @@ pub fn R_SetEvalDepth(v: c_int) {
 }
 
 // ---------------------------------------------------------------------------
-/// Get protection stack top.
-pub unsafe fn R_PPStackTop() -> c_int {
-    with_required_current_instance(|inst| unsafe { (*inst).eval_state.pp_stack_top })
+/// Read the legacy stack-top compatibility value, not the live protection depth.
+pub fn R_PPStackTop() -> c_int {
+    with_required_repl_flags(|flags| flags.pp_stack_top.get())
 }
 
-/// Set protection stack top.
+/// Set the legacy stack-top compatibility value without changing protection roots.
 pub fn R_SetPPStackTop(v: c_int) {
-    with_eval_state(|state| state.pp_stack_top = v);
+    with_required_repl_flags(|flags| flags.pp_stack_top.set(v));
 }
 
 // ---------------------------------------------------------------------------
-/// Get warnings collection flag.
+/// Get the legacy warning-collection flag (not the deferred warning count).
 pub fn R_GetCollectWarnings() -> c_int {
-    with_eval_state(|state| state.collect_warnings)
+    with_required_repl_flags(|flags| flags.collect_warnings.get())
 }
 
-/// Set warnings collection flag.
+/// Set the legacy warning-collection flag without altering deferred warnings.
 pub fn R_SetCollectWarnings(v: c_int) {
-    with_eval_state(|state| state.collect_warnings = v);
+    with_required_repl_flags(|flags| flags.collect_warnings.set(v));
 }
 
 // ---------------------------------------------------------------------------
@@ -916,10 +908,10 @@ mod tests {
 
     #[test]
     fn test_session_main_state_is_local_on_same_thread() {
-        let left = RSession::new();
-        let right = RSession::new();
+        let left = RSession::new_for_gc_tests();
+        let right = RSession::new_for_gc_tests();
 
-        left.with_active(|| unsafe {
+        left.with_active(|| {
             R_SetQuiet(1);
             R_SetInteractive(0);
             R_SetEvalDepth(12);
@@ -932,18 +924,34 @@ mod tests {
             assert_eq!(R_PPStackTop(), 4);
             assert_eq!(R_GetCollectWarnings(), 5);
             assert_eq!(R_GetVisible(), FALSE);
+            let before = crate::sexp::protect::R_ProtectCount();
+            crate::sexp::protect::protect_raw_pointer(R_NilValue());
+            assert_eq!(crate::sexp::protect::R_ProtectCount(), before + 1);
+            assert_eq!(R_PPStackTop(), 4);
+            assert_eq!(crate::mainutils::errors::collect_warnings(), 0);
+            right.with_active(|| {
+                assert_eq!(R_PPStackTop(), 0);
+                assert_eq!(R_GetCollectWarnings(), 0);
+                assert!(crate::mainutils::sysutils::R_Interactive());
+                R_SetPPStackTop(7);
+                crate::mainutils::sysutils::R_SetInteractive(false);
+            });
+            assert_eq!(R_PPStackTop(), 4);
+            assert_eq!(crate::sexp::protect::R_ProtectCount(), before + 1);
+            crate::sexp::protect::unprotect_count(1);
+            assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
         });
 
-        right.with_active(|| unsafe {
+        right.with_active(|| {
             assert_eq!(R_Quiet(), 0);
-            assert_eq!(R_Interactive(), 1);
+            assert_eq!(R_Interactive(), 0);
             assert_eq!(R_GetEvalDepth(), 0);
-            assert_eq!(R_PPStackTop(), 0);
+            assert_eq!(R_PPStackTop(), 7);
             assert_eq!(R_GetCollectWarnings(), 0);
             assert_eq!(R_GetVisible(), TRUE);
         });
 
-        left.with_active(|| unsafe {
+        left.with_active(|| {
             assert_eq!(R_Quiet(), 1);
             assert_eq!(R_Interactive(), 0);
             assert_eq!(R_GetEvalDepth(), 12);

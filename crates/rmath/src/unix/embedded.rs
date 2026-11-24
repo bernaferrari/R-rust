@@ -54,8 +54,8 @@ pub fn Rf_initEmbeddedR(argc: c_int, argv: *mut *mut c_char) -> c_int {
     with_required_current_instance(|instance| unsafe {
         // SAFETY: embedded initialization runs on the owning session thread.
         (*instance).startup_state.interactive = 1;
-        (*instance).eval_state.interactive = 1;
     });
+    crate::mainutils::main::R_SetInteractive(1);
     setup_Rmainloop();
     1
 }
@@ -94,8 +94,8 @@ mod tests {
         assert_eq!(result, 1);
         with_required_current_instance(|instance| unsafe {
             assert_eq!((*instance).startup_state.interactive, 1);
-            assert_eq!((*instance).eval_state.interactive, 1);
         });
+        assert_eq!(crate::mainutils::main::R_Interactive(), 1);
     }
 
     #[test]

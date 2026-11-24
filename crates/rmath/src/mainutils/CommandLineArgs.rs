@@ -13,7 +13,7 @@ use crate::mainutils::startup::StartupRuntimeState;
 use crate::sexp::accessors::SET_STRING_ELT;
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
-use crate::sexp::instance::with_required_current_instance;
+use crate::sexp::instance::{with_required_current_instance, with_required_repl_flags};
 
 // ---------------------------------------------------------------------------
 // Save/Restore action constants (matching R_ext/RStartup.h)
@@ -161,11 +161,19 @@ fn command_line_args_for_test() -> Vec<String> {
 }
 
 pub(crate) fn sync_eval_control_from_command_line() {
-    with_required_current_instance(|inst| unsafe {
-        (*inst).eval_state.quiet = (*inst).startup_state.quiet;
-        (*inst).eval_state.no_echo = (*inst).startup_state.no_echo;
-        (*inst).eval_state.interactive = (*inst).startup_state.interactive;
-        (*inst).eval_state.verbose = (*inst).startup_state.verbose;
+    let (quiet, no_echo, interactive, verbose) = with_startup_state(|state| {
+        (
+            state.quiet,
+            state.no_echo,
+            state.interactive,
+            state.verbose,
+        )
+    });
+    with_required_repl_flags(|flags| {
+        flags.quiet.set(quiet);
+        flags.no_echo.set(no_echo);
+        flags.interactive.set(interactive);
+        flags.verbose.set(verbose);
     });
 }
 
@@ -174,9 +182,7 @@ fn set_interactive(value: bool) {
     with_startup_state(|state| {
         state.interactive = c_int::from(value);
     });
-    with_required_current_instance(|inst| unsafe {
-        (*inst).eval_state.interactive = c_int::from(value);
-    });
+    with_required_repl_flags(|flags| flags.interactive.set(c_int::from(value)));
 }
 
 #[cfg(test)]
@@ -184,9 +190,7 @@ fn set_no_echo(value: bool) {
     with_startup_state(|state| {
         state.no_echo = c_int::from(value);
     });
-    with_required_current_instance(|inst| unsafe {
-        (*inst).eval_state.no_echo = c_int::from(value);
-    });
+    with_required_repl_flags(|flags| flags.no_echo.set(c_int::from(value)));
 }
 
 #[cfg(test)]
@@ -194,9 +198,7 @@ fn set_quiet(value: bool) {
     with_startup_state(|state| {
         state.quiet = c_int::from(value);
     });
-    with_required_current_instance(|inst| unsafe {
-        (*inst).eval_state.quiet = c_int::from(value);
-    });
+    with_required_repl_flags(|flags| flags.quiet.set(c_int::from(value)));
 }
 
 #[cfg(test)]
@@ -204,9 +206,7 @@ fn set_verbose(value: bool) {
     with_startup_state(|state| {
         state.verbose = c_int::from(value);
     });
-    with_required_current_instance(|inst| unsafe {
-        (*inst).eval_state.verbose = c_int::from(value);
-    });
+    with_required_repl_flags(|flags| flags.verbose.set(c_int::from(value)));
 }
 
 #[cfg(test)]
@@ -662,6 +662,8 @@ mod tests {
 
             assert_eq!(R_GetQuiet(), 1);
             assert_eq!(R_GetVerbose(), 1);
+            assert_eq!(crate::mainutils::main::R_Quiet(), 1);
+            assert_eq!(crate::mainutils::main::R_Verbose(), 1);
             assert_eq!(R_GetSaveAction(), SA_SAVEASK); // -q alone doesn't change SaveAction
             assert_eq!(argc, 2);
 
@@ -683,6 +685,7 @@ mod tests {
 
             assert_eq!(R_GetQuiet(), 1);
             assert_eq!(R_GetNoEcho(), 1);
+            assert_eq!(crate::mainutils::main::R_NoEcho(), 1);
             assert_eq!(R_GetSaveAction(), SA_NOSAVE);
             assert_eq!(argc, 2);
 
