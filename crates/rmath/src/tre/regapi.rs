@@ -6,6 +6,7 @@
 
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
+use std::mem::MaybeUninit;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
@@ -22,11 +23,76 @@ mod compile_error_tests;
 
 // ===== tre_fill_pmatch =====
 
+const UNSET_MATCH: regmatch_t = regmatch_t {
+    rm_so: -1,
+    rm_eo: -1,
+};
+
+fn capture_from_tags(
+    submatch: &tre_submatch_data_t,
+    tags: &[c_int],
+    end_tag: c_int,
+    match_eo: c_int,
+) -> regmatch_t {
+    let offset = |tag| {
+        if tag == end_tag {
+            match_eo
+        } else {
+            usize::try_from(tag)
+                .ok()
+                .and_then(|index| tags.get(index).copied())
+                .unwrap_or(-1)
+        }
+    };
+    let rm_so = offset(submatch.so_tag);
+    let rm_eo = offset(submatch.eo_tag);
+    if rm_so == -1 || rm_eo == -1 {
+        UNSET_MATCH
+    } else {
+        regmatch_t { rm_so, rm_eo }
+    }
+}
+
 /// # Safety
+/// A non-null `parents` points to an initialized, sentinel-terminated list
+/// from the compiler. It must remain readable through the first negative id
+/// or `earlier.len() + 1` entries, whichever comes first.
+unsafe fn capture_within_parents(
+    parents: *const c_int,
+    earlier: &[regmatch_t],
+    capture: regmatch_t,
+) -> bool {
+    if parents.is_null() {
+        return true;
+    }
+    // Capture ids are assigned in opening order, so each parent precedes
+    // this capture. Leave room for the sentinel, even at maximum depth.
+    for index in 0..=earlier.len() {
+        // SAFETY: the loop stops on the first sentinel and bounds its reads.
+        let parent = unsafe { parents.add(index).read() };
+        if parent < 0 {
+            return true;
+        }
+        let Some(parent) = earlier.get(parent as usize) else {
+            return false;
+        };
+        if capture.rm_so < parent.rm_so || capture.rm_eo > parent.rm_eo {
+            return false;
+        }
+    }
+    false
+}
+
+/// Write capture offsets, filling unused output slots with `-1/-1`.
 ///
-/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
-/// sized per the accompanying length/count arguments) valid for the reads and writes performed
-/// here; null is accepted only where the original C TRE API accepts it.
+/// # Safety
+/// If `nmatch` is nonzero, `pmatch` must be aligned and valid for `nmatch`
+/// writes in one allocation (at most `isize::MAX` bytes), disjoint from the
+/// other arguments. The output need not be initialized. For a successful
+/// match without `REG_NOSUB` and with output requested, `tnfa` must point to
+/// a live descriptor with its complete initialized submatch table and
+/// sentinel-terminated parent lists in the compiler's layout. When non-null,
+/// `tags` must hold the descriptor's `num_tags` initialized entries.
 pub unsafe fn tre_fill_pmatch(
     nmatch: usize,
     pmatch: *mut regmatch_t,
@@ -35,62 +101,54 @@ pub unsafe fn tre_fill_pmatch(
     tags: *const c_int,
     match_eo: c_int,
 ) {
-    unsafe {
-        let mut i: u32 = 0;
+    if nmatch == 0 {
+        return;
+    }
+    // SAFETY: the raw API requires this extent of writable, disjoint storage;
+    // MaybeUninit does not assume any prior writes by the caller.
+    let output = unsafe {
+        std::slice::from_raw_parts_mut(pmatch.cast::<MaybeUninit<regmatch_t>>(), nmatch)
+    };
+    if match_eo < 0 || cflags & REG_NOSUB != 0 {
+        output.fill(MaybeUninit::new(UNSET_MATCH));
+        return;
+    }
+    // SAFETY: the caller supplies the compiled descriptor and tag storage.
+    let (submatches, tags, end_tag) = unsafe {
+        let tnfa = &*tnfa;
+        let count = nmatch.min(tnfa.num_submatches as usize);
+        let submatches = if count == 0 {
+            &[]
+        } else {
+            std::slice::from_raw_parts(tnfa.submatch_data, count)
+        };
+        let tag_count = usize::try_from(tnfa.num_tags).unwrap_or(0);
+        let tags = if count == 0 || tag_count == 0 || tags.is_null() {
+            &[]
+        } else {
+            std::slice::from_raw_parts(tags, tag_count)
+        };
+        (submatches, tags, tnfa.end_tag)
+    };
+    let (captures, unused) = output.split_at_mut(submatches.len());
+    for (slot, submatch) in captures.iter_mut().zip(submatches) {
+        slot.write(capture_from_tags(submatch, tags, end_tag, match_eo));
+    }
+    unused.fill(MaybeUninit::new(UNSET_MATCH));
 
-        if match_eo >= 0 && cflags & REG_NOSUB == 0 {
-            let submatch_data = (*tnfa).submatch_data;
-            while i < (*tnfa).num_submatches && i < nmatch as u32 {
-                if (*submatch_data.offset(i as isize)).so_tag == (*tnfa).end_tag {
-                    (*pmatch.offset(i as isize)).rm_so = match_eo;
-                } else {
-                    (*pmatch.offset(i as isize)).rm_so =
-                        *tags.offset((*submatch_data.offset(i as isize)).so_tag as isize);
-                }
-
-                if (*submatch_data.offset(i as isize)).eo_tag == (*tnfa).end_tag {
-                    (*pmatch.offset(i as isize)).rm_eo = match_eo;
-                } else {
-                    (*pmatch.offset(i as isize)).rm_eo =
-                        *tags.offset((*submatch_data.offset(i as isize)).eo_tag as isize);
-                }
-
-                if (*pmatch.offset(i as isize)).rm_so == -1
-                    || (*pmatch.offset(i as isize)).rm_eo == -1
-                {
-                    (*pmatch.offset(i as isize)).rm_so = -1;
-                    (*pmatch.offset(i as isize)).rm_eo = -1;
-                }
-
-                i += 1;
-            }
-
-            // Reset submatches not within parent submatches
-            i = 0;
-            while i < (*tnfa).num_submatches && i < nmatch as u32 {
-                let parents = (*submatch_data.offset(i as isize)).parents;
-                if !parents.is_null() {
-                    let mut j: c_int = 0;
-                    while *parents.offset(j as isize) >= 0 {
-                        let p = *parents.offset(j as isize) as u32;
-                        if (*pmatch.offset(i as isize)).rm_so < (*pmatch.offset(p as isize)).rm_so
-                            || (*pmatch.offset(i as isize)).rm_eo
-                                > (*pmatch.offset(p as isize)).rm_eo
-                        {
-                            (*pmatch.offset(i as isize)).rm_so = -1;
-                            (*pmatch.offset(i as isize)).rm_eo = -1;
-                        }
-                        j += 1;
-                    }
-                }
-                i += 1;
-            }
-        }
-
-        while i < nmatch as u32 {
-            (*pmatch.offset(i as isize)).rm_so = -1;
-            (*pmatch.offset(i as isize)).rm_eo = -1;
-            i += 1;
+    // SAFETY: the preceding loop initialized every slot in this prefix.
+    let captures = unsafe {
+        std::slice::from_raw_parts_mut(
+            captures.as_mut_ptr().cast::<regmatch_t>(),
+            captures.len(),
+        )
+    };
+    for (index, submatch) in submatches.iter().enumerate() {
+        let (earlier, current) = captures.split_at_mut(index);
+        let capture = &mut current[0];
+        // SAFETY: the descriptor owns the sentinel-terminated parent list.
+        if !unsafe { capture_within_parents(submatch.parents, earlier, *capture) } {
+            *capture = UNSET_MATCH;
         }
     }
 }
@@ -1295,6 +1353,94 @@ mod tests {
             assert_eq!(pmatch[3].rm_eo, 6);
             tre_regfree(&mut preg);
         }
+    }
+
+    #[test]
+    fn capture_publication_writes_legacy_output_prefix() {
+        let (mut preg, rc) = unsafe { compile("((a+)(b+))", REG_EXTENDED) };
+        assert_eq!(rc, REG_OK);
+        let expected = [(1, 6), (1, 6), (1, 4), (4, 6), (-1, -1)];
+        for nmatch in 0..=expected.len() {
+            let mut output = [MaybeUninit::<regmatch_t>::uninit(); 6];
+            output[nmatch].write(regmatch_t {
+                rm_so: 42,
+                rm_eo: 43,
+            });
+            let pmatch = if nmatch == 0 {
+                ptr::null_mut()
+            } else {
+                output.as_mut_ptr().cast()
+            };
+            // SAFETY: the regex and input are live, and the output is writable.
+            assert_eq!(
+                unsafe { tre_regexec(&preg, c"xaaabb".as_ptr(), nmatch, pmatch, 0) },
+                REG_OK
+            );
+            for (slot, &expected) in output[..nmatch].iter().zip(&expected) {
+                // SAFETY: a successful match writes the entire requested prefix.
+                let value = unsafe { slot.assume_init() };
+                assert_eq!((value.rm_so, value.rm_eo), expected);
+            }
+            // SAFETY: the canary was initialized before the call.
+            let canary = unsafe { output[nmatch].assume_init() };
+            assert_eq!((canary.rm_so, canary.rm_eo), (42, 43));
+        }
+        // SAFETY: the regex was compiled above and has no remaining borrowers.
+        unsafe { tre_regfree(&mut preg) };
+    }
+
+    #[test]
+    fn capture_publication_bounds_tag_and_parent_indices() {
+        let parents = [0, -1];
+        let outside = [3, -1];
+        let mut submatches = [
+            tre_submatch_data_t {
+                so_tag: 0,
+                eo_tag: 3,
+                parents: ptr::null_mut(),
+            },
+            tre_submatch_data_t {
+                so_tag: 1,
+                eo_tag: 2,
+                parents: parents.as_ptr().cast_mut(),
+            },
+            tre_submatch_data_t {
+                so_tag: 0,
+                eo_tag: 3,
+                parents: outside.as_ptr().cast_mut(),
+            },
+            tre_submatch_data_t {
+                so_tag: 4,
+                eo_tag: 3,
+                parents: ptr::null_mut(),
+            },
+        ];
+        // SAFETY: this C record contains only raw pointers and integers.
+        let mut tnfa: tre_tnfa_t = unsafe { std::mem::zeroed() };
+        tnfa.num_submatches = submatches.len() as u32;
+        tnfa.submatch_data = submatches.as_mut_ptr();
+        tnfa.num_tags = 3;
+        tnfa.end_tag = 3;
+        let tags = [1, 0, 3];
+        let mut output = [MaybeUninit::<regmatch_t>::uninit(); 4];
+        // SAFETY: all backing ranges and parent terminators are live. The
+        // synthetic indices are inconsistent, but their source tables are valid.
+        unsafe {
+            tre_fill_pmatch(
+                output.len(),
+                output.as_mut_ptr().cast(),
+                0,
+                &tnfa,
+                tags.as_ptr(),
+                4,
+            )
+        };
+        // SAFETY: the call wrote all output slots.
+        let pairs = output.map(|slot| {
+            let value = unsafe { slot.assume_init() };
+            (value.rm_so, value.rm_eo)
+        });
+        assert_eq!(pairs, [(1, 4), (-1, -1), (-1, -1), (-1, -1)]);
     }
 
     #[test]
