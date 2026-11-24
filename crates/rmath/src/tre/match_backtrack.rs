@@ -11,29 +11,73 @@ use std::os::raw::{c_int, c_void};
 use std::ptr;
 
 use super::ast::*;
-use crate::mainutils::grep::RegexWorkspace;
+use crate::mainutils::grep::{RegexWorkspace, WorkspaceBuffer};
 
 use super::match_parallel::{apply_tags, filled};
-use super::owned_arena::OwnedArena;
 
-#[repr(C)]
-struct tre_backtrack_item_t {
+#[derive(Clone, Copy)]
+struct BacktrackFrame {
     pos: c_int,
     str_byte: *const u8,
     state: *mut tre_tnfa_transition_t,
-    state_id: c_int,
     next_c: tre_cint_t,
-    tags: *mut c_int,
+    seen_slot: Option<c_int>,
 }
 
-#[repr(C)]
-struct tre_backtrack_struct {
-    item: tre_backtrack_item_t,
-    prev: *mut tre_backtrack_struct,
-    next: *mut tre_backtrack_struct,
+struct BacktrackStack {
+    frames: WorkspaceBuffer<BacktrackFrame>,
+    tag_rows: WorkspaceBuffer<c_int>,
+    depth: usize,
+    width: usize,
 }
 
-type tre_backtrack_t = *mut tre_backtrack_struct;
+impl BacktrackStack {
+    fn new(workspace: &RegexWorkspace, width: usize) -> Result<Self, ()> {
+        Ok(Self {
+            frames: workspace.try_buffer(0)?,
+            tag_rows: workspace.try_buffer(0)?,
+            depth: 0,
+            width,
+        })
+    }
+
+    fn push(&mut self, frame: BacktrackFrame, tags: &[c_int]) -> Result<&mut [c_int], ()> {
+        if self.depth == self.frames.len() {
+            let capacity = self.depth.checked_mul(2).ok_or(())?.max(16);
+            let cells = capacity.checked_mul(self.width).ok_or(())?;
+            self.tag_rows.try_resize(cells, 0)?;
+            self.frames.try_resize(capacity, frame)?;
+        }
+        // Both buffers cover this depth, including when the tag width is zero.
+        let start = self.depth * self.width;
+        let row = &mut self.tag_rows[start..start + self.width];
+        row.copy_from_slice(tags);
+        self.frames[self.depth] = frame;
+        self.depth += 1;
+        Ok(row)
+    }
+
+    fn pop(
+        &mut self,
+        tags: &mut [c_int],
+        states_seen: &mut [bool],
+    ) -> Result<Option<BacktrackFrame>, c_int> {
+        let Some(depth) = self.depth.checked_sub(1) else {
+            return Ok(None);
+        };
+        let frame = self.frames[depth];
+        if let Some(state_id) = frame.seen_slot {
+            let Some(seen) = states_seen.get_mut(state_id as usize) else {
+                return Err(REG_BADPAT);
+            };
+            *seen = false;
+        }
+        let start = depth * self.width;
+        tags.copy_from_slice(&self.tag_rows[start..start + self.width]);
+        self.depth = depth;
+        Ok(Some(frame))
+    }
+}
 
 #[inline]
 fn IS_WORD_CHAR(c: tre_cint_t) -> bool {
@@ -167,16 +211,9 @@ pub(super) unsafe fn run_backtrack(
         let Ok(mut states_seen) = filled(workspace, state_count, false) else {
             return REG_ESPACE;
         };
-        let Ok(mut arena) = OwnedArena::new(workspace.clone()) else {
+        let Ok(mut stack) = BacktrackStack::new(workspace, tag_count) else {
             return REG_ESPACE;
         };
-        let Ok(base) = arena.allocate(std::mem::size_of::<tre_backtrack_struct>()) else {
-            return REG_ESPACE;
-        };
-        let mut stack: tre_backtrack_t = base.cast();
-        (*stack).prev = ptr::null_mut();
-        (*stack).next = ptr::null_mut();
-        let tag_bytes = std::mem::size_of_val(&tags[..]);
 
         let mut prev_c: tre_cint_t = 0;
         let mut next_c: tre_cint_t = 0;
@@ -249,28 +286,18 @@ pub(super) unsafe fn run_backtrack(
                 } else {
                     // Backtrack to this state
                     // BT_STACK_PUSH
-                    if (*stack).next.is_null() {
-                        let Ok(frame) = arena.allocate(std::mem::size_of::<tre_backtrack_struct>())
-                        else {
-                            return REG_ESPACE;
-                        };
-                        let Ok(row) = arena.allocate(tag_bytes) else {
-                            return REG_ESPACE;
-                        };
-                        let frame: tre_backtrack_t = frame.cast();
-                        (*frame).prev = stack;
-                        (*frame).next = ptr::null_mut();
-                        (*frame).item.tags = row.cast();
-                        (*stack).next = frame;
-                    }
-                    stack = (*stack).next;
-                    (*stack).item.pos = pos;
-                    (*stack).item.str_byte = str_byte;
-                    (*stack).item.state = (*trans_i).state;
-                    (*stack).item.state_id = (*trans_i).state_id;
-                    (*stack).item.next_c = next_c;
-                    let row = std::slice::from_raw_parts_mut((*stack).item.tags, tags.len());
-                    row.copy_from_slice(&tags);
+                    let frame = BacktrackFrame {
+                        pos,
+                        str_byte,
+                        state: (*trans_i).state,
+                        next_c,
+                        // The transition's destination is non-null in this loop.
+                        seen_slot: (((*(*trans_i).state).assertions & ASSERT_BACKREF) != 0)
+                            .then_some((*trans_i).state_id),
+                    };
+                    let Ok(row) = stack.push(frame, &tags) else {
+                        return REG_ESPACE;
+                    };
                     apply_tags((*trans_i).tags, row, pos);
                 }
                 trans_i = trans_i.add(1);
@@ -280,21 +307,14 @@ pub(super) unsafe fn run_backtrack(
 
             if state.is_null() {
                 // goto backtrack
-                if !(*stack).prev.is_null() {
-                    if (*(*stack).item.state).assertions & ASSERT_BACKREF != 0 {
-                        let Some(seen) = states_seen.get_mut((*stack).item.state_id as usize)
-                        else {
-                            return REG_BADPAT;
-                        };
-                        *seen = false;
-                    }
-                    // BT_STACK_POP
-                    pos = (*stack).item.pos;
-                    str_byte = (*stack).item.str_byte;
-                    state = (*stack).item.state;
-                    next_c = (*stack).item.next_c as tre_cint_t;
-                    tags.copy_from_slice(std::slice::from_raw_parts((*stack).item.tags, tag_count));
-                    stack = (*stack).prev;
+                let Ok(frame) = stack.pop(&mut tags, &mut states_seen) else {
+                    return REG_BADPAT;
+                };
+                if let Some(frame) = frame {
+                    pos = frame.pos;
+                    str_byte = frame.str_byte;
+                    state = frame.state;
+                    next_c = frame.next_c;
                     continue; // Back to main loop
                 } else if match_eo < 0 {
                     // Try starting from a later position
@@ -334,23 +354,14 @@ pub(super) unsafe fn run_backtrack(
                         }
                     }
                     // goto backtrack
-                    if !(*stack).prev.is_null() {
-                        if (*(*stack).item.state).assertions & ASSERT_BACKREF != 0 {
-                            let Some(seen) = states_seen.get_mut((*stack).item.state_id as usize)
-                            else {
-                                return REG_BADPAT;
-                            };
-                            *seen = false;
-                        }
-                        pos = (*stack).item.pos;
-                        str_byte = (*stack).item.str_byte;
-                        state = (*stack).item.state;
-                        next_c = (*stack).item.next_c as tre_cint_t;
-                        tags.copy_from_slice(std::slice::from_raw_parts(
-                            (*stack).item.tags,
-                            tag_count,
-                        ));
-                        stack = (*stack).prev;
+                    let Ok(frame) = stack.pop(&mut tags, &mut states_seen) else {
+                        return REG_BADPAT;
+                    };
+                    if let Some(frame) = frame {
+                        pos = frame.pos;
+                        str_byte = frame.str_byte;
+                        state = frame.state;
+                        next_c = frame.next_c;
                         continue;
                     } else if match_eo < 0 {
                         if len >= 0 && pos >= len {
@@ -437,24 +448,14 @@ pub(super) unsafe fn run_backtrack(
                         };
                         if empty_br_match != 0 && seen {
                             // goto backtrack
-                            if !(*stack).prev.is_null() {
-                                if (*(*stack).item.state).assertions & ASSERT_BACKREF != 0 {
-                                    let Some(seen) =
-                                        states_seen.get_mut((*stack).item.state_id as usize)
-                                    else {
-                                        return REG_BADPAT;
-                                    };
-                                    *seen = false;
-                                }
-                                pos = (*stack).item.pos;
-                                str_byte = (*stack).item.str_byte;
-                                state = (*stack).item.state;
-                                next_c = (*stack).item.next_c as tre_cint_t;
-                                tags.copy_from_slice(std::slice::from_raw_parts(
-                                    (*stack).item.tags,
-                                    tag_count,
-                                ));
-                                stack = (*stack).prev;
+                            let Ok(frame) = stack.pop(&mut tags, &mut states_seen) else {
+                                return REG_BADPAT;
+                            };
+                            if let Some(frame) = frame {
+                                pos = frame.pos;
+                                str_byte = frame.str_byte;
+                                state = frame.state;
+                                next_c = frame.next_c;
                                 continue;
                             } else if match_eo < 0 {
                                 if next_c == 0 {
@@ -488,24 +489,14 @@ pub(super) unsafe fn run_backtrack(
                         }
                     } else {
                         // goto backtrack
-                        if !(*stack).prev.is_null() {
-                            if (*(*stack).item.state).assertions & ASSERT_BACKREF != 0 {
-                                let Some(seen) =
-                                    states_seen.get_mut((*stack).item.state_id as usize)
-                                else {
-                                    return REG_BADPAT;
-                                };
-                                *seen = false;
-                            }
-                            pos = (*stack).item.pos;
-                            str_byte = (*stack).item.str_byte;
-                            state = (*stack).item.state;
-                            next_c = (*stack).item.next_c as tre_cint_t;
-                            tags.copy_from_slice(std::slice::from_raw_parts(
-                                (*stack).item.tags,
-                                tag_count,
-                            ));
-                            stack = (*stack).prev;
+                        let Ok(frame) = stack.pop(&mut tags, &mut states_seen) else {
+                            return REG_BADPAT;
+                        };
+                        if let Some(frame) = frame {
+                            pos = frame.pos;
+                            str_byte = frame.str_byte;
+                            state = frame.state;
+                            next_c = frame.next_c;
                             continue;
                         } else if match_eo < 0 {
                             if next_c == 0 {
@@ -523,24 +514,14 @@ pub(super) unsafe fn run_backtrack(
                     // Check for end of string
                     if len >= 0 && pos >= len {
                         // goto backtrack
-                        if !(*stack).prev.is_null() {
-                            if (*(*stack).item.state).assertions & ASSERT_BACKREF != 0 {
-                                let Some(seen) =
-                                    states_seen.get_mut((*stack).item.state_id as usize)
-                                else {
-                                    return REG_BADPAT;
-                                };
-                                *seen = false;
-                            }
-                            pos = (*stack).item.pos;
-                            str_byte = (*stack).item.str_byte;
-                            state = (*stack).item.state;
-                            next_c = (*stack).item.next_c as tre_cint_t;
-                            tags.copy_from_slice(std::slice::from_raw_parts(
-                                (*stack).item.tags,
-                                tag_count,
-                            ));
-                            stack = (*stack).prev;
+                        let Ok(frame) = stack.pop(&mut tags, &mut states_seen) else {
+                            return REG_BADPAT;
+                        };
+                        if let Some(frame) = frame {
+                            pos = frame.pos;
+                            str_byte = frame.str_byte;
+                            state = frame.state;
+                            next_c = frame.next_c;
                             continue;
                         } else if match_eo < 0 {
                             if next_c == 0 {
@@ -556,24 +537,14 @@ pub(super) unsafe fn run_backtrack(
                     }
                     if len < 0 && next_c == 0 {
                         // goto backtrack
-                        if !(*stack).prev.is_null() {
-                            if (*(*stack).item.state).assertions & ASSERT_BACKREF != 0 {
-                                let Some(seen) =
-                                    states_seen.get_mut((*stack).item.state_id as usize)
-                                else {
-                                    return REG_BADPAT;
-                                };
-                                *seen = false;
-                            }
-                            pos = (*stack).item.pos;
-                            str_byte = (*stack).item.str_byte;
-                            state = (*stack).item.state;
-                            next_c = (*stack).item.next_c as tre_cint_t;
-                            tags.copy_from_slice(std::slice::from_raw_parts(
-                                (*stack).item.tags,
-                                tag_count,
-                            ));
-                            stack = (*stack).prev;
+                        let Ok(frame) = stack.pop(&mut tags, &mut states_seen) else {
+                            return REG_BADPAT;
+                        };
+                        if let Some(frame) = frame {
+                            pos = frame.pos;
+                            str_byte = frame.str_byte;
+                            state = frame.state;
+                            next_c = frame.next_c;
                             continue;
                         } else if match_eo < 0 {
                             break;
@@ -620,30 +591,17 @@ pub(super) unsafe fn run_backtrack(
                             next_tags = (*trans_i).tags;
                         } else {
                             // BT_STACK_PUSH
-                            if (*stack).next.is_null() {
-                                let Ok(frame) =
-                                    arena.allocate(std::mem::size_of::<tre_backtrack_struct>())
-                                else {
-                                    return REG_ESPACE;
-                                };
-                                let Ok(row) = arena.allocate(tag_bytes) else {
-                                    return REG_ESPACE;
-                                };
-                                let frame: tre_backtrack_t = frame.cast();
-                                (*frame).prev = stack;
-                                (*frame).next = ptr::null_mut();
-                                (*frame).item.tags = row.cast();
-                                (*stack).next = frame;
-                            }
-                            stack = (*stack).next;
-                            (*stack).item.pos = pos;
-                            (*stack).item.str_byte = str_byte;
-                            (*stack).item.state = (*trans_i).state;
-                            (*stack).item.state_id = (*trans_i).state_id;
-                            (*stack).item.next_c = next_c;
-                            let row =
-                                std::slice::from_raw_parts_mut((*stack).item.tags, tags.len());
-                            row.copy_from_slice(&tags);
+                            let frame = BacktrackFrame {
+                                pos,
+                                str_byte,
+                                state: (*trans_i).state,
+                                next_c,
+                                seen_slot: (((*(*trans_i).state).assertions & ASSERT_BACKREF) != 0)
+                                    .then_some((*trans_i).state_id),
+                            };
+                            let Ok(row) = stack.push(frame, &tags) else {
+                                return REG_ESPACE;
+                            };
                             apply_tags((*trans_i).tags, row, pos);
                         }
                     }
@@ -655,23 +613,14 @@ pub(super) unsafe fn run_backtrack(
                     apply_tags(next_tags, &mut tags, pos);
                 } else {
                     // goto backtrack
-                    if !(*stack).prev.is_null() {
-                        if (*(*stack).item.state).assertions & ASSERT_BACKREF != 0 {
-                            let Some(seen) = states_seen.get_mut((*stack).item.state_id as usize)
-                            else {
-                                return REG_BADPAT;
-                            };
-                            *seen = false;
-                        }
-                        pos = (*stack).item.pos;
-                        str_byte = (*stack).item.str_byte;
-                        state = (*stack).item.state;
-                        next_c = (*stack).item.next_c as tre_cint_t;
-                        tags.copy_from_slice(std::slice::from_raw_parts(
-                            (*stack).item.tags,
-                            tag_count,
-                        ));
-                        stack = (*stack).prev;
+                    let Ok(frame) = stack.pop(&mut tags, &mut states_seen) else {
+                        return REG_BADPAT;
+                    };
+                    if let Some(frame) = frame {
+                        pos = frame.pos;
+                        str_byte = frame.str_byte;
+                        state = frame.state;
+                        next_c = frame.next_c;
                     } else if match_eo < 0 {
                         if len >= 0 && pos >= len {
                             break;
@@ -725,5 +674,40 @@ unsafe fn libc_memcmp(s1: *const u8, s1_offset: usize, s2: *const u8, n: c_int) 
             }
         }
         0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn backtrack_stack_restores_saved_rows_in_reverse_order() {
+        let workspace = RegexWorkspace::unbounded();
+        let mut stack = BacktrackStack::new(&workspace, 2).unwrap();
+        for pos in 0..40 {
+            let row = stack
+                .push(
+                    BacktrackFrame {
+                        pos,
+                        str_byte: ptr::null(),
+                        state: ptr::null_mut(),
+                        next_c: 0,
+                        seen_slot: (pos % 2 == 0).then_some(0),
+                    },
+                    &[pos, -1],
+                )
+                .unwrap();
+            row[1] = pos + 1;
+        }
+        let mut tags = [-1; 2];
+        let mut seen = [true];
+        for pos in (0..40).rev() {
+            seen[0] = true;
+            assert_eq!(stack.pop(&mut tags, &mut seen).unwrap().unwrap().pos, pos);
+            assert_eq!(tags, [pos, pos + 1]);
+            assert_eq!(seen[0], pos % 2 != 0);
+        }
+        assert!(stack.pop(&mut tags, &mut seen).unwrap().is_none());
     }
 }

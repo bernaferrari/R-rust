@@ -1977,7 +1977,7 @@ mod owned_match_tests {
             }; 2];
             owner
                 .with_arena(|a| {
-                    // The small scratch rows fit, but the first frame slab does not.
+                    // The small scratch rows fit, but stack growth does not.
                     let used = a.total_bytes_allocated();
                     a.set_budget(crate::sexp::memory::ArenaBudget::new(used + 256, 0));
                 })
