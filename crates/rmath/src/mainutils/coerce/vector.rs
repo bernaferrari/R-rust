@@ -1,4 +1,5 @@
 use super::*;
+use crate::sexp::instance::{ScalarPrintState, with_scalar_print_state_in};
 
 // ---------------------------------------------------------------------------
 // Vector coercion functions
@@ -448,144 +449,153 @@ pub fn coerceToRaw(v: SEXP) -> SEXP {
 
 /// Coerce a vector to string (character) type.
 pub fn coerceToString(v: SEXP) -> SEXP {
-    unsafe {
-        let owner = crate::mainutils::essentials::active_owner();
+    let owner = crate::mainutils::essentials::active_owner();
+    let pin = owner
+        .pin()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let factory = owner.node_factory();
+    let source = factory
+        .wrap(v)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let check = || {
+        if let Some(pin) = &pin {
+            pin.require_live()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        }
+        factory
+            .require_active()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    };
+    let n = source.len();
+    check();
+    // Keep the runtime's typed allocation-denial error and GC retry.
+    let raw_output = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    let output = factory
+        .wrap(raw_output)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    check();
+    SHALLOW_DUPLICATE_ATTRIB(output.as_raw(), source.as_raw());
+    check();
+    let mut output = crate::sexp::object::SexpMut::try_from_checked(output)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    // GNU pins R_print for numeric coercion, not the options map.
+    // Cleanup restores the captured instance directly, even after revoke.
+    struct RestoreStringPrint<'s> {
+        owner: crate::sexp::owner::OwnerToken<'s>,
+        _pin: Option<crate::sexp::owner::OwnerPin>,
+        previous: ScalarPrintState,
+        entry_digits: i32,
+    }
+    impl Drop for RestoreStringPrint<'_> {
+        fn drop(&mut self) {
+            // SAFETY: the original managed allocation is pinned; a borrowed
+            // owner remains allocated throughout this coercion call.
+            unsafe {
+                with_scalar_print_state_in(self.owner.as_ptr(), |cell| {
+                    let mut state = self.previous;
+                    if state.character_active {
+                        // GNU restores the digits read by PrintDefaults, not
+                        // the enclosing conversion's temporary DBL_DIG.
+                        state = cell.get();
+                        state.print.digits = self.entry_digits;
+                        state.character_active = true;
+                    }
+                    cell.set(state);
+                });
+            }
+        }
+    }
+    let numeric = matches!(source.typeof_(), SEXPTYPE::REALSXP | SEXPTYPE::CPLXSXP);
+    let _print_guard = numeric.then(|| {
         let pin = owner
             .pin()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let factory = owner.node_factory();
-        let source = factory
-            .wrap(v)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let check = || {
-            if let Some(pin) = &pin {
-                pin.require_live()
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            }
-            factory
-                .require_active()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        // SAFETY: the owner pin retains this allocation for the snapshot.
+        let previous =
+            unsafe { with_scalar_print_state_in(owner.as_ptr(), |cell| cell.get()) };
+        let mut guard = RestoreStringPrint {
+            owner,
+            _pin: pin,
+            previous,
+            entry_digits: crate::mainutils::options::GetOptionDigits(),
         };
-        let n = source.len();
         check();
-        // Keep the runtime's typed allocation-denial error and GC retry.
-        let raw_output = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let output = factory
-            .wrap(raw_output)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        crate::mainutils::print::PrintDefaults();
         check();
-        SHALLOW_DUPLICATE_ATTRIB(output.as_raw(), source.as_raw());
-        check();
-        let mut output = crate::sexp::object::SexpMut::try_from_checked(output)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        // GNU pins R_print for numeric coercion, not the options map.
-        // Cleanup restores the captured instance directly, even after revoke.
-        struct RestoreStringPrint<'s> {
-            owner: crate::sexp::owner::OwnerToken<'s>,
-            _pin: Option<crate::sexp::owner::OwnerPin>,
-            previous: crate::mainutils::format::RPrint,
-            was_active: bool,
-            entry_digits: i32,
-        }
-        impl Drop for RestoreStringPrint<'_> {
-            fn drop(&mut self) {
-                unsafe {
-                    let state = &mut (*self.owner.as_ptr()).eval_state;
-                    if self.was_active {
-                        // GNU restores the digits read by PrintDefaults, not
-                        // the enclosing conversion's temporary DBL_DIG.
-                        state.format_print.digits = self.entry_digits;
-                    } else {
-                        state.format_print = self.previous;
-                    }
-                    state.character_print_active = self.was_active;
-                }
-            }
-        }
-        let numeric = matches!(source.typeof_(), SEXPTYPE::REALSXP | SEXPTYPE::CPLXSXP);
-        let _print_guard = numeric.then(|| {
-            let pin = owner
-                .pin()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            let previous = (*owner.as_ptr()).eval_state.format_print;
-            let was_active = (*owner.as_ptr()).eval_state.character_print_active;
-            let mut guard = RestoreStringPrint {
-                owner,
-                _pin: pin,
-                previous,
-                was_active,
-                entry_digits: crate::mainutils::options::GetOptionDigits(),
-            };
-            crate::mainutils::print::PrintDefaults();
-            check();
-            let (digits, scipen, na_width, na_width_noquote) =
-                crate::mainutils::print::with_current_print_data(|data| {
-                    (data.digits, data.scipen, data.na_width, data.na_width_noquote)
+        let (digits, scipen, na_width, na_width_noquote) =
+            crate::mainutils::print::with_current_print_data(|data| {
+                (data.digits, data.scipen, data.na_width, data.na_width_noquote)
+            });
+        guard.entry_digits = digits;
+        // SAFETY: the owner was just checked and the guard retains its allocation.
+        unsafe {
+            with_scalar_print_state_in(owner.as_ptr(), |cell| {
+                cell.set(ScalarPrintState {
+                    print: crate::mainutils::format::RPrint {
+                        digits: 15,
+                        scipen,
+                        na_width,
+                        na_width_noquote,
+                    },
+                    character_active: true,
                 });
-            guard.entry_digits = digits;
-            (*owner.as_ptr()).eval_state.format_print = crate::mainutils::format::RPrint {
-                digits: 15,
-                scipen,
-                na_width,
-                na_width_noquote,
-            };
-            (*owner.as_ptr()).eval_state.character_print_active = true;
-            guard
-        });
-        let mut warn: c_int = 0;
-        for i in 0..n {
-            let chars = match source.typeof_() {
-                SEXPTYPE::LGLSXP => {
-                    let v = source
-                        .try_logical_elt(i)
-                        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-                    check();
-                    StringFromLogical(v)
-                }
-                SEXPTYPE::INTSXP => {
-                    let v = source
-                        .try_integer_elt(i)
-                        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-                    check();
-                    StringFromInteger(v, &mut warn)
-                }
-                SEXPTYPE::REALSXP => {
-                    let v = source
-                        .try_real_elt(i)
-                        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-                    check();
-                    crate::mainutils::printutils::StringFromReal(v, &mut warn)
-                }
-                SEXPTYPE::CPLXSXP => {
-                    let v = source
-                        .try_complex_elt(i)
-                        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-                    check();
-                    StringFromComplex(v, &mut warn)
-                }
-                SEXPTYPE::RAWSXP => {
-                    let v = source
-                        .try_raw_elt(i)
-                        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-                    check();
-                    StringFromRaw(v, &mut warn)
-                }
-                _ => R_NaString(),
-            };
-            check();
-            let chars = factory
-                .wrap(chars)
-                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-            output
-                .try_set_string_elt(i, chars)
-                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+            });
         }
-        if warn != 0 {
-            CoercionWarning(warn);
-            check();
-        }
-        output.freeze().as_raw()
+        guard
+    });
+    let mut warn: c_int = 0;
+    for i in 0..n {
+        let chars = match source.typeof_() {
+            SEXPTYPE::LGLSXP => {
+                let v = source
+                    .try_logical_elt(i)
+                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+                check();
+                StringFromLogical(v)
+            }
+            SEXPTYPE::INTSXP => {
+                let v = source
+                    .try_integer_elt(i)
+                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+                check();
+                StringFromInteger(v, &mut warn)
+            }
+            SEXPTYPE::REALSXP => {
+                let v = source
+                    .try_real_elt(i)
+                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+                check();
+                crate::mainutils::printutils::StringFromReal(v, &mut warn)
+            }
+            SEXPTYPE::CPLXSXP => {
+                let v = source
+                    .try_complex_elt(i)
+                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+                check();
+                StringFromComplex(v, &mut warn)
+            }
+            SEXPTYPE::RAWSXP => {
+                let v = source
+                    .try_raw_elt(i)
+                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+                check();
+                StringFromRaw(v, &mut warn)
+            }
+            _ => R_NaString(),
+        };
+        check();
+        let chars = factory
+            .wrap(chars)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        output
+            .try_set_string_elt(i, chars)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
     }
+    if warn != 0 {
+        CoercionWarning(warn);
+        check();
+    }
+    output.freeze().as_raw()
 }
 
 /// Coerce a vector to expression type.

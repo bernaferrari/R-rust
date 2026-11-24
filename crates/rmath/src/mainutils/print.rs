@@ -23,7 +23,10 @@ use crate::sexp::attrib_core::{
 use crate::sexp::constructors::Rf_cons;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, NA_REAL, R_IsNA, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_NilValue, R_UnboundValue};
-use crate::sexp::instance::{RuntimeValue, with_print_data_in, with_required_current_instance};
+use crate::sexp::instance::{
+    RuntimeValue, with_current_scalar_print_state, with_print_data_in,
+    with_required_current_instance,
+};
 use crate::sexp::object::SexpResult;
 use crate::sexp::owner::OwnerToken;
 use crate::sexp::protect::{ProtectGuard, protect};
@@ -657,13 +660,11 @@ pub fn PrintDefaults() {
     };
     set_current_print_data(&data);
     // GNU nested printing resets only the active conversion's defaults.
-    crate::sexp::instance::with_current_instance(|inst| {
-        // SAFETY: `inst` is the pinned current instance; these primitive
-        // field accesses run no callbacks.
-        unsafe {
-            if (*inst).eval_state.character_print_active {
-                (*inst).eval_state.format_print = defaults;
-            }
+    with_current_scalar_print_state(|cell| {
+        let mut state = cell.get();
+        if state.character_active {
+            state.print = defaults;
+            cell.set(state);
         }
     });
 }
@@ -971,25 +972,19 @@ impl PrintFormatGuard {
             .expect("print formatting requires a managed runtime")
             .pin()
             .expect("print formatting requires an active runtime");
-        let previous =
-            crate::mainutils::format::format_set_R_print(crate::mainutils::format::RPrint {
-                digits: data.digits,
-                scipen: data.scipen,
-                na_width: data.na_width,
-                na_width_noquote: data.na_width_noquote,
-            });
+        let previous = owner.replace_format_print(crate::mainutils::format::RPrint {
+            digits: data.digits,
+            scipen: data.scipen,
+            na_width: data.na_width,
+            na_width_noquote: data.na_width_noquote,
+        });
         Self { owner, previous }
     }
 }
 
 impl Drop for PrintFormatGuard {
     fn drop(&mut self) {
-        unsafe {
-            // Cleanup retains its starting allocation even after revocation.
-            // This primitive field write ends without callbacks or admission
-            // through an ambient owner that may now belong to another session.
-            (*self.owner.as_ptr()).eval_state.format_print = self.previous;
-        }
+        self.owner.replace_format_print(self.previous);
     }
 }
 
@@ -2320,6 +2315,7 @@ fn do_str(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::instance::with_scalar_print_state_in;
     use crate::sexp::session::RSession;
     use std::ptr;
 
@@ -2329,15 +2325,12 @@ mod tests {
         let (guard, observer, weak, previous) = original.with_active(|| {
             let owner = original.owner_token().unwrap().weak_owner().unwrap();
             let observer = owner.pin().unwrap();
-            let previous = unsafe { (*observer.as_ptr()).eval_state.format_print };
+            let previous = unsafe {
+                with_scalar_print_state_in(observer.as_ptr(), |cell| cell.get().print)
+            };
             let mut data = R_PRINT_INIT.clone();
             data.digits = 2;
-            (
-                unsafe { PrintFormatGuard::new(&data) },
-                observer,
-                owner,
-                previous,
-            )
+            (PrintFormatGuard::new(&data), observer, owner, previous)
         });
         original.close();
         drop(original);
@@ -2347,13 +2340,19 @@ mod tests {
             Err(crate::sexp::object::SexpError::RootUnavailable)
         ));
         let foreign = RSession::new_for_gc_tests();
-        foreign.with_active(|| unsafe {
-            let foreign_owner = foreign.owner_token().unwrap().as_ptr();
-            (*foreign_owner).eval_state.format_print.digits = 11;
+        foreign.with_active(|| {
+            with_current_scalar_print_state(|cell| {
+                let mut state = cell.get();
+                state.print.digits = 11;
+                cell.set(state);
+            });
             drop(guard);
-            assert_eq!((*foreign_owner).eval_state.format_print.digits, 11);
             assert_eq!(
-                (*observer.as_ptr()).eval_state.format_print.digits,
+                with_current_scalar_print_state(|cell| cell.get().print.digits),
+                Some(11)
+            );
+            assert_eq!(
+                unsafe { with_scalar_print_state_in(observer.as_ptr(), |cell| cell.get().print.digits) },
                 previous.digits
             );
         });

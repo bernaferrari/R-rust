@@ -20,16 +20,14 @@ impl RestorePrint {
             na_width: 2,
             na_width_noquote: 2,
         };
-        let old = unsafe {
-            std::mem::replace(&mut (*owner.as_ptr()).eval_state.format_print, replacement)
-        };
+        let old = owner.replace_format_print(replacement);
         Self { old, owner }
     }
 }
 
 impl Drop for RestorePrint {
     fn drop(&mut self) {
-        unsafe { (*self.owner.as_ptr()).eval_state.format_print = self.old };
+        self.owner.replace_format_print(self.old);
     }
 }
 
@@ -684,7 +682,7 @@ pub unsafe fn Rf_isValidName(s: *const c_char) -> c_int {
 #[cfg(test)]
 mod ownership_tests {
     use super::*;
-    use crate::sexp::instance::with_deparse_state_in;
+    use crate::sexp::instance::{with_deparse_state_in, with_scalar_print_state_in};
     use crate::sexp::object::{SessionNodeFactory, Sexp};
     use crate::sexp::session::RSession;
     use std::cell::{Cell, RefCell};
@@ -700,14 +698,25 @@ mod ownership_tests {
             .unwrap()
     }
 
+    unsafe fn raw_format_print(
+        owner: *mut crate::sexp::instance::RInstance,
+    ) -> crate::mainutils::format::RPrint {
+        // SAFETY: ownership test fixtures retain their original allocation.
+        unsafe { with_scalar_print_state_in(owner, |cell| cell.get().print) }
+    }
+
     unsafe fn install_original_state(owner: *mut crate::sexp::instance::RInstance) {
         unsafe {
-            (*owner).eval_state.format_print = crate::mainutils::format::RPrint {
-                digits: 6,
-                scipen: 8,
-                na_width: 17,
-                na_width_noquote: 22,
-            };
+            with_scalar_print_state_in(owner, |cell| {
+                let mut state = cell.get();
+                state.print = crate::mainutils::format::RPrint {
+                    digits: 6,
+                    scipen: 8,
+                    na_width: 17,
+                    na_width_noquote: 22,
+                };
+                cell.set(state);
+            });
             with_deparse_state_in(owner, |state| state.browse_lines = 9);
             crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
         }
@@ -715,7 +724,7 @@ mod ownership_tests {
 
     unsafe fn assert_original_state(owner: *mut crate::sexp::instance::RInstance) {
         unsafe {
-            let print = (*owner).eval_state.format_print;
+            let print = raw_format_print(owner);
             assert_eq!(
                 (
                     print.digits,
@@ -744,14 +753,14 @@ mod ownership_tests {
             .pin()
             .unwrap();
         let other_pointer = other_pin.as_ptr();
-        unsafe {
-            (*other_pointer).eval_state.format_print.digits = 3;
-        }
+        let mut other_print = unsafe { raw_format_print(other_pointer) };
+        other_print.digits = 3;
+        other_pin.replace_format_print(other_print);
         other.with_active(|| set_browse_lines(4));
         original.with_active_in(|owner| unsafe {
             install_original_state(owner);
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
-                assert_eq!((*owner).eval_state.format_print.digits, 15);
+                assert_eq!(raw_format_print(owner).digits, 15);
                 assert_eq!(get_browse_lines(), 0);
                 crate::sexp::instance::set_current_instance(other_pointer);
                 assert_eq!(
@@ -769,7 +778,7 @@ mod ownership_tests {
             assert_eq!(crate::sexp::instance::current_instance_ptr(), Some(owner));
             assert_eq!(result.string_value_elt(0), Some(Some("7L".into())));
             assert_original_state(owner);
-            assert_eq!((*other_pointer).eval_state.format_print.digits, 3);
+            assert_eq!(raw_format_print(other_pointer).digits, 3);
         });
     }
 
@@ -781,7 +790,7 @@ mod ownership_tests {
         original.with_active_in(|owner| unsafe {
             install_original_state(owner);
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
-                assert_eq!((*owner).eval_state.format_print.digits, 15);
+                assert_eq!(raw_format_print(owner).digits, 15);
                 crate::sexp::instance::revoke_instance_availability(owner);
             }));
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -813,7 +822,7 @@ mod ownership_tests {
         unsafe {
             install_original_state(owner);
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
-                assert_eq!((*owner).eval_state.format_print.digits, 15);
+                assert_eq!(raw_format_print(owner).digits, 15);
                 drop(facade.upgrade().unwrap().borrow_mut().take());
             }));
         }
@@ -846,7 +855,7 @@ mod ownership_tests {
             install_original_state(owner);
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                 calls.set(calls.get() + 1);
-                assert_eq!((*owner).eval_state.format_print.digits, 15);
+                assert_eq!(raw_format_print(owner).digits, 15);
                 assert!(!crate::sexp::memory::is_arena_lent(owner));
                 crate::sexp::gengc::full_gc();
                 assert!(observed.is_live());

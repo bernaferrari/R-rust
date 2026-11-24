@@ -315,14 +315,17 @@ impl Default for ReplFlags {
     }
 }
 
+#[derive(Clone, Copy, Default)]
+pub(crate) struct ScalarPrintState {
+    pub(crate) print: crate::mainutils::format::RPrint,
+    pub(crate) character_active: bool,
+}
+
 pub(crate) struct EvalControlState {
     pub capabilities: SessionCapabilities,
     pub relop_lang_option: c_int,
     pub tracing_state: c_int,
     pub debugging_state: c_int,
-    pub format_print: crate::mainutils::format::RPrint,
-    /// GNU character coercion owns a print-defaults scope across callbacks.
-    pub character_print_active: bool,
     pub printutils: crate::mainutils::printutils::PrintUtilsState,
     pub print: crate::mainutils::print::PrintRuntimeState,
     pub(crate) portable_primitive_names: Vec<String>,
@@ -335,8 +338,6 @@ impl Default for EvalControlState {
             relop_lang_option: 0,
             tracing_state: crate::sexp::ffi::TRUE,
             debugging_state: crate::sexp::ffi::TRUE,
-            format_print: crate::mainutils::format::RPrint::default(),
-            character_print_active: false,
             printutils: crate::mainutils::printutils::PrintUtilsState::default(),
             print: crate::mainutils::print::PrintRuntimeState::default(),
             portable_primitive_names: Vec::new(),
@@ -432,6 +433,8 @@ pub struct RInstance {
     pub(crate) eval_state: EvalControlState,
     /// Print defaults snapshot owning exact-generation roots for its raw view.
     print_data: RefCell<crate::mainutils::print::PrintDataSnapshot>,
+    /// Scalar formatter settings and the character-coercion override flag.
+    scalar_print: Cell<ScalarPrintState>,
     /// Deparse line limit, separate from the evaluator state.
     deparse_state: RefCell<crate::mainutils::deparse::DeparseRuntimeState>,
     /// REPL and compatibility scalar flags; shared Cell access, no state lend.
@@ -677,6 +680,7 @@ impl RInstance {
             finalizer_state: RefCell::default(),
             eval_state: EvalControlState::default(),
             print_data: RefCell::default(),
+            scalar_print: Cell::default(),
             deparse_state: RefCell::default(),
             repl_flags: ReplFlags::default(),
             visibility: Cell::new(super::ffi::TRUE),
@@ -933,6 +937,22 @@ impl Drop for RInstance {
 }
 
 impl OwnerPin {
+    /// Swap only formatter settings, including when cleaning up a revoked session.
+    pub(crate) fn replace_format_print(
+        &self,
+        print: crate::mainutils::format::RPrint,
+    ) -> crate::mainutils::format::RPrint {
+        // SAFETY: the pin retains the allocation and the cell access runs no callbacks.
+        unsafe {
+            with_scalar_print_state_in(self.as_ptr(), |cell| {
+                let mut state = cell.get();
+                let previous = std::mem::replace(&mut state.print, print);
+                cell.set(state);
+                previous
+            })
+        }
+    }
+
     /// The pin still retains this storage when restoring a revoked session.
     pub(crate) fn replace_browse_lines(&self, value: c_int) -> c_int {
         // SAFETY: the pin retains the allocation; only the deparse cell is borrowed.
@@ -1076,6 +1096,26 @@ pub(crate) unsafe fn with_print_data_in<R>(
     // SAFETY: project only the checked cell from the retained instance.
     let cell = unsafe { &(*instance).print_data };
     f(&mut cell.borrow_mut())
+}
+
+/// Access only the scalar print cell, without lending the evaluator state.
+///
+/// # Safety
+/// The original instance remains allocated and has no overlapping exclusive
+/// whole-instance borrow for the duration of the local operation.
+pub(crate) unsafe fn with_scalar_print_state_in<R>(
+    instance: *mut RInstance,
+    f: impl FnOnce(&Cell<ScalarPrintState>) -> R,
+) -> R {
+    // SAFETY: the caller retains the original allocation.
+    f(unsafe { &(*instance).scalar_print })
+}
+
+pub(crate) fn with_current_scalar_print_state<R>(
+    f: impl FnOnce(&Cell<ScalarPrintState>) -> R,
+) -> Option<R> {
+    // SAFETY: the active allocation is retained for this local operation.
+    with_current_instance(|instance| unsafe { with_scalar_print_state_in(instance, f) })
 }
 
 /// Lend deparse bookkeeping for a local operation.

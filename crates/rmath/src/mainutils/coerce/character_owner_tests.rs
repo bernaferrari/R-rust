@@ -1,6 +1,7 @@
 use super::*;
 use crate::sexp::{
     altrep::{AltrepBuilder, AltrepClass, AltrepContext, AltrepElement},
+    instance::with_scalar_print_state_in,
     object::{SexpError, SexpResult},
     session::RSession,
 };
@@ -279,8 +280,9 @@ fn assert_character(value: &Sexp<'_>, i: i64, want: Option<&str>) {
     }
 }
 fn print_state(owner: crate::sexp::owner::OwnerToken<'_>) -> [i32; 4] {
-    assert!(!unsafe { (*owner.as_ptr()).eval_state.character_print_active });
-    let p = unsafe { (*owner.as_ptr()).eval_state.format_print };
+    let state = unsafe { with_scalar_print_state_in(owner.as_ptr(), |cell| cell.get()) };
+    assert!(!state.character_active);
+    let p = state.print;
     [p.digits, p.scipen, p.na_width, p.na_width_noquote]
 }
 #[test]
@@ -328,8 +330,12 @@ fn character_digits_context_preserves_options_and_restores_on_errors_denial_and_
     assert_eq!(print_state(owner), before);
     drop(out);
     unsafe {
-        (*owner.as_ptr()).eval_state.format_print.digits = 11;
-        (*owner.as_ptr()).eval_state.format_print.scipen = 12;
+        with_scalar_print_state_in(owner.as_ptr(), |cell| {
+            let mut state = cell.get();
+            state.print.digits = 11;
+            state.print.scipen = 12;
+            cell.set(state);
+        });
     }
     let before = print_state(owner);
     let out = f.wrap(coerceToString(source.as_raw())).unwrap();
@@ -518,6 +524,5 @@ fn character_print_context_follows_gnu_callback_defaults_and_live_decimal_mark()
         assert_character(&output, 0, Some(first));
         assert_character(&output, 1, Some(second));
         assert_eq!(print_state(owner), before);
-        assert!(!unsafe { (*owner.as_ptr()).eval_state.character_print_active });
     }
 }

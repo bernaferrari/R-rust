@@ -10,6 +10,7 @@ use std::os::raw::{c_double, c_int};
 use crate::sexp::accessors::STRING_ELT;
 use crate::sexp::altseq::{CompactSeq, unexpanded_int, unexpanded_real};
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, NA_REAL, R_xlen_t, Rcomplex, SEXP};
+use crate::sexp::instance::with_current_scalar_print_state;
 
 // ---------------------------------------------------------------------------
 // Print parameters (R_print global)
@@ -43,50 +44,43 @@ impl Default for RPrint {
 }
 
 fn current_R_print() -> RPrint {
-    // Live options("digits") / options("scipen"), unless a caller pinned
-    // `format_print.digits` (GNU `R_print.digits = DBL_DIG` around deparse).
-    unsafe {
-        let stored =
-            crate::sexp::instance::with_current_instance(|inst| (*inst).eval_state.format_print);
-        // Character coercion snapshots print defaults, while OutDec remains live.
-        if crate::sexp::instance::with_current_instance(|inst| {
-            (*inst).eval_state.character_print_active
-        }) == Some(true)
-        {
-            if let Some(print) = stored {
-                return print;
-            }
-        }
-        let digits = stored
-            .map(|p| p.digits)
-            .filter(|&d| d > 0)
-            .unwrap_or_else(|| crate::mainutils::options::GetOptionDigits());
-        let (na_width, na_width_noquote) =
-            crate::mainutils::print::with_current_print_data(|print| {
-                let na_width = if print.na_string.is_null()
-                    || print.na_string == crate::sexp::globals::R_NaString()
-                {
-                    2
-                } else {
-                    print.na_width
-                };
-                (na_width, print.na_width_noquote)
-            });
-        RPrint {
-            digits,
-            scipen: crate::mainutils::options::GetOptionScipen(),
-            na_width,
-            na_width_noquote,
-        }
+    let stored = with_current_scalar_print_state(|cell| cell.get());
+    // Character coercion snapshots print defaults, while OutDec remains live.
+    if let Some(state) = stored.filter(|state| state.character_active) {
+        return state.print;
+    }
+    // Digits are read live unless a caller overrides them (e.g. deparsing).
+    let digits = stored
+        .map(|state| state.print.digits)
+        .filter(|&d| d > 0)
+        .unwrap_or_else(crate::mainutils::options::GetOptionDigits);
+    let (na_width, na_width_noquote) =
+        crate::mainutils::print::with_current_print_data(|print| {
+            let na_width = if print.na_string.is_null()
+                || print.na_string == crate::sexp::globals::R_NaString()
+            {
+                2
+            } else {
+                print.na_width
+            };
+            (na_width, print.na_width_noquote)
+        });
+    RPrint {
+        digits,
+        scipen: crate::mainutils::options::GetOptionScipen(),
+        na_width,
+        na_width_noquote,
     }
 }
 
 pub fn format_set_R_print(p: RPrint) -> RPrint {
-    crate::sexp::instance::with_required_current_instance(|inst| {
-        // SAFETY: `inst` is the pinned current instance; this primitive field
-        // swap runs no callbacks.
-        unsafe { std::mem::replace(&mut (*inst).eval_state.format_print, p) }
+    with_current_scalar_print_state(|cell| {
+        let mut state = cell.get();
+        let previous = std::mem::replace(&mut state.print, p);
+        cell.set(state);
+        previous
     })
+    .expect("mutable R runtime state requires an active RInstance")
 }
 
 pub fn format_get_R_print() -> RPrint {
