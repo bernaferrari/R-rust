@@ -1,6 +1,6 @@
 use crate::comparisons::*;
 
-use rmath::dist::cauchy::*;
+use rmath::nmath::dist::cauchy::*;
 use rmath::rng::*;
 
 pub fn run_tests() -> Result<(), String> {

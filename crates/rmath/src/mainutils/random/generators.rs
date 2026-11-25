@@ -45,79 +45,79 @@ pub fn R_rnorm(mu: c_double, sigma: c_double) -> c_double {
 }
 
 pub fn R_rbinom(n: c_double, p: c_double) -> c_double {
-    crate::dist::binomial::rbinom(n, p)
+    crate::nmath::dist::binomial::rbinom(n, p)
 }
 
 pub fn R_rexp(rate: c_double) -> c_double {
-    crate::dist::exponential::rexp(rate)
+    crate::nmath::dist::exponential::rexp(rate)
 }
 
 pub fn R_rpois(mu: c_double) -> c_double {
-    crate::dist::poisson::rpois(mu)
+    crate::nmath::dist::poisson::rpois(mu)
 }
 
 pub fn R_rchisq(df: c_double) -> c_double {
-    crate::dist::chisq::rchisq(df)
+    crate::nmath::dist::chisq::rchisq(df)
 }
 
 pub fn R_rgamma(shape: c_double, scale: c_double) -> c_double {
-    crate::dist::gamma::rgamma(shape, scale)
+    crate::nmath::dist::gamma::rgamma(shape, scale)
 }
 
 pub fn R_rbeta(a: c_double, b: c_double) -> c_double {
-    crate::dist::beta::rbeta(a, b)
+    crate::nmath::dist::beta::rbeta(a, b)
 }
 
 pub fn R_rt(df: c_double) -> c_double {
-    crate::dist::t_dist::rt(df)
+    crate::nmath::dist::t_dist::rt(df)
 }
 
 pub fn R_rf(n1: c_double, n2: c_double) -> c_double {
-    crate::dist::f_dist::rf(n1, n2)
+    crate::nmath::dist::f_dist::rf(n1, n2)
 }
 
 pub fn R_rcauchy(location: c_double, scale: c_double) -> c_double {
-    crate::dist::cauchy::rcauchy(location, scale)
+    crate::nmath::dist::cauchy::rcauchy(location, scale)
 }
 
 pub fn R_rlnorm(meanlog: c_double, sdlog: c_double) -> c_double {
-    crate::dist::lnorm::rlnorm(meanlog, sdlog)
+    crate::nmath::dist::lnorm::rlnorm(meanlog, sdlog)
 }
 
 pub fn R_rlogis(location: c_double, scale: c_double) -> c_double {
-    crate::dist::logistic::rlogis(location, scale)
+    crate::nmath::dist::logistic::rlogis(location, scale)
 }
 
 pub fn R_rweibull(shape: c_double, scale: c_double) -> c_double {
-    crate::dist::weibull::rweibull(shape, scale)
+    crate::nmath::dist::weibull::rweibull(shape, scale)
 }
 
 pub fn R_rwilcox(m: c_double, n: c_double) -> c_double {
-    crate::dist::wilcox::rwilcox(m, n)
+    crate::nmath::dist::wilcox::rwilcox(m, n)
 }
 
 pub fn R_rsignrank(n: c_double) -> c_double {
-    crate::dist::signrank::rsignrank(n)
+    crate::nmath::dist::signrank::rsignrank(n)
 }
 
 pub fn R_rnbinom(size: c_double, prob: c_double) -> c_double {
-    crate::dist::nbinom::rnbinom(size, prob)
+    crate::nmath::dist::nbinom::rnbinom(size, prob)
 }
 
 pub fn R_rnbinom_mu(size: c_double, mu: c_double) -> c_double {
-    crate::dist::nbinom::rnbinom_mu(size, mu)
+    crate::nmath::dist::nbinom::rnbinom_mu(size, mu)
 }
 
 pub fn R_rnchisq(df: c_double, ncp: c_double) -> c_double {
-    crate::dist::nchisq::rnchisq(df, ncp)
+    crate::nmath::dist::nchisq::rnchisq(df, ncp)
 }
 
 pub fn R_rhyper(nn1: c_double, nn2: c_double, kk: c_double) -> c_double {
-    crate::dist::hypergeometric::rhyper(nn1, nn2, kk)
+    crate::nmath::dist::hypergeometric::rhyper(nn1, nn2, kk)
 }
 
 pub fn R_rgeom(p: c_double) -> c_double {
-    crate::dist::geometric::rgeom(p)
+    crate::nmath::dist::geometric::rgeom(p)
 }
 
 pub fn R_unif_index(dn: c_double) -> c_double {
@@ -388,22 +388,22 @@ pub fn do_random1(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
     match primval {
         0 => {
-            let _ = random1_call(crate::dist::chisq::rchisq, &a, na, &mut x_mut, n);
+            let _ = random1_call(crate::nmath::dist::chisq::rchisq, &a, na, &mut x_mut, n);
         }
         1 => {
-            let _ = random1_call(crate::dist::exponential::rexp, &a, na, &mut x_mut, n);
+            let _ = random1_call(crate::nmath::dist::exponential::rexp, &a, na, &mut x_mut, n);
         }
         2 => {
-            let _ = random1_call(crate::dist::geometric::rgeom, &a, na, &mut x_mut, n);
+            let _ = random1_call(crate::nmath::dist::geometric::rgeom, &a, na, &mut x_mut, n);
         }
         3 => {
-            let _ = random1_call(crate::dist::poisson::rpois, &a, na, &mut x_mut, n);
+            let _ = random1_call(crate::nmath::dist::poisson::rpois, &a, na, &mut x_mut, n);
         }
         4 => {
-            let _ = random1_call(crate::dist::t_dist::rt, &a, na, &mut x_mut, n);
+            let _ = random1_call(crate::nmath::dist::t_dist::rt, &a, na, &mut x_mut, n);
         }
         5 => {
-            let _ = random1_call(crate::dist::signrank::rsignrank, &a, na, &mut x_mut, n);
+            let _ = random1_call(crate::nmath::dist::signrank::rsignrank, &a, na, &mut x_mut, n);
         }
         _ => {} // intentionally unhandled: unknown distribution type
     }
@@ -458,21 +458,21 @@ pub fn do_random2(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
     let primval = PRIMVAL_local(op);
     let dist: fn(f64, f64) -> f64 = match primval {
-        0 => crate::dist::beta::rbeta,
-        1 => crate::dist::binomial::rbinom,
-        2 => crate::dist::cauchy::rcauchy,
-        3 => crate::dist::f_dist::rf,
-        4 => crate::dist::gamma::rgamma,
-        5 => crate::dist::lnorm::rlnorm,
-        6 => crate::dist::logistic::rlogis,
-        7 => crate::dist::nbinom::rnbinom,
-        8 => crate::dist::normal::rnorm,
-        9 => crate::dist::uniform::runif,
-        10 => crate::dist::weibull::rweibull,
-        11 => crate::dist::wilcox::rwilcox,
-        12 => crate::dist::nchisq::rnchisq,
-        13 => crate::dist::nbinom::rnbinom_mu,
-        _ => crate::dist::beta::rbeta, // intentionally unhandled: unknown distribution type
+        0 => crate::nmath::dist::beta::rbeta,
+        1 => crate::nmath::dist::binomial::rbinom,
+        2 => crate::nmath::dist::cauchy::rcauchy,
+        3 => crate::nmath::dist::f_dist::rf,
+        4 => crate::nmath::dist::gamma::rgamma,
+        5 => crate::nmath::dist::lnorm::rlnorm,
+        6 => crate::nmath::dist::logistic::rlogis,
+        7 => crate::nmath::dist::nbinom::rnbinom,
+        8 => crate::nmath::dist::normal::rnorm,
+        9 => crate::nmath::dist::uniform::runif,
+        10 => crate::nmath::dist::weibull::rweibull,
+        11 => crate::nmath::dist::wilcox::rwilcox,
+        12 => crate::nmath::dist::nchisq::rnchisq,
+        13 => crate::nmath::dist::nbinom::rnbinom_mu,
+        _ => crate::nmath::dist::beta::rbeta, // intentionally unhandled: unknown distribution type
     };
     if (0..=13).contains(&primval) {
         let _ = random2_call(dist, &a, na, &b, nb, &mut x_mut, n);
@@ -541,7 +541,7 @@ pub fn do_random3(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
     if primval == 0 {
         let _ = random3_call(
-            crate::dist::hypergeometric::rhyper,
+            crate::nmath::dist::hypergeometric::rhyper,
             &a,
             na,
             &b,

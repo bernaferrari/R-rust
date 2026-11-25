@@ -6,7 +6,7 @@
 // Original (by permission) from MASS/MASS.c by W. N. Venables and B. D. Ripley
 
 use crate::rng::unif_rand;
-use crate::utils::*;
+use crate::nmath::utils::*;
 use libm::*;
 
 const RELTOL: f64 = 1e-5;

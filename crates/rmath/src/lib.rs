@@ -169,18 +169,11 @@
 #![allow(unknown_lints)]
 
 pub mod appl;
-pub mod constants;
-pub mod dist;
-pub mod dpq;
-pub mod error;
-pub mod fprec;
 pub mod rng;
-pub mod special;
 #[allow(unused_variables, unused_assignments, unused_mut)]
 pub mod tzone;
 #[allow(unused_variables, unused_assignments, unused_mut)]
 pub mod tzone_strftime;
-pub mod utils;
 pub mod xdr;
 
 pub mod android;
@@ -206,5 +199,4 @@ pub(crate) use sexp::attrib_core;
 
 #[allow(dead_code, non_camel_case_types)]
 pub mod tre;
-pub mod trio;
 pub(crate) mod unix;

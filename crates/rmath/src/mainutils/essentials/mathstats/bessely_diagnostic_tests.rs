@@ -91,15 +91,15 @@ fn checked_bessely_diagnostic_messages_and_legacy_callbacks() {
         messages.borrow_mut().clear();
         let mut work = [0.0; 501];
         assert_eq!(
-            crate::special::bessel_y::bessel_y(1.0, 500.0),
+            crate::nmath::special::bessel_y::bessel_y(1.0, 500.0),
             f64::NEG_INFINITY
         );
         assert_eq!(
-            crate::special::bessel_y::bessel_y_ex(1.0, 500.0, &mut work),
+            crate::nmath::special::bessel_y::bessel_y_ex(1.0, 500.0, &mut work),
             f64::NEG_INFINITY
         );
         assert!(
-            crate::special::bessel_y::bessel_y_positive_status(1.0, 500.0, &mut work).is_some()
+            crate::nmath::special::bessel_y::bessel_y_positive_status(1.0, 500.0, &mut work).is_some()
         );
         assert_eq!(
             &*messages.borrow(),

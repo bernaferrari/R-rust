@@ -37,8 +37,8 @@ pub fn do_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let se = s / n.sqrt();
     let stat = mean / se;
     let df = n - 1.0;
-    let p = 2.0 * crate::dist::t_dist::pt_inner(-stat.abs(), df, true, false);
-    let crit = crate::dist::t_dist::qt_inner(0.975, df, true, false);
+    let p = 2.0 * crate::nmath::dist::t_dist::pt_inner(-stat.abs(), df, true, false);
+    let crit = crate::nmath::dist::t_dist::qt_inner(0.975, df, true, false);
     let lo = mean - crit * se;
     let hi = mean + crit * se;
 
@@ -93,11 +93,11 @@ pub fn do_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn binom_two_sided_p(x: f64, n: f64, p: f64) -> f64 {
-    let dobs = crate::dist::binomial::dbinom_inner(x, n, p, false);
+    let dobs = crate::nmath::dist::binomial::dbinom_inner(x, n, p, false);
     let mut s = 0.0;
     let mut k = 0.0;
     while k <= n + 0.5 {
-        let dk = crate::dist::binomial::dbinom_inner(k, n, p, false);
+        let dk = crate::nmath::dist::binomial::dbinom_inner(k, n, p, false);
         if dk <= dobs * (1.0 + 1e-7) {
             s += dk;
         }
@@ -128,12 +128,12 @@ pub fn do_binom_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let lo = if x == 0.0 {
         0.0
     } else {
-        crate::dist::beta::qbeta_inner(alpha, x, n - x + 1.0, true, false)
+        crate::nmath::dist::beta::qbeta_inner(alpha, x, n - x + 1.0, true, false)
     };
     let hi = if x == n {
         1.0
     } else {
-        crate::dist::beta::qbeta_inner(1.0 - alpha, x + 1.0, n - x, true, false)
+        crate::nmath::dist::beta::qbeta_inner(1.0 - alpha, x + 1.0, n - x, true, false)
     };
     let statistic = Rf_ScalarReal(x);
     let _st = protect(statistic);
@@ -216,8 +216,8 @@ pub fn do_poisson_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         t = 1.0;
     }
     let m = r * t;
-    let p_less = crate::dist::poisson::ppois_inner(x, m, true, false);
-    let p_greater = crate::dist::poisson::ppois_inner(x - 1.0, m, false, false);
+    let p_less = crate::nmath::dist::poisson::ppois_inner(x, m, true, false);
+    let p_greater = crate::nmath::dist::poisson::ppois_inner(x - 1.0, m, false, false);
     let pval = match alt {
         "less" => p_less,
         "greater" => p_greater,
@@ -306,7 +306,7 @@ pub fn do_prop_trend_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         sxy += w[i] * ds * (y[i] - my);
     }
     let stat = if sxx > 0.0 { sxy * sxy / sxx } else { 0.0 };
-    let pval = crate::dist::chisq::pchisq_inner(stat, 1.0, false, false);
+    let pval = crate::nmath::dist::chisq::pchisq_inner(stat, 1.0, false, false);
     let statistic = Rf_ScalarReal(stat);
     let _st = protect(statistic);
     set_string_names(statistic, &["X-squared".to_string()]);
@@ -352,7 +352,7 @@ pub fn do_chisq_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
     }
     let df = (k - 1) as f64;
-    let pval = crate::dist::chisq::pchisq_inner(stat, df, false, false);
+    let pval = crate::nmath::dist::chisq::pchisq_inner(stat, df, false, false);
     let statistic = Rf_ScalarReal(stat);
     let _st = protect(statistic);
     set_string_names(statistic, &["X-squared".to_string()]);
@@ -407,8 +407,8 @@ pub fn do_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let b = ((n - x) - e_f).abs() - yates;
         a * a / e_s + b * b / e_f
     };
-    let pval = crate::dist::chisq::pchisq_inner(stat, 1.0, false, false);
-    let z = crate::dist::normal::qnorm5_inner(0.975, 0.0, 1.0, true, false);
+    let pval = crate::nmath::dist::chisq::pchisq_inner(stat, 1.0, false, false);
+    let z = crate::nmath::dist::normal::qnorm5_inner(0.975, 0.0, 1.0, true, false);
     let z22n = z * z / (2.0 * n);
     let pc_u = estimate + yates / n;
     let pc_l = estimate - yates / n;
@@ -512,12 +512,12 @@ pub fn do_cor_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let r = pearson_r(&x, &y);
     let df = n - 2.0;
     let stat = df.sqrt() * r / (1.0 - r * r).sqrt();
-    let p1 = crate::dist::t_dist::pt_inner(stat, df, true, false);
-    let p2 = crate::dist::t_dist::pt_inner(stat, df, false, false);
+    let p1 = crate::nmath::dist::t_dist::pt_inner(stat, df, true, false);
+    let p2 = crate::nmath::dist::t_dist::pt_inner(stat, df, false, false);
     let pval = (2.0 * p1.min(p2)).min(1.0);
     let z = r.atanh();
     let sigma = 1.0 / (n - 3.0).sqrt();
-    let qz = crate::dist::normal::qnorm5_inner(0.975, 0.0, 1.0, true, false);
+    let qz = crate::nmath::dist::normal::qnorm5_inner(0.975, 0.0, 1.0, true, false);
     let lo = (z - sigma * qz).tanh();
     let hi = (z + sigma * qz).tanh();
     let statistic = Rf_ScalarReal(stat);
@@ -602,10 +602,10 @@ pub fn do_var_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let vy = sample_var(&y);
     let est = vx / vy;
     let stat = est;
-    let p_lo = crate::dist::f_dist::pf_inner(stat, dfx, dfy, true, false);
+    let p_lo = crate::nmath::dist::f_dist::pf_inner(stat, dfx, dfy, true, false);
     let pval = (2.0 * p_lo.min(1.0 - p_lo)).min(1.0);
-    let lo = est / crate::dist::f_dist::qf_inner(0.975, dfx, dfy, true, false);
-    let hi = est / crate::dist::f_dist::qf_inner(0.025, dfx, dfy, true, false);
+    let lo = est / crate::nmath::dist::f_dist::qf_inner(0.975, dfx, dfy, true, false);
+    let hi = est / crate::nmath::dist::f_dist::qf_inner(0.025, dfx, dfy, true, false);
     let statistic = Rf_ScalarReal(stat);
     let _st = protect(statistic);
     set_string_names(statistic, &["F".to_string()]);
@@ -703,7 +703,7 @@ pub fn do_bartlett_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         1.0 + (ns.iter().map(|n| 1.0 / n).sum::<f64>() - 1.0 / n_total) / (3.0 * (k as f64 - 1.0));
     let stat = num / den;
     let df = (k as f64) - 1.0;
-    let pval = crate::dist::chisq::pchisq_inner(stat, df, false, false);
+    let pval = crate::nmath::dist::chisq::pchisq_inner(stat, df, false, false);
     let statistic = Rf_ScalarReal(stat);
     let _st = protect(statistic);
     set_string_names(statistic, &["Bartlett's K-squared".to_string()]);
@@ -801,7 +801,7 @@ pub fn do_kruskal_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let den = 1.0 - tie_adj / (n * n * n - n);
     let stat = (12.0 * sum_r2_n / (n * (n + 1.0)) - 3.0 * (n + 1.0)) / den;
     let df = (k as f64) - 1.0;
-    let pval = crate::dist::chisq::pchisq_inner(stat, df, false, false);
+    let pval = crate::nmath::dist::chisq::pchisq_inner(stat, df, false, false);
     let statistic = Rf_ScalarReal(stat);
     let _st = protect(statistic);
     set_string_names(statistic, &["Kruskal-Wallis chi-squared".to_string()]);
@@ -886,7 +886,7 @@ pub fn do_fligner_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let mut a: Vec<f64> = ranks
         .iter()
         .map(|r| {
-            crate::dist::normal::qnorm5_inner((1.0 + r / (n + 1.0)) / 2.0, 0.0, 1.0, true, false)
+            crate::nmath::dist::normal::qnorm5_inner((1.0 + r / (n + 1.0)) / 2.0, 0.0, 1.0, true, false)
         })
         .collect();
     let mean_a = a.iter().sum::<f64>() / n;
@@ -908,7 +908,7 @@ pub fn do_fligner_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         .sum::<f64>()
         / vsum;
     let df = (k as f64) - 1.0;
-    let pval = crate::dist::chisq::pchisq_inner(stat, df, false, false);
+    let pval = crate::nmath::dist::chisq::pchisq_inner(stat, df, false, false);
     let statistic = Rf_ScalarReal(stat);
     let _st = protect(statistic);
     set_string_names(statistic, &["Fligner-Killeen:med chi-squared".to_string()]);
@@ -1030,7 +1030,7 @@ pub fn do_mood_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         tstat
     };
     let zstat = (tstat - e) / v.sqrt();
-    let p = crate::dist::normal::pnorm5_inner(zstat, 0.0, 1.0, true, false);
+    let p = crate::nmath::dist::normal::pnorm5_inner(zstat, 0.0, 1.0, true, false);
     let pval = (2.0 * p.min(1.0 - p)).min(1.0);
     let statistic = Rf_ScalarReal(zstat);
     let _st = protect(statistic);
@@ -1110,7 +1110,7 @@ pub fn do_ansari_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             / (ntot - 1.0);
         (stat - m * mean_a, (m * n * var_a / ntot).sqrt())
     };
-    let p = crate::dist::normal::pnorm5_inner(zz / sigma, 0.0, 1.0, true, false);
+    let p = crate::nmath::dist::normal::pnorm5_inner(zz / sigma, 0.0, 1.0, true, false);
     let pval = (2.0 * p.min(1.0 - p)).min(1.0);
     let statistic = Rf_ScalarReal(stat);
     let _st = protect(statistic);

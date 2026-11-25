@@ -1,5 +1,5 @@
 use crate::comparisons::*;
-use rmath::dist::wilcox::*;
+use rmath::nmath::dist::wilcox::*;
 
 pub fn run_tests() -> Result<(), String> {
     // dwilcox tests

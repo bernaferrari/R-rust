@@ -2,7 +2,7 @@
 // Unix socket operations used by the utils socket wrappers.
 
 use crate::sexp::memory_ext::R_alloc;
-use crate::special::mlutils::REprintf;
+use crate::nmath::special::mlutils::REprintf;
 use core::ffi::{c_char, c_int, c_void};
 use libc::size_t;
 

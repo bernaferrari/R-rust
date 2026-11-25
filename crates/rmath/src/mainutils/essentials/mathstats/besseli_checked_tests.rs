@@ -546,7 +546,7 @@ fn besseli_reflection_rounding_signed_zero_and_missing_neighbors() {
                 f64::from_bits((-1.0_f64).to_bits() + 1),
             ] {
                 for scale in [1.0, 2.0] {
-                    let expected = crate::special::bessel_i::bessel_i(x, order, scale);
+                    let expected = crate::nmath::special::bessel_i::bessel_i(x, order, scale);
                     let z = native_i(
                         &f,
                         &three(

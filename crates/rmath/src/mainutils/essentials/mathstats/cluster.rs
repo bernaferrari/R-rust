@@ -286,8 +286,8 @@ pub fn do_mauchly_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         / (288.0 * (n * pf * rho).powi(2));
     let z = -n * rho * logw;
     let fdf = pf * (pf + 1.0) / 2.0 - 1.0;
-    let pr1 = crate::dist::chisq::pchisq_inner(z, fdf, false, false);
-    let pr2 = crate::dist::chisq::pchisq_inner(z, fdf + 4.0, false, false);
+    let pr1 = crate::nmath::dist::chisq::pchisq_inner(z, fdf, false, false);
+    let pr2 = crate::nmath::dist::chisq::pchisq_inner(z, fdf + 4.0, false, false);
     let pval = pr1 + w2 * (pr2 - pr1);
     let stat = Rf_ScalarReal(w);
     let _s = protect(stat);

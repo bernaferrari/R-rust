@@ -25,7 +25,7 @@ pub fn do_mcnemar_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         a12 - a21
     };
     let stat = if off > 0.0 { y * y / off } else { 0.0 };
-    let pval = crate::dist::chisq::pchisq_inner(stat, 1.0, false, false);
+    let pval = crate::nmath::dist::chisq::pchisq_inner(stat, 1.0, false, false);
     let method = if correct && (a12 - a21).abs() > 0.0 {
         "McNemar's Chi-squared test with continuity correction"
     } else {
@@ -78,11 +78,11 @@ pub fn do_fisher_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let x = a11;
     let lo = 0.0_f64.max(k - n);
     let hi = k.min(m);
-    let dobs = crate::dist::hypergeometric::dhyper_inner(x, m, n, k, false);
+    let dobs = crate::nmath::dist::hypergeometric::dhyper_inner(x, m, n, k, false);
     let mut pval = 0.0;
     let mut t = lo;
     while t <= hi + 0.5 {
-        let dt = crate::dist::hypergeometric::dhyper_inner(t, m, n, k, false);
+        let dt = crate::nmath::dist::hypergeometric::dhyper_inner(t, m, n, k, false);
         if dt <= dobs * (1.0 + 1e-7) {
             pval += dt;
         }
@@ -176,7 +176,7 @@ pub fn do_friedman_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     let denom = (n * k * (k + 1)) as f64 - tie_sum / (k as f64 - 1.0);
     let stat = if denom > 0.0 { 12.0 * ss / denom } else { 0.0 };
     let df = (k - 1) as f64;
-    let pval = crate::dist::chisq::pchisq_inner(stat, df, false, false);
+    let pval = crate::nmath::dist::chisq::pchisq_inner(stat, df, false, false);
     let statistic = Rf_ScalarReal(stat);
     let _st = protect(statistic);
     set_string_names(statistic, &["Friedman chi-squared".to_string()]);
@@ -271,7 +271,7 @@ pub fn do_quade_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     };
     let df1 = (k - 1) as f64;
     let df2 = ((b - 1) * (k - 1)) as f64;
-    let pval = crate::dist::f_dist::pf_inner(stat, df1, df2, false, false);
+    let pval = crate::nmath::dist::f_dist::pf_inner(stat, df1, df2, false, false);
     let statistic = Rf_ScalarReal(stat);
     let _st = protect(statistic);
     set_string_names(statistic, &["Quade F".to_string()]);
@@ -348,7 +348,7 @@ pub fn do_mantelhaen_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     } else {
         0.0
     };
-    let pval = crate::dist::chisq::pchisq_inner(stat, 1.0, false, false);
+    let pval = crate::nmath::dist::chisq::pchisq_inner(stat, 1.0, false, false);
     let estimate = if s_offd > 0.0 {
         s_diag / s_offd
     } else {
@@ -457,7 +457,7 @@ pub fn do_pairwise_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         for j in 0..i {
             let se = pooled * (1.0 / ns[i] + 1.0 / ns[j]).sqrt();
             let t = (means[i] - means[j]) / se;
-            let p = 2.0 * crate::dist::t_dist::pt_inner(-t.abs(), total_df, true, false);
+            let p = 2.0 * crate::nmath::dist::t_dist::pt_inner(-t.abs(), total_df, true, false);
             raw.push(p);
         }
     }
@@ -515,7 +515,7 @@ fn prop_test_two(x1: f64, n1: f64, x2: f64, n2: f64) -> f64 {
         + ((n1 - x1 - e12).abs() - yates).powi(2) / e12
         + ((x2 - e21).abs() - yates).powi(2) / e21
         + ((n2 - x2 - e22).abs() - yates).powi(2) / e22;
-    crate::dist::chisq::pchisq_inner(stat, 1.0, false, false)
+    crate::nmath::dist::chisq::pchisq_inner(stat, 1.0, false, false)
 }
 
 /// GNU `pairwise.prop.test(x, n)` with Holm.
@@ -642,7 +642,7 @@ fn wilcox_two_asymp(x: &[f64], y: &[f64]) -> f64 {
         z -= z.signum() * 0.5;
     }
     z /= sigma;
-    let p = crate::dist::normal::pnorm5_inner(z, 0.0, 1.0, true, false);
+    let p = crate::nmath::dist::normal::pnorm5_inner(z, 0.0, 1.0, true, false);
     (2.0 * p.min(1.0 - p)).min(1.0)
 }
 

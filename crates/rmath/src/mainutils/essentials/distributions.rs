@@ -404,7 +404,7 @@ pub fn do_dnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(0.0), Some(1.0)]);
         let log_p = dpq_flag(&slots, &filled, 3, false);
         dpq_evaluate(call, &ops, false, log_p, &mut |v, _, lp| {
-            crate::dist::normal::dnorm4_inner(v[0], v[1], v[2], lp)
+            crate::nmath::dist::normal::dnorm4_inner(v[0], v[1], v[2], lp)
         })
     }
 }
@@ -417,7 +417,7 @@ pub fn do_pnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
         let log_p = dpq_flag(&slots, &filled, 4, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::normal::pnorm5_inner(v[0], v[1], v[2], lt, lp)
+            crate::nmath::dist::normal::pnorm5_inner(v[0], v[1], v[2], lt, lp)
         })
     }
 }
@@ -430,7 +430,7 @@ pub fn do_qnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
         let log_p = dpq_flag(&slots, &filled, 4, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::normal::qnorm5_inner(v[0], v[1], v[2], lt, lp)
+            crate::nmath::dist::normal::qnorm5_inner(v[0], v[1], v[2], lt, lp)
         })
     }
 }
@@ -442,7 +442,7 @@ pub fn do_dpois(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(1.0)]);
         let log_p = dpq_flag(&slots, &filled, 2, false);
         dpq_evaluate(call, &ops, false, log_p, &mut |v, _, lp| {
-            crate::dist::poisson::dpois_inner(v[0], v[1], lp)
+            crate::nmath::dist::poisson::dpois_inner(v[0], v[1], lp)
         })
     }
 }
@@ -455,7 +455,7 @@ pub fn do_ppois(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 2, true);
         let log_p = dpq_flag(&slots, &filled, 3, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::poisson::ppois_inner(v[0], v[1], lt, lp)
+            crate::nmath::dist::poisson::ppois_inner(v[0], v[1], lt, lp)
         })
     }
 }
@@ -468,7 +468,7 @@ pub fn do_qpois(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 2, true);
         let log_p = dpq_flag(&slots, &filled, 3, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::poisson::qpois_inner(v[0], v[1], lt, lp)
+            crate::nmath::dist::poisson::qpois_inner(v[0], v[1], lt, lp)
         })
     }
 }
@@ -480,7 +480,7 @@ pub fn do_dbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, None]);
         let log_p = dpq_flag(&slots, &filled, 3, false);
         dpq_evaluate(call, &ops, false, log_p, &mut |v, _, lp| {
-            crate::dist::binomial::dbinom_inner(v[0], v[1], v[2], lp)
+            crate::nmath::dist::binomial::dbinom_inner(v[0], v[1], v[2], lp)
         })
     }
 }
@@ -493,7 +493,7 @@ pub fn do_pbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
         let log_p = dpq_flag(&slots, &filled, 4, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::binomial::pbinom_inner(v[0], v[1], v[2], lt, lp)
+            crate::nmath::dist::binomial::pbinom_inner(v[0], v[1], v[2], lt, lp)
         })
     }
 }
@@ -506,7 +506,7 @@ pub fn do_qbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
         let log_p = dpq_flag(&slots, &filled, 4, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::binomial::qbinom_inner(v[0], v[1], v[2], lt, lp)
+            crate::nmath::dist::binomial::qbinom_inner(v[0], v[1], v[2], lt, lp)
         })
     }
 }
@@ -522,7 +522,7 @@ pub fn do_dexp(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let scale = dpq_inverse(&slots, &filled, 1).unwrap_or(DpqOperand::Default(1.0));
         let log_p = dpq_flag(&slots, &filled, 2, false);
         dpq_evaluate(call, &[x, scale], false, log_p, &mut |v, _, lp| {
-            crate::dist::exponential::dexp_inner(v[0], v[1], lp)
+            crate::nmath::dist::exponential::dexp_inner(v[0], v[1], lp)
         })
     }
 }
@@ -537,7 +537,7 @@ pub fn do_pexp(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 2, true);
         let log_p = dpq_flag(&slots, &filled, 3, false);
         dpq_evaluate(call, &[q, scale], lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::exponential::pexp_inner(v[0], v[1], lt, lp)
+            crate::nmath::dist::exponential::pexp_inner(v[0], v[1], lt, lp)
         })
     }
 }
@@ -552,7 +552,7 @@ pub fn do_qexp(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 2, true);
         let log_p = dpq_flag(&slots, &filled, 3, false);
         dpq_evaluate(call, &[p, scale], lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::exponential::qexp_inner(v[0], v[1], lt, lp)
+            crate::nmath::dist::exponential::qexp_inner(v[0], v[1], lt, lp)
         })
     }
 }
@@ -601,7 +601,7 @@ pub fn do_dgamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let scale = gamma_scale_operand(&slots, &filled, &names);
         let log_p = dpq_flag(&slots, &filled, 4, false);
         dpq_evaluate(call, &[x, shape, scale], false, log_p, &mut |v, _, lp| {
-            crate::dist::gamma::dgamma_inner(v[0], v[1], v[2], lp)
+            crate::nmath::dist::gamma::dgamma_inner(v[0], v[1], v[2], lp)
         })
     }
 }
@@ -622,7 +622,7 @@ pub fn do_pgamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             &[q, shape, scale],
             lower_tail,
             log_p,
-            &mut |v, lt, lp| crate::dist::gamma::pgamma_inner(v[0], v[1], v[2], lt, lp),
+            &mut |v, lt, lp| crate::nmath::dist::gamma::pgamma_inner(v[0], v[1], v[2], lt, lp),
         )
     }
 }
@@ -643,7 +643,7 @@ pub fn do_qgamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             &[p, shape, scale],
             lower_tail,
             log_p,
-            &mut |v, lt, lp| crate::dist::gamma::qgamma_inner(v[0], v[1], v[2], lt, lp),
+            &mut |v, lt, lp| crate::nmath::dist::gamma::qgamma_inner(v[0], v[1], v[2], lt, lp),
         )
     }
 }
@@ -655,7 +655,7 @@ pub fn do_dbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, None]);
         let log_p = dpq_flag(&slots, &filled, 3, false);
         dpq_evaluate(call, &ops, false, log_p, &mut |v, _, lp| {
-            crate::dist::beta::dbeta_inner(v[0], v[1], v[2], lp)
+            crate::nmath::dist::beta::dbeta_inner(v[0], v[1], v[2], lp)
         })
     }
 }
@@ -668,7 +668,7 @@ pub fn do_pbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
         let log_p = dpq_flag(&slots, &filled, 4, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::beta::pbeta_inner(v[0], v[1], v[2], lt, lp)
+            crate::nmath::dist::beta::pbeta_inner(v[0], v[1], v[2], lt, lp)
         })
     }
 }
@@ -681,7 +681,7 @@ pub fn do_qbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
         let log_p = dpq_flag(&slots, &filled, 4, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::beta::qbeta_inner(v[0], v[1], v[2], lt, lp)
+            crate::nmath::dist::beta::qbeta_inner(v[0], v[1], v[2], lt, lp)
         })
     }
 }
@@ -698,11 +698,11 @@ pub fn do_dt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if dpq_supplied(&slots, &filled, 2) {
             let ncp = dpq_num(&slots, &filled, &names, 2, None, DPQ_NONNUM);
             dpq_evaluate(call, &[x, df, ncp], false, log_p, &mut |v, _, lp| {
-                crate::dist::nt_dist::dnt_inner(v[0], v[1], v[2], lp)
+                crate::nmath::dist::nt_dist::dnt_inner(v[0], v[1], v[2], lp)
             })
         } else {
             dpq_evaluate(call, &[x, df], false, log_p, &mut |v, _, lp| {
-                crate::dist::t_dist::dt_inner(v[0], v[1], lp)
+                crate::nmath::dist::t_dist::dt_inner(v[0], v[1], lp)
             })
         }
     }
@@ -720,11 +720,11 @@ pub fn do_pt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if dpq_supplied(&slots, &filled, 2) {
             let ncp = dpq_num(&slots, &filled, &names, 2, None, DPQ_NONNUM);
             dpq_evaluate(call, &[q, df, ncp], lower_tail, log_p, &mut |v, lt, lp| {
-                crate::dist::nt_dist::pnt_inner(v[0], v[1], v[2], lt, lp)
+                crate::nmath::dist::nt_dist::pnt_inner(v[0], v[1], v[2], lt, lp)
             })
         } else {
             dpq_evaluate(call, &[q, df], lower_tail, log_p, &mut |v, lt, lp| {
-                crate::dist::t_dist::pt_inner(v[0], v[1], lt, lp)
+                crate::nmath::dist::t_dist::pt_inner(v[0], v[1], lt, lp)
             })
         }
     }
@@ -742,11 +742,11 @@ pub fn do_qt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if dpq_supplied(&slots, &filled, 2) {
             let ncp = dpq_num(&slots, &filled, &names, 2, None, DPQ_NONNUM);
             dpq_evaluate(call, &[p, df, ncp], lower_tail, log_p, &mut |v, lt, lp| {
-                crate::dist::nt_dist::qnt_inner(v[0], v[1], v[2], lt, lp)
+                crate::nmath::dist::nt_dist::qnt_inner(v[0], v[1], v[2], lt, lp)
             })
         } else {
             dpq_evaluate(call, &[p, df], lower_tail, log_p, &mut |v, lt, lp| {
-                crate::dist::t_dist::qt_inner(v[0], v[1], lt, lp)
+                crate::nmath::dist::t_dist::qt_inner(v[0], v[1], lt, lp)
             })
         }
     }
@@ -759,7 +759,7 @@ pub fn do_dchisq(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let (ops, slots, filled) = dpq_operands(args, &names, &[None]);
         let log_p = dpq_flag(&slots, &filled, 2, false);
         dpq_evaluate(call, &ops, false, log_p, &mut |v, _, lp| {
-            crate::dist::chisq::dchisq_inner(v[0], v[1], lp)
+            crate::nmath::dist::chisq::dchisq_inner(v[0], v[1], lp)
         })
     }
 }
@@ -772,7 +772,7 @@ pub fn do_pchisq(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 2, true);
         let log_p = dpq_flag(&slots, &filled, 3, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::chisq::pchisq_inner(v[0], v[1], lt, lp)
+            crate::nmath::dist::chisq::pchisq_inner(v[0], v[1], lt, lp)
         })
     }
 }
@@ -785,7 +785,7 @@ pub fn do_qchisq(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 2, true);
         let log_p = dpq_flag(&slots, &filled, 3, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::chisq::qchisq_inner(v[0], v[1], lt, lp)
+            crate::nmath::dist::chisq::qchisq_inner(v[0], v[1], lt, lp)
         })
     }
 }
@@ -797,7 +797,7 @@ pub fn do_dcauchy(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(0.0), Some(1.0)]);
         let log_p = dpq_flag(&slots, &filled, 3, false);
         dpq_evaluate(call, &ops, false, log_p, &mut |v, _, lp| {
-            crate::dist::cauchy::dcauchy_inner(v[0], v[1], v[2], lp)
+            crate::nmath::dist::cauchy::dcauchy_inner(v[0], v[1], v[2], lp)
         })
     }
 }
@@ -810,7 +810,7 @@ pub fn do_pcauchy(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
         let log_p = dpq_flag(&slots, &filled, 4, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::cauchy::pcauchy_inner(v[0], v[1], v[2], lt, lp)
+            crate::nmath::dist::cauchy::pcauchy_inner(v[0], v[1], v[2], lt, lp)
         })
     }
 }
@@ -823,7 +823,7 @@ pub fn do_qcauchy(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
         let log_p = dpq_flag(&slots, &filled, 4, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::cauchy::qcauchy_inner(v[0], v[1], v[2], lt, lp)
+            crate::nmath::dist::cauchy::qcauchy_inner(v[0], v[1], v[2], lt, lp)
         })
     }
 }
@@ -835,7 +835,7 @@ pub fn do_dweibull(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, Some(1.0)]);
         let log_p = dpq_flag(&slots, &filled, 3, false);
         dpq_evaluate(call, &ops, false, log_p, &mut |v, _, lp| {
-            crate::dist::weibull::dweibull_inner(v[0], v[1], v[2], lp)
+            crate::nmath::dist::weibull::dweibull_inner(v[0], v[1], v[2], lp)
         })
     }
 }
@@ -848,7 +848,7 @@ pub fn do_pweibull(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
         let log_p = dpq_flag(&slots, &filled, 4, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::weibull::pweibull_inner(v[0], v[1], v[2], lt, lp)
+            crate::nmath::dist::weibull::pweibull_inner(v[0], v[1], v[2], lt, lp)
         })
     }
 }
@@ -861,7 +861,7 @@ pub fn do_qweibull(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
         let log_p = dpq_flag(&slots, &filled, 4, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::weibull::qweibull_inner(v[0], v[1], v[2], lt, lp)
+            crate::nmath::dist::weibull::qweibull_inner(v[0], v[1], v[2], lt, lp)
         })
     }
 }
@@ -878,11 +878,11 @@ pub fn do_df(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if dpq_supplied(&slots, &filled, 3) {
             let ncp = dpq_num(&slots, &filled, &names, 3, None, DPQ_NONNUM);
             dpq_evaluate(call, &[x, df1, df2, ncp], false, log_p, &mut |v, _, lp| {
-                crate::dist::nf_dist::dnf_inner(v[0], v[1], v[2], v[3], lp)
+                crate::nmath::dist::nf_dist::dnf_inner(v[0], v[1], v[2], v[3], lp)
             })
         } else {
             dpq_evaluate(call, &[x, df1, df2], false, log_p, &mut |v, _, lp| {
-                crate::dist::f_dist::df_inner(v[0], v[1], v[2], lp)
+                crate::nmath::dist::f_dist::df_inner(v[0], v[1], v[2], lp)
             })
         }
     }
@@ -905,11 +905,11 @@ pub fn do_pf(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 &[q, df1, df2, ncp],
                 lower_tail,
                 log_p,
-                &mut |v, lt, lp| crate::dist::nf_dist::pnf_inner(v[0], v[1], v[2], v[3], lt, lp),
+                &mut |v, lt, lp| crate::nmath::dist::nf_dist::pnf_inner(v[0], v[1], v[2], v[3], lt, lp),
             )
         } else {
             dpq_evaluate(call, &[q, df1, df2], lower_tail, log_p, &mut |v, lt, lp| {
-                crate::dist::f_dist::pf_inner(v[0], v[1], v[2], lt, lp)
+                crate::nmath::dist::f_dist::pf_inner(v[0], v[1], v[2], lt, lp)
             })
         }
     }
@@ -932,11 +932,11 @@ pub fn do_qf(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 &[p, df1, df2, ncp],
                 lower_tail,
                 log_p,
-                &mut |v, lt, lp| crate::dist::nf_dist::qnf_inner(v[0], v[1], v[2], v[3], lt, lp),
+                &mut |v, lt, lp| crate::nmath::dist::nf_dist::qnf_inner(v[0], v[1], v[2], v[3], lt, lp),
             )
         } else {
             dpq_evaluate(call, &[p, df1, df2], lower_tail, log_p, &mut |v, lt, lp| {
-                crate::dist::f_dist::qf_inner(v[0], v[1], v[2], lt, lp)
+                crate::nmath::dist::f_dist::qf_inner(v[0], v[1], v[2], lt, lp)
             })
         }
     }
@@ -949,7 +949,7 @@ pub fn do_dunif(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(0.0), Some(1.0)]);
         let log_p = dpq_flag(&slots, &filled, 3, false);
         dpq_evaluate(call, &ops, false, log_p, &mut |v, _, lp| {
-            crate::dist::uniform::dunif_inner(v[0], v[1], v[2], lp)
+            crate::nmath::dist::uniform::dunif_inner(v[0], v[1], v[2], lp)
         })
     }
 }
@@ -962,7 +962,7 @@ pub fn do_punif(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
         let log_p = dpq_flag(&slots, &filled, 4, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::uniform::punif_inner(v[0], v[1], v[2], lt, lp)
+            crate::nmath::dist::uniform::punif_inner(v[0], v[1], v[2], lt, lp)
         })
     }
 }
@@ -975,7 +975,7 @@ pub fn do_qunif(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
         let log_p = dpq_flag(&slots, &filled, 4, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::uniform::qunif_inner(v[0], v[1], v[2], lt, lp)
+            crate::nmath::dist::uniform::qunif_inner(v[0], v[1], v[2], lt, lp)
         })
     }
 }
@@ -997,12 +997,12 @@ pub fn do_dnbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let mu = dpq_num(&slots, &filled, &names, 3, None, DPQ_NONNUM);
             dpq_evaluate(call, &[x, size, mu], false, log_p, &mut |v, _, lp| {
                 let prob = v[1] / (v[1] + v[2]);
-                crate::dist::nbinom::dnbinom_inner(v[0], v[1], prob, lp)
+                crate::nmath::dist::nbinom::dnbinom_inner(v[0], v[1], prob, lp)
             })
         } else {
             let prob = dpq_num(&slots, &filled, &names, 2, None, DPQ_NONNUM);
             dpq_evaluate(call, &[x, size, prob], false, log_p, &mut |v, _, lp| {
-                crate::dist::nbinom::dnbinom_inner(v[0], v[1], v[2], lp)
+                crate::nmath::dist::nbinom::dnbinom_inner(v[0], v[1], v[2], lp)
             })
         }
     }
@@ -1024,7 +1024,7 @@ pub fn do_pnbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let mu = dpq_num(&slots, &filled, &names, 3, None, DPQ_NONNUM);
             dpq_evaluate(call, &[q, size, mu], lower_tail, log_p, &mut |v, lt, lp| {
                 let prob = v[1] / (v[1] + v[2]);
-                crate::dist::nbinom::pnbinom_inner(v[0], v[1], prob, lt, lp)
+                crate::nmath::dist::nbinom::pnbinom_inner(v[0], v[1], prob, lt, lp)
             })
         } else {
             let prob = dpq_num(&slots, &filled, &names, 2, None, DPQ_NONNUM);
@@ -1033,7 +1033,7 @@ pub fn do_pnbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 &[q, size, prob],
                 lower_tail,
                 log_p,
-                &mut |v, lt, lp| crate::dist::nbinom::pnbinom_inner(v[0], v[1], v[2], lt, lp),
+                &mut |v, lt, lp| crate::nmath::dist::nbinom::pnbinom_inner(v[0], v[1], v[2], lt, lp),
             )
         }
     }
@@ -1055,7 +1055,7 @@ pub fn do_qnbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let mu = dpq_num(&slots, &filled, &names, 3, None, DPQ_NONNUM);
             dpq_evaluate(call, &[p, size, mu], lower_tail, log_p, &mut |v, lt, lp| {
                 let prob = v[1] / (v[1] + v[2]);
-                crate::dist::nbinom::qnbinom_inner(v[0], v[1], prob, lt, lp)
+                crate::nmath::dist::nbinom::qnbinom_inner(v[0], v[1], prob, lt, lp)
             })
         } else {
             let prob = dpq_num(&slots, &filled, &names, 2, None, DPQ_NONNUM);
@@ -1064,7 +1064,7 @@ pub fn do_qnbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 &[p, size, prob],
                 lower_tail,
                 log_p,
-                &mut |v, lt, lp| crate::dist::nbinom::qnbinom_inner(v[0], v[1], v[2], lt, lp),
+                &mut |v, lt, lp| crate::nmath::dist::nbinom::qnbinom_inner(v[0], v[1], v[2], lt, lp),
             )
         }
     }
@@ -1077,7 +1077,7 @@ pub fn do_dgeom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let (ops, slots, filled) = dpq_operands(args, &names, &[None]);
         let log_p = dpq_flag(&slots, &filled, 2, false);
         dpq_evaluate(call, &ops, false, log_p, &mut |v, _, lp| {
-            crate::dist::geometric::dgeom_inner(v[0], v[1], lp)
+            crate::nmath::dist::geometric::dgeom_inner(v[0], v[1], lp)
         })
     }
 }
@@ -1090,7 +1090,7 @@ pub fn do_pgeom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 2, true);
         let log_p = dpq_flag(&slots, &filled, 3, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::geometric::pgeom_inner(v[0], v[1], lt, lp)
+            crate::nmath::dist::geometric::pgeom_inner(v[0], v[1], lt, lp)
         })
     }
 }
@@ -1103,7 +1103,7 @@ pub fn do_qgeom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 2, true);
         let log_p = dpq_flag(&slots, &filled, 3, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::geometric::qgeom_inner(v[0], v[1], lt, lp)
+            crate::nmath::dist::geometric::qgeom_inner(v[0], v[1], lt, lp)
         })
     }
 }
@@ -1119,7 +1119,7 @@ pub fn do_dlnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(0.0), Some(1.0)]);
         let log_p = dpq_flag(&slots, &filled, 3, false);
         dpq_evaluate(call, &ops, false, log_p, &mut |v, _, lp| {
-            crate::dist::lnorm::dlnorm_inner(v[0], v[1], v[2], lp)
+            crate::nmath::dist::lnorm::dlnorm_inner(v[0], v[1], v[2], lp)
         })
     }
 }
@@ -1132,7 +1132,7 @@ pub fn do_plnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
         let log_p = dpq_flag(&slots, &filled, 4, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::lnorm::plnorm_inner(v[0], v[1], v[2], lt, lp)
+            crate::nmath::dist::lnorm::plnorm_inner(v[0], v[1], v[2], lt, lp)
         })
     }
 }
@@ -1145,7 +1145,7 @@ pub fn do_qlnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
         let log_p = dpq_flag(&slots, &filled, 4, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::lnorm::qlnorm_inner(v[0], v[1], v[2], lt, lp)
+            crate::nmath::dist::lnorm::qlnorm_inner(v[0], v[1], v[2], lt, lp)
         })
     }
 }
@@ -1157,7 +1157,7 @@ pub fn do_dlogis(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(0.0), Some(1.0)]);
         let log_p = dpq_flag(&slots, &filled, 3, false);
         dpq_evaluate(call, &ops, false, log_p, &mut |v, _, lp| {
-            crate::dist::logistic::dlogis_inner(v[0], v[1], v[2], lp)
+            crate::nmath::dist::logistic::dlogis_inner(v[0], v[1], v[2], lp)
         })
     }
 }
@@ -1170,7 +1170,7 @@ pub fn do_plogis(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
         let log_p = dpq_flag(&slots, &filled, 4, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::logistic::plogis_inner(v[0], v[1], v[2], lt, lp)
+            crate::nmath::dist::logistic::plogis_inner(v[0], v[1], v[2], lt, lp)
         })
     }
 }
@@ -1183,7 +1183,7 @@ pub fn do_qlogis(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
         let log_p = dpq_flag(&slots, &filled, 4, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::logistic::qlogis_inner(v[0], v[1], v[2], lt, lp)
+            crate::nmath::dist::logistic::qlogis_inner(v[0], v[1], v[2], lt, lp)
         })
     }
 }
@@ -1195,7 +1195,7 @@ pub fn do_dsignrank(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let (ops, slots, filled) = dpq_operands(args, &names, &[None]);
         let log_p = dpq_flag(&slots, &filled, 2, false);
         dpq_evaluate(call, &ops, false, log_p, &mut |v, _, lp| {
-            crate::dist::signrank::dsignrank_inner(v[0], v[1], lp)
+            crate::nmath::dist::signrank::dsignrank_inner(v[0], v[1], lp)
         })
     }
 }
@@ -1208,7 +1208,7 @@ pub fn do_psignrank(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 2, true);
         let log_p = dpq_flag(&slots, &filled, 3, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::signrank::psignrank_inner(v[0], v[1], lt, lp)
+            crate::nmath::dist::signrank::psignrank_inner(v[0], v[1], lt, lp)
         })
     }
 }
@@ -1221,7 +1221,7 @@ pub fn do_qsignrank(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 2, true);
         let log_p = dpq_flag(&slots, &filled, 3, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::signrank::qsignrank_inner(v[0], v[1], lt, lp)
+            crate::nmath::dist::signrank::qsignrank_inner(v[0], v[1], lt, lp)
         })
     }
 }
@@ -1233,7 +1233,7 @@ pub fn do_dwilcox(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, None]);
         let log_p = dpq_flag(&slots, &filled, 3, false);
         dpq_evaluate(call, &ops, false, log_p, &mut |v, _, lp| {
-            crate::dist::wilcox::dwilcox_inner(v[0], v[1], v[2], lp)
+            crate::nmath::dist::wilcox::dwilcox_inner(v[0], v[1], v[2], lp)
         })
     }
 }
@@ -1246,7 +1246,7 @@ pub fn do_pwilcox(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
         let log_p = dpq_flag(&slots, &filled, 4, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::wilcox::pwilcox_inner(v[0], v[1], v[2], lt, lp)
+            crate::nmath::dist::wilcox::pwilcox_inner(v[0], v[1], v[2], lt, lp)
         })
     }
 }
@@ -1259,7 +1259,7 @@ pub fn do_qwilcox(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
         let log_p = dpq_flag(&slots, &filled, 4, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::wilcox::qwilcox_inner(v[0], v[1], v[2], lt, lp)
+            crate::nmath::dist::wilcox::qwilcox_inner(v[0], v[1], v[2], lt, lp)
         })
     }
 }
@@ -1271,7 +1271,7 @@ pub fn do_dhyper(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, None, None]);
         let log_p = dpq_flag(&slots, &filled, 4, false);
         dpq_evaluate(call, &ops, false, log_p, &mut |v, _, lp| {
-            crate::dist::hypergeometric::dhyper_inner(v[0], v[1], v[2], v[3], lp)
+            crate::nmath::dist::hypergeometric::dhyper_inner(v[0], v[1], v[2], v[3], lp)
         })
     }
 }
@@ -1284,7 +1284,7 @@ pub fn do_phyper(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 4, true);
         let log_p = dpq_flag(&slots, &filled, 5, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::hypergeometric::phyper_inner(v[0], v[1], v[2], v[3], lt, lp)
+            crate::nmath::dist::hypergeometric::phyper_inner(v[0], v[1], v[2], v[3], lt, lp)
         })
     }
 }
@@ -1297,7 +1297,7 @@ pub fn do_qhyper(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 4, true);
         let log_p = dpq_flag(&slots, &filled, 5, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::hypergeometric::qhyper_inner(v[0], v[1], v[2], v[3], lt, lp)
+            crate::nmath::dist::hypergeometric::qhyper_inner(v[0], v[1], v[2], v[3], lt, lp)
         })
     }
 }
@@ -1311,7 +1311,7 @@ pub fn do_ptukey(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 4, true);
         let log_p = dpq_flag(&slots, &filled, 5, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::tukey::ptukey_inner(v[0], v[3], v[1], v[2], lt, lp)
+            crate::nmath::dist::tukey::ptukey_inner(v[0], v[3], v[1], v[2], lt, lp)
         })
     }
 }
@@ -1325,7 +1325,7 @@ pub fn do_qtukey(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lower_tail = dpq_flag(&slots, &filled, 4, true);
         let log_p = dpq_flag(&slots, &filled, 5, false);
         dpq_evaluate(call, &ops, lower_tail, log_p, &mut |v, lt, lp| {
-            crate::dist::tukey::qtukey_inner(v[0], v[3], v[1], v[2], lt, lp)
+            crate::nmath::dist::tukey::qtukey_inner(v[0], v[3], v[1], v[2], lt, lp)
         })
     }
 }
@@ -1384,9 +1384,9 @@ pub fn do_dmultinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let k = xv.len().min(pv.len());
     let n_total: f64 = xv.iter().sum();
 
-    let mut log_prob = crate::special::gamma::lgammafn(n_total + 1.0);
+    let mut log_prob = crate::nmath::special::gamma::lgammafn(n_total + 1.0);
     for i in 0..k {
-        log_prob -= crate::special::gamma::lgammafn(xv[i] + 1.0);
+        log_prob -= crate::nmath::special::gamma::lgammafn(xv[i] + 1.0);
         if pv[i] > 0.0 {
             log_prob += xv[i] * pv[i].ln();
         } else if xv[i] > 0.0 {

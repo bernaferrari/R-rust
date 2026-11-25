@@ -456,7 +456,7 @@ fn test_dnorm_vs_r() {
         (5.0, 5.0, 2.0, 0.19947114020071622),
     ];
     for (x, mean, sd, expected) in cases {
-        let got = crate::dist::normal::dnorm(x, mean, sd, 0);
+        let got = crate::nmath::dist::normal::dnorm(x, mean, sd, 0);
         assert!(
             (got - expected).abs() < 1e-10,
             "dnorm({x}, {mean}, {sd}): expected {expected}, got {got}"
@@ -477,7 +477,7 @@ fn test_pnorm_vs_r() {
     ];
     for (x, mean, sd, lower, expected) in cases {
         let lt = if lower { 1 } else { 0 };
-        let got = crate::dist::normal::pnorm(x, mean, sd, lt, 0);
+        let got = crate::nmath::dist::normal::pnorm(x, mean, sd, lt, 0);
         assert!(
             (got - expected).abs() < 1e-10,
             "pnorm({x}, {mean}, {sd}, lower={lower}): expected {expected}, got {got}"
@@ -497,7 +497,7 @@ fn test_qnorm_vs_r() {
     ];
     for (p, mean, sd, lower, expected) in cases {
         let lt = if lower { 1 } else { 0 };
-        let got = crate::dist::normal::qnorm(p, mean, sd, lt, 0);
+        let got = crate::nmath::dist::normal::qnorm(p, mean, sd, lt, 0);
         assert!(
             (got - expected).abs() < 1e-8,
             "qnorm({p}, {mean}, {sd}, lower={lower}): expected {expected}, got {got}"
@@ -515,7 +515,7 @@ fn test_bessel_j_vs_r() {
         (10.0, 0.0, -0.2459357644513483),
     ];
     for (x, alpha, expected) in cases {
-        let got = crate::special::bessel::bessel_j(x, alpha);
+        let got = crate::nmath::special::bessel::bessel_j(x, alpha);
         assert!(
             (got - expected).abs() < 1e-8,
             "bessel_j({x}, {alpha}): expected {expected}, got {got}"
@@ -533,7 +533,7 @@ fn test_bessel_i_vs_r() {
         (5.0, 0.0, 27.23987182360446),
     ];
     for (x, alpha, expected) in cases {
-        let got = crate::special::bessel::bessel_i(x, alpha, false);
+        let got = crate::nmath::special::bessel::bessel_i(x, alpha, false);
         assert!(
             (got - expected).abs() < 1e-8,
             "bessel_i({x}, {alpha}): expected {expected}, got {got}"
@@ -551,7 +551,7 @@ fn test_bessel_y_vs_r() {
         (10.0, 0.0, 0.05567116252151137),
     ];
     for (x, alpha, expected) in cases {
-        let got = crate::special::bessel::bessel_y(x, alpha);
+        let got = crate::nmath::special::bessel::bessel_y(x, alpha);
         assert!(
             (got - expected).abs() < 1e-8,
             "bessel_y({x}, {alpha}): expected {expected}, got {got}"

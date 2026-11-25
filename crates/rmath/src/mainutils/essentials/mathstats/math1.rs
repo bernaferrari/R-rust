@@ -433,22 +433,22 @@ fn apply_binary_scalar_fn(
 }
 
 pub fn do_lgamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    apply_unary_scalar_fn(call, op, args, rho, crate::special::gamma::lgammafn)
+    apply_unary_scalar_fn(call, op, args, rho, crate::nmath::special::gamma::lgammafn)
 }
 
 /// R's `gamma(x)` — gamma function.
 pub fn do_gamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    apply_unary_scalar_fn(call, op, args, rho, crate::special::gamma::gammafn)
+    apply_unary_scalar_fn(call, op, args, rho, crate::nmath::special::gamma::gammafn)
 }
 
 /// R's `digamma(x)` — digamma (psi) function.
 pub fn do_digamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    apply_unary_scalar_fn(call, op, args, rho, crate::special::polygamma::digamma)
+    apply_unary_scalar_fn(call, op, args, rho, crate::nmath::special::polygamma::digamma)
 }
 
 /// R's `trigamma(x)` — trigamma function.
 pub fn do_trigamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    apply_unary_scalar_fn(call, op, args, rho, crate::special::polygamma::trigamma)
+    apply_unary_scalar_fn(call, op, args, rho, crate::nmath::special::polygamma::trigamma)
 }
 
 /// R's `psigamma(x, deriv)` — polygamma function (deriv-th derivative of psi).
@@ -476,7 +476,7 @@ pub fn do_beta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 message: "unimplemented complex function".to_string(),
             });
         }
-        apply_binary_scalar_fn(call, a, b, |x, y| crate::special::lbeta::lbeta(x, y).exp())
+        apply_binary_scalar_fn(call, a, b, |x, y| crate::nmath::special::lbeta::lbeta(x, y).exp())
     }
 }
 
@@ -493,7 +493,7 @@ pub fn do_lbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 message: "unimplemented complex function".to_string(),
             });
         }
-        apply_binary_scalar_fn(call, a, b, crate::special::lbeta::lbeta)
+        apply_binary_scalar_fn(call, a, b, crate::nmath::special::lbeta::lbeta)
     }
 }
 
@@ -721,7 +721,7 @@ pub fn do_lchoose(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub fn do_factorial(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     {
         apply_unary_scalar_fn(call, op, args, rho, |v| {
-            crate::special::gamma::gammafn(v + 1.0)
+            crate::nmath::special::gamma::gammafn(v + 1.0)
         })
     }
 }
@@ -730,7 +730,7 @@ pub fn do_factorial(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 pub fn do_lfactorial(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     {
         apply_unary_scalar_fn(call, op, args, rho, |v| {
-            crate::special::gamma::lgammafn(v + 1.0)
+            crate::nmath::special::gamma::lgammafn(v + 1.0)
         })
     }
 }

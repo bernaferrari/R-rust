@@ -681,7 +681,7 @@ pub fn do_summary_manova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     let fstat = (tmp2 / tmp1 * v) / (s - v);
     let num_df = s * tmp1;
     let den_df = s * tmp2;
-    let pval = crate::dist::f_dist::pf_inner(fstat, num_df, den_df, false, false);
+    let pval = crate::nmath::dist::f_dist::pf_inner(fstat, num_df, den_df, false, false);
     let stats = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), 2, 6);
     let _st = protect(stats);
     set_real_checked(stats, 0, 1.0);
@@ -792,7 +792,7 @@ pub fn do_tukey_hsd(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let _t = protect(tab);
     let rn = Rf_allocVector3(SEXPTYPE::STRSXP, npairs as i64);
     let _rn = protect(rn);
-    let qcrit = crate::dist::tukey::qtukey_inner(0.95, 1.0, k as f64, df, true, false);
+    let qcrit = crate::nmath::dist::tukey::qtukey_inner(0.95, 1.0, k as f64, df, true, false);
     let mut row = 0usize;
     for j in 1..k {
         for i in 0..j {
@@ -808,7 +808,7 @@ pub fn do_tukey_hsd(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             } else {
                 0.0
             };
-            let padj = 1.0 - crate::dist::tukey::ptukey_inner(qobs, 1.0, k as f64, df, true, false);
+            let padj = 1.0 - crate::nmath::dist::tukey::ptukey_inner(qobs, 1.0, k as f64, df, true, false);
             set_real_checked(tab, (row) as R_xlen_t, diff);
             set_real_checked(tab, (row + npairs) as R_xlen_t, diff - crit);
             set_real_checked(tab, (row + 2 * npairs) as R_xlen_t, diff + crit);

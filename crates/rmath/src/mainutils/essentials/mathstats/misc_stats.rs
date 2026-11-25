@@ -48,7 +48,7 @@ pub fn do_qqnorm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         set_real_checked(
             xv,
             (i) as R_xlen_t,
-            crate::dist::normal::qnorm5_inner(p, 0.0, 1.0, true, false),
+            crate::nmath::dist::normal::qnorm5_inner(p, 0.0, 1.0, true, false),
         );
         set_real_checked(yv, (i) as R_xlen_t, ys[i]);
     }
@@ -79,8 +79,8 @@ pub fn do_qqline(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let y1 = quantile_type7(&vals, 0.25);
         let y2 = quantile_type7(&vals, 0.75);
-        let x1 = crate::dist::normal::qnorm5_inner(0.25, 0.0, 1.0, true, false);
-        let x2 = crate::dist::normal::qnorm5_inner(0.75, 0.0, 1.0, true, false);
+        let x1 = crate::nmath::dist::normal::qnorm5_inner(0.25, 0.0, 1.0, true, false);
+        let x2 = crate::nmath::dist::normal::qnorm5_inner(0.75, 0.0, 1.0, true, false);
         let slope = (y2 - y1) / (x2 - x1);
         let int = y1 - slope * x1;
 

@@ -16,15 +16,15 @@ pub(super) fn positive(
     access.require_active()?;
     // Pinned GNU has no large-order guard. Retain the existing defensive port
     // cap and its single callback; do not claim GNU cap-message fidelity.
-    if x < 0.0 || order > crate::special::bessel_i::MAX_ALPHA_I {
-        let value = crate::special::bessel_i::bessel_i_ex(x, order, scaling, &mut []);
+    if x < 0.0 || order > crate::nmath::special::bessel_i::MAX_ALPHA_I {
+        let value = crate::nmath::special::bessel_i::bessel_i_ex(x, order, scaling, &mut []);
         access.require_active()?;
         return Ok(value);
     }
     let result = if let Some(contiguous) = work.contiguous_mut() {
-        crate::special::bessel_i::bessel_i_positive_status(x, order, scaling, contiguous)
+        crate::nmath::special::bessel_i::bessel_i_positive_status(x, order, scaling, contiguous)
     } else {
-        crate::special::bessel_i::bessel_i_positive_status_with_workspace(x, order, scaling, work)
+        crate::nmath::special::bessel_i::bessel_i_positive_status_with_workspace(x, order, scaling, work)
     }
     .ok_or_else(|| SexpError::EvaluationFailed {
         message: "invalid checked Bessel I calculation".into(),

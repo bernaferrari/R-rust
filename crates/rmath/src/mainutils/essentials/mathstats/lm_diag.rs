@@ -530,8 +530,8 @@ pub fn do_summary_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     };
     let t0 = b0 / se0;
     let t1 = b1 / se1;
-    let p0 = 2.0 * crate::dist::t_dist::pt_inner(-t0.abs(), df, true, false);
-    let p1 = 2.0 * crate::dist::t_dist::pt_inner(-t1.abs(), df, true, false);
+    let p0 = 2.0 * crate::nmath::dist::t_dist::pt_inner(-t0.abs(), df, true, false);
+    let p1 = 2.0 * crate::nmath::dist::t_dist::pt_inner(-t1.abs(), df, true, false);
     let r2 = if sst > 0.0 { 1.0 - sse / sst } else { f64::NAN };
     let adj = if n > 2 {
         1.0 - (1.0 - r2) * ((n as f64 - 1.0) / df)
@@ -651,7 +651,7 @@ pub fn do_anova_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let msr = ssr / df_mod;
     let mse = if df_res > 0.0 { sse / df_res } else { f64::NAN };
     let f = if mse > 0.0 { msr / mse } else { f64::NAN };
-    let p = crate::dist::f_dist::pf_inner(f, df_mod, df_res, false, false);
+    let p = crate::nmath::dist::f_dist::pf_inner(f, df_mod, df_res, false, false);
     let tab = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
     let _t = protect(tab);
     let dfcol = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
@@ -985,9 +985,9 @@ pub fn do_power_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         cell = CDR(cell);
     }
     let nu = (n - 1.0).max(1e-7) * 2.0;
-    let qu = crate::dist::t_dist::qt_inner(sig_level / 2.0, nu, false, false);
+    let qu = crate::nmath::dist::t_dist::qt_inner(sig_level / 2.0, nu, false, false);
     let ncp = (n / 2.0).sqrt() * delta.abs() / sd;
-    let power = crate::dist::nt_dist::pnt_inner(qu, nu, ncp, false, false);
+    let power = crate::nmath::dist::nt_dist::pnt_inner(qu, nu, ncp, false, false);
     let result = Rf_allocVector3(SEXPTYPE::VECSXP, 8);
     let _r = protect(result);
     SET_VECTOR_ELT(result, 0, Rf_ScalarReal(n));
@@ -1054,10 +1054,10 @@ pub fn do_power_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         }
         cell = CDR(cell);
     }
-    let qu = crate::dist::normal::qnorm5_inner(sig_level / 2.0, 0.0, 1.0, false, false);
+    let qu = crate::nmath::dist::normal::qnorm5_inner(sig_level / 2.0, 0.0, 1.0, false, false);
     let num = n.sqrt() * (p1 - p2).abs() - qu * ((p1 + p2) * (1.0 - (p1 + p2) / 2.0)).sqrt();
     let den = (p1 * (1.0 - p1) + p2 * (1.0 - p2)).sqrt();
-    let power = crate::dist::normal::pnorm5_inner(num / den, 0.0, 1.0, true, false);
+    let power = crate::nmath::dist::normal::pnorm5_inner(num / den, 0.0, 1.0, true, false);
     let result = Rf_allocVector3(SEXPTYPE::VECSXP, 8);
     let _r = protect(result);
     SET_VECTOR_ELT(result, 0, Rf_ScalarReal(n));
@@ -1129,8 +1129,8 @@ pub fn do_power_anova_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     let df1 = groups - 1.0;
     let df2 = (n - 1.0) * groups;
     let lambda = df1 * n * (between_var / within_var);
-    let crit = crate::dist::f_dist::qf_inner(sig_level, df1, df2, false, false);
-    let power = crate::dist::nf_dist::pnf_inner(crit, df1, df2, lambda, false, false);
+    let crit = crate::nmath::dist::f_dist::qf_inner(sig_level, df1, df2, false, false);
+    let power = crate::nmath::dist::nf_dist::pnf_inner(crit, df1, df2, lambda, false, false);
     let result = Rf_allocVector3(SEXPTYPE::VECSXP, 8);
     let _r = protect(result);
     SET_VECTOR_ELT(result, 0, Rf_ScalarReal(groups));

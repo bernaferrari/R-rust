@@ -135,11 +135,11 @@ fn checked_besseli_diagnostic_status_messages_and_legacy_controls() {
             WarningScope::new(move |message| seen.borrow_mut().push(message.to_owned()));
         let mut work = [0.0; 501];
         assert!(
-            crate::special::bessel_i::bessel_i_positive_status(1.0, 500.0, 1.0, &mut work)
+            crate::nmath::special::bessel_i::bessel_i_positive_status(1.0, 500.0, 1.0, &mut work)
                 .is_some()
         );
         assert_eq!(
-            crate::special::bessel_i::bessel_i_positive_status(1.0, 0.0, 3.0, &mut [0.0])
+            crate::nmath::special::bessel_i::bessel_i_positive_status(1.0, 0.0, 3.0, &mut [0.0])
                 .unwrap()
                 .ncalc,
             -1
@@ -149,7 +149,7 @@ fn checked_besseli_diagnostic_status_messages_and_legacy_controls() {
             "status computation never invokes handlers"
         );
         assert_eq!(
-            crate::special::bessel_i::bessel_i_ex(1.0, 500.0, 1.0, &mut work),
+            crate::nmath::special::bessel_i::bessel_i_ex(1.0, 500.0, 1.0, &mut work),
             0.0
         );
         assert_eq!(
@@ -196,7 +196,7 @@ fn checked_besseli_diagnostic_status_messages_and_legacy_controls() {
         // No GNU cap is claimed: preserve the existing bounded defensive port
         // callback sequence, including reflected I->K, under a small unchanged cap.
         for order in [1e9 + 1.0, -2e9 - 0.25] {
-            let legacy = crate::special::bessel_i::bessel_i_ex(1.0, order, 1.0, &mut []);
+            let legacy = crate::nmath::special::bessel_i::bessel_i_ex(1.0, order, 1.0, &mut []);
             assert!(legacy.is_nan());
             let expected = messages.borrow().clone();
             messages.borrow_mut().clear();

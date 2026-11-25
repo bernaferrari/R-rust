@@ -80,7 +80,7 @@ fn checked_besselk_grows_after_warning_changes_later_order() {
         let result = native_k(&f, &arguments, false);
         assert_eq!(observed.get(), 1);
         assert_eq!(orders.try_real_elt(1).unwrap(), 20.0);
-        let expected = crate::special::bessel_k::bessel_k(1.0, 20.0, 1.0);
+        let expected = crate::nmath::special::bessel_k::bessel_k(1.0, 20.0, 1.0);
         assert_eq!(
             result.try_real_elt(1).unwrap().to_bits(),
             expected.to_bits()

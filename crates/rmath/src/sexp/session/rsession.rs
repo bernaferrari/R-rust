@@ -1455,7 +1455,7 @@ impl RSession {
 
     /// Generate a standard normal random number using this session's RNG state.
     pub fn norm_rand(&self) -> f64 {
-        self.with_active(crate::dist::normal::norm_rand)
+        self.with_active(crate::nmath::dist::normal::norm_rand)
     }
 
     /// Run a closure while capturing this session's stdout/stderr buffers.

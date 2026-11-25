@@ -10,7 +10,7 @@
 
 use std::os::raw::c_int;
 
-use crate::utils::*;
+use crate::nmath::utils::*;
 use libm::*;
 
 // =====================================================================

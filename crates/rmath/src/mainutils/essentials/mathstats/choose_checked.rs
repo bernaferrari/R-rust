@@ -93,8 +93,8 @@ pub(super) fn evaluate(
                         access.require_active()?;
                         check()?;
                         match operation {
-                            Operation::LogChoose => crate::special::choose::lchoose(x, k),
-                            _ => crate::special::choose::choose(x, k),
+                            Operation::LogChoose => crate::nmath::special::choose::lchoose(x, k),
+                            _ => crate::nmath::special::choose::choose(x, k),
                         }
                     }
                     Operation::BesselJ
@@ -107,14 +107,14 @@ pub(super) fn evaluate(
                         // Negative fractional Y reflects through J as well.
                         // Integer Y orders only require Y's smaller limit.
                         let limit = match operation {
-                            Operation::BesselK => crate::special::bessel_k::MAX_ALPHA_K,
+                            Operation::BesselK => crate::nmath::special::bessel_k::MAX_ALPHA_K,
                             Operation::BesselI if k < 0.0 && k != k.floor() => {
-                                crate::special::bessel_i::MAX_ALPHA_I
-                                    .max(crate::special::bessel_k::MAX_ALPHA_K)
+                                crate::nmath::special::bessel_i::MAX_ALPHA_I
+                                    .max(crate::nmath::special::bessel_k::MAX_ALPHA_K)
                             }
-                            Operation::BesselI => crate::special::bessel_i::MAX_ALPHA_I,
+                            Operation::BesselI => crate::nmath::special::bessel_i::MAX_ALPHA_I,
                             Operation::BesselY if k >= 0.0 || k == k.floor() => {
-                                crate::special::bessel_y::MAX_ALPHA_Y
+                                crate::nmath::special::bessel_y::MAX_ALPHA_Y
                             }
                             _ => super::bessel_j_checked::MAX_ORDER,
                         };
@@ -161,7 +161,7 @@ pub(super) fn evaluate(
                                     )?;
                                     access.require_active()?;
                                     check()?;
-                                    value * crate::special::cospi::cospi(k)
+                                    value * crate::nmath::special::cospi::cospi(k)
                                 };
                                 let reflected = if k == k.floor() {
                                     0.0
@@ -174,7 +174,7 @@ pub(super) fn evaluate(
                                             .as_mut()
                                             .expect("J/Y workspace initialized")
                                             .values(),
-                                    )? * crate::special::cospi::sinpi(k)
+                                    )? * crate::nmath::special::cospi::sinpi(k)
                                 };
                                 access.require_active()?;
                                 check()?;
@@ -215,7 +215,7 @@ pub(super) fn evaluate(
                                             2.0 * libm::exp(-2.0 * x)
                                         }
                                         / std::f64::consts::PI
-                                        * crate::special::cospi::sinpi(-k)
+                                        * crate::nmath::special::cospi::sinpi(-k)
                                 };
                                 first + reflected
                             }
@@ -252,7 +252,7 @@ pub(super) fn evaluate(
                                     )?;
                                     access.require_active()?;
                                     check()?;
-                                    value * crate::special::cospi::cospi(k)
+                                    value * crate::nmath::special::cospi::cospi(k)
                                 };
                                 let reflected = if k == k.floor() {
                                     0.0
@@ -268,7 +268,7 @@ pub(super) fn evaluate(
                                     )?;
                                     access.require_active()?;
                                     check()?;
-                                    value * crate::special::cospi::sinpi(k)
+                                    value * crate::nmath::special::cospi::sinpi(k)
                                 };
                                 first - reflected
                             }
@@ -297,13 +297,13 @@ pub(super) fn evaluate(
                     }
                     Operation::PsiGamma => {
                         let n = crate::nmath::utils::r_forceint(k) as i32;
-                        if n > crate::special::polygamma::PSIGAMMA_MAX_DERIV {
+                        if n > crate::nmath::special::polygamma::PSIGAMMA_MAX_DERIV {
                             warn_derivative_limit(n);
                             access.require_active()?;
                             check()?;
                             f64::NAN
                         } else {
-                            crate::special::polygamma::psigamma(x, k)
+                            crate::nmath::special::polygamma::psigamma(x, k)
                         }
                     }
                 };
@@ -384,7 +384,7 @@ fn warn_derivative_limit(n: i32) {
     write!(
         &mut message,
         "deriv = {n} > {} (= n_max)",
-        crate::special::polygamma::PSIGAMMA_MAX_DERIV
+        crate::nmath::special::polygamma::PSIGAMMA_MAX_DERIV
     )
     .expect("bounded derivative warning");
     crate::nmath::error::ml_warn_message(

@@ -1,5 +1,5 @@
 use crate::comparisons::*;
-use rmath::dist::lnorm::*;
+use rmath::nmath::dist::lnorm::*;
 use rmath::rng::*;
 
 pub fn run_tests() -> Result<(), String> {

@@ -122,7 +122,7 @@ fn besselj_reflection_rounding_zero_missing_and_order() {
                 f64::from_bits((-1.0_f64).to_bits() + 1),
                 -500.25,
             ] {
-                let expected = crate::special::bessel_j::bessel_j(x, order);
+                let expected = crate::nmath::special::bessel_j::bessel_j(x, order);
                 let z = native_j(&f, &args(&f, &reals(&f, &[x]), &reals(&f, &[order])), false)
                     .try_real_elt(0)
                     .unwrap();

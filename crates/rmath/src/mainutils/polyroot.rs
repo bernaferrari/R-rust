@@ -242,7 +242,7 @@ pub fn cpoly_scale(
             s
         };
         let ell = (sc.ln() / base.ln() + 0.5) as i32;
-        crate::special::mlutils::R_pow_di(base, ell)
+        crate::nmath::special::mlutils::R_pow_di(base, ell)
     } else {
         1.0
     }

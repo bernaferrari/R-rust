@@ -20,7 +20,7 @@ use crate::sexp::ffi::{NA_INTEGER, SEXP};
 // NaN / NA utilities
 // ---------------------------------------------------------------------------
 
-// R_isnancpp is provided by crate::special::mlutils; re-export for local use.
+// R_isnancpp is provided by crate::nmath::special::mlutils; re-export for local use.
 // ---------------------------------------------------------------------------
 // NA-aware comparison utilities  (ported from sort.c)
 // ---------------------------------------------------------------------------
@@ -766,7 +766,7 @@ pub unsafe fn R_qsort_c(v: *mut f64, ii: usize, jj: usize) {
 
 #[cfg(test)]
 mod tests {
-    use crate::special::mlutils::*;
+    use crate::nmath::special::mlutils::*;
 
     use super::*;
 

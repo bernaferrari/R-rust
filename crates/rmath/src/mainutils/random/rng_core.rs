@@ -661,7 +661,7 @@ pub fn r_unif_rand() -> f64 {
 // ---------------------------------------------------------------------------
 
 pub fn r_norm_rand() -> f64 {
-    use crate::dist::normal::qnorm5_inner;
+    use crate::nmath::dist::normal::qnorm5_inner;
     const BIG: f64 = 134217728.0; /* 2^27 */
 
     let kind = with_rng_state(|rng| rng.n01_kind.get());

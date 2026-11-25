@@ -1,5 +1,5 @@
 use crate::comparisons::*;
-use rmath::dist::signrank::*;
+use rmath::nmath::dist::signrank::*;
 
 pub fn run_tests() -> Result<(), String> {
     // dsignrank tests

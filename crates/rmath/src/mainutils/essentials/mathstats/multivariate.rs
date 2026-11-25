@@ -87,7 +87,7 @@ pub fn do_density(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         set_real_checked(xgrid, (i) as R_xlen_t, t);
         let mut acc = 0.0;
         for &xi in &xs {
-            acc += crate::dist::normal::dnorm(t - xi, 0.0, bw, 0);
+            acc += crate::nmath::dist::normal::dnorm(t - xi, 0.0, bw, 0);
         }
         set_real_checked(ygrid, (i) as R_xlen_t, acc / nx);
     }

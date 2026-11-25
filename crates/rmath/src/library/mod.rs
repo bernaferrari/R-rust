@@ -21,9 +21,6 @@ pub mod parallel;
 pub mod splines;
 #[allow(unused_imports, unused_variables, unused_mut, unused_assignments)]
 pub mod stats;
-#[cfg(not(target_os = "android"))]
-#[allow(unused_imports)]
-pub mod tcltk;
 #[allow(unused_imports, unused_mut, unused_assignments)]
 pub mod tools;
 #[allow(unused_imports, unused_variables, unused_mut, unused_assignments)]

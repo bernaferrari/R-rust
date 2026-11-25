@@ -556,18 +556,18 @@ impl RSession {
                 .unwrap_or_else(|| crate::sexp::context::r_error("session is closed"));
             let result = crate::sexp::owner::with_runtime(&owner, |access| {
                 let limit = match func {
-                    RBesselFunc::J => crate::special::bessel_j::MAX_ALPHA_J,
-                    RBesselFunc::Y => crate::special::bessel_y::MAX_ALPHA_Y,
-                    RBesselFunc::I => crate::special::bessel_i::MAX_ALPHA_I,
-                    RBesselFunc::K => crate::special::bessel_k::MAX_ALPHA_K,
+                    RBesselFunc::J => crate::nmath::special::bessel_j::MAX_ALPHA_J,
+                    RBesselFunc::Y => crate::nmath::special::bessel_y::MAX_ALPHA_Y,
+                    RBesselFunc::I => crate::nmath::special::bessel_i::MAX_ALPHA_I,
+                    RBesselFunc::K => crate::nmath::special::bessel_k::MAX_ALPHA_K,
                 };
                 // These paths return before the scalar kernels allocate work.
                 if x.is_nan() || alpha.is_nan() || x < 0.0 || alpha.abs() > limit {
                     return Ok(match func {
-                        RBesselFunc::J => crate::special::bessel::bessel_j(x, alpha),
-                        RBesselFunc::Y => crate::special::bessel::bessel_y(x, alpha),
-                        RBesselFunc::I => crate::special::bessel::bessel_i(x, alpha, scaled),
-                        RBesselFunc::K => crate::special::bessel::bessel_k(x, alpha, scaled),
+                        RBesselFunc::J => crate::nmath::special::bessel::bessel_j(x, alpha),
+                        RBesselFunc::Y => crate::nmath::special::bessel::bessel_y(x, alpha),
+                        RBesselFunc::I => crate::nmath::special::bessel::bessel_i(x, alpha, scaled),
+                        RBesselFunc::K => crate::nmath::special::bessel::bessel_k(x, alpha, scaled),
                     });
                 }
                 let length = (alpha.abs().floor() as usize)
@@ -580,16 +580,16 @@ impl RSession {
                 let scaling = if scaled { 2.0 } else { 1.0 };
                 let value = match func {
                     RBesselFunc::J => {
-                        crate::special::bessel_j::bessel_j_ex(x, alpha, workspace.values())
+                        crate::nmath::special::bessel_j::bessel_j_ex(x, alpha, workspace.values())
                     }
                     RBesselFunc::Y => {
-                        crate::special::bessel_y::bessel_y_ex(x, alpha, workspace.values())
+                        crate::nmath::special::bessel_y::bessel_y_ex(x, alpha, workspace.values())
                     }
                     RBesselFunc::I => {
-                        crate::special::bessel_i::bessel_i_ex(x, alpha, scaling, workspace.values())
+                        crate::nmath::special::bessel_i::bessel_i_ex(x, alpha, scaling, workspace.values())
                     }
                     RBesselFunc::K => {
-                        crate::special::bessel_k::bessel_k_ex(x, alpha, scaling, workspace.values())
+                        crate::nmath::special::bessel_k::bessel_k_ex(x, alpha, scaling, workspace.values())
                     }
                 };
                 access.require_active()?;
@@ -604,11 +604,11 @@ impl RSession {
 
     /// Probability density function for the normal distribution.
     pub fn dnorm(&self, x: f64, mean: f64, sd: f64, log: bool) -> f64 {
-        crate::dist::normal::dnorm(x, mean, sd, if log { 1 } else { 0 })
+        crate::nmath::dist::normal::dnorm(x, mean, sd, if log { 1 } else { 0 })
     }
 
     pub fn pnorm(&self, x: f64, mean: f64, sd: f64, lower_tail: bool, log: bool) -> f64 {
-        crate::dist::normal::pnorm(
+        crate::nmath::dist::normal::pnorm(
             x,
             mean,
             sd,
@@ -618,7 +618,7 @@ impl RSession {
     }
 
     pub fn qnorm(&self, p: f64, mean: f64, sd: f64, lower_tail: bool, log: bool) -> f64 {
-        crate::dist::normal::qnorm(
+        crate::nmath::dist::normal::qnorm(
             p,
             mean,
             sd,

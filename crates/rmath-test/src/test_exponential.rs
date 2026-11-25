@@ -1,6 +1,6 @@
 use crate::comparisons::*;
 
-use rmath::dist::exponential::*;
+use rmath::nmath::dist::exponential::*;
 use rmath::rng::*;
 
 pub fn run_tests() -> Result<(), String> {

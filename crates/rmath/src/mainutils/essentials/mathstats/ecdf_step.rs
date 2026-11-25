@@ -286,7 +286,7 @@ pub fn do_stat_anova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if !vals.is_finite() || vals < 0.0 {
                 NA_REAL
             } else {
-                crate::dist::chisq::pchisq_inner(vals, df.abs(), false, false)
+                crate::nmath::dist::chisq::pchisq_inner(vals, df.abs(), false, false)
             }
         };
         set_real_checked(result, (r + nc * nr) as R_xlen_t, p);
@@ -635,11 +635,11 @@ pub fn do_rfree1way(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     if delta.abs() > 0.0 {
         for i in n as usize..ntot as usize {
             let u = real_elt_checked(y, (i) as R_xlen_t);
-            let q = crate::dist::logistic::qlogis_inner(u, 0.0, 1.0, true, false);
+            let q = crate::nmath::dist::logistic::qlogis_inner(u, 0.0, 1.0, true, false);
             set_real_checked(
                 y,
                 (i) as R_xlen_t,
-                crate::dist::logistic::plogis_inner(q + delta, 0.0, 1.0, true, false),
+                crate::nmath::dist::logistic::plogis_inner(q + delta, 0.0, 1.0, true, false),
             );
         }
     }

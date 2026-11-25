@@ -706,7 +706,7 @@ pub fn do_signif(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 if digits_is_na || v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                     NA_REAL
                 } else {
-                    crate::fprec::fprec(v, digits)
+                    crate::nmath::fprec::fprec(v, digits)
                 },
             ));
         }

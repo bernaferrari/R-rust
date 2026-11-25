@@ -1,5 +1,5 @@
 use crate::comparisons::*;
-use rmath::dist::nbinom::*;
+use rmath::nmath::dist::nbinom::*;
 
 pub fn run_tests() -> Result<(), String> {
     // dnbinom tests

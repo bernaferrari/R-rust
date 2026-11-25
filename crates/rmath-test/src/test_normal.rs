@@ -1,5 +1,5 @@
 use crate::comparisons::*;
-use rmath::dist::normal::*;
+use rmath::nmath::dist::normal::*;
 
 pub fn run_tests() -> Result<(), String> {
     // dnorm tests

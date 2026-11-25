@@ -2,7 +2,7 @@
 //
 // Pretty Intervals: constructs "pretty" values which cover the given interval.
 
-use crate::utils::*;
+use crate::nmath::utils::*;
 use libm::*;
 
 const ROUNDING_EPS: f64 = 1e-10;

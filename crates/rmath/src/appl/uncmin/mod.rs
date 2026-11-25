@@ -8,7 +8,7 @@
 //
 // ../appl/uncmin.f -- translated by f2c, hand edited by Saikat DebRoy.
 // Contains: fdhess, optif9, and all supporting routines.
-use crate::utils::{fmax2, fmin2};
+use crate::nmath::utils::{fmax2, fmin2};
 
 // =====================================================================
 // Math helpers: GNU uncmin.c calls the system libm (pow via Rexp10, hypot,

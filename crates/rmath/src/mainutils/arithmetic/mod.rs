@@ -18,17 +18,17 @@
 
 use std::os::raw::c_int;
 
-use crate::fprec::{fprec, fround};
+use crate::nmath::fprec::{fprec, fround};
 use crate::sexp::accessors::{CADR, CAR, COMPLEX, INTEGER, LOGICAL, NAMED, REAL, TYPEOF, XLENGTH};
 use crate::sexp::constructors::{Rf_allocVector3, Rf_length};
 use crate::sexp::ffi::Rcomplex;
 use crate::sexp::ffi::{NA_INTEGER, SEXP, SEXPTYPE};
 use crate::sexp::object::{SessionNodeFactory, Sexp, SexpMut, SexpResult};
 use crate::sexp::protect::protect;
-use crate::special::cospi::{cospi, sinpi, tanpi};
-use crate::special::gamma::{gammafn, lgammafn};
-use crate::special::mlutils::R_pow;
-use crate::special::polygamma::{digamma, trigamma};
+use crate::nmath::special::cospi::{cospi, sinpi, tanpi};
+use crate::nmath::special::gamma::{gammafn, lgammafn};
+use crate::nmath::special::mlutils::R_pow;
+use crate::nmath::special::polygamma::{digamma, trigamma};
 
 // ---------------------------------------------------------------------------
 // Constants

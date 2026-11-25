@@ -1,6 +1,6 @@
 use crate::comparisons::*;
 
-use rmath::dist::uniform::*;
+use rmath::nmath::dist::uniform::*;
 use rmath::rng::*;
 
 pub fn run_tests() -> Result<(), String> {

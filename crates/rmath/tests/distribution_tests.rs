@@ -1,13 +1,13 @@
 //! Integration tests for nmath distribution functions against known R reference values.
 
-use rmath::dist::beta;
-use rmath::dist::exponential;
-use rmath::dist::gamma;
-use rmath::dist::normal;
-use rmath::dist::poisson;
-use rmath::dist::t_dist;
-use rmath::dist::uniform;
-use rmath::dist::weibull;
+use rmath::nmath::dist::beta;
+use rmath::nmath::dist::exponential;
+use rmath::nmath::dist::gamma;
+use rmath::nmath::dist::normal;
+use rmath::nmath::dist::poisson;
+use rmath::nmath::dist::t_dist;
+use rmath::nmath::dist::uniform;
+use rmath::nmath::dist::weibull;
 
 // Helper for floating point comparison
 fn approx_eq(result: f64, expected: f64, tol: f64) -> bool {

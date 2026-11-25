@@ -218,7 +218,7 @@ mod tests {
                             for i in 0..segmented.length {
                                 segmented[i] = 0.0;
                             }
-                            let a = crate::special::bessel_i::bessel_i_positive_status(
+                            let a = crate::nmath::special::bessel_i::bessel_i_positive_status(
                                 x,
                                 order,
                                 scale,
@@ -226,7 +226,7 @@ mod tests {
                             )
                             .unwrap();
                             let b =
-                                crate::special::bessel_i::bessel_i_positive_status_with_workspace(
+                                crate::nmath::special::bessel_i::bessel_i_positive_status_with_workspace(
                                     x,
                                     order,
                                     scale,
@@ -241,7 +241,7 @@ mod tests {
                             for i in 0..segmented.length {
                                 segmented[i] = 0.0;
                             }
-                            let a = crate::special::bessel_k::bessel_k_positive_status(
+                            let a = crate::nmath::special::bessel_k::bessel_k_positive_status(
                                 x,
                                 order,
                                 scale,
@@ -249,7 +249,7 @@ mod tests {
                             )
                             .unwrap();
                             let b =
-                                crate::special::bessel_k::bessel_k_positive_status_with_workspace(
+                                crate::nmath::special::bessel_k::bessel_k_positive_status_with_workspace(
                                     x,
                                     order,
                                     scale,

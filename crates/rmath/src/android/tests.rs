@@ -1065,10 +1065,10 @@ fn bessel_workspace_matches_scalar_values() {
             ] {
                 for scaled in [false, true] {
                     let expected = match func {
-                        RBesselFunc::J => crate::special::bessel::bessel_j(x, alpha),
-                        RBesselFunc::Y => crate::special::bessel::bessel_y(x, alpha),
-                        RBesselFunc::I => crate::special::bessel::bessel_i(x, alpha, scaled),
-                        RBesselFunc::K => crate::special::bessel::bessel_k(x, alpha, scaled),
+                        RBesselFunc::J => crate::nmath::special::bessel::bessel_j(x, alpha),
+                        RBesselFunc::Y => crate::nmath::special::bessel::bessel_y(x, alpha),
+                        RBesselFunc::I => crate::nmath::special::bessel::bessel_i(x, alpha, scaled),
+                        RBesselFunc::K => crate::nmath::special::bessel::bessel_k(x, alpha, scaled),
                     };
                     let actual = session.bessel(func, x, alpha, scaled);
                     assert_eq!(
@@ -1147,7 +1147,7 @@ fn bessel_k_warning_reentry_keeps_session_workspace_charged() {
             let bytes = owner.with_arena(|arena| arena.workspace_bytes()).unwrap();
             EVENTS.with(|events| events.borrow_mut().push((message.to_owned(), bytes)));
             crate::sexp::gengc::full_gc();
-            assert_eq!(crate::special::bessel_j::bessel_j(0.0, 0.0), 1.0);
+            assert_eq!(crate::nmath::special::bessel_j::bessel_j(0.0, 0.0), 1.0);
             assert_eq!(
                 owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
                 bytes

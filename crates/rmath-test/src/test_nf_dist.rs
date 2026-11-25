@@ -1,5 +1,5 @@
 use crate::comparisons::*;
-use rmath::dist::nf_dist::*;
+use rmath::nmath::dist::nf_dist::*;
 
 pub fn run_tests() -> Result<(), String> {
     // dnf tests

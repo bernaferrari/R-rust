@@ -14,11 +14,11 @@ pub(super) fn positive(
 ) -> SexpResult<f64> {
     access.require_active()?;
     if x < 0.0 {
-        let value = crate::special::bessel_y::bessel_y_ex(x, order, work);
+        let value = crate::nmath::special::bessel_y::bessel_y_ex(x, order, work);
         access.require_active()?;
         return Ok(value);
     }
-    if order > crate::special::bessel_y::MAX_ALPHA_Y {
+    if order > crate::nmath::special::bessel_y::MAX_ALPHA_Y {
         let mut message = Text::new();
         write!(
             &mut message,
@@ -30,7 +30,7 @@ pub(super) fn positive(
         return Ok(f64::NAN);
     }
     let result =
-        crate::special::bessel_y::bessel_y_positive_status(x, order, work).ok_or_else(|| {
+        crate::nmath::special::bessel_y::bessel_y_positive_status(x, order, work).ok_or_else(|| {
             SexpError::EvaluationFailed {
                 message: "invalid checked Bessel Y calculation".into(),
             }

@@ -19,7 +19,7 @@ use std::os::raw::c_int;
 
 use num::Complex;
 
-use crate::fprec::fround;
+use crate::nmath::fprec::fround;
 use crate::sexp::accessors::{
     ATTRIB, CAR, CDR, COMPLEX, INTEGER, REAL, SET_ATTRIB, TYPEOF, XLENGTH,
 };
@@ -27,7 +27,7 @@ use crate::sexp::constructors::Rf_allocVector3;
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_REAL, R_FINITE, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
-use crate::special::mlutils::R_pow;
+use crate::nmath::special::mlutils::R_pow;
 
 // ---------------------------------------------------------------------------
 // Helper conversions between Rcomplex and num::Complex

@@ -377,7 +377,7 @@ fn checked_choose_leaves_shared_nmath_callers_without_new_rounding_callbacks() {
         .abs()
             < 1e-14
     );
-    assert!(crate::special::polygamma::psigamma(1.0, 101.0).is_nan());
+    assert!(crate::nmath::special::polygamma::psigamma(1.0, 101.0).is_nan());
     assert_eq!(callbacks.get(), 0);
 }
 

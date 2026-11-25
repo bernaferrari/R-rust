@@ -291,13 +291,13 @@ pub enum RBesselFunc {
 
 /// Compute `dnorm(x, mean, sd)`.
 pub fn dnorm_free(x: f64, mean: f64, sd: f64) -> f64 {
-    crate::dist::normal::dnorm(x, mean, sd, 0)
+    crate::nmath::dist::normal::dnorm(x, mean, sd, 0)
 }
 
 pub fn pnorm_free(x: f64, mean: f64, sd: f64) -> f64 {
-    crate::dist::normal::pnorm(x, mean, sd, 1, 0)
+    crate::nmath::dist::normal::pnorm(x, mean, sd, 1, 0)
 }
 
 pub fn qnorm_free(p: f64, mean: f64, sd: f64) -> f64 {
-    crate::dist::normal::qnorm(p, mean, sd, 1, 0)
+    crate::nmath::dist::normal::qnorm(p, mean, sd, 1, 0)
 }

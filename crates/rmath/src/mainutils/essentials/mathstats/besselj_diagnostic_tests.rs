@@ -120,10 +120,10 @@ fn checked_besselj_diagnostic_messages_cap_and_legacy_callbacks() {
             WarningScope::new(move |message| seen.borrow_mut().push(message.to_owned()));
         let mut work = [0.0; 501];
         assert!(
-            crate::special::bessel_j::bessel_j_positive_status(1.0, 500.0, &mut work).is_some()
+            crate::nmath::special::bessel_j::bessel_j_positive_status(1.0, 500.0, &mut work).is_some()
         );
         assert!(
-            crate::special::bessel_j::bessel_j_positive_status(f64::INFINITY, 500.0, &mut work)
+            crate::nmath::special::bessel_j::bessel_j_positive_status(f64::INFINITY, 500.0, &mut work)
                 .unwrap()
                 .large_x
         );
@@ -132,7 +132,7 @@ fn checked_besselj_diagnostic_messages_cap_and_legacy_callbacks() {
             "status API never invokes hooks"
         );
         assert_eq!(
-            crate::special::bessel_j::bessel_j_ex(1.0, 500.0, &mut work),
+            crate::nmath::special::bessel_j::bessel_j_ex(1.0, 500.0, &mut work),
             0.0
         );
         assert_eq!(

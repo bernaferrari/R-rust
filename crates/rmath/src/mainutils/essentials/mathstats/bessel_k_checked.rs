@@ -16,15 +16,15 @@ pub(super) fn positive(
 ) -> SexpResult<f64> {
     access.require_active()?;
     let magnitude = order.abs();
-    if x < 0.0 || magnitude > crate::special::bessel_k::MAX_ALPHA_K {
-        let value = crate::special::bessel_k::bessel_k_ex(x, order, scaling, &mut []);
+    if x < 0.0 || magnitude > crate::nmath::special::bessel_k::MAX_ALPHA_K {
+        let value = crate::nmath::special::bessel_k::bessel_k_ex(x, order, scaling, &mut []);
         access.require_active()?;
         return Ok(value);
     }
     let result = if let Some(contiguous) = work.contiguous_mut() {
-        crate::special::bessel_k::bessel_k_positive_status(x, magnitude, scaling, contiguous)
+        crate::nmath::special::bessel_k::bessel_k_positive_status(x, magnitude, scaling, contiguous)
     } else {
-        crate::special::bessel_k::bessel_k_positive_status_with_workspace(
+        crate::nmath::special::bessel_k::bessel_k_positive_status_with_workspace(
             x, magnitude, scaling, work,
         )
     }

@@ -1,5 +1,5 @@
 use crate::comparisons::*;
-use rmath::dist::nchisq::*;
+use rmath::nmath::dist::nchisq::*;
 
 pub fn run_tests() -> Result<(), String> {
     // dnchisq tests

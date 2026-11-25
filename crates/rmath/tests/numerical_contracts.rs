@@ -14,7 +14,7 @@
 
 use rmath::appl::linpack_qr::{dqrdc2, dqrsl};
 use rmath::appl::optim::{OptimFn, OptimGr, vmmin};
-use rmath::dist::beta::{dbeta_inner, pbeta_inner, qbeta_inner};
+use rmath::nmath::dist::beta::{dbeta_inner, pbeta_inner, qbeta_inner};
 
 // ===========================================================================
 // qbeta / pbeta / dbeta: tail behavior, d/p/q identity, extremes, endpoints

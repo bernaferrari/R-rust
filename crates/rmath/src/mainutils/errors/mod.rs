@@ -40,7 +40,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::protect::protect;
 #[allow(unused_imports)]
 use crate::sexp::symbol::Rf_install;
-pub use crate::special::mlutils::REprintf;
+pub use crate::nmath::special::mlutils::REprintf;
 
 // PRINTNAME is re-exported from inlined.rs
 #[allow(unused_imports)]

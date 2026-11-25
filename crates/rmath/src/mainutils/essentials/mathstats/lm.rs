@@ -229,7 +229,7 @@ pub fn do_oneway_test(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 "One-way analysis of means (not assuming equal variances)",
             )
         };
-        let pval = crate::dist::f_dist::pf_inner(stat, df1, df2, false, false);
+        let pval = crate::nmath::dist::f_dist::pf_inner(stat, df1, df2, false, false);
         let statistic = Rf_ScalarReal(stat);
         let _st = protect(statistic);
         set_string_names(statistic, &["F".to_string()]);
@@ -482,8 +482,8 @@ pub fn do_confint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         return R_NilValue();
     }
     let a = (1.0 - level) / 2.0;
-    let zlo = crate::dist::normal::qnorm5_inner(a, 0.0, 1.0, true, false);
-    let zhi = crate::dist::normal::qnorm5_inner(1.0 - a, 0.0, 1.0, true, false);
+    let zlo = crate::nmath::dist::normal::qnorm5_inner(a, 0.0, 1.0, true, false);
+    let zhi = crate::nmath::dist::normal::qnorm5_inner(1.0 - a, 0.0, 1.0, true, false);
     let result = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), p as i32, 2);
     let _r = protect(result);
     for i in 0..p {
@@ -586,7 +586,7 @@ pub fn do_confint_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         f64::NAN
     };
     let se_a = sig * (1.0 / n + mx * mx / sxxc).sqrt();
-    let tcrit = crate::dist::t_dist::qt_inner(0.025, df, true, false);
+    let tcrit = crate::nmath::dist::t_dist::qt_inner(0.025, df, true, false);
     let result = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), 2, 2);
     let _r = protect(result);
     set_real_checked(result, 0, a + se_a * tcrit);

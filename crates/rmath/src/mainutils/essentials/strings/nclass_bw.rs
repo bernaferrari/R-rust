@@ -97,7 +97,7 @@ pub fn do_nclass_fd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let xs: Vec<f64> = x
         .iter()
         .copied()
-        .map(|v| crate::fprec::fprec(v, 5.0))
+        .map(|v| crate::nmath::fprec::fprec(v, 5.0))
         .collect();
     let mut h = 2.0 * nclass_iqr(xs.clone());
     if h == 0.0 {

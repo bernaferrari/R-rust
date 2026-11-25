@@ -388,9 +388,9 @@ fn psigamma_recycles_x_and_deriv_to_the_longer_length() {
         assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
         assert_eq!(XLENGTH(result), 3);
         let expected = [
-            crate::special::polygamma::psigamma(1.0, 1.0),
-            crate::special::polygamma::psigamma(2.0, 3.0),
-            crate::special::polygamma::psigamma(1.0, 5.0),
+            crate::nmath::special::polygamma::psigamma(1.0, 1.0),
+            crate::nmath::special::polygamma::psigamma(2.0, 3.0),
+            crate::nmath::special::polygamma::psigamma(1.0, 5.0),
         ];
         for (i, expected) in expected.into_iter().enumerate() {
             assert_eq!((*REAL(result).add(i)).to_bits(), expected.to_bits());
