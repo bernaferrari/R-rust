@@ -242,29 +242,6 @@ pub(crate) fn do_isobject(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
 // do_oldClass -- oldClass() function
 // ---------------------------------------------------------------------------
 
-/// R's oldClass() function. Gets/sets the class attribute directly.
-pub fn do_oldClass(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    if args.is_null() {
-        return R_NilValue();
-    }
-    let x = CAR(args);
-    if x.is_null() {
-        return R_NilValue();
-    }
-
-    // If there's a second argument (value), set it
-    if !CDR(args).is_null() && CDR(args) != R_NilValue() {
-        let value = CADR(args);
-        if value.is_null() || value == R_NilValue() {
-            setAttrib(x, R_ClassSymbol(), R_NilValue());
-        } else {
-            setAttrib(x, R_ClassSymbol(), value);
-        }
-    }
-
-    // Return the class attribute
-    getAttrib(x, R_ClassSymbol())
-}
 
 // ---------------------------------------------------------------------------
 // do_procdest -- proc.dest() function (internal)
@@ -283,14 +260,6 @@ pub fn do_procdest(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
 // do_isS4 -- isS4() check
 // ---------------------------------------------------------------------------
 
-/// R's isS4() function. Returns TRUE if the object has the S4 bit set.
-pub fn do_isS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    if args.is_null() {
-        return Rf_ScalarLogical(FALSE);
-    }
-    let x = CAR(args);
-    Rf_ScalarLogical(IS_S4_OBJECT(x))
-}
 
 // ---------------------------------------------------------------------------
 // do_asS4 -- asS4() coercion
@@ -357,17 +326,6 @@ pub fn R_S4_method_dispatch(
 // do_setClass -- setClass()
 // ---------------------------------------------------------------------------
 
-/// Legacy objects.c-facing entry point for `setClass`.
-///
-/// The evaluator registers the Rust-shaped implementation in
-/// `mainutils::essentials`; keep this symbol as a thin compatibility route so
-/// all class definitions land in the same session-local S4 registry.
-pub fn do_setClass(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    if args.is_null() || args == R_NilValue() {
-        error("'Class' must name an S4 class");
-    }
-    crate::mainutils::essentials::do_setClass(call, op, args, env)
-}
 
 // ---------------------------------------------------------------------------
 // do_setRefClass -- setRefClass()

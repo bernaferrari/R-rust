@@ -304,26 +304,6 @@ pub fn do_message(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     R_NilValue()
 }
 
-/// R's `inherits(x, what)` — check class.
-pub fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    let what = CAR(CDR(args));
-    if x.is_null() || what.is_null() {
-        return Rf_ScalarLogical(FALSE);
-    }
-    let class_attr = crate::sexp::attrib_core::getAttrib(x, install_str("class"));
-    if class_attr.is_null() || TYPEOF(class_attr) != SEXPTYPE::STRSXP {
-        return Rf_ScalarLogical(FALSE);
-    }
-    let target = elt_to_string(what, 0);
-    let n = XLENGTH(class_attr);
-    for i in 0..n {
-        if elt_to_string(class_attr, i) == target {
-            return Rf_ScalarLogical(TRUE);
-        }
-    }
-    Rf_ScalarLogical(FALSE)
-}
 
 pub(crate) fn simple_error_condition(message: &str) -> SEXP {
     simple_error_condition_at(message, None)
