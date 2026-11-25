@@ -1285,35 +1285,16 @@ pub fn do_missing(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // on.exit helpers
 // ---------------------------------------------------------------------------
 
-/// Run on.exit handlers registered in contexts.
-///
-/// This is called when a function exits (normally or via error).
-pub fn run_onexits() {
-    super::context::R_run_onexits();
-}
 
 // ---------------------------------------------------------------------------
 // R_Srcref -- current source reference (thread-local)
 // ---------------------------------------------------------------------------
 
-/// Set the current source reference.
-pub fn set_R_Srcref(srcref: SEXP) {
-    super::profiling::set_current_srcref(srcref);
-}
 
 // ---------------------------------------------------------------------------
 // R_initialize_bcode -- initialize bytecode system
 // ---------------------------------------------------------------------------
 
-/// Full initialization of the bytecode system.
-///
-/// Ported from R's `R_initialize_bcode()` in eval.c (the full version
-/// that sets up the opcode table for threaded code).
-pub fn R_initialize_bcode_full() {
-    // In the full implementation, this initializes the opcode table
-    // for the threaded code interpreter. Our simplified version
-    // doesn't need this.
-}
 
 // ---------------------------------------------------------------------------
 // R_ensureNamed -- ensure NAMED bit is set

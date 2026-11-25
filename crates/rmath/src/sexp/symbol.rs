@@ -253,10 +253,6 @@ pub fn R_BracketSymbol() -> SEXP {
     install_str("[")
 }
 
-/// Get or create the "function" symbol.
-pub fn R_FunctionSymbol() -> SEXP {
-    install_str("function")
-}
 
 /// Get or create the "while" symbol.
 pub fn R_WhileSymbol() -> SEXP {
@@ -278,15 +274,7 @@ pub fn R_RepeatSymbol() -> SEXP {
     install_str("repeat")
 }
 
-/// Get or create the "break" symbol.
-pub fn R_BreakSymbol() -> SEXP {
-    install_str("break")
-}
 
-/// Get or create the "next" symbol.
-pub fn R_NextSymbol() -> SEXP {
-    install_str("next")
-}
 
 /// Get or create the "..." symbol.
 pub fn R_DotsSymbol() -> SEXP {
@@ -308,30 +296,14 @@ pub fn R_DollarSymbol() -> SEXP {
     install_str("$")
 }
 
-/// Get or create the "@" symbol.
-pub fn R_AtSymbol() -> SEXP {
-    install_str("@")
-}
 
-/// Get or create the "=" symbol.
-pub fn R_EqSymbol() -> SEXP {
-    install_str("=")
-}
 
 /// Get or create the "<-" symbol.
 pub fn R_LeftAssignSymbol() -> SEXP {
     install_str("<-")
 }
 
-/// Get or create the "<<" symbol.
-pub fn R_DoubleLeftAssignSymbol() -> SEXP {
-    install_str("<<-")
-}
 
-/// Get or create the "as" symbol.
-pub fn R_AsSymbol() -> SEXP {
-    install_str("as")
-}
 
 // ---------------------------------------------------------------------------
 // Tests

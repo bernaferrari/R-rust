@@ -284,19 +284,6 @@ pub fn R_initMethodDispatch(envir: SEXP) -> SEXP {
     if envir.is_null() { R_NilValue() } else { envir }
 }
 
-/// True when the full methods-package dispatch pointer has been installed
-/// (i.e. R_initMethodDispatch ran), so standardGeneric should route there
-/// instead of the bare dispatchNonGeneric fallback.
-pub fn standard_generic_ptr_installed() -> bool {
-    // SAFETY: reads the session-local dispatch pointer; no SEXP deref.
-    let ptr = crate::mainutils::objects::R_get_standardGeneric_ptr();
-    ptr.is_some_and(|f| {
-        !std::ptr::fn_addr_eq(
-            f,
-            crate::mainutils::objects::dispatchNonGeneric as unsafe fn(SEXP, SEXP, SEXP) -> SEXP,
-        )
-    })
-}
 
 /// The dispatch entry to use for `standardGeneric()`: the methods-package
 /// implementation once installed, else the bare non-generic fallback.

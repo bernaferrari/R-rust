@@ -603,10 +603,6 @@ thread_local! {
         const { std::cell::RefCell::new(String::new()) };
 }
 
-/// `show()` stdout captured before `stop()`, kept across the panic.
-pub(crate) fn take_show_stdout_before_error() -> String {
-    SHOW_STDOUT_BEFORE_ERROR.with(|slot| std::mem::take(&mut *slot.borrow_mut()))
-}
 
 pub(crate) fn keep_show_stdout_before_error(text: &str) {
     if text.is_empty() {

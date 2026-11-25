@@ -2,16 +2,6 @@
 
 use super::*;
 
-/// Format a value for top-level emission, excluding the caller-owned final
-/// line terminator.
-///
-/// `printList()` emits a separator newline after every non-empty list
-/// element, including the last one. Nested lists already include that
-/// separator in their body; the outermost list still needs one more so
-/// the next top-level print is separated by two blanks.
-pub(crate) fn format_sexp_top_level(x: Sexp<'_>) -> String {
-    format_sexp_direct(x)
-}
 
 pub(crate) fn first_deparse_line(text: crate::sexp::ffi::SEXP) -> Option<String> {
     unsafe {

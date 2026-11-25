@@ -65,13 +65,6 @@ pub(crate) fn int_vec(x: SEXP) -> Vec<c_int> {
         .collect()
 }
 
-/// Copy an LGLSXP payload through checked element reads.
-pub(crate) fn logical_vec(x: SEXP) -> Vec<c_int> {
-    let value = wrapped(x);
-    (0..value.len())
-        .map(|i| checked(value.try_logical_elt(i)))
-        .collect()
-}
 
 /// Write `values` into the leading cells of a REALSXP through checked writes.
 pub(crate) fn set_reals(x: SEXP, values: &[c_double]) {
@@ -89,13 +82,6 @@ pub(crate) fn set_integers(x: SEXP, values: &[c_int]) {
     }
 }
 
-/// Write `values` into the leading cells of an LGLSXP through checked writes.
-pub(crate) fn set_logicals(x: SEXP, values: &[c_int]) {
-    let mut out = mutable(x);
-    for (i, &v) in values.iter().enumerate() {
-        checked(out.try_set_logical_elt(i as R_xlen_t, v));
-    }
-}
 
 /// Evaluate a live expression in a live environment.
 pub(crate) fn eval(expr: SEXP, env: SEXP) -> SEXP {

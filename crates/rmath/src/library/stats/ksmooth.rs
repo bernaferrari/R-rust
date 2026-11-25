@@ -137,10 +137,6 @@ fn BDRksmooth(
 // Fortran-callable stubs (called from ppr.f)
 // ---------------------------------------------------------------------------
 
-/// Called only from spline() in ./ppr.f
-pub fn bdrsplerr_() {
-    error("only 2500 rows are allowed for sm.method=\"spline\"");
-}
 
 pub unsafe fn splineprt_(
     df: *mut c_double,
@@ -157,20 +153,6 @@ pub unsafe fn splineprt_(
     }
 }
 
-/// Called only from smooth(..., trace=TRUE) in ./ppr.f
-pub unsafe fn smoothprt_(
-    span: *mut c_double,
-    iper: *mut c_int,
-    var: *mut c_double,
-    cvar: *mut c_double,
-) {
-    unsafe {
-        println!(
-            "smooth(span={}, iper={:+2}) -> (var, cvar) = ({}, {})",
-            *span, *iper, *var, *cvar
-        );
-    }
-}
 
 // ---------------------------------------------------------------------------
 // ksmooth: SEXP interface for kernel smoothing

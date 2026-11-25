@@ -336,13 +336,6 @@ pub(crate) fn lookup_external(
     }
 }
 
-/// Recorded `.Call` arity. `None` means this name is not a stats `.Call` routine.
-pub fn call_arity(name: &str) -> Option<usize> {
-    match lookup_call(name)? {
-        crate::mainutils::native_routines::NativeRoutine::Call(function) => Some(function.arity()),
-        _ => None,
-    }
-}
 
 pub(crate) fn lookup_call(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     let bare = name.strip_prefix("C_").unwrap_or(name);

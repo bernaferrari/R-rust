@@ -302,10 +302,6 @@ fn scalar(
     }
 }
 
-/// Create a scalar STRSXP containing NA_STRING (R's NA_character_).
-pub fn Rf_mkNAString() -> SEXP {
-    Rf_ScalarString(super::globals::R_NaString())
-}
 
 /// Create a scalar logical value.
 pub fn Rf_ScalarLogical(x: c_int) -> SEXP {
@@ -457,10 +453,6 @@ pub fn Rf_isString(x: SEXP) -> c_int {
     c_int::from(TYPEOF(x) == SEXPTYPE::STRSXP)
 }
 
-/// Check if an SEXP is a raw vector.
-pub fn Rf_isRaw(x: SEXP) -> c_int {
-    c_int::from(TYPEOF(x) == SEXPTYPE::RAWSXP)
-}
 
 /// Check if an SEXP is a vector (any atomic or generic vector type).
 pub fn Rf_isVector(x: SEXP) -> c_int {
@@ -745,9 +737,6 @@ mod tests {
     }
 }
 
-pub fn persistent_cons(car: SEXP, cdr: SEXP) -> SEXP {
-    super::memory_ext::cons_raw(car, cdr)
-}
 
 pub fn persistent_scalar_integer(val: c_int) -> SEXP {
     super::instance::with_required_persistent_heap(|heap| {

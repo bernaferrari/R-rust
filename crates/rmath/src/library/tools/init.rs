@@ -20,6 +20,3 @@
  */
 
 /* Stub: DllInfo registration */
-pub fn R_init_tools(_dll: *mut std::ffi::c_void) {
-    /* Registration handled by Rust's symbol exports */
-}

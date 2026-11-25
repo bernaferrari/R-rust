@@ -94,25 +94,6 @@ pub fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> 
     }
 }
 
-pub(crate) fn symbol_name_for_error(expr: Sexp<'_>) -> String {
-    if let Some(name) = symbol_name_from_ptr(expr.clone().as_raw()) {
-        return name;
-    }
-    unsafe {
-        if TYPEOF(expr.clone().as_raw()) == SEXPTYPE::SYMSXP {
-            let pname = PRINTNAME(expr.as_raw());
-            if !pname.is_null() {
-                let bytes = CHAR(pname);
-                if !bytes.is_null() {
-                    return std::ffi::CStr::from_ptr(bytes)
-                        .to_string_lossy()
-                        .into_owned();
-                }
-            }
-        }
-    }
-    "<unknown>".to_string()
-}
 
 #[inline(never)]
 pub(crate) fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {

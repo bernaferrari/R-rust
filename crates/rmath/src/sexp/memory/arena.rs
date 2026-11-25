@@ -1734,17 +1734,6 @@ impl Drop for ClearLendLedger {
     }
 }
 
-/// Zero-fill `bytes` and attach the pointer as `node`'s vector payload.
-///
-/// Admission and publication use the original retained canonical store, even
-/// during a lend. A rejected preparation returns null without changing the header.
-///
-/// # Safety
-/// `node` is a live vector header owned by the active instance, with no prior
-/// payload. `bytes > 0` is its complete payload size; the caller roots the node.
-pub(crate) unsafe fn attach_zeroed_data_buffer(node: SEXP, bytes: usize) -> *mut u8 {
-    unsafe { attach_initialized_data_buffer(node, bytes, |_| {}) }
-}
 
 /// Construct and initialize a typed payload before publishing it to any
 /// header. Initialization failure leaves the lazy header unchanged; any

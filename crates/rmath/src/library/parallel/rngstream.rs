@@ -83,10 +83,4 @@ fn advance_stream(x: SEXP, a1: &[[Uint64; 3]; 3], a2: &[[Uint64; 3]; 3]) -> SEXP
     ans
 }
 
-pub fn nextStream(x: SEXP) -> SEXP {
-    advance_stream(x, &A1P127, &A2P127)
-}
 
-pub fn nextSubStream(x: SEXP) -> SEXP {
-    advance_stream(x, &A1P76, &A2P76)
-}

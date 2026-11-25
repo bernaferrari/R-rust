@@ -507,15 +507,7 @@ fn promote_to_hash_table_for(heap: &HeapIdentity, env: SEXP) {
         }
     });
 }
-pub(crate) unsafe fn promote_to_hash_table_in(instance: *mut instance::RInstance, env: SEXP) {
-    let heap = unsafe { instance_heap(instance) };
-    promote_to_hash_table_for(&heap, env);
-}
 
-/// Check whether a pairlist length exceeds the promotion threshold.
-pub(crate) fn should_promote(pairlist_length: usize) -> bool {
-    pairlist_length >= PROMOTION_THRESHOLD
-}
 
 /// Remove rebuild permission for this exact environment generation. A proof
 /// of a still-live frame remains available to its other original aliases.
@@ -532,10 +524,6 @@ fn remove_env_for(heap: &HeapIdentity, env: SEXP) {
     heap.with_binding_tables(|tables| {
         tables.promoted.remove(&env);
     });
-}
-pub(crate) unsafe fn remove_env_in(instance: *mut instance::RInstance, env: SEXP) {
-    let heap = unsafe { instance_heap(instance) };
-    remove_env_for(&heap, env);
 }
 
 /// Remember that `env` is a hashed environment created at `size` (GNU `R_NewHashTable`).

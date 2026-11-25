@@ -348,15 +348,7 @@ pub fn SETLEVELS(x: SEXP, v: c_int) {
 /// gp bit used by the resizable-vector compatibility helpers.
 const RESIZABLE_BIT: u16 = 1 << 5;
 
-pub(crate) fn has_resizable_flag(x: SEXP) -> bool {
-    header_snapshot(x).is_some_and(|header| header.sxpinfo.gp() & RESIZABLE_BIT != 0)
-}
 
-pub(crate) fn set_resizable_flag(x: SEXP) {
-    mutate_header(x, |header| {
-        header.sxpinfo.set_gp(header.sxpinfo.gp() | RESIZABLE_BIT)
-    });
-}
 
 /// GNU `MISSING(x)` — gp bit 2 on a pairlist binding cell.
 pub fn MISSING(x: SEXP) -> c_int {
@@ -398,10 +390,6 @@ pub fn SET_ALTREP(x: SEXP, v: c_int) {
     mutate_header(x, |header| header.sxpinfo.set_alt(v != 0));
 }
 
-/// Get the mark bit (for GC).
-pub fn MARK(x: SEXP) -> c_int {
-    header_snapshot(x).map_or(0, |header| header.sxpinfo.mark() as c_int)
-}
 
 /// Set the mark bit.
 pub fn SET_MARK(x: SEXP, v: c_int) {
@@ -413,10 +401,6 @@ pub fn Rf_isNull(x: SEXP) -> c_int {
     (TYPEOF(x) == SEXPTYPE::NILSXP) as c_int
 }
 
-/// Check the type of a SEXP. Alias for TYPEOF.
-pub fn TYPEOF_CHECK(x: SEXP) -> c_int {
-    TYPEOF(x)
-}
 
 // ---------------------------------------------------------------------------
 // List/cons cell accessors

@@ -220,95 +220,20 @@ pub fn gpLex(gp: SEXP, i: c_int) -> c_double {
  * "gpIsScalar" variants (set scalar flag)
  * ============================== */
 
-pub fn gpFontSize2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_double {
-    let fontsize = gpFontSizeSXP(gp);
-    gpIsScalar[GP_FONTSIZE as usize] = if LENGTH(fontsize) == 1 { 1 } else { 0 };
-    real_elt(fontsize, (i % LENGTH(fontsize)) as R_xlen_t)
-}
 
-pub fn gpLineHeight2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_double {
-    let lineheight = gpLineHeightSXP(gp);
-    gpIsScalar[GP_LINEHEIGHT as usize] = if LENGTH(lineheight) == 1 { 1 } else { 0 };
-    real_elt(lineheight, (i % LENGTH(lineheight)) as R_xlen_t)
-}
 
-pub fn gpCol2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_int {
-    let col = gpColSXP(gp);
-    gpIsScalar[GP_COL as usize] = if LENGTH(col) == 1 { 1 } else { 0 };
-    gpCol(gp, i)
-}
 
-pub fn gpFill2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_int {
-    let fill = gpFillSXP(gp);
-    gpIsScalar[GP_FILL as usize] = if LENGTH(fill) == 1 { 1 } else { 0 };
-    gpFill(gp, i)
-}
 
-pub fn gpGamma2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_double {
-    let gamma = gpGammaSXP(gp);
-    gpIsScalar[GP_GAMMA as usize] = if LENGTH(gamma) == 1 { 1 } else { 0 };
-    real_elt(gamma, (i % LENGTH(gamma)) as R_xlen_t)
-}
 
-pub fn gpLineType2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_int {
-    let linetype = gpLineTypeSXP(gp);
-    gpIsScalar[GP_LTY as usize] = if LENGTH(linetype) == 1 { 1 } else { 0 };
-    gpLineType(gp, i)
-}
 
-pub fn gpLineWidth2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_double {
-    let linewidth = gpLineWidthSXP(gp);
-    gpIsScalar[GP_LWD as usize] = if LENGTH(linewidth) == 1 { 1 } else { 0 };
-    real_elt(linewidth, (i % LENGTH(linewidth)) as R_xlen_t)
-}
 
-pub fn gpCex2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_double {
-    let cex = gpCexSXP(gp);
-    gpIsScalar[GP_CEX as usize] = if LENGTH(cex) == 1 { 1 } else { 0 };
-    real_elt(cex, (i % LENGTH(cex)) as R_xlen_t)
-}
 
-pub fn gpFont2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_int {
-    let font = gpFontSXP(gp);
-    gpIsScalar[GP_FONT as usize] = if LENGTH(font) == 1 { 1 } else { 0 };
-    integer_elt(font, (i % LENGTH(font)) as R_xlen_t)
-}
 
-pub fn gpFontFamily2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> *const c_char {
-    let fontfamily = gpFontFamilySXP(gp);
-    gpIsScalar[GP_FONTFAMILY as usize] = if LENGTH(fontfamily) == 1 { 1 } else { 0 };
-    char_ptr(string_elt(fontfamily, (i % LENGTH(fontfamily)) as R_xlen_t))
-}
 
-pub fn gpAlpha2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_double {
-    let alpha = gpAlphaSXP(gp);
-    gpIsScalar[GP_ALPHA as usize] = if LENGTH(alpha) == 1 { 1 } else { 0 };
-    real_elt(alpha, (i % LENGTH(alpha)) as R_xlen_t)
-}
 
-pub fn gpLineEnd2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_int {
-    let lineend = gpLineEndSXP(gp);
-    gpIsScalar[GP_LINEEND as usize] = if LENGTH(lineend) == 1 { 1 } else { 0 };
-    gpLineEnd(gp, i)
-}
 
-pub fn gpLineJoin2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_int {
-    let linejoin = gpLineJoinSXP(gp);
-    gpIsScalar[GP_LINEJOIN as usize] = if LENGTH(linejoin) == 1 { 1 } else { 0 };
-    gpLineJoin(gp, i)
-}
 
-pub fn gpLineMitre2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_double {
-    let linemitre = gpLineMitreSXP(gp);
-    gpIsScalar[GP_LINEMITRE as usize] = if LENGTH(linemitre) == 1 { 1 } else { 0 };
-    real_elt(linemitre, (i % LENGTH(linemitre)) as R_xlen_t)
-}
 
-pub fn gpLex2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_double {
-    let lex = gpLexSXP(gp);
-    gpIsScalar[GP_LEX as usize] = if LENGTH(lex) == 1 { 1 } else { 0 };
-    real_elt(lex, (i % LENGTH(lex)) as R_xlen_t)
-}
 
 /* ==============================
  * resolveGPar -- partial helper
@@ -629,18 +554,4 @@ pub fn L_setGPar(gpars: SEXP) -> SEXP {
     R_NilValue()
 }
 
-pub fn L_getGPsaved() -> SEXP {
-    let dd = getDevice();
-    if dd.is_null() {
-        return R_NilValue();
-    }
-    gridStateElement(dd, GSS_GPSAVED)
-}
 
-pub fn L_setGPsaved(gpars: SEXP) -> SEXP {
-    let dd = getDevice();
-    if !dd.is_null() {
-        setGridStateElement(dd, GSS_GPSAVED, gpars);
-    }
-    R_NilValue()
-}

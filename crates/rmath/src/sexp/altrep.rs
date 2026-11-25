@@ -244,15 +244,6 @@ pub(crate) fn set_data2<'s>(object: &Sexp<'s>, value: Sexp<'s>) -> SexpResult<()
         .set_data2(value)
 }
 
-pub(crate) fn activate_for<T>(object: &Sexp<'_>, callback: impl FnOnce() -> T) -> SexpResult<T> {
-    let pin = object.pin_runtime()?;
-    let owner = owner(object)?;
-    let result = storage::activate(owner, callback);
-    if let Some(pin) = &pin {
-        pin.require_live()?;
-    }
-    Ok(result)
-}
 
 pub fn is_altrep(object: &Sexp<'_>) -> bool {
     object.header().sxpinfo.alt()

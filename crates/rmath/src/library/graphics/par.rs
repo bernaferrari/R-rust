@@ -1900,10 +1900,6 @@ pub(crate) fn gpar_get(dd: pGEDevDesc) -> Option<GPar> {
     with_device_gpar_entry(dd, |entry| entry.gp)
 }
 
-/// Copy of the device's display GPar (`*dpptr(dd)`); `None` for a null key.
-pub(crate) fn dpar_get(dd: pGEDevDesc) -> Option<GPar> {
-    with_device_gpar_entry(dd, |entry| entry.dp)
-}
 
 /// Update the device's current GPar in place. `f` runs inside the parameter
 /// state borrow and must not draw, evaluate R or query parameters.

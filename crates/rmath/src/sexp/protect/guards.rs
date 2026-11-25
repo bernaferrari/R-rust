@@ -522,17 +522,6 @@ fn push_preserve(s: SEXP) {
     }
 }
 
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-pub(crate) unsafe fn release_preserved_in(inst: *mut RInstance, s: SEXP) {
-    if s.is_null() {
-        return;
-    }
-    // SAFETY: `inst` is a live instance pointer from the caller.
-    unsafe { GuardOwner::new(inst) }.remove_preserved(s);
-}
 
 fn release_preserved(s: SEXP) {
     let owner = GuardOwner::current();

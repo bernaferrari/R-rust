@@ -70,24 +70,3 @@ pub(crate) fn gnu_colon_numeric_arg(value: SEXP) -> SEXP {
     }
 }
 
-/// Apply recorded OP_SETTAG tags to the argument cells a call opcode just
-/// rebuilt. `top` is the stack depth AFTER the function was popped and
-/// BEFORE the argument values were popped, so a value recorded at depth
-/// `d` is the cell created on pop `top - 1 - d` (0-based, top-first).
-/// Consumed entries are removed; unmatched entries (stale) are dropped.
-pub(crate) fn apply_pending_arg_tags(
-    pending: &mut Vec<(usize, Sexp<'static>)>,
-    top: usize,
-    cells: &[SEXP],
-) {
-    if pending.is_empty() {
-        return;
-    }
-    let taken = std::mem::take(pending);
-    for (d, tag) in taken {
-        let j = top as isize - 1 - d as isize;
-        if j >= 0 && (j as usize) < cells.len() {
-            crate::sexp::accessors::SETTAG(cells[j as usize], tag.as_raw());
-        }
-    }
-}

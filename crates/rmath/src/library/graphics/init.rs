@@ -22,8 +22,5 @@
 use crate::sexp::ffi::*;
 
 /* Stub: DllInfo registration */
-pub fn R_init_graphics(_dll: *mut std::ffi::c_void) {
-    /* Registration handled by Rust's symbol exports */
-}
 
 /* registerBase moved to par.rs where the full base graphics stubs live */

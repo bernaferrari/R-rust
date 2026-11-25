@@ -207,49 +207,10 @@ pub fn viewportgpar(vp: SEXP) -> SEXP {
     vector_elt(vp, PVP_GPAR as R_xlen_t)
 }
 
-pub fn viewportFontFamily(vp: SEXP) -> *const c_char {
-    char_ptr(string_elt(
-        vector_elt(
-            vector_elt(vp, PVP_GPAR as R_xlen_t),
-            GP_FONTFAMILY as R_xlen_t,
-        ),
-        0,
-    ))
-}
 
-pub fn viewportFont(vp: SEXP) -> c_int {
-    integer_elt(
-        vector_elt(vector_elt(vp, PVP_GPAR as R_xlen_t), GP_FONT as R_xlen_t),
-        0,
-    )
-}
 
-pub fn viewportFontSize(vp: SEXP) -> f64 {
-    real_elt(
-        vector_elt(
-            vector_elt(vp, PVP_GPAR as R_xlen_t),
-            GP_FONTSIZE as R_xlen_t,
-        ),
-        0,
-    )
-}
 
-pub fn viewportLineHeight(vp: SEXP) -> f64 {
-    real_elt(
-        vector_elt(
-            vector_elt(vp, PVP_GPAR as R_xlen_t),
-            GP_LINEHEIGHT as R_xlen_t,
-        ),
-        0,
-    )
-}
 
-pub fn viewportCex(vp: SEXP) -> f64 {
-    real_elt(
-        vector_elt(vector_elt(vp, PVP_GPAR as R_xlen_t), GP_CEX as R_xlen_t),
-        0,
-    )
-}
 
 pub fn viewportTransform(vp: SEXP) -> SEXP {
     vector_elt(vp, PVP_TRANS as R_xlen_t)
@@ -295,9 +256,6 @@ pub fn viewportDevHeightCM(vp: SEXP) -> SEXP {
     vector_elt(vp, PVP_DEVHEIGHTCM as R_xlen_t)
 }
 
-pub fn viewportParentGPar(vp: SEXP) -> SEXP {
-    vector_elt(vp, PVP_PARENTGPAR as R_xlen_t)
-}
 
 // ---------------------------------------------------------------------------
 // fillViewportLocationFromViewport / fillViewportContextFromViewport
@@ -319,12 +277,6 @@ pub fn fillViewportContextFromViewport(vp: SEXP, vpc: &mut LViewportContext) {
     vpc.yscalemax = viewportYScaleMax(vp);
 }
 
-pub fn copyViewportContext(vpc1: LViewportContext, vpc2: &mut LViewportContext) {
-    vpc2.xscalemin = vpc1.xscalemin;
-    vpc2.xscalemax = vpc1.xscalemax;
-    vpc2.yscalemin = vpc1.yscalemin;
-    vpc2.yscalemax = vpc1.yscalemax;
-}
 
 // ---------------------------------------------------------------------------
 // gcontextFromViewport — delegate through gpar context resolution.

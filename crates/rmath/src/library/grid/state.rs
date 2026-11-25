@@ -124,13 +124,6 @@ pub fn initDL(dd: pGEDevDesc) {
     setGridStateElement(dd, GSS_DLON, scalar_logical(1));
 }
 
-/// Initialize some bits of the system state (called before engine redraw).
-/// Does NOT init all state; display list, root viewport, and current gpar
-/// are initialized separately (see initDL, initVP, initGPar).
-pub fn initOtherState(dd: pGEDevDesc) {
-    // Stub: since pGEDevDesc is void*, we cannot access dd->gesd.
-    let _ = dd;
-}
 
 /// Fill the grid system state with initial values.
 pub fn fillGridSystemState(state: SEXP, dd: pGEDevDesc) {

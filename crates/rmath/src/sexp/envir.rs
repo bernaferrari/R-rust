@@ -1844,14 +1844,6 @@ pub(crate) fn findFun(symbol: SEXP, rho: SEXP) -> SEXP {
     .unwrap_or_else(R_UnboundValue)
 }
 
-/// Find a function with error reporting.
-pub fn findFun3(symbol: SEXP, rho: SEXP, call: SEXP) -> SEXP {
-    let fun = findFun(symbol, rho);
-    if fun == R_UnboundValue() {
-        // Could not find function — would error in real implementation
-    }
-    fun
-}
 
 /// Check if a symbol has a missing argument in the given environment.
 ///

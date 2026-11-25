@@ -8,16 +8,6 @@ pub(crate) fn encoded_cell_text(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
-pub(crate) fn format_sexp(x: SEXP) -> String {
-    if x.is_null() {
-        return "NULL".to_string();
-    }
-    if let Some(sexp) = unsafe { crate::sexp::object::Sexp::from_raw(x) } {
-        format_sexp_direct(sexp)
-    } else {
-        "NULL".to_string()
-    }
-}
 
 pub(crate) fn format_aligned_values(vals: Vec<String>) -> String {
     let width = vals.iter().map(|v| v.len()).max().unwrap_or(0);
@@ -146,24 +136,6 @@ pub(crate) fn format_real_value_for_vector(v: f64, force_decimal_for_whole: bool
     }
 }
 
-pub(crate) fn format_real_vector_values(x: Sexp<'_>, limit: R_xlen_t) -> Vec<String> {
-    let values: Vec<_> = (0..x.clone().len().min(limit))
-        .map(|i| x.clone().try_real_elt(i))
-        .collect();
-    let force_decimal_for_whole = values
-        .iter()
-        .filter_map(|value| value.as_ref().ok().copied())
-        .any(|value| is_finite_r_number(value) && value.fract() != 0.0);
-
-    values
-        .into_iter()
-        .map(|value| {
-            value
-                .map(|value| format_real_value_for_vector(value, force_decimal_for_whole))
-                .unwrap_or_else(format_access_error)
-        })
-        .collect()
-}
 
 /// GNU `cat` uses `EncodeRealDrop0`: fixed-point trailing zeros are not kept.
 pub(crate) fn format_cat_real(v: f64) -> String {

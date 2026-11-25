@@ -446,22 +446,7 @@ pub fn R_BytecodeExpr(e: SEXP) -> SEXP {
     bytecodeExpr(e)
 }
 
-/// Get the promise expression.
-/// Note: no_mangle removed to avoid duplicate symbol with sexp/envir.rs.
-pub(crate) fn r_PromiseExpr(p: SEXP) -> SEXP {
-    if p.is_null() || TYPEOF(p) != SEXPTYPE::PROMSXP {
-        return R_NilValue();
-    }
-    bytecodeExpr(crate::sexp::accessors::PRCODE(p))
-}
 
-/// Get the closure body expression.
-pub fn R_ClosureExpr(p: SEXP) -> SEXP {
-    if p.is_null() || TYPEOF(p) != SEXPTYPE::CLOSXP {
-        return R_NilValue();
-    }
-    bytecodeExpr(BODY(p))
-}
 
 // ---------------------------------------------------------------------------
 // R_ParseEvalString -- delegates to gram_main.rs
@@ -474,9 +459,6 @@ pub(crate) unsafe fn r_parse_eval_string(str: *const c_char, env: SEXP) -> SEXP 
     unsafe { crate::mainutils::gram_main::R_ParseEvalString(str, env) }
 }
 
-pub(crate) unsafe fn r_parse_string(str: *const c_char) -> SEXP {
-    unsafe { r_parse_eval_string(str, std::ptr::null_mut()) }
-}
 
 /// Apply `compiler::enableJIT` semantics and return the previous level.
 /// Negative and NA-coerced values are queries, matching GNU R's internal
@@ -568,10 +550,6 @@ pub fn get_R_disable_bytecode() -> c_int {
     jit_settings(current_jit_owner()).disable_bytecode
 }
 
-/// Get the constant checking level.
-pub fn get_R_check_constants() -> c_int {
-    jit_settings(current_jit_owner()).check_constants
-}
 
 // ---------------------------------------------------------------------------
 // R_exec_token -- for tail call optimization

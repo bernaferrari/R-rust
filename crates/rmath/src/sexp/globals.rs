@@ -115,17 +115,7 @@ pub fn set_R_GlobalEnv(env: SEXP) {
     with_required_current_instance(|inst| unsafe { set_R_GlobalEnv_in(inst, env) });
 }
 
-/// Set the base environment.
-pub fn set_R_BaseEnv(env: SEXP) {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { set_R_BaseEnv_in(inst, env) });
-}
 
-/// Set the empty environment.
-pub fn set_R_EmptyEnv(env: SEXP) {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { set_R_EmptyEnv_in(inst, env) });
-}
 
 /// # Safety
 ///
@@ -243,30 +233,10 @@ pub fn R_DotsSymbol_fn() -> SEXP {
     super::symbol::R_DotsSymbol()
 }
 
-/// Get R_IfSymbol (the "if" symbol).
-pub fn R_IfSymbol_fn() -> SEXP {
-    super::symbol::R_IfSymbol()
-}
 
-/// Get R_WhileSymbol (the "while" symbol).
-pub fn R_WhileSymbol_fn() -> SEXP {
-    super::symbol::R_WhileSymbol()
-}
 
-/// Get R_ForSymbol (the "for" symbol).
-pub fn R_ForSymbol_fn() -> SEXP {
-    super::symbol::R_ForSymbol()
-}
 
-/// Get R_RepeatSymbol (the "repeat" symbol).
-pub fn R_RepeatSymbol_fn() -> SEXP {
-    super::symbol::R_RepeatSymbol()
-}
 
-/// Get R_BraceSymbol (the "{" symbol).
-pub fn R_BraceSymbol_fn() -> SEXP {
-    super::symbol::R_BraceSymbol()
-}
 
 // ---------------------------------------------------------------------------
 // R_True and R_False logical singletons

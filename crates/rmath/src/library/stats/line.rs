@@ -135,18 +135,6 @@ unsafe fn line(
     }
 }
 
-pub unsafe fn tukeyline0(
-    x: *mut c_double,
-    y: *mut c_double,
-    z: *mut c_double,
-    w: *mut c_double,
-    n: *mut c_int,
-    coef: *mut c_double,
-) {
-    unsafe {
-        line(x, y, z, w, *n, 1, coef);
-    }
-}
 
 fn asInteger(x: SEXP) -> c_int {
     crate::main::coerce::asInteger(x)

@@ -33,11 +33,6 @@ pub(crate) fn global_context() -> *mut RCNTXT {
     with_required_current_instance(|instance| unsafe { R_GlobalContext_in(instance) })
 }
 
-#[inline]
-pub(crate) fn set_global_env(env: SEXP) {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|instance| unsafe { set_R_GlobalEnv_in(instance, env) });
-}
 
 #[inline]
 pub(crate) fn visible() -> c_int {

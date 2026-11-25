@@ -35,31 +35,7 @@ pub fn PRIMFUN(op: SEXP) -> Option<PrimFun> {
     primitive::get_primfun(op)
 }
 
-/// Initialize builtin slots.
-///
-/// Primitive SEXP nodes are created lazily through `R_Primitive` in this port,
-/// so there is no process-global slot table to initialize here.
-pub fn R_InitBuiltinSlots() {}
 
-/// Create a SPECIALSXP or BUILTINSXP from a function table index.
-pub unsafe fn R_mkPrim(_name: *const std::os::raw::c_char, offset: c_int, kind: c_int) -> SEXP {
-    let sexptype = if kind == SEXPTYPE::SPECIALSXP.as_c_int() || kind == 0 {
-        SEXPTYPE::SPECIALSXP
-    } else {
-        SEXPTYPE::BUILTINSXP
-    };
-
-    unsafe {
-        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
-        memory::with_arena(|arena| {
-            let prim = arena.alloc_node(sexptype);
-            if !prim.is_null() {
-                SET_PRIMOFFSET(prim, offset);
-            }
-            prim
-        })
-    }
-}
 
 /// Handler type for BUILTINSXP functions.
 pub(super) type BuiltinHandler = unsafe fn(SEXP, SEXP, SEXP, SEXP) -> SEXP;

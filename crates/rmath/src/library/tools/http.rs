@@ -93,49 +93,6 @@ fn remove_dot_segments(p: &str) -> String {
     String::from_utf8(output).unwrap_or_default()
 }
 
-/// Wrapper for remove_dot_segments that operates on a character vector.
-pub fn remove_dot_segments_wrapper(x: SEXP) -> SEXP {
-    unsafe {
-        if x.is_null() {
-            return R_NilValue();
-        }
-        if TYPEOF(x) != SEXPTYPE::STRSXP {
-            Rf_error_cstr(c"non-character argument");
-        }
-        let n = XLENGTH(x);
-        let y = Rf_allocVector(SEXPTYPE::STRSXP, n as i32);
-        let _y_guard = protect(y);
-
-        for i in 0..n as usize {
-            let s = STRING_ELT(x, i as R_xlen_t);
-            if s.is_null() {
-                let na_char = Rf_mkChar(ptr::null());
-                SET_STRING_ELT(y, i as R_xlen_t, na_char);
-                continue;
-            }
-            let p = CHAR(s);
-            if p.is_null() {
-                let empty_char = crate::sexp::constructors::mk_char_str("");
-                SET_STRING_ELT(y, i as R_xlen_t, empty_char);
-                continue;
-            }
-            let path = match CStr::from_ptr(p).to_str() {
-                Ok(s) => s,
-                Err(_) => {
-                    let empty_char = crate::sexp::constructors::mk_char_str("");
-                    SET_STRING_ELT(y, i as R_xlen_t, empty_char);
-                    continue;
-                }
-            };
-            let cleaned = remove_dot_segments(path);
-            let c_string = std::ffi::CString::new(cleaned).unwrap_or_default();
-            let char_sxp = crate::sexp::constructors::mk_char_bytes(c_string.to_bytes());
-            SET_STRING_ELT(y, i as R_xlen_t, char_sxp);
-        }
-
-        y
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Helpers

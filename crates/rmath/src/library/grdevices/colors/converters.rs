@@ -61,41 +61,7 @@ pub(crate) fn isMatrix(x: SEXP) -> bool {
     Rf_isNull(dim) == 0 && LENGTH(dim) == 2
 }
 
-pub(crate) fn RGB2rgb_func(r: u32, g: u32, b: u32) -> *const c_char {
-    {
-        with_color_state(|state| {
-            let c = &mut state.col_buf;
-            c[0] = b'#';
-            c[1] = HEX_DIGITS[((r >> 4) & 0x0F) as usize];
-            c[2] = HEX_DIGITS[(r & 0x0F) as usize];
-            c[3] = HEX_DIGITS[((g >> 4) & 0x0F) as usize];
-            c[4] = HEX_DIGITS[(g & 0x0F) as usize];
-            c[5] = HEX_DIGITS[((b >> 4) & 0x0F) as usize];
-            c[6] = HEX_DIGITS[(b & 0x0F) as usize];
-            c[7] = 0;
-            c.as_ptr() as *const c_char
-        })
-    }
-}
 
-pub(crate) fn RGBA2rgb_func(r: u32, g: u32, b: u32, a: u32) -> *const c_char {
-    {
-        with_color_state(|state| {
-            let c = &mut state.col_buf;
-            c[0] = b'#';
-            c[1] = HEX_DIGITS[((r >> 4) & 0x0F) as usize];
-            c[2] = HEX_DIGITS[(r & 0x0F) as usize];
-            c[3] = HEX_DIGITS[((g >> 4) & 0x0F) as usize];
-            c[4] = HEX_DIGITS[(g & 0x0F) as usize];
-            c[5] = HEX_DIGITS[((b >> 4) & 0x0F) as usize];
-            c[6] = HEX_DIGITS[(b & 0x0F) as usize];
-            c[7] = HEX_DIGITS[((a >> 4) & 0x0F) as usize];
-            c[8] = HEX_DIGITS[(a & 0x0F) as usize];
-            c[9] = 0;
-            c.as_ptr() as *const c_char
-        })
-    }
-}
 
 pub(crate) fn incol2name_buf_opaque(col: rcolor) -> *const c_char {
     {

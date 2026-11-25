@@ -6,20 +6,6 @@ use super::*;
 // BCODESXP accessors
 // ---------------------------------------------------------------------------
 
-/// Get the bytecode instruction array from a BCODESXP.
-pub fn BCODE_CODE(x: SEXP) -> *const c_int {
-    unsafe {
-        if x.is_null() {
-            return ptr::null();
-        }
-        // The code is stored as the first element of the vector
-        let v = crate::sexp::accessors::VECTOR_ELT(x, 0);
-        if v.is_null() {
-            return ptr::null();
-        }
-        INTEGER(v) as *const c_int
-    }
-}
 
 /// Get the constant pool from a BCODESXP.
 pub fn BCODE_CONSTS(x: SEXP) -> SEXP {

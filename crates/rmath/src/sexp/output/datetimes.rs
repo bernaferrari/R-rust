@@ -2,13 +2,6 @@
 
 use super::*;
 
-pub(crate) fn format_date_element(x: Sexp<'_>, i: R_xlen_t) -> String {
-    x.try_real_elt(i)
-        .ok()
-        .and_then(crate::mainutils::essentials::date_days_to_iso)
-        .map(|value| format!("\"{}\"", escape_printed_string(&value)))
-        .unwrap_or_else(|| "NA".to_string())
-}
 
 /// GNU `print.Date`: `print(format(x))` so width wrapping matches print.default.
 pub(crate) fn format_date_vector(x: Sexp<'_>) -> String {
@@ -81,30 +74,7 @@ pub(crate) fn format_date_vector_max(x: Sexp<'_>, max_override: Option<i64>) -> 
     }
 }
 
-pub(crate) fn format_posixct_element(
-    x: Sexp<'_>,
-    i: R_xlen_t,
-    include_tz: bool,
-    force_time: bool,
-) -> String {
-    x.try_real_elt(i)
-        .ok()
-        .and_then(|seconds| {
-            crate::mainutils::essentials::posix_seconds_to_iso_with_time(
-                seconds, include_tz, force_time,
-            )
-        })
-        .map(|value| format!("\"{}\"", escape_printed_string(&value)))
-        .unwrap_or_else(|| "NA".to_string())
-}
 
-pub(crate) fn posixct_vector_needs_time(x: Sexp<'_>) -> bool {
-    (0..x.clone().len()).any(|i| {
-        x.clone().try_real_elt(i).ok().is_some_and(|seconds| {
-            !R_IsNA(seconds) && seconds.is_finite() && seconds.floor() as i64 % 86_400 != 0
-        })
-    })
-}
 
 pub(crate) fn format_posixct_vector(x: Sexp<'_>, include_tz: bool) -> String {
     format_posixct_vector_max(x, include_tz, None)

@@ -233,73 +233,7 @@ pub fn CONS_NR(car: SEXP, cdr: SEXP) -> SEXP {
 // allocFormalsList — create formals list for closures
 // ---------------------------------------------------------------------------
 
-/// Create a formals list from 2 symbols.
-pub fn allocFormalsList2(sym1: SEXP, sym2: SEXP) -> SEXP {
-    unsafe {
-        memory::with_arena(|arena| {
-            let cdr = if sym2.is_null() {
-                R_NilValue()
-            } else {
-                let cell = arena.cons(sym2, R_NilValue(), ptr::null_mut());
-                if !cell.is_null() {
-                    {
-                        crate::sexp::accessors::SET_TYPEOF(cell, SEXPTYPE::LANGSXP.as_c_int());
-                    }
-                }
-                cell
-            };
-            let car = arena.cons(sym1, cdr, ptr::null_mut());
-            if !car.is_null() {
-                {
-                    crate::sexp::accessors::SET_TYPEOF(car, SEXPTYPE::LANGSXP.as_c_int());
-                }
-            }
-            car
-        })
-    }
-}
 
-/// Create a formals list from 3 symbols.
-pub fn allocFormalsList3(sym1: SEXP, sym2: SEXP, sym3: SEXP) -> SEXP {
-    unsafe {
-        memory::with_arena(|arena| {
-            let c3 = if sym3.is_null() {
-                R_NilValue()
-            } else {
-                let cell = arena.cons(sym3, R_NilValue(), ptr::null_mut());
-                if !cell.is_null() {
-                    {
-                        crate::sexp::accessors::SET_TYPEOF(cell, SEXPTYPE::LANGSXP.as_c_int());
-                    }
-                }
-                cell
-            };
-            let c2 = if sym2.is_null() {
-                c3
-            } else {
-                let cell = arena.cons(sym2, c3, ptr::null_mut());
-                if !cell.is_null() {
-                    {
-                        crate::sexp::accessors::SET_TYPEOF(cell, SEXPTYPE::LANGSXP.as_c_int());
-                    }
-                }
-                cell
-            };
-            let c1 = if sym1.is_null() {
-                c2
-            } else {
-                let cell = arena.cons(sym1, c2, ptr::null_mut());
-                if !cell.is_null() {
-                    {
-                        crate::sexp::accessors::SET_TYPEOF(cell, SEXPTYPE::LANGSXP.as_c_int());
-                    }
-                }
-                cell
-            };
-            c1
-        })
-    }
-}
 
 // ---------------------------------------------------------------------------
 // allocList / allocLang — allocate list/lang vectors

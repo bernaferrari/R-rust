@@ -39,14 +39,6 @@ pub fn justifyY(y: f64, height: f64, vjust: f64) -> f64 {
 }
 
 /* Convert enum justification into 0..1 justification */
-pub fn convertJust(just: c_int) -> f64 {
-    match just {
-        _ if just == L_BOTTOM || just == L_LEFT => 0.0,
-        _ if just == L_CENTRE || just == L_CENTER => 0.5,
-        _ if just == L_TOP || just == L_RIGHT => 1.0,
-        _ => 0.0,
-    }
-}
 
 /* Return the amount of justification required */
 pub fn justification(width: f64, height: f64, hjust: f64, vjust: f64) -> (f64, f64) {

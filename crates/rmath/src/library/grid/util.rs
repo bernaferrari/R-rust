@@ -335,31 +335,4 @@ pub fn L_CreateSEXPPtr(s: SEXP) -> SEXP {
     R_MakeExternalPtr(data as *mut std::ffi::c_void, R_NilValue(), data)
 }
 
-/// Get the SEXP stored in an external pointer created by L_CreateSEXPPtr.
-pub fn L_GetSEXPPtr(sp: SEXP) -> SEXP {
-    let data = R_ExternalPtrAddr(sp) as SEXP;
-    if data.is_null() {
-        let msg = c"grid grob object is empty";
-        // SAFETY: static NUL-terminated literals.
 
-        crate::main::errors::Rf_error1(c"%s", msg);
-
-        unreachable!()
-    }
-    vector_elt(data, 0)
-}
-
-/// Set the SEXP stored in an external pointer created by L_CreateSEXPPtr.
-pub fn L_SetSEXPPtr(sp: SEXP, s: SEXP) -> SEXP {
-    let data = R_ExternalPtrAddr(sp) as SEXP;
-    if data.is_null() {
-        let msg = c"grid grob object is empty";
-        // SAFETY: static NUL-terminated literals.
-
-        crate::main::errors::Rf_error1(c"%s", msg);
-
-        unreachable!()
-    }
-    set_vector_elt(data, 0, s);
-    R_NilValue()
-}

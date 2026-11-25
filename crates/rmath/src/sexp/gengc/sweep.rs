@@ -26,12 +26,6 @@ pub(crate) fn vector_payload_has_sexp_refs(t: SEXPTYPE) -> bool {
     matches!(t.0, 16 | 19 | 20 | 21) // STRSXP, VECSXP, EXPRSXP, BCODESXP
 }
 
-pub(crate) fn update_remembered_set(old_to_new: &HashMap<usize, SEXP>) {
-    instance::with_required_current_instance(|instance| {
-        // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
-        unsafe { update_remembered_set_in(instance, old_to_new) }
-    });
-}
 
 /// # Safety
 ///
@@ -147,13 +141,6 @@ pub(crate) unsafe fn sweep_link_remap(
         .collect()
 }
 
-pub(crate) fn remap_addr(addr: usize, old_to_new: &HashMap<usize, SEXP>) -> usize {
-    old_to_new
-        .get(&addr)
-        .copied()
-        .map(|ptr| ptr as usize)
-        .unwrap_or(addr)
-}
 
 /// # Safety
 ///

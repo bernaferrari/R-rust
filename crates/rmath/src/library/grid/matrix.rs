@@ -38,32 +38,7 @@ pub fn locationY(l: &LLocation) -> f64 {
     l[1]
 }
 
-pub fn copyTransform(t1: &LTransform, t2: &mut LTransform) {
-    for i in 0..3 {
-        for j in 0..3 {
-            t2[i][j] = t1[i][j];
-        }
-    }
-}
 
-pub fn invTransform(t: &LTransform, invt: &mut LTransform) {
-    let det = t[0][0] * (t[2][2] * t[1][1] - t[2][1] * t[1][2])
-        - t[1][0] * (t[2][2] * t[0][1] - t[2][1] * t[0][2])
-        + t[2][0] * (t[1][2] * t[0][1] - t[1][1] * t[0][2]);
-    if det == 0.0 {
-        return;
-    }
-    let inv_det = 1.0 / det;
-    invt[0][0] = inv_det * (t[2][2] * t[1][1] - t[2][1] * t[1][2]);
-    invt[0][1] = -inv_det * (t[2][2] * t[0][1] - t[2][1] * t[0][2]);
-    invt[0][2] = inv_det * (t[1][2] * t[0][1] - t[1][1] * t[0][2]);
-    invt[1][0] = -inv_det * (t[2][2] * t[1][0] - t[2][0] * t[1][2]);
-    invt[1][1] = inv_det * (t[2][2] * t[0][0] - t[2][0] * t[0][2]);
-    invt[1][2] = -inv_det * (t[1][2] * t[0][0] - t[1][0] * t[0][2]);
-    invt[2][0] = inv_det * (t[2][1] * t[1][0] - t[2][0] * t[1][1]);
-    invt[2][1] = -inv_det * (t[2][1] * t[0][0] - t[2][0] * t[0][1]);
-    invt[2][2] = inv_det * (t[1][1] * t[0][0] - t[1][0] * t[0][1]);
-}
 
 pub fn identity(m: &mut LTransform) {
     for i in 0..3 {

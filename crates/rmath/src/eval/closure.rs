@@ -25,24 +25,6 @@ fn sexp_err(context: &str, err: SexpError) -> String {
     format!("{context}: {err}")
 }
 
-/// Safe argument matching using Sexp<'a> and PairlistIter.
-///
-/// Matches actual arguments to formal parameters, building a new
-/// pairlist with the matched values.
-/// # Safety
-/// Activate the live owner of all inputs and retain their reachable graphs
-/// through allocation and R reentry. No Rust payload loan may cross execution.
-pub fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Result<Sexp<'a>, String> {
-    if formals.clone().is_nil() {
-        return Ok(args);
-    }
-
-    let factory = formals
-        .node_factory()
-        .or_else(|_| args.node_factory())
-        .map_err(|err| sexp_err("argument matching owner", err))?;
-    match_closure_args(&factory, formals, args)
-}
 
 /// Safe environment creation.
 ///

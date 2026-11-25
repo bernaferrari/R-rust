@@ -93,12 +93,6 @@ pub(crate) fn has_names_attribute(x: Sexp<'_>) -> bool {
     unsafe { Sexp::from_raw(names) }.is_some_and(|names| names.typeof_() == SEXPTYPE::STRSXP)
 }
 
-pub(crate) fn format_named_atomic_vector(x: Sexp<'_>, values: Vec<String>) -> Option<String> {
-    let mut names = vector_print_names(x)?;
-    let limit = values.len();
-    names.truncate(limit);
-    Some(format_named_values(&names, &values))
-}
 
 pub(crate) fn string_element_text(x: Sexp<'_>, i: R_xlen_t) -> Option<Option<String>> {
     x.string_value_elt(i)
@@ -171,16 +165,6 @@ pub(crate) fn escape_printed_text(value: &str, quote: bool) -> String {
     output
 }
 
-pub(crate) fn format_string_vector(x: Sexp<'_>) -> String {
-    if x.clone().len() == 0 {
-        return "character(0)".to_string();
-    }
-    let vals: Vec<String> = (0..x.clone().len().min(10))
-        .map(|i| format_string_element(x.clone(), i))
-        .collect();
-    let suffix = if x.len() > 10 { " ..." } else { "" };
-    format!("[1] {}{}", vals.join(" "), suffix)
-}
 
 pub(crate) fn format_factor(x: Sexp<'_>) -> Option<String> {
     let levels = factor_levels(x.clone())?;
