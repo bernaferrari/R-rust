@@ -177,19 +177,11 @@ pub fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // do_cbind -- convenience wrapper (public stub)
 // ---------------------------------------------------------------------------
 
-/// the `cbind` internal helper.
-pub fn do_cbind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    do_bind(call, op, args, env)
-}
 
 // ---------------------------------------------------------------------------
 // do_rbind -- convenience wrapper (public stub)
 // ---------------------------------------------------------------------------
 
-/// the `rbind` internal helper.
-pub fn do_rbind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    do_bind(call, op, args, env)
-}
 
 // ---------------------------------------------------------------------------
 // SetRowNames -- set row names in a dimnames list

@@ -20,49 +20,6 @@ use crate::sexp::protect::protect;
 // do_c -- the c() primitive (SPECIALSXP)
 // ---------------------------------------------------------------------------
 
-/// R's `c()` builtin.  Attempts method dispatch; falls back to `do_c_dflt`.
-pub fn do_c(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
-
-        let args = R_listCompact(args, true);
-
-        // S3 method dispatch: check if any arg is an object with a "c" method
-        let mut method: SEXP = R_NilValue();
-        let mut a = args;
-        while !a.is_null() && a != R_NilValue() && method == R_NilValue() {
-            let obj = crate::eval::eval::Rf_eval(CAR(a), env);
-            if isObject(obj) != 0 {
-                let classlist = R_data_class(obj);
-                let classlen = Rf_length(classlist);
-                for i in 0..classlen {
-                    let class_str = translateChar(STRING_ELT(classlist, i as R_xlen_t));
-                    let s = std::ffi::CStr::from_ptr(class_str).to_str().unwrap_or("");
-                    let method_name = format!("c.{}\0", s);
-                    let sym =
-                        crate::sexp::symbol::Rf_install(method_name.as_ptr() as *const c_char);
-                    let classmethod = crate::mainutils::objects::R_LookupMethod(
-                        sym,
-                        env,
-                        env,
-                        crate::sexp::globals::R_BaseEnv(),
-                    );
-                    if classmethod != crate::sexp::globals::R_UnboundValue() {
-                        method = classmethod;
-                        break;
-                    }
-                }
-            }
-            a = CDR(a);
-        }
-
-        if method != R_NilValue() {
-            return crate::mainutils::objects::applyMethod(call, method, args, env, R_NilValue());
-        }
-
-        do_c_dflt(call, op, args, env)
-    }
-}
 
 // ---------------------------------------------------------------------------
 // do_c_dflt -- default method for c()
@@ -186,25 +143,6 @@ pub fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // do_unlist -- the unlist() builtin
 // ---------------------------------------------------------------------------
 
-/// R's `unlist()` builtin.  Attempts method dispatch; falls back to default.
-pub fn do_unlist(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
-
-        // Attempt method dispatch.
-        // DispatchOrEval internal generic: unlist
-        let mut ans: SEXP = ptr::null_mut();
-        let generic = c"unlist";
-        // DispatchOrEval returns 1 if dispatched (result in ans), 0 if not.
-        let dispatched = DispatchOrEval(call, op, generic.as_ptr(), args, env, &mut ans, 0, 0);
-        if dispatched != 0 {
-            return ans;
-        }
-
-        // Method dispatch has failed; run the default code with evaluated args.
-        do_unlist_default(call, op, ans, env)
-    }
-}
 
 /// Default implementation of unlist().
 pub fn do_unlist_default(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
