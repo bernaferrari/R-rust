@@ -13,7 +13,6 @@ mod reader_impl;
 pub(crate) use reader_impl::*; // tests.rs chains here via use super::*
 mod reftables;
 mod tests;
-mod write_item;
 mod writer;
 pub use consts::*;
 pub use flags::*;
@@ -21,7 +20,6 @@ pub use persist::*;
 pub use read_item::*;
 pub use reader::*;
 pub use reftables::*;
-pub use write_item::*;
 pub use writer::*;
 
 // Low-level test convenience; production entry points pass their already pinned owner.

@@ -27,32 +27,7 @@ pub fn R_serialize_with_xdr(
         let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
         let _object_guard = protect(object);
         let _hook_guard = protect(fun);
-        let version = if Sversion == R_NilValue() {
-            defaultSerializeVersion()
-        } else {
-            let version = asInteger(Sversion);
-            if version != 2 && version != 3 {
-                error(&format!("version {version} not supported"));
-            }
-            version
-        };
-
-        let ascii_value = if ascii.is_null() || ascii == R_NilValue() {
-            0
-        } else {
-            asLogical(ascii)
-        };
-        let format = if ascii_value != 0 {
-            SnapshotFormat::Ascii {
-                hex: ascii_value == crate::sexp::ffi::NA_LOGICAL,
-            }
-        } else if xdr.is_null() || xdr == R_NilValue() || asLogical(xdr) != 0 {
-            SnapshotFormat::Xdr
-        } else {
-            SnapshotFormat::Native
-        };
-        let _ = version;
-        let _ = format;
+        let _ = (ascii, xdr, Sversion);
         let data = crate::mainutils::rbg1::write_object_hooked(object, fun)
             .unwrap_or_else(|failure| error(&failure));
         let raw = raw_from_bytes(&data);
@@ -90,64 +65,6 @@ pub(crate) fn serialize_workspace_snapshot(
             .unwrap_or_else(|e| error(&e.to_string()));
         writer.into_output()
     }
-}
-
-enum SnapshotFormat {
-    Ascii { hex: bool },
-    Xdr,
-    Native,
-}
-
-fn serialize_snapshot(
-    owner: &crate::sexp::owner::OwnerToken<'_>,
-    object: SEXP,
-    hook: SEXP,
-    version: c_int,
-    format: SnapshotFormat,
-    prefix: &[u8],
-) -> SerializedBytes {
-    let _object_guard = protect(object);
-    let _hook_guard = protect(hook);
-    // Build the header
-    let mut writer = BinaryWriter::admitted(owner);
-    writer.strict_workspace = !prefix.is_empty();
-    writer.write_bytes(prefix);
-    writer.set_persist_hook(hook);
-    writer.write_byte(match format {
-        SnapshotFormat::Ascii { .. } => b'A',
-        SnapshotFormat::Xdr => b'X',
-        SnapshotFormat::Native => b'B',
-    });
-    writer.write_byte(b'\n');
-    writer.set_ascii_body(matches!(format, SnapshotFormat::Ascii { .. }));
-    writer.set_ascii_hex(matches!(format, SnapshotFormat::Ascii { hex: true }));
-    writer.set_xdr_body(matches!(format, SnapshotFormat::Xdr));
-    writer.version = version;
-
-    // Version info
-    writer.write_i32(version); // version
-    writer.write_i32(R_VERSION); // writer version
-    writer.write_i32(if version == 2 {
-        R_VERSION_230
-    } else {
-        R_VERSION_350
-    });
-    if version == 3 {
-        // GNU R_Serialize writes the native encoding name; the runtime
-        // is UTF-8-native like Unix GNU R.
-        const NATIVE_ENCODING: &[u8] = b"UTF-8";
-        writer.write_i32(NATIVE_ENCODING.len() as c_int);
-        writer.write_string_bytes(NATIVE_ENCODING);
-    }
-
-    // Serialize the object
-    let mut ref_table = WriteHashTable::for_owner(owner);
-    WriteItemInternal(object, &mut ref_table, &mut writer);
-
-    owner
-        .require_active()
-        .unwrap_or_else(|e| error(&e.to_string()));
-    writer.into_output()
 }
 
 /// Unserialize an R object from a raw vector.
