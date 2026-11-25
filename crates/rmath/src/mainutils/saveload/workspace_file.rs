@@ -95,6 +95,11 @@ pub(super) unsafe fn load(owner: OwnerToken<'_>, file: SEXP, envir: SEXP) -> SEX
     }
     let body = bytes.get(5..).unwrap_or_default();
     let bindings = match bytes.get(..5) {
+        Some(b"RDX2\n" | b"RDX3\n" | b"RDB2\n" | b"RDB3\n" | b"RDA2\n" | b"RDA3\n")
+            if body.starts_with(crate::mainutils::rbg1::MAGIC) =>
+        {
+            serialize::decode_workspace_snapshot(&owner, body, false).unwrap_or_else(fail)
+        }
         Some(b"RDX2\n" | b"RDX3\n") if body.starts_with(b"X\n") => {
             serialize::decode_workspace_snapshot(&owner, body, false).unwrap_or_else(fail)
         }

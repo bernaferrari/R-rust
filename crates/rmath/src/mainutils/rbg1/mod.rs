@@ -81,6 +81,16 @@ pub fn read_object(bytes: &[u8]) -> Result<SEXP, String> {
     read_object_hooked(bytes, R_NilValue())
 }
 
+/// Total byte length of the frame that starts at `bytes` — header plus the
+/// compressed payload — or `None` when the header is truncated or foreign.
+pub fn frame_total_len(bytes: &[u8]) -> Option<usize> {
+    if bytes.len() < HEADER_LEN || bytes[..4] != *MAGIC {
+        return None;
+    }
+    let compressed_len = u64::from_le_bytes(bytes[17..25].try_into().ok()?) as usize;
+    Some(HEADER_LEN + compressed_len)
+}
+
 /// Materialize with a GNU-style restore hook for persistent references.
 pub fn read_object_hooked(bytes: &[u8], hook: SEXP) -> Result<SEXP, String> {
     let payload = decode_frame(bytes)?;

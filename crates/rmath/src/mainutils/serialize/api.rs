@@ -78,12 +78,17 @@ pub(crate) fn serialize_workspace_snapshot(
         _ => error(&format!("version {version} not supported")),
     };
     {
-        let format = if ascii {
-            SnapshotFormat::Ascii { hex: false }
-        } else {
-            SnapshotFormat::Xdr
-        };
-        serialize_snapshot(owner, bindings, R_NilValue(), version, format, prefix)
+        let _ = ascii;
+        let _object_guard = protect(bindings);
+        let frame = crate::mainutils::rbg1::write_object_hooked(bindings, R_NilValue())
+            .unwrap_or_else(|failure| error(&failure));
+        let mut writer = BinaryWriter::admitted(owner);
+        writer.write_bytes(prefix);
+        writer.write_bytes(&frame);
+        owner
+            .require_active()
+            .unwrap_or_else(|e| error(&e.to_string()));
+        writer.into_output()
     }
 }
 
@@ -680,6 +685,17 @@ pub(crate) fn decode_workspace_snapshot(
     body: &[u8],
     ascii: bool,
 ) -> crate::sexp::object::SexpResult<crate::sexp::object::Sexp<'static>> {
+    if body.len() >= 4 && body[..4] == *crate::mainutils::rbg1::MAGIC {
+        owner.require_active()?;
+        let decoded = crate::mainutils::rbg1::read_object_hooked(body, R_NilValue())
+            .map_err(|message| crate::sexp::object::SexpError::EvaluationFailed { message })?;
+        let total = crate::mainutils::rbg1::frame_total_len(body).unwrap_or(body.len());
+        let trailing = &body[total.min(body.len())..];
+        if !(trailing.is_empty() || ascii && trailing.iter().all(u8::is_ascii_whitespace)) {
+            crate::sexp::context::r_error("unexpected data after workspace");
+        }
+        return owner.sexp(decoded)?.into_owned();
+    }
     let mut reader = BinaryReader::new(body);
     // SAFETY: the caller keeps the complete, admitted body alive through
     // decoding; no R payload loan is live.
