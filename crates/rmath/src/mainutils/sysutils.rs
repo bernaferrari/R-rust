@@ -257,83 +257,8 @@ pub unsafe fn do_unsetenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP
     }
 }
 
-/// interactive() — check if R is in interactive mode.
-pub fn do_interactive(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    Rf_ScalarLogical(if R_Interactive() { TRUE } else { FALSE })
-}
 
-/// tempdir() — return the temporary directory path.
-pub fn do_tempdir(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    checkArity(_op, args);
-    let _check = CAR(args);
-    let temp_dir = std::env::temp_dir();
-    let temp_str = temp_dir.to_string_lossy().to_string();
-    crate::sexp::constructors::mk_string_bytes(
-        std::ffi::CString::new(temp_str)
-            .unwrap_or_default()
-            .to_bytes(),
-    )
-}
 
-/// tempfile() — generate temporary file names.
-///
-/// .Internal(tempfile(pattern, tempdir, fileext))
-pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        checkArity(_op, args);
-
-        let pattern = CAR(args);
-        let n1 = LENGTH(pattern);
-        args = CDR(args);
-        let tempdir = CAR(args);
-        let n2 = LENGTH(tempdir);
-        args = CDR(args);
-        let fileext = CAR(args);
-        let n3 = LENGTH(fileext);
-
-        if !isString(pattern) || n1 < 1 {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "invalid filename pattern".to_string(),
-            });
-        }
-        if !isString(tempdir) || n2 < 1 {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "invalid 'tempdir' value".to_string(),
-            });
-        }
-        if !isString(fileext) || n3 < 1 {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "invalid file extension".to_string(),
-            });
-        }
-
-        let slen = std::cmp::max(n1, std::cmp::max(n2, n3));
-        let ans = Rf_allocVector3(SEXPTYPE::STRSXP, slen as R_xlen_t);
-        let _ans_guard = protect(ans);
-
-        for i in 0..slen as R_xlen_t {
-            let tn_c = CHAR(STRING_ELT(pattern, i % (n1 as R_xlen_t)));
-            let td_c = CHAR(STRING_ELT(tempdir, i % (n2 as R_xlen_t)));
-            let te_c = CHAR(STRING_ELT(fileext, i % (n3 as R_xlen_t)));
-            let tn = std::ffi::CStr::from_ptr(tn_c).to_str().unwrap_or("");
-            let td = std::ffi::CStr::from_ptr(td_c).to_str().unwrap_or("");
-            let te = std::ffi::CStr::from_ptr(te_c).to_str().unwrap_or("");
-
-            if let Some(name) = R_tmpnam2(tn, td, te) {
-                let c_str = std::ffi::CString::new(name).unwrap_or_default();
-                SET_STRING_ELT(
-                    ans,
-                    i,
-                    crate::sexp::constructors::mk_char_bytes(c_str.to_bytes()),
-                );
-            } else {
-                SET_STRING_ELT(ans, i, STRING_ELT(fileext, 0));
-            }
-        }
-
-        ans
-    }
-}
 
 /// R_system — execute a system command and return the exit status.
 ///
