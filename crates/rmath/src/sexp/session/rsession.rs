@@ -946,101 +946,109 @@ impl RSession {
             let mut forwarding = RecordingTarget { target, recording };
             // SAFETY: `instance` is this session's live runtime instance and
             // `forwarding` is a local that outlives the guard.
-            let _backend_guard =
-                unsafe { RenderPlotBackendGuard::install(instance, &mut forwarding) };
-            let capture = crate::sexp::output::OutputCaptureGuard::start();
-            // Remaining parsed statements retain their automatic leases.
-            let mut result: RResult<Sexp<'session>> = Ok(Sexp::nil());
-            let last_index = expressions.len().saturating_sub(1);
-            // Same per-expression location as the plain script loop above.
-            let _toplevel_no_guard = ToplevelExprNoGuard::new(self);
-            for (index, expr) in expressions.iter().enumerate() {
-                let raw_expr = expr.clone().as_raw();
-                crate::mainutils::errors::set_toplevel_expr_no(index + 1);
-                result = _toplevel_no_guard
-                    .run_checked(|| self.eval_sexp(expr.clone()))
-                    .and_then(|result| result);
-                if let Err(error) = _toplevel_no_guard.require_active() {
-                    result = Err(error);
-                    break;
-                }
-                // Same unconditional publication as the plain script loop
-                // above (GNU R_ReplFile:99 SETs the cell in script mode).
-                if let Ok(value) = result.as_ref() {
+            crate::sexp::session::guards::with_renderplot_backend(instance, &mut forwarding, || {
+                let capture = crate::sexp::output::OutputCaptureGuard::start();
+                // Remaining parsed statements retain their automatic leases.
+                let mut result: RResult<Sexp<'session>> = Ok(Sexp::nil());
+                let last_index = expressions.len().saturating_sub(1);
+                // Same per-expression location as the plain script loop above.
+                let _toplevel_no_guard = ToplevelExprNoGuard::new(self);
+                for (index, expr) in expressions.iter().enumerate() {
+                    let raw_expr = expr.clone().as_raw();
+                    crate::mainutils::errors::set_toplevel_expr_no(index + 1);
+                    result = _toplevel_no_guard
+                        .run_checked(|| self.eval_sexp(expr.clone()))
+                        .and_then(|result| result);
+                    if let Err(error) = _toplevel_no_guard.require_active() {
+                        result = Err(error);
+                        break;
+                    }
+                    // Same unconditional publication as the plain script loop
+                    // above (GNU R_ReplFile:99 SETs the cell in script mode).
+                    if let Ok(value) = result.as_ref() {
+                        if let Err(error) = _toplevel_no_guard
+                            .run_checked(|| remember_last_value(value.clone().as_raw()))
+                        {
+                            result = Err(error);
+                            break;
+                        }
+                    }
                     if let Err(error) = _toplevel_no_guard
-                        .run_checked(|| remember_last_value(value.clone().as_raw()))
+                        .run_checked(|| crate::eval::parser::flush_parsed_expr_warnings(index))
                     {
                         result = Err(error);
                         break;
                     }
-                }
-                if let Err(error) = _toplevel_no_guard
-                    .run_checked(|| crate::eval::parser::flush_parsed_expr_warnings(index))
-                {
-                    result = Err(error);
-                    break;
-                }
-                // Same per-expression auto-print as the plain script loop
-                // above: every visible non-final top-level statement renders
-                // into the captured stream, preserving print()/auto-print
-                // interleaving; the final statement renders at result
-                // assembly. A print error is the same script error as eval.
-                let to_print = if index != last_index && self.inst().visibility() != 0 {
-                    result.as_ref().ok().cloned()
-                } else {
-                    None
-                };
-                if let Some(value) = to_print {
-                    if let Err(err) =
-                        _toplevel_no_guard.run_checked(|| crate::sexp::output::print_value(value))
-                    {
-                        result = Err(err);
-                    }
-                }
-                if let Err(error) = _toplevel_no_guard.require_active() {
-                    result = Err(error);
-                    break;
-                }
-                match _toplevel_no_guard
-                    .run_checked(|| self.caught_script_error_continues(&mut result, raw_expr))
-                {
-                    Ok(true) => continue,
-                    Ok(false) => {}
-                    Err(error) => {
-                        result = Err(error);
-                        break;
-                    }
-                }
-                if result.is_err() {
-                    break;
-                }
-                if let Ok(value) = result.as_ref() {
-                    let visible_flag = if self.inst().visibility() != 0 {
-                        1
+                    // Same per-expression auto-print as the plain script loop
+                    // above: every visible non-final top-level statement renders
+                    // into the captured stream, preserving print()/auto-print
+                    // interleaving; the final statement renders at result
+                    // assembly. A print error is the same script error as eval.
+                    let to_print = if index != last_index && self.inst().visibility() != 0 {
+                        result.as_ref().ok().cloned()
                     } else {
-                        0
+                        None
                     };
-                    if let Err(error) = _toplevel_no_guard.run_checked(|| unsafe {
-                        crate::mainutils::main::Rf_callToplevelHandlers(
-                            raw_expr,
-                            value.clone().as_raw(),
-                            crate::sexp::ffi::TRUE,
-                            visible_flag,
-                        );
-                    }) {
+                    if let Some(value) = to_print {
+                        if let Err(err) =
+                            _toplevel_no_guard.run_checked(|| crate::sexp::output::print_value(value))
+                        {
+                            result = Err(err);
+                        }
+                    }
+                    if let Err(error) = _toplevel_no_guard.require_active() {
                         result = Err(error);
                         break;
                     }
-                }
-                if let Err(error) = _toplevel_no_guard.require_active() {
-                    result = Err(error);
-                    break;
-                }
-                // Same main.c REPL-tail flush as the plain script loop; the
-                // final statement's warnings flush at result assembly.
-                if index != last_index && crate::mainutils::errors::collect_warnings() > 0 {
-                    if let Err(error) = _toplevel_no_guard.run_checked(|| {
-                        crate::mainutils::errors::print_warnings_at_statement_boundary();
+                    match _toplevel_no_guard
+                        .run_checked(|| self.caught_script_error_continues(&mut result, raw_expr))
+                    {
+                        Ok(true) => continue,
+                        Ok(false) => {}
+                        Err(error) => {
+                            result = Err(error);
+                            break;
+                        }
+                    }
+                    if result.is_err() {
+                        break;
+                    }
+                    if let Ok(value) = result.as_ref() {
+                        let visible_flag = if self.inst().visibility() != 0 {
+                            1
+                        } else {
+                            0
+                        };
+                        if let Err(error) = _toplevel_no_guard.run_checked(|| unsafe {
+                            crate::mainutils::main::Rf_callToplevelHandlers(
+                                raw_expr,
+                                value.clone().as_raw(),
+                                crate::sexp::ffi::TRUE,
+                                visible_flag,
+                            );
+                        }) {
+                            result = Err(error);
+                            break;
+                        }
+                    }
+                    if let Err(error) = _toplevel_no_guard.require_active() {
+                        result = Err(error);
+                        break;
+                    }
+                    // Same main.c REPL-tail flush as the plain script loop; the
+                    // final statement's warnings flush at result assembly.
+                    if index != last_index && crate::mainutils::errors::collect_warnings() > 0 {
+                        if let Err(error) = _toplevel_no_guard.run_checked(|| {
+                            crate::mainutils::errors::print_warnings_at_statement_boundary();
+                        }) {
+                            result = Err(error);
+                            break;
+                        }
+                    }
+                    // SAFETY: activation owns the live instance. No field borrow
+                    // survives collection or finalizer reentry.
+                    if let Err(error) = _toplevel_no_guard.run_checked(|| unsafe {
+                        crate::sexp::gengc::run_pending_gc_if_quiescent_in(self.instance);
                     }) {
                         result = Err(error);
                         break;
@@ -1052,22 +1060,14 @@ impl RSession {
                     crate::sexp::gengc::run_pending_gc_if_quiescent_in(self.instance);
                 }) {
                     result = Err(error);
-                    break;
                 }
-            }
-            // SAFETY: activation owns the live instance. No field borrow
-            // survives collection or finalizer reentry.
-            if let Err(error) = _toplevel_no_guard.run_checked(|| unsafe {
-                crate::sexp::gengc::run_pending_gc_if_quiescent_in(self.instance);
-            }) {
-                result = Err(error);
-            }
-            if let Err(error) = _toplevel_no_guard.require_active() {
-                result = Err(error);
-            }
-            let visible = self.inst().visibility() != 0;
-            let output = capture.finish();
-            f(result, output, visible)
+                if let Err(error) = _toplevel_no_guard.require_active() {
+                    result = Err(error);
+                }
+                let visible = self.inst().visibility() != 0;
+                let output = capture.finish();
+                f(result, output, visible)
+            })
         }
     }
 

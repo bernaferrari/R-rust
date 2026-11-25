@@ -226,7 +226,7 @@ impl r_graphics_engine::DrawTarget for RecordingTarget<'_> {
 }
 
 #[cfg(feature = "renderplot-device")]
-pub(crate) struct RenderPlotBackendGuard {
+struct RenderPlotBackendGuard {
     instance: *mut RInstance,
     pin: Option<crate::sexp::owner::OwnerPin>,
     availability: crate::sexp::instance::InstanceLiveness,
@@ -237,9 +237,9 @@ pub(crate) struct RenderPlotBackendGuard {
 impl RenderPlotBackendGuard {
     /// # Safety
     ///
-    /// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+    /// `instance` must point to a live `RInstance` (as supplied by the instance accessors) with
     /// no conflicting outstanding borrow of the fields touched here.
-    pub(crate) unsafe fn install<'a>(
+    unsafe fn install<'a>(
         instance: *mut RInstance,
         backend: *mut (dyn r_graphics_engine::DrawTarget + 'a),
     ) -> Self {
@@ -247,9 +247,10 @@ impl RenderPlotBackendGuard {
             .map(|owner| owner.pin().expect("live RenderPlot owner"));
         let availability = unsafe { crate::sexp::instance::instance_liveness(instance) };
         // SAFETY: lifetime-erasing the backend pointer to 'static for storage
-        // in the instance slot. This is sound because the guard's Drop
-        // restores the previous slot value before the caller's 'a borrow ends,
-        // so the erased pointer can never be observed after it dangles.
+        // in the instance slot. Sound because this guard is unforgeable outside
+        // `with_renderplot_backend`, which drops it — restoring the previous
+        // slot value — before the caller's 'a borrow ends, even on unwind; the
+        // erased pointer can never be observed after it would dangle.
         #[allow(clippy::transmute_ptr_to_ptr)] // fat-pointer lifetime erasure; `as` cannot do this
         let erased: *mut (dyn r_graphics_engine::DrawTarget + 'static) =
             unsafe { std::mem::transmute(backend) };
@@ -276,6 +277,27 @@ impl Drop for RenderPlotBackendGuard {
             (*instance).current_renderplot_backend = self.previous;
         }
     }
+}
+
+/// Install `backend` as the instance's renderplot target for exactly the
+/// dynamic extent of `f`, restoring the previous target afterwards.
+///
+/// This is the only way to install a renderplot backend: the guard type is
+/// private to this module, so callers cannot `mem::forget` the restoration or
+/// otherwise let the lifetime-erased pointer outlive the borrow. Even if `f`
+/// unwinds, the guard's `Drop` runs before the borrow ends.
+#[cfg(feature = "renderplot-device")]
+pub(crate) fn with_renderplot_backend<R>(
+    instance: *mut RInstance,
+    backend: &mut (dyn r_graphics_engine::DrawTarget + '_),
+    f: impl FnOnce() -> R,
+) -> R {
+    // SAFETY: `instance` is the live instance supplied by the caller's active
+    // session; restoration is guaranteed by the unescapeable guard.
+    let guard = unsafe { RenderPlotBackendGuard::install(instance, backend) };
+    let result = f();
+    drop(guard);
+    result
 }
 
 pub(crate) struct ProtectScope {
