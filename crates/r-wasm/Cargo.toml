@@ -17,7 +17,7 @@ vello-gpu = ["dep:r-device-vello-gpu", "dep:r-graphics-engine", "dep:wasm-bindge
 [dependencies]
 r-device-vello-gpu = { path = "../r-device-vello-gpu", optional = true }
 r-graphics-engine = { path = "../r-graphics-engine", optional = true }
-r-embed = { path = "../r-embed", default-features = false, features = ["rust-backend"] }
+r-embed = { path = "../r-embed", default-features = false }
 
 # wasm-bindgen is only linked on wasm32; native `cargo check -p r-wasm`
 # exercises the same session code through the cfg'd non-bindgen shim.

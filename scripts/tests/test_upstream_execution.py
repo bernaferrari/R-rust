@@ -568,7 +568,7 @@ class ShellIntegrationTests(unittest.TestCase):
         wrapper = scripts / "cargo_dev.sh"
         wrapper.write_text("#!/usr/bin/env python3\nimport json\nfrom pathlib import Path\n"
             + f"artifact=Path({str(self.fixture.rlib)!r})\n"
-            + "import sys\nfeatures=['default','faer','rust-backend']\n"
+            + "import sys\nfeatures=['default']\n"
               "graphics='renderplot-device' in sys.argv\n"
               "if graphics: features+=['r-graphics-engine','renderplot-device']\n"
             + "print(json.dumps({'reason':'compiler-artifact','target':{'name':'rmath','kind':['rlib']},"

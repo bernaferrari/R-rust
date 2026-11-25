@@ -41,7 +41,7 @@ CASE_LOCALES = {"whole/reg-plot-latin1.R": "en_US.ISO8859-1"}
 def runtime_configuration(runtime_profile, package_policy):
     if runtime_profile not in {"core", "graphics"} or package_policy not in {"native", "portable"}:
         raise ValueError("invalid runtime profile or package policy")
-    features = ["default", "faer", "rust-backend"]
+    features = ["default"]
     device = None
     if runtime_profile == "graphics":
         features += ["r-graphics-engine", "renderplot-device"]

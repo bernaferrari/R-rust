@@ -63,41 +63,6 @@ fn error(msg: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// Fortran BLAS declarations used only by the fortran-backend Wishart path.
-// Cholesky factorization goes through modules::lapack::backend so the default
-// Rust backend never reaches a fake self-extern.
-// ---------------------------------------------------------------------------
-
-#[cfg(feature = "fortran-backend")]
-unsafe extern "C" {
-    fn dtrmm_(
-        side: *const u8,
-        uplo: *const u8,
-        transa: *const u8,
-        diag: *const u8,
-        m: *const c_int,
-        n: *const c_int,
-        alpha: *const c_double,
-        a: *const c_double,
-        lda: *const c_int,
-        b: *mut c_double,
-        ldb: *const c_int,
-    );
-    fn dsyrk_(
-        uplo: *const u8,
-        trans: *const u8,
-        n: *const c_int,
-        k: *const c_int,
-        alpha: *const c_double,
-        a: *const c_double,
-        lda: *const c_int,
-        beta: *const c_double,
-        c: *mut c_double,
-        ldc: *const c_int,
-    );
-}
-
-// ---------------------------------------------------------------------------
 // std_rWishart_factor: simulate Cholesky factor of standardized Wishart
 // ---------------------------------------------------------------------------
 
@@ -170,89 +135,31 @@ pub fn rWishart(ns: SEXP, nuP: SEXP, scal: SEXP) -> SEXP {
 
     let mut ans_values = vec![0.0f64; psqr * n as usize];
     let ans_slice = ans_values.as_mut_slice();
-    #[cfg(feature = "fortran-backend")]
-    let one: c_double = 1.0;
-    #[cfg(feature = "fortran-backend")]
-    let zero: c_double = 0.0;
-    #[cfg(feature = "fortran-backend")]
-    let side_r: [u8; 1] = [b'R'];
-    #[cfg(feature = "fortran-backend")]
-    let uplo_u2: [u8; 1] = [b'U'];
-    #[cfg(feature = "fortran-backend")]
-    let trans_n: [u8; 1] = [b'N'];
-    #[cfg(feature = "fortran-backend")]
-    let diag_n: [u8; 1] = [b'N'];
-    #[cfg(feature = "fortran-backend")]
-    let uplo_u3: [u8; 1] = [b'U'];
-    #[cfg(feature = "fortran-backend")]
-    let trans_t: [u8; 1] = [b'T'];
-
     GetRNGstate();
     for ansj in ans_slice.chunks_exact_mut(psqr) {
         std_rWishart_factor(nu, p, 1, &mut tmp);
 
-        // tmp := tmp * U  (dtrmm: R, U, N, N)
-        #[cfg(feature = "fortran-backend")]
-        // SAFETY: every operand is a live local p x p buffer or scalar.
-        unsafe {
-            dtrmm_(
-                side_r.as_ptr(),
-                uplo_u2.as_ptr(),
-                trans_n.as_ptr(),
-                diag_n.as_ptr(),
-                &p,
-                &p,
-                &one,
-                sc_cp.as_ptr(),
-                &p,
-                tmp.as_mut_ptr(),
-                &p,
-            );
-        }
-        #[cfg(not(feature = "fortran-backend"))]
-        {
-            // Pure-Rust fallback: tmp = tmp * scCp (upper triangular)
-            let mut prod = vec![0.0f64; psqr];
-            for i in 0..p_usize {
-                for j in 0..p_usize {
-                    let mut s = 0.0;
-                    for k in 0..=j {
-                        s += tmp[i + k * p_usize] * sc_cp[k + j * p_usize];
-                    }
-                    prod[i + j * p_usize] = s;
-                }
-            }
-            tmp.copy_from_slice(&prod);
-        }
-
-        // ansj := tmp' * tmp  (dsyrk: U, T)
-        #[cfg(feature = "fortran-backend")]
-        // SAFETY: every operand is a live local p x p buffer or scalar.
-        unsafe {
-            dsyrk_(
-                uplo_u3.as_ptr(),
-                trans_t.as_ptr(),
-                &p,
-                &p,
-                &one,
-                tmp.as_ptr(),
-                &p,
-                &zero,
-                ansj.as_mut_ptr(),
-                &p,
-            );
-        }
-        #[cfg(not(feature = "fortran-backend"))]
-        {
-            // Pure-Rust fallback: ansj = tmp^T * tmp (symmetric, store upper)
+        // tmp = tmp * scCp (upper triangular)
+        let mut prod = vec![0.0f64; psqr];
+        for i in 0..p_usize {
             for j in 0..p_usize {
-                for i in 0..=j {
-                    let mut s = 0.0;
-                    for k in 0..p_usize {
-                        s += tmp[k + i * p_usize] * tmp[k + j * p_usize];
-                    }
-                    ansj[i + j * p_usize] = s;
+                let mut sum = 0.0;
+                for k in 0..=j {
+                    sum += tmp[i + k * p_usize] * sc_cp[k + j * p_usize];
                 }
+                prod[i + j * p_usize] = sum;
+            }
+        }
+        tmp.copy_from_slice(&prod);
+
+        // ansj = tmp^T * tmp (symmetric, store upper)
+        for j in 0..p_usize {
+            for i in 0..=j {
+                let mut sum = 0.0;
+                for k in 0..p_usize {
+                    sum += tmp[k + i * p_usize] * tmp[k + j * p_usize];
+                }
+                ansj[i + j * p_usize] = sum;
             }
         }
 

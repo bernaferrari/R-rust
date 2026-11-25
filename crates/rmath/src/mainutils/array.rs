@@ -818,7 +818,6 @@ pub(crate) fn do_matprod_kind(kind: MatProductKind, args: SEXP, name: &str) -> S
             };
             let result = Rf_allocVector3(SEXPTYPE::CPLXSXP, result_len);
             let _result = protect(result);
-            #[cfg(feature = "rust-backend")]
             let product = {
                 let a = faer::Mat::from_fn(out_rows, inner, left);
                 let b = faer::Mat::from_fn(inner, out_cols, right);
@@ -828,11 +827,7 @@ pub(crate) fn do_matprod_kind(kind: MatProductKind, args: SEXP, name: &str) -> S
                 let mut result_mut = mutable_vector(result);
                 for col in 0..out_cols {
                     for row in 0..out_rows {
-                        #[cfg(feature = "rust-backend")]
                         let z = product[(row, col)];
-                        #[cfg(not(feature = "rust-backend"))]
-                        let z: num::complex::Complex64 =
-                            (0..inner).map(|k| left(row, k) * right(k, col)).sum();
                         checked(result_mut.try_set_complex_elt(
                             (row + col * out_rows) as R_xlen_t,
                             crate::sexp::ffi::Rcomplex { r: z.re, i: z.im },

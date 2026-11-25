@@ -14,7 +14,6 @@ printf '%s\n' "$active" | grep -q 'nightly-2026-08-21' || {
     echo "cargo_kani: expected nightly-2026-08-21, got ${active}" >&2
     exit 1
 }
-# rmath does not compile with no linear-algebra backend. Keep graphics off
-# (--no-default-features) and enable only rust-backend, which pulls faer.
-echo "cargo kani --manifest-path ${ROOT}/crates/rmath/Cargo.toml --no-default-features --features rust-backend $*"
-exec cargo kani --manifest-path "${ROOT}/crates/rmath/Cargo.toml" --no-default-features --features rust-backend "$@"
+# Keep graphics off; the pure-Rust faer linear algebra backend is unconditional.
+echo "cargo kani --manifest-path ${ROOT}/crates/rmath/Cargo.toml --no-default-features $*"
+exec cargo kani --manifest-path "${ROOT}/crates/rmath/Cargo.toml" --no-default-features "$@"

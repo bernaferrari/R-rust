@@ -11,29 +11,7 @@ fn main() {
             pack_browser_analysis_tools().expect("apply the pinned browser analysis tools overlay");
         }
     }
-    let backend = if env::var_os("CARGO_FEATURE_FORTRAN_BACKEND").is_some() {
-        "system-fortran"
-    } else {
-        "faer-pure-rust"
-    };
-    if env::var_os("CARGO_FEATURE_FORTRAN_BACKEND").is_some() {
-        println!("cargo:rerun-if-env-changed=RPORT_LAPACK_LIB_DIR");
-        println!("cargo:rerun-if-env-changed=RPORT_LAPACK_LIB_NAME");
-        if let Ok(directory) = env::var("RPORT_LAPACK_LIB_DIR") {
-            println!("cargo:rustc-link-search=native={directory}");
-        }
-        if let Ok(library) = env::var("RPORT_LAPACK_LIB_NAME") {
-            println!("cargo:rustc-link-lib={library}");
-        } else if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
-            println!("cargo:rustc-link-lib=framework=Accelerate");
-        } else {
-            println!("cargo:rustc-link-lib=lapack");
-            println!("cargo:rustc-link-lib=blas");
-        }
-    }
-    println!("cargo:rustc-env=RUST_LAPACK_BACKEND={backend}");
-
-
+    println!("cargo:rustc-env=RUST_LAPACK_BACKEND=faer-pure-rust");
 }
 
 fn pack_upstream_base_sources() -> io::Result<()> {

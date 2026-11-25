@@ -1,9 +1,8 @@
 /*
  * Pure Rust LAPACK backend using faer 0.24.
  *
- * Provides the same function signatures as the Fortran FFI in lapack.rs,
- * dispatching to faer-rs for linear algebra computations.
- * Enabled via the `rust-backend` feature flag.
+ * Provides LAPACK-shaped function signatures while dispatching to faer-rs
+ * for portable pure-Rust linear algebra computations.
  */
 
 use crate::modules::lapack::lapack::Rcomplex;

@@ -12,11 +12,7 @@ name = "rmath"
 
 [features]
 browser-analysis-tools = []
-default = ["rust-backend"]
-# Use Fortran LAPACK/BLAS via FFI (requires Fortran toolchain, not suitable for Android)
-fortran-backend = []
-# Use pure Rust linear algebra via faer-rs (Android-compatible, no external toolchain)
-rust-backend = ["faer"]
+default = []
 # Enable RenderPlot-backed GE device for high-quality skia output inside real R graphics (plot, grid, etc.)
 # Pulls r-graphics-engine (kept optional so pure-math WASM builds stay small).
 renderplot-device = ["r-graphics-engine"]
@@ -42,10 +38,10 @@ fancy-regex = "0.19"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# Pure Rust linear algebra backend (enabled via rust-backend feature).
-# Keep default features off so wasm builds do not pull faer's rayon/spindle
-# parallel backend, which depends on native-style atomic waits.
-faer = { version = "0.24", default-features = false, features = ["std", "linalg"], optional = true }
+# Pure Rust linear algebra backend. Keep default features off so wasm builds
+# do not pull faer's rayon/spindle parallel backend, which depends on
+# native-style atomic waits.
+faer = { version = "0.24", default-features = false, features = ["std", "linalg"] }
 
 r-graphics-engine = { path = "../r-graphics-engine", optional = true }
 

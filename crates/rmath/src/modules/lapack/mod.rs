@@ -1,12 +1,9 @@
-//! LAPACK module - linear algebra FFI wrappers
+//! LAPACK-shaped pure-Rust linear algebra
 //!
 //! Contains:
-//! - `lapack`: LAPACK/BLAS Fortran FFI declarations and helper functions
-//! - `backend`: Feature-gated dispatch to Fortran FFI or pure Rust (faer-rs)
-//! - `lapack_impl`: Exported stubs for LAPACK wrapper functions
-//! - `accelerate`: macOS Accelerate framework integration (stub)
-//! - `init_win`: Windows-only stdio mode initialization
-//! - `veclib_g95c`: macOS vecLib CBLAS compatibility wrappers (Fortran-callable)
+//! - `lapack`: shared LAPACK validation and conversion helpers
+//! - `backend`: pure-Rust faer implementations behind LAPACK-shaped operations
+//! - `lapack_impl`: exported stubs for LAPACK wrapper functions
 
 #[allow(
     dead_code,
@@ -16,25 +13,7 @@
     unused_assignments,
     non_camel_case_types
 )]
-mod accelerate;
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
 pub(crate) mod backend;
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
-mod init_win;
 #[allow(
     dead_code,
     unused_imports,
@@ -53,15 +32,6 @@ mod lapack;
     non_camel_case_types
 )]
 pub(crate) mod lapack_impl;
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
-mod veclib_g95c;
 mod workspace_size;
 
 #[cfg(test)]

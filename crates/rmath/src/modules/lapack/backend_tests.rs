@@ -1573,11 +1573,7 @@ fn test_zero_dimension_matrices() {
 
 #[test]
 fn test_backend_identity() {
-    let expected = if cfg!(feature = "fortran-backend") {
-        "system-fortran"
-    } else {
-        "faer-pure-rust"
-    };
+    let expected = "faer-pure-rust";
     assert_eq!(backend::backend_name(), expected);
     // Build-script env mirror, when present, must agree.
     if let Some(env_name) = option_env!("RUST_LAPACK_BACKEND") {

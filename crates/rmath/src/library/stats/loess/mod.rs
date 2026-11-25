@@ -762,7 +762,6 @@ fn median(mut values: Vec<f64>) -> f64 {
     }
 }
 
-#[cfg(feature = "rust-backend")]
 fn pseudoinverse_with_condition(a: &[Vec<f64>]) -> Result<(Vec<Vec<f64>>, f64), String> {
     let (m, n) = (a.len(), a[0].len());
     let matrix = faer::Mat::from_fn(m, n, |i, j| a[i][j]);
@@ -787,78 +786,6 @@ fn pseudoinverse_with_condition(a: &[Vec<f64>]) -> Result<(Vec<Vec<f64>>, f64), 
                         (0..m.min(n))
                             .filter(|k| s[*k] > tolerance)
                             .map(|k| v[(i, k)] * u[(j, k)] / s[k])
-                            .sum()
-                    })
-                    .collect()
-            })
-            .collect(),
-        ratio,
-    ))
-}
-
-// One-sided Jacobi SVD keeps this owned kernel available with the system
-// backend too, without raw LAPACK calls or squaring the condition number.
-#[cfg(not(feature = "rust-backend"))]
-fn pseudoinverse_with_condition(a: &[Vec<f64>]) -> Result<(Vec<Vec<f64>>, f64), String> {
-    let (m, n) = (a.len(), a[0].len());
-    let mut b = a.to_vec();
-    let mut v: Vec<Vec<f64>> = (0..n)
-        .map(|i| (0..n).map(|j| f64::from(i == j)).collect())
-        .collect();
-    for _ in 0..100 {
-        let mut changed = false;
-        for p in 0..n {
-            for q in p + 1..n {
-                let aa = b.iter().map(|r| r[p] * r[p]).sum::<f64>();
-                let bb = b.iter().map(|r| r[q] * r[q]).sum::<f64>();
-                let ab = b.iter().map(|r| r[p] * r[q]).sum::<f64>();
-                if ab.abs() <= f64::EPSILON * (aa * bb).sqrt() {
-                    continue;
-                }
-                let z = (bb - aa) / (2. * ab);
-                let t = z.signum() / (z.abs() + (1. + z * z).sqrt());
-                let t = if z == 0. { 1. } else { t };
-                let c = 1. / (1. + t * t).sqrt();
-                let s = c * t;
-                for r in &mut b {
-                    let x = r[p];
-                    let y = r[q];
-                    r[p] = c * x - s * y;
-                    r[q] = s * x + c * y;
-                }
-                for r in &mut v {
-                    let x = r[p];
-                    let y = r[q];
-                    r[p] = c * x - s * y;
-                    r[q] = s * x + c * y;
-                }
-                changed = true;
-            }
-        }
-        if !changed {
-            break;
-        }
-    }
-    let sigma: Vec<_> = (0..n)
-        .map(|j| b.iter().map(|r| r[j] * r[j]).sum::<f64>())
-        .collect();
-    let tolerance = sigma.iter().copied().fold(0., f64::max) * (100. * f64::EPSILON).powi(2);
-    // Columns hold squared singular values; GNU's rcond is sigma(k)/sigma(1).
-    let max = sigma.iter().copied().fold(0., f64::max);
-    let min = sigma.iter().copied().fold(f64::INFINITY, f64::min);
-    let ratio = if max > 0. {
-        (min / max).sqrt()
-    } else {
-        f64::NAN
-    };
-    Ok((
-        (0..n)
-            .map(|i| {
-                (0..m)
-                    .map(|j| {
-                        (0..n)
-                            .filter(|k| sigma[*k] > tolerance)
-                            .map(|k| v[i][k] * b[j][k] / sigma[k])
                             .sum()
                     })
                     .collect()

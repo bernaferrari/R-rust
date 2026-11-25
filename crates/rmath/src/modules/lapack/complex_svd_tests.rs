@@ -256,7 +256,6 @@ fn complex_svd_admission_rejects_short_vector_outputs_before_workspace() {
 }
 
 #[test]
-#[cfg(feature = "rust-backend")]
 fn complex_svd_admission_both_workspace_stages_deny_release_and_retry() {
     use crate::sexp::accessors::{CHAR, STRING_ELT};
     use crate::sexp::instance::with_current_instance;
@@ -337,7 +336,7 @@ fn complex_svd_admission_both_workspace_stages_deny_release_and_retry() {
 }
 
 #[test]
-#[cfg(all(feature = "rust-backend", not(miri)))]
+#[cfg(not(miri))]
 fn complex_svd_overwrite_backend_rectangular_reconstruction_and_invalid_jobs() {
     use super::backend::{LapRcomplex as C, zgesdd_};
     for (m, n) in [(3i32, 2i32), (2, 3), (2, 2)] {
@@ -461,7 +460,6 @@ fn complex_svd_overwrite_backend_rectangular_reconstruction_and_invalid_jobs() {
 }
 
 #[test]
-#[cfg(feature = "rust-backend")]
 fn complex_svd_admission_overwrite_rectangular_workspace_stages() {
     use crate::sexp::accessors::{CHAR, STRING_ELT};
     use crate::sexp::instance::with_current_instance;

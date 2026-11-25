@@ -254,7 +254,7 @@ fn real_svd_admission_rejects_short_vector_outputs_before_workspace() {
 }
 
 #[test]
-#[cfg(all(feature = "rust-backend", not(miri)))]
+#[cfg(not(miri))]
 fn real_svd_backend_modes_rectangular_reconstruction_and_invalid_jobs() {
     use super::backend::dgesdd_;
     for (m, n) in [(3i32, 2i32), (2, 3), (2, 2)] {
@@ -370,7 +370,6 @@ fn real_svd_backend_modes_rectangular_reconstruction_and_invalid_jobs() {
 }
 
 #[test]
-#[cfg(feature = "rust-backend")]
 fn real_svd_admission_rectangular_workspace_stages_and_retry() {
     use crate::sexp::accessors::{CHAR, STRING_ELT};
     use crate::sexp::instance::with_current_instance;
