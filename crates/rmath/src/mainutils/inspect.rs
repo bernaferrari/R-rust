@@ -115,81 +115,11 @@ fn sexptype2char(s: i32) -> &'static str {
 // typeof() — R's typeof() builtin
 // ---------------------------------------------------------------------------
 
-/// do_typeof — R's typeof() function.
-///
-/// Returns the type of the object as a character string.
-/// Ported from R's typeof() in inspect.c.
-pub fn do_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    checkArity(_op, args);
-    let s = CAR(args);
-
-    // Dotted pair list (non-language)
-    if TYPEOF(s) == SEXPTYPE::LISTSXP {
-        return mk_string("pairlist");
-    }
-
-    let t = TYPEOF(s);
-
-    // Special handling for S4 objects
-    if t == SEXPTYPE::OBJSXP {
-        return mk_string("S4");
-    }
-
-    // Handle factors, ordered factors
-    if (t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP || t == SEXPTYPE::STRSXP)
-        && isFactor(s) != 0
-    {
-        let klass = getAttrib(s, R_ClassSymbol());
-        if !klass.is_null() && TYPEOF(klass) == SEXPTYPE::STRSXP && LENGTH(klass) >= 2 {
-            let c1_str = char_text(STRING_ELT(klass, 0));
-            if c1_str == "ordered" {
-                return mk_string("ordered");
-            }
-        }
-        return mk_string("factor");
-    }
-
-    // Handle POSIXct and POSIXlt
-    if (t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::VECSXP)
-        && isFactor(s) == 0
-    {
-        let klass = getAttrib(s, R_ClassSymbol());
-        if !klass.is_null() && TYPEOF(klass) == SEXPTYPE::STRSXP && LENGTH(klass) >= 1 {
-            let c1_str = char_text(STRING_ELT(klass, 0));
-            if c1_str == "POSIXct" {
-                return mk_string("double");
-            }
-            if c1_str == "POSIXlt" {
-                return mk_string("list");
-            }
-            if c1_str == "difftime" {
-                return mk_string("double");
-            }
-            // For data.frame, return "list"
-            if c1_str == "data.frame" {
-                return mk_string("list");
-            }
-        }
-    }
-
-    let type_name = sexptype2char(t);
-    mk_string(type_name)
-}
 
 // ---------------------------------------------------------------------------
 // invisible() — mark result as invisible
 // ---------------------------------------------------------------------------
 
-/// do_invisible — R's invisible() function.
-///
-/// Marks the value as invisible for auto-printing.
-/// Ported from R's invisible() in inspect.c.
-pub fn do_invisible(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    checkArity(_op, args);
-    let x = CAR(args);
-    set_R_Visible(0);
-    x
-}
 
 // ---------------------------------------------------------------------------
 // is.null() — null check
@@ -212,268 +142,47 @@ pub fn do_isnull(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // length() — object length
 // ---------------------------------------------------------------------------
 
-/// do_length — R's length() function.
-///
-/// Returns the length of an object. For vectors, this is the number of elements.
-/// For pairlists, this is the number of pairs. For NULL, returns 0.
-/// Ported from R's length() in inspect.c.
-pub fn do_length(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    checkArity(_op, args);
-    let mut s = CAR(args);
-
-    let len = if s.is_null() || TYPEOF(s) == SEXPTYPE::NILSXP {
-        0
-    } else {
-        let t = TYPEOF(s);
-        if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
-            // Pairlist: count cons cells
-            let mut count: c_int = 0;
-            while !s.is_null() && (TYPEOF(s) == SEXPTYPE::LISTSXP || TYPEOF(s) == SEXPTYPE::LANGSXP)
-            {
-                count += 1;
-                s = CDR(s);
-            }
-            count
-        } else {
-            LENGTH(s)
-        }
-    };
-
-    Rf_ScalarInteger(len)
-}
 
 // ---------------------------------------------------------------------------
 // formals() — function arguments
 // ---------------------------------------------------------------------------
 
-/// do_formals — R's formals() function.
-///
-/// Returns the formal arguments of a function.
-/// Ported from R's formals() in inspect.c.
-pub fn do_formals(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    checkArity(_op, args);
-    let s = CAR(args);
 
-    if s.is_null() {
-        return R_NilValue();
-    }
-
-    let t = TYPEOF(s);
-    if t == SEXPTYPE::CLOSXP {
-        // Closure: formals are in CLOENV -> CDR
-        let formals = FORMALS(s);
-        if formals.is_null() || TYPEOF(formals) != SEXPTYPE::LISTSXP {
-            return R_NilValue();
-        }
-        formals
-    } else {
-        R_NilValue()
-    }
-}
-
-/// do_body — R's body() function.
-///
-/// Returns the body of a function.
-/// Ported from R's body() in inspect.c.
-pub fn do_body(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    checkArity(_op, args);
-    let s = CAR(args);
-
-    if s.is_null() {
-        return R_NilValue();
-    }
-
-    let t = TYPEOF(s);
-    if t == SEXPTYPE::CLOSXP {
-        BODY(s)
-    } else if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-        // Builtins/specials don't have a body in the usual sense
-        R_NilValue()
-    } else {
-        R_NilValue()
-    }
-}
 
 // ---------------------------------------------------------------------------
 // args() — function arguments (actual)
 // ---------------------------------------------------------------------------
 
-/// do_args — R's args() function.
-///
-/// Returns the arguments (promise objects) from the matching call.
-/// Ported from R's args() in inspect.c.
-pub fn do_args(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    checkArity(_op, args);
-
-    // args() with no argument: return the promise objects from the
-    // current function's call.
-    let s = CAR(args);
-    if s.is_null() || TYPEOF(s) == SEXPTYPE::NILSXP {
-        // Return sys.call() arguments as promise objects
-        // Returning nil
-        return R_NilValue();
-    }
-
-    // args(x) where x is a function: return the formals
-    if TYPEOF(s) == SEXPTYPE::CLOSXP {
-        FORMALS(s)
-    } else {
-        R_NilValue()
-    }
-}
 
 // ---------------------------------------------------------------------------
 // environment() — get function environment
 // ---------------------------------------------------------------------------
 
-/// do_environment — R's environment() function.
-///
-/// Returns the environment of a function or other object.
-/// Ported from R's environment() in inspect.c.
-pub fn do_environment(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    checkArity(_op, args);
-    let s = CAR(args);
-
-    if s.is_null() {
-        return R_GlobalEnv();
-    }
-
-    let t = TYPEOF(s);
-    if t == SEXPTYPE::CLOSXP {
-        CLOENV(s)
-    } else if t == SEXPTYPE::ENVSXP {
-        s
-    } else {
-        R_GlobalEnv()
-    }
-}
 
 // ---------------------------------------------------------------------------
 // str() — object structure display
 // ---------------------------------------------------------------------------
 
-/// do_str — R's str() function.
-///
-/// Compactly displays the internal structure of an R object.
-/// Ported from R's str() in inspect.c.
-pub fn do_str(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    checkArity(op, args);
-    let x = CAR(args);
-
-    if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP {
-        // str(NULL) returns " NULL"
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-        let _ans_guard = protect(ans);
-        SET_STRING_ELT(ans, 0, mk_char(" NULL"));
-        return ans;
-    }
-
-    let t = TYPEOF(x);
-    let len = if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
-        // pairlist length
-        let mut s = x;
-        let mut count: c_int = 0;
-        while !s.is_null() && (TYPEOF(s) == SEXPTYPE::LISTSXP || TYPEOF(s) == SEXPTYPE::LANGSXP) {
-            count += 1;
-            s = CDR(s);
-        }
-        count
-    } else {
-        LENGTH(x)
-    };
-
-    let type_name = sexptype2char(t);
-    let desc = format!(" {} [1:{}] \"{}\"", type_name, len, type_name);
-
-    let ans = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-    let _ans_guard = protect(ans);
-    SET_STRING_ELT(ans, 0, mk_char(&desc));
-    ans
-}
 
 // ---------------------------------------------------------------------------
 // names() — object names
 // ---------------------------------------------------------------------------
 
-/// do_names — R's names() function.
-///
-/// Returns the names attribute of an object.
-/// Ported from R's names() in attrib.c.
-pub fn do_names(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    checkArity(op, args);
-    let x = CAR(args);
-
-    if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP {
-        return R_NilValue();
-    }
-
-    let names = getAttrib(x, R_NamesSymbol());
-    if names.is_null() {
-        return R_NilValue();
-    }
-    names
-}
 
 // ---------------------------------------------------------------------------
 // dim() — dimensions
 // ---------------------------------------------------------------------------
 
-/// do_dim — R's dim() function.
-///
-/// Returns the dimensions of an object.
-/// Ported from R's dim() in attrib.c.
-pub fn do_dim(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    checkArity(op, args);
-    let x = CAR(args);
-
-    if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP {
-        return R_NilValue();
-    }
-
-    let dim = getAttrib(x, R_DimSymbol());
-    if dim.is_null() {
-        return Rf_ScalarInteger(LENGTH(x));
-    }
-    dim
-}
 
 // ---------------------------------------------------------------------------
 // dimnames() — dimension names
 // ---------------------------------------------------------------------------
 
-/// do_dimnames — R's dimnames() function.
-///
-/// Returns the dimnames attribute of an object.
-/// Ported from R's dimnames() in attrib.c.
-pub fn do_dimnames(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    checkArity(op, args);
-    let x = CAR(args);
-
-    if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP {
-        return R_NilValue();
-    }
-
-    getAttrib(x, R_DimNamesSymbol())
-}
 
 // ---------------------------------------------------------------------------
 // attributes() — list attributes
 // ---------------------------------------------------------------------------
 
-/// do_attributes — R's attributes() function.
-///
-/// Returns all attributes of an object.
-/// Ported from R's attributes() in attrib.c.
-pub fn do_attributes(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    checkArity(op, args);
-    let x = CAR(args);
-
-    if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP {
-        return R_NilValue();
-    }
-
-    ATTRIB(x)
-}
 
 // ---------------------------------------------------------------------------
 // class() — object class
@@ -509,52 +218,11 @@ pub fn do_classname(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // levels() — factor levels
 // ---------------------------------------------------------------------------
 
-/// do_levels — R's levels() function.
-///
-/// Returns the levels of a factor.
-/// Ported from R's levels() in attrib.c.
-pub fn do_levels(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    checkArity(op, args);
-    let x = CAR(args);
-
-    if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP {
-        return R_NilValue();
-    }
-
-    getAttrib(x, R_LevelsSymbol())
-}
 
 // ---------------------------------------------------------------------------
 // structure() — structure display
 // ---------------------------------------------------------------------------
 
-/// do_structure — R's structure() function.
-///
-/// Returns a compact display of the structure of an arbitrary R object.
-/// Ported from R's structure() in inspect.c.
-pub fn do_structure(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    checkArity(op, args);
-    let x = CAR(args);
-
-    if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP {
-        // str(NULL)
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-        let _ans_guard = protect(ans);
-        SET_STRING_ELT(ans, 0, mk_char(" NULL"));
-        return ans;
-    }
-
-    // Simplified: return type name and length
-    let t = TYPEOF(x);
-    let type_name = sexptype2char(t);
-    let len = LENGTH(x);
-    let desc = format!("List of {}\n $ : chr \"{}\"", len, type_name);
-
-    let ans = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-    let _ans_guard = protect(ans);
-    SET_STRING_ELT(ans, 0, mk_char(&desc));
-    ans
-}
 
 // ---------------------------------------------------------------------------
 // strformat() — str format control
