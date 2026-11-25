@@ -260,7 +260,12 @@ pub unsafe fn do_setenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             let name_str = std::ffi::CStr::from_ptr(name_c).to_str().unwrap_or("");
             let val_str = std::ffi::CStr::from_ptr(val_c).to_str().unwrap_or("");
             if allowed {
-                std::env::set_var(name_str, val_str);
+                crate::sexp::instance::with_current_instance(|inst| {
+                    (*inst)
+                        .session_env
+                        .borrow_mut()
+                        .insert(name_str.to_string(), val_str.to_string());
+                });
                 if name_str == "TZ" {
                     // GNU tzcode: changing TZ invalidates the cached local zone.
                     crate::tzone::set_timezone_override(None);
@@ -298,7 +303,9 @@ pub unsafe fn do_unsetenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP
             let name_c = CHAR(STRING_ELT(nm, i));
             let name_str = std::ffi::CStr::from_ptr(name_c).to_str().unwrap_or("");
             if allowed {
-                std::env::remove_var(name_str);
+                crate::sexp::instance::with_current_instance(|inst| {
+                    (*inst).session_env.borrow_mut().remove(name_str);
+                });
                 if name_str == "TZ" {
                     crate::tzone::set_timezone_override(None);
                 }
@@ -395,7 +402,10 @@ pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
 pub fn R_system(command: &str) -> c_int {
     use std::process::Command;
 
-    match Command::new("sh").arg("-c").arg(command).status() {
+    let mut cmd = Command::new("sh");
+    cmd.arg("-c").arg(command);
+    crate::sexp::instance::apply_session_env(&mut cmd);
+    match cmd.status() {
         Ok(status) => status.code().unwrap_or(127),
         Err(_) => 127,
     }

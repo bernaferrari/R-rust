@@ -1,65 +1,57 @@
 use super::*;
 
-/// R's `R.home()` — R home directory (simplified).
+/// R's `R.home()` — R home directory.
+///
+/// Resolution order: the R_HOME configuration variable, then the parent of a
+/// session library path named "library" (the runtime's own resource root),
+/// then the portable fallback. There is deliberately no host-GNU discovery:
+/// this runtime is self-contained and never shells out to a system R.
 pub fn do_R_home(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let home = std::env::var("R_HOME").unwrap_or_else(|_| discover_installed_r_home());
+    let home = session_env_value("R_HOME").unwrap_or_else(runtime_resource_home);
     let s = CString::new(home).unwrap_or_default();
     mk_string_cstr(&s)
 }
 
-fn discover_installed_r_home() -> String {
-    for bin in ["/opt/homebrew/bin/R", "/usr/local/bin/R", "R"] {
-        if let Ok(out) = std::process::Command::new(bin).arg("RHOME").output()
-            && let Ok(text) = String::from_utf8(out.stdout)
-        {
-            let home = text.trim();
-            if home_has_rd_macros(home) {
-                return home.to_string();
+fn runtime_resource_home() -> String {
+    let derived = crate::sexp::instance::with_current_instance(|inst| unsafe {
+        (*inst).path_policy.library_paths().iter().find_map(|path| {
+            if path.file_name().is_some_and(|name| name == "library") {
+                path.parent()
+                    .map(|parent| parent.to_string_lossy().into_owned())
+            } else {
+                None
             }
-        }
-    }
-    if let Ok(entries) = std::fs::read_dir("/opt/homebrew/Cellar/r") {
-        let mut homes: Vec<std::path::PathBuf> = entries
-            .flatten()
-            .map(|entry| entry.path().join("lib/R"))
-            .filter(|home| home_has_rd_macros(&home.to_string_lossy()))
-            .collect();
-        homes.sort();
-        if let Some(home) = homes.last() {
-            return home.to_string_lossy().to_string();
-        }
-    }
-    for home in ["/usr/local/lib/R", "/usr/lib/R"] {
-        if home_has_rd_macros(home) {
-            return home.to_string();
-        }
-    }
-    "/usr/lib/R".to_string()
+        })
+    });
+    derived
+        .flatten()
+        .unwrap_or_else(|| "/usr/lib/R".to_string())
 }
 
-fn home_has_rd_macros(home: &str) -> bool {
-    !home.is_empty()
-        && std::path::Path::new(home)
-            .join("share/Rd/macros/system.Rd")
-            .is_file()
+/// Look up one variable in the session-owned environment overlay.
+fn session_env_value(name: &str) -> Option<String> {
+    crate::sexp::instance::with_current_instance(|inst| unsafe {
+        (*inst).session_env.borrow().get(name).cloned()
+    })
+    .flatten()
 }
 
 /// R's `Sys.getenv(x)` — get environment variable.
 pub fn do_Sys_getenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() || XLENGTH(x) == 0 {
-            // No names: return the whole environment as "NAME=VALUE" strings,
-            // read live from libc's environ so Sys.setenv results are visible.
-            let mut vars: Vec<String> = Vec::new();
-            {
-                let mut envp: *mut *mut c_char = environ;
-                while !(*envp).is_null() {
-                    let entry = CStr::from_ptr(*envp).to_string_lossy();
-                    vars.push(entry.into_owned());
-                    envp = envp.add(1);
-                }
-            }
+            // No names: return the whole session environment as "NAME=VALUE"
+            // strings from the per-session overlay.
+            let vars: Vec<String> = crate::sexp::instance::with_current_instance(|inst| unsafe {
+                (*inst)
+                    .session_env
+                    .borrow()
+                    .iter()
+                    .map(|(name, value)| format!("{name}={value}"))
+                    .collect()
+            })
+            .unwrap_or_default();
             let n = vars.len() as R_xlen_t;
             let ans = Rf_allocVector3(SEXPTYPE::STRSXP, n);
             let _ans_guard = protect(ans);
@@ -105,26 +97,28 @@ pub fn do_Sys_getenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// Read a variable live via libc getenv (sees Sys.setenv writes).
+/// Read a variable from the session-owned environment overlay.
 fn libc_getenv(name: &str) -> Option<String> {
-    // std::env is the live process environment on native hosts (upstream
-    // Sys.setenv semantics: system() children see the writes) and a
-    // permanently-empty environment on wasm — no libc.
     if name.contains('\0') {
         return None;
     }
-    std::env::var(name).ok()
+    session_env_value(name)
 }
 
-/// Set a variable live via std::env::set_var (overwrites); false on invalid
-/// input. Empty names are rejected like libc setenv.
+/// Set a variable in the session-owned overlay (overwrites); false on
+/// invalid input. Empty names are rejected like libc setenv. The host
+/// process environment is never mutated, so parallel sessions cannot
+/// data-race through libc environ.
 fn libc_setenv(name: &str, value: &str) -> bool {
     if name.is_empty() || name.contains('=') || name.contains('\0') || value.contains('\0') {
         return false;
     }
-    // SAFETY: single-threaded engine session; no concurrent reader of the
-    // process environment exists in-process.
-    unsafe { std::env::set_var(name, value) };
+    crate::sexp::instance::with_current_instance(|inst| unsafe {
+        (*inst)
+            .session_env
+            .borrow_mut()
+            .insert(name.to_string(), value.to_string());
+    });
     true
 }
 
@@ -146,25 +140,16 @@ fn denied_setenv_result(args: SEXP) -> SEXP {
     result
 }
 
-/// Unset a variable live via std::env::remove_var; false on invalid input.
+/// Unset a variable in the session-owned overlay; false on invalid input.
 fn libc_unsetenv(name: &str) -> bool {
     if name.is_empty() || name.contains('=') || name.contains('\0') {
         return false;
     }
-    // SAFETY: see libc_setenv.
-    unsafe { std::env::remove_var(name) };
+    crate::sexp::instance::with_current_instance(|inst| unsafe {
+        (*inst).session_env.borrow_mut().remove(name);
+    });
     true
 }
-
-#[cfg(not(target_arch = "wasm32"))]
-unsafe extern "C" {
-    static mut environ: *mut *mut c_char;
-}
-
-/// wasm32 has no process environment: a null environ makes Sys.getenv's
-/// whole-environment listing return empty, matching the facade's getenv.
-#[cfg(target_arch = "wasm32")]
-static mut environ: *mut *mut c_char = std::ptr::null_mut();
 
 /// R's `Sys.setenv(...)` — set environment variables.
 pub fn do_Sys_setenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -281,7 +266,7 @@ fn find_executable_on_path(command: &str) -> Option<String> {
         return executable_path_if_runnable(Path::new(command));
     }
 
-    let path_var = std::env::var_os("PATH")?;
+    let path_var = session_env_value("PATH")?;
     for dir in std::env::split_paths(&path_var) {
         let candidate = dir.join(command);
         if let Some(found) = executable_path_if_runnable(&candidate) {

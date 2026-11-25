@@ -215,10 +215,10 @@ pub fn do_system(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         });
     }
 
-    let output = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(&cmd_str)
-        .output();
+    let mut process = std::process::Command::new("sh");
+    process.arg("-c").arg(&cmd_str);
+    crate::sexp::instance::apply_session_env(&mut process);
+    let output = process.output();
     match output {
         Ok(out) => {
             let stdout = String::from_utf8_lossy(&out.stdout);
@@ -274,7 +274,10 @@ pub fn do_system2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         });
     }
 
-    let output = std::process::Command::new(&command).args(&argv).output();
+    let mut process = std::process::Command::new(&command);
+    process.args(&argv);
+    crate::sexp::instance::apply_session_env(&mut process);
+    let output = process.output();
     match output {
         Ok(out) => {
             let stdout = String::from_utf8_lossy(&out.stdout);

@@ -60,6 +60,7 @@ pub fn do_pipe(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
         let is_read = open_mode.starts_with('r');
         let mut cmd = Command::new("sh");
         cmd.arg("-c").arg(&description);
+        crate::sexp::instance::apply_session_env(&mut cmd);
 
         if is_read {
             cmd.stdout(Stdio::piped());

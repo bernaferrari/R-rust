@@ -1194,14 +1194,9 @@ pub fn do_Rhome(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn discover_r_home() -> String {
-    if let Ok(out) = std::process::Command::new("R").arg("RHOME").output()
-        && let Ok(text) = String::from_utf8(out.stdout)
-    {
-        let home = text.trim();
-        if !home.is_empty() && std::path::Path::new(home).is_dir() {
-            return home.to_string();
-        }
-    }
+    // The runtime is self-contained: there is deliberately no host-GNU
+    // discovery. Configuration comes from R_HOME; otherwise the portable
+    // fallback matches the canonical sys/env implementation.
     "/usr/lib/R".to_string()
 }
 

@@ -500,6 +500,11 @@ pub struct RInstance {
     pub(crate) random_state: crate::mainutils::random::RNGState,
     /// Per-instance stdout/stderr capture buffers.
     pub(crate) output_capture: RefCell<super::output::OutputCaptureState>,
+    /// Per-session process-environment overlay. Seeded from the host
+    /// environment at session creation and then owned entirely by the
+    /// session: Sys.setenv/Sys.unsetenv never mutate process-wide state, so
+    /// concurrent sessions cannot data-race through libc environ.
+    pub(crate) session_env: RefCell<std::collections::BTreeMap<String, String>>,
     /// Per-instance options storage (mirrors the global OPTIONS_TABLE).
     pub(crate) options: HashMap<String, super::object::Sexp<'static>>,
     /// Defaults are published through one explicit, reentry-safe phase.
@@ -603,6 +608,48 @@ pub struct RInstance {
     pub(crate) raw_cons: Vec<*mut SexprecCore>,
     /// Per-instance transient allocations for R_alloc/vmaxget/vmaxset.
     pub(crate) vmax: Vec<super::memory_ext::TransientAllocation>,
+}
+
+/// Configure a child process to inherit exactly the session-owned
+/// environment. GNU R semantics make system()/pipe children observe
+/// Sys.setenv writes; because the overlay is a complete seeded copy rather
+/// than a diff, clearing first also honors Sys.unsetenv removals. Without an
+/// active session the child inherits the host environment unchanged.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn apply_session_env(command: &mut std::process::Command) {
+    if let Some(env) = with_current_instance(|inst| unsafe { (*inst).session_env.borrow().clone() })
+    {
+        command.env_clear();
+        command.envs(env);
+    }
+}
+
+/// wasm32 cannot spawn child processes; call sites that still compile there
+/// get a no-op because there is no process environment to propagate.
+#[cfg(target_arch = "wasm32")]
+#[allow(dead_code)]
+pub(crate) fn apply_session_env(_command: &mut std::process::Command) {}
+
+/// Capture the host process environment once at session creation. Reads are
+/// immutable snapshots taken before any thread could mutate the environment;
+/// after creation the session owns its overlay exclusively. wasm32 has no
+/// process environment, so sessions start empty there.
+fn seed_session_env() -> std::collections::BTreeMap<String, String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        std::collections::BTreeMap::new()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::env::vars_os()
+            .map(|(name, value)| {
+                (
+                    name.to_string_lossy().into_owned(),
+                    value.to_string_lossy().into_owned(),
+                )
+            })
+            .collect()
+    }
 }
 
 impl RInstance {
@@ -724,6 +771,7 @@ impl RInstance {
             main_rng_state: crate::mainutils::rng::MainRngState::default(),
             random_state: crate::mainutils::random::RNGState::new(),
             output_capture: RefCell::new(super::output::OutputCaptureState::default()),
+            session_env: RefCell::new(seed_session_env()),
             options: HashMap::new(),
             options_initialization: crate::mainutils::options::OptionsInitialization::Uninitialized,
             env_hash_sizes: hashbrown::HashMap::new(),
