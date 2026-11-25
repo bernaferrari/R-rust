@@ -38,14 +38,9 @@ fn retained_tre_tables_cannot_accumulate_beyond_fixed_session_cap() {
             arena.set_budget(ArenaBudget::new(used + extra, 0));
         })
         .unwrap();
-    // A literal needs at least one transition record per character; this
-    // lower bound alone exceeds the cap if every compiled object survives.
-    assert!(
-        attempts
-            * pattern.chars().count()
-            * std::mem::size_of::<crate::tre::ast::tre_tnfa_transition_t>()
-            > extra
-    );
+    // Each compile charges pattern_chars * 64 + 1024 bytes of workspace;
+    // retained compiles exceed the cap if none can be released.
+    assert!(attempts * (pattern.chars().count() * 64 + 1024) > extra);
     let mut retained = Vec::new();
     let mut rejected = false;
     for _ in 0..attempts {

@@ -33,7 +33,6 @@ use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::*;
 use crate::sexp::protect::protect;
-use crate::tre::ast::{REG_EXTENDED, REG_ICASE, REG_OK, regmatch_t};
 
 #[cfg(test)]
 mod capture_publication_tests;
@@ -44,6 +43,8 @@ mod group_names_memory_tests;
 #[cfg(test)]
 mod perl_class_tests;
 mod perl_dialect;
+mod posix_dialect;
+mod posix_nfa;
 mod positions;
 pub(crate) use positions::{EmptyPatternMode, empty_pattern_positions};
 #[cfg(test)]
@@ -325,9 +326,18 @@ pub(crate) struct RegexMatch {
 }
 
 struct TreRegex {
-    preg: crate::tre::compile::CompiledTre,
+    /// POSIX leftmost-longest tagged NFA; `None` when the pattern contains
+    /// backreferences, which no finite automaton can execute. Backref
+    /// patterns fall back to the backtracking engine, matching TRE's own
+    /// hybrid behavior.
+    nfa: Option<posix_nfa::PosixNfa>,
+    regex: PerlInnerRegex,
     bytes: bool,
     workspace: RegexWorkspace,
+    /// Workspace charge for the compiled pattern machinery, held for the
+    /// lifetime of the compiled object and released on drop — the budget
+    /// contract previously enforced through TRE's arena allocations.
+    _charge: crate::sexp::memory::WorkspaceReservation,
 }
 
 struct PerlRegex {
@@ -342,39 +352,45 @@ impl TreRegex {
 
     fn compile_mode(pattern: &str, ignore_case: bool, bytes: bool) -> Result<Self, String> {
         let workspace = regex_workspace();
-
-        let mut cflags = REG_EXTENDED;
-        if ignore_case {
-            cflags |= REG_ICASE;
-        }
-        let length = if bytes {
+        let prepared = posix_dialect::prepare(pattern)?;
+        // Budget charge for the compiled machinery before any allocation:
+        // proportional to pattern size like the TNFA tables it replaces —
+        // compilation of oversized patterns must fail as a budget error
+        // rather than consuming unaccounted memory in the automaton.
+        let chars = if bytes {
             pattern.len()
         } else {
             pattern.chars().count()
         };
-        let mut wide = workspace.buffer(length);
-        if bytes {
-            for byte in pattern.bytes() {
-                wide.push(u32::from(byte));
-            }
+        let charge = match workspace.try_reservation(chars.max(1) * 64 + 1024) {
+            Ok(reservation) => reservation,
+            Err(()) => workspace::memory_error(),
+        };
+        // Backreferences make the pattern non-regular: the finite automaton
+        // cannot parse them, so those patterns run on the backtracking
+        // engine with Perl-preference semantics — the same fallback TRE
+        // applies when its backref machinery engages.
+        let has_backrefs = posix_dialect::has_backrefs(&prepared);
+        let nfa = if has_backrefs {
+            None
         } else {
-            for ch in pattern.chars() {
-                wide.push(u32::from(ch));
-            }
-        }
-        let preg = crate::tre::compile::tre_compile_owned_slice(&wide, cflags, workspace.clone())
-            .map_err(|rc| {
-            // Option-based matching adapters may discard syntax failures, but
-            // exhaustion must follow the same typed error path as buffers.
-            if rc == crate::tre::ast::REG_ESPACE {
-                workspace::memory_error();
-            }
-            format!("TRE compilation failed with code {rc}")
-        })?;
+            Some(posix_nfa::compile(&prepared, ignore_case, bytes)?)
+        };
+        let regex = PerlRegexBuilder::new(&prepared)
+            .case_insensitive(ignore_case)
+            .bytes_mode(if bytes {
+                fancy_regex::BytesMode::Ascii
+            } else {
+                fancy_regex::BytesMode::Unicode
+            })
+            .build()
+            .map_err(|err| err.to_string())?;
         Ok(Self {
-            preg,
+            nfa,
+            regex,
             bytes,
             workspace,
+            _charge: charge,
         })
     }
 
@@ -382,59 +398,77 @@ impl TreRegex {
         self.captures_at(text, 0)
     }
 
-    fn captures_at(&self, original: &str, offset: usize) -> Option<RegexCaptures> {
-        let text = if self.bytes { "" } else { &original[offset..] };
-        let input = &original.as_bytes()[offset..];
-
-        let nmatch = self.preg.capture_count().saturating_add(1).max(1);
-        let mut pmatch = self.workspace.buffer(nmatch);
-        pmatch.resize(nmatch, regmatch_t::default());
-        let wide = if !self.bytes && !text.is_ascii() {
-            let mut wide = self.workspace.buffer(text.chars().count());
-            for ch in text.chars() {
-                wide.push(u32::from(ch));
-            }
-            Some(wide)
-        } else {
-            None
-        };
-        let flags = if offset == 0 {
-            0
-        } else {
-            crate::tre::ast::REG_NOTBOL
-        };
-        let status = if let Some(wide) = &wide {
-            self.preg.match_wide(wide, &mut pmatch, flags)
-        } else {
-            self.preg.match_bytes(input, &mut pmatch, flags)
-        };
-        if status == crate::tre::ast::REG_ESPACE {
-            workspace::memory_error();
+    fn captures_at(&self, text: &str, offset: usize) -> Option<RegexCaptures> {
+        if let Some(nfa) = &self.nfa {
+            return self.nfa_captures_at(nfa, text, offset);
         }
-        let byte_offset = |index: usize| {
-            if wide.is_some() {
-                text.char_indices()
-                    .nth(index)
-                    .map_or(text.len(), |(i, _)| i)
+        let captures = self
+            .regex
+            .captures_from_pos(text.as_bytes(), offset)
+            .ok()??;
+        let mut matches = self.workspace.buffer(captures.len());
+        for idx in 0..captures.len() {
+            matches.push(captures.get(idx).map(|m| RegexMatch {
+                start: m.start(),
+                end: m.end(),
+            }));
+        }
+        Some(matches)
+    }
+
+    /// POSIX leftmost-longest capture extraction through the tagged NFA.
+    /// Positions are computed over the u32 alphabet (chars or bytes) and
+    /// converted back to byte offsets of the original text.
+    fn nfa_captures_at(
+        &self,
+        nfa: &posix_nfa::PosixNfa,
+        text: &str,
+        offset: usize,
+    ) -> Option<RegexCaptures> {
+        // Build the u32 alphabet plus the char-index -> byte-offset table.
+        let mut alphabet: Vec<u32> = Vec::new();
+        let mut byte_of_char: Vec<usize> = Vec::new();
+        if self.bytes {
+            for (byte_pos, byte) in text.as_bytes().iter().enumerate() {
+                alphabet.push(u32::from(*byte));
+                byte_of_char.push(byte_pos);
+            }
+        } else {
+            for (byte_pos, ch) in text.char_indices() {
+                alphabet.push(ch as u32);
+                byte_of_char.push(byte_pos);
+            }
+        }
+        let text_len = text.len();
+        let byte_at = |char_pos: usize| -> usize {
+            if char_pos >= byte_of_char.len() {
+                text_len
             } else {
-                index
+                byte_of_char[char_pos]
             }
         };
-        if status != REG_OK {
+        if offset > text_len {
             return None;
         }
-        let mut captures = self.workspace.buffer(nmatch);
-        for m in pmatch.iter() {
-            captures.push(if m.rm_so >= 0 && m.rm_eo >= m.rm_so {
-                Some(RegexMatch {
-                    start: offset + byte_offset(m.rm_so as usize),
-                    end: offset + byte_offset(m.rm_eo as usize),
-                })
-            } else {
-                None
-            });
+        let char_offset = alphabet
+            .iter()
+            .zip(byte_of_char.iter())
+            .position(|(_, &b)| b >= offset)
+            .unwrap_or(alphabet.len());
+        let slots = nfa.captures_chars(&alphabet, char_offset)?;
+        let ngroups = slots.len() / 2;
+        let mut matches = self.workspace.buffer(ngroups);
+        for group in 0..ngroups {
+            let pair = match (slots.get(2 * group), slots.get(2 * group + 1)) {
+                (Some(Some(s)), Some(Some(e))) if e >= s => Some(RegexMatch {
+                    start: byte_at(*s),
+                    end: byte_at(*e),
+                }),
+                _ => None,
+            };
+            matches.push(pair);
         }
-        Some(captures)
+        Some(matches)
     }
 
     fn find(&self, text: &str) -> Option<RegexMatch> {
@@ -488,415 +522,9 @@ impl PerlRegex {
     }
 
     fn find(&self, text: &str) -> Option<RegexMatch> {
-        self.regex
-            .find(text.as_bytes())
-            .ok()
-            .flatten()
-            .map(|m| RegexMatch {
-                start: m.start(),
-                end: m.end(),
-            })
+        self.captures(text)
+            .and_then(|mut captures| captures.get_mut(0).and_then(|whole| whole.take()))
     }
-}
-
-/// A compiled simplified ERE pattern.
-///
-/// Supports: literal chars, `.`, `^`, `$`, `*`, `+`, `?`,
-/// `[...]` character classes, `[^...]` negated classes,
-/// `\` escapes, and alternation with `|`.
-/// Does NOT support: backreferences, lookahead/lookbehind,
-/// non-greedy quantifiers, named groups.
-enum EreNode {
-    /// Match a literal byte
-    Literal(u8),
-    /// Match any character (.)
-    AnyChar,
-    /// Match beginning of string (^)
-    StartAnchor,
-    /// Match end of string ($)
-    EndAnchor,
-    /// Match zero or more of the preceding element
-    ZeroOrMore,
-    /// Match one or more of the preceding element
-    OneOrMore,
-    /// Match zero or one of the preceding element
-    ZeroOrOne,
-    /// Character class -- match any byte in the set
-    CharClass(Vec<u8>, bool), // (chars, negated)
-    /// Alternation -- match either left or right
-    Alternation,
-    /// Open group
-    OpenGroup,
-    /// Close group
-    CloseGroup,
-}
-
-/// Compile a simple ERE pattern string into a list of nodes.
-fn compile_ere(pattern: &str) -> Result<Vec<EreNode>, String> {
-    let mut nodes = Vec::new();
-    let bytes = pattern.as_bytes();
-    let mut i = 0;
-
-    while i < bytes.len() {
-        let b = bytes[i];
-        match b {
-            b'\\' if i + 1 < bytes.len() => {
-                i += 1;
-                let escaped = bytes[i];
-                match escaped {
-                    b'd' => nodes.push(EreNode::CharClass(b"0123456789".to_vec(), false)),
-                    b'D' => nodes.push(EreNode::CharClass(b"0123456789".to_vec(), true)),
-                    b'w' => nodes.push(EreNode::CharClass(
-                        b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_".to_vec(),
-                        false,
-                    )),
-                    b'W' => nodes.push(EreNode::CharClass(
-                        b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_".to_vec(),
-                        true,
-                    )),
-                    b's' => nodes.push(EreNode::CharClass(b" \t\n\r\x0b\x0c".to_vec(), false)),
-                    b'S' => nodes.push(EreNode::CharClass(b" \t\n\r\x0b\x0c".to_vec(), true)),
-                    other => nodes.push(EreNode::Literal(other)),
-                }
-            }
-            b'.' => nodes.push(EreNode::AnyChar),
-            b'^' => {
-                if i == 0 {
-                    nodes.push(EreNode::StartAnchor);
-                } else {
-                    nodes.push(EreNode::Literal(b'^'));
-                }
-            }
-            b'$' => {
-                if i == bytes.len() - 1 {
-                    nodes.push(EreNode::EndAnchor);
-                } else {
-                    nodes.push(EreNode::Literal(b'$'));
-                }
-            }
-            b'*' => nodes.push(EreNode::ZeroOrMore),
-            b'+' => nodes.push(EreNode::OneOrMore),
-            b'?' => nodes.push(EreNode::ZeroOrOne),
-            b'[' => {
-                i += 1;
-                let negated = if i < bytes.len() && bytes[i] == b'^' {
-                    i += 1;
-                    true
-                } else {
-                    false
-                };
-                let mut class_chars = Vec::new();
-                // Handle ] as first char in class
-                if i < bytes.len() && bytes[i] == b']' {
-                    class_chars.push(b']');
-                    i += 1;
-                }
-                while i < bytes.len() && bytes[i] != b']' {
-                    let c = bytes[i];
-                    // Handle ranges like a-z
-                    if i + 2 < bytes.len() && bytes[i + 1] == b'-' && bytes[i + 2] != b']' {
-                        let start = c;
-                        let end = bytes[i + 2];
-                        if start <= end {
-                            for ch in start..=end {
-                                class_chars.push(ch);
-                            }
-                        } else {
-                            class_chars.push(start);
-                            class_chars.push(b'-');
-                            class_chars.push(end);
-                        }
-                        i += 3;
-                    } else if c == b'\\' && i + 1 < bytes.len() {
-                        i += 1;
-                        class_chars.push(bytes[i]);
-                        i += 1;
-                    } else {
-                        class_chars.push(c);
-                        i += 1;
-                    }
-                }
-                if i >= bytes.len() {
-                    return Err("unterminated character class in regex".to_string());
-                }
-                nodes.push(EreNode::CharClass(class_chars, negated));
-            }
-            b'|' => nodes.push(EreNode::Alternation),
-            b'(' => nodes.push(EreNode::OpenGroup),
-            b')' => nodes.push(EreNode::CloseGroup),
-            other => nodes.push(EreNode::Literal(other)),
-        }
-        i += 1;
-    }
-
-    Ok(nodes)
-}
-
-/// Match result from ERE matching.
-struct EreMatch {
-    /// Start byte offset of match
-    start: usize,
-    /// End byte offset of match (exclusive)
-    end: usize,
-}
-
-/// Try to match the compiled ERE pattern at a specific position in the text.
-/// Returns the end position of the match, or None if no match.
-fn ere_match_at(nodes: &[EreNode], text: &[u8], pos: usize, ignore_case: bool) -> Option<usize> {
-    ere_match_sequence(nodes, 0, text, pos, ignore_case)
-}
-
-fn is_ere_quantifier(node: &EreNode) -> bool {
-    matches!(
-        node,
-        EreNode::ZeroOrMore | EreNode::OneOrMore | EreNode::ZeroOrOne
-    )
-}
-
-fn ere_match_sequence(
-    nodes: &[EreNode],
-    node_pos: usize,
-    text: &[u8],
-    text_pos: usize,
-    ignore_case: bool,
-) -> Option<usize> {
-    let text_len = text.len();
-    if text_pos > text_len {
-        return None;
-    }
-    if node_pos >= nodes.len() {
-        return Some(text_pos);
-    }
-
-    let node = &nodes[node_pos];
-    if node_pos + 1 < nodes.len() && is_ere_quantifier(&nodes[node_pos + 1]) {
-        return ere_match_quantified_sequence(
-            node,
-            &nodes[node_pos + 1],
-            nodes,
-            node_pos + 2,
-            text,
-            text_pos,
-            ignore_case,
-        );
-    }
-
-    match node {
-        EreNode::Alternation => {
-            let right_start = node_pos + 1;
-            let right_len = find_alternation_end(&nodes[right_start..]);
-            if let Some(end_pos) = ere_match_sequence(
-                &nodes[right_start..right_start + right_len],
-                0,
-                text,
-                text_pos,
-                ignore_case,
-            ) {
-                return Some(end_pos);
-            }
-            let after_right = right_start + right_len + 1;
-            if after_right < nodes.len() {
-                return ere_match_sequence(nodes, after_right, text, text_pos, ignore_case);
-            }
-            None
-        }
-        EreNode::OpenGroup | EreNode::CloseGroup => {
-            ere_match_sequence(nodes, node_pos + 1, text, text_pos, ignore_case)
-        }
-        EreNode::ZeroOrMore | EreNode::OneOrMore | EreNode::ZeroOrOne => {
-            ere_match_sequence(nodes, node_pos + 1, text, text_pos, ignore_case)
-        }
-        _ => {
-            let next_pos = match_single_node(node, text, text_pos, ignore_case)?;
-            ere_match_sequence(nodes, node_pos + 1, text, next_pos, ignore_case)
-        }
-    }
-}
-
-fn ere_match_quantified_sequence(
-    atom: &EreNode,
-    quantifier: &EreNode,
-    nodes: &[EreNode],
-    rest_pos: usize,
-    text: &[u8],
-    text_pos: usize,
-    ignore_case: bool,
-) -> Option<usize> {
-    let min_repetitions = match quantifier {
-        EreNode::OneOrMore => 1,
-        EreNode::ZeroOrMore | EreNode::ZeroOrOne => 0,
-        _ => return None,
-    };
-    let max_repetitions = match quantifier {
-        EreNode::ZeroOrOne => Some(1),
-        EreNode::ZeroOrMore | EreNode::OneOrMore => None,
-        _ => return None,
-    };
-
-    let mut positions = vec![text_pos];
-    let mut current = text_pos;
-    while max_repetitions.is_none_or(|max| positions.len() - 1 < max) {
-        let Some(next) = match_single_node(atom, text, current, ignore_case) else {
-            break;
-        };
-        if next == current {
-            break;
-        }
-        positions.push(next);
-        current = next;
-    }
-
-    if positions.len() - 1 < min_repetitions {
-        return None;
-    }
-
-    for &candidate in positions[min_repetitions..].iter().rev() {
-        if let Some(end_pos) = ere_match_sequence(nodes, rest_pos, text, candidate, ignore_case) {
-            return Some(end_pos);
-        }
-    }
-    None
-}
-
-/// Match a single node (used by quantifiers).
-fn match_single_node(node: &EreNode, text: &[u8], pos: usize, ignore_case: bool) -> Option<usize> {
-    match node {
-        EreNode::Literal(b) => {
-            if pos >= text.len() {
-                return None;
-            }
-            let tc = text[pos];
-            if ignore_case {
-                if !tc.eq_ignore_ascii_case(b) {
-                    return None;
-                }
-            } else {
-                if tc != *b {
-                    return None;
-                }
-            }
-            Some(pos + 1)
-        }
-        EreNode::AnyChar => {
-            if pos >= text.len() {
-                return None;
-            }
-            Some(pos + 1)
-        }
-        EreNode::StartAnchor => {
-            if pos != 0 {
-                return None;
-            }
-            Some(pos)
-        }
-        EreNode::EndAnchor => {
-            if pos != text.len() {
-                return None;
-            }
-            Some(pos)
-        }
-        EreNode::CharClass(chars, negated) => {
-            if pos >= text.len() {
-                return None;
-            }
-            let tc = text[pos];
-            let tc_cmp = if ignore_case {
-                tc.to_ascii_lowercase()
-            } else {
-                tc
-            };
-            let found = chars.iter().any(|&c| {
-                let cc = if ignore_case {
-                    c.to_ascii_lowercase()
-                } else {
-                    c
-                };
-                cc == tc_cmp
-            });
-            if *negated {
-                if found {
-                    return None;
-                }
-            } else {
-                if !found {
-                    return None;
-                }
-            }
-            Some(pos + 1)
-        }
-        _ => None,
-    }
-}
-
-/// Find the end of the current alternation branch (position of the next | or end).
-fn find_alternation_end(nodes: &[EreNode]) -> usize {
-    let mut depth = 0;
-    for (i, node) in nodes.iter().enumerate() {
-        match node {
-            EreNode::OpenGroup => depth += 1,
-            EreNode::CloseGroup => {
-                if depth > 0 {
-                    depth -= 1;
-                }
-            }
-            EreNode::Alternation if depth == 0 => return i,
-            _ => {} // intentionally unhandled: other ErNode types do not require depth tracking
-        }
-    }
-    nodes.len()
-}
-
-/// Search for an ERE pattern match anywhere in the text.
-/// Returns the match location, or None.
-fn ere_search(nodes: &[EreNode], text: &[u8], ignore_case: bool) -> Option<EreMatch> {
-    let text_len = text.len();
-    for pos in 0..=text_len {
-        if let Some(end) = ere_match_at(nodes, text, pos, ignore_case) {
-            return Some(EreMatch { start: pos, end });
-        }
-    }
-    None
-}
-
-/// ERE-based gsub: replace first (global=false) or all (global=true)
-/// occurrences of the ERE pattern in text with replacement.
-fn ere_gsub(
-    nodes: &[EreNode],
-    text: &[u8],
-    replacement: &[u8],
-    global: bool,
-    ignore_case: bool,
-) -> Vec<u8> {
-    let mut result = Vec::with_capacity(text.len());
-    let mut search_from = 0;
-
-    loop {
-        let remaining = &text[search_from..];
-        if let Some(m) = ere_search(nodes, remaining, ignore_case) {
-            result.extend_from_slice(&remaining[..m.start]);
-            result.extend_from_slice(replacement);
-            search_from += m.end;
-            if !global || m.start == m.end {
-                // Zero-width match: advance by one to prevent infinite loop
-                if search_from < text.len() {
-                    result.push(text[search_from]);
-                    search_from += 1;
-                }
-                if !global {
-                    result.extend_from_slice(&text[search_from..]);
-                    break;
-                }
-                if search_from >= text.len() {
-                    break;
-                }
-            }
-        } else {
-            result.extend_from_slice(remaining);
-            break;
-        }
-    }
-
-    result
 }
 
 /// Parse the replacement for a literal regex pattern with no capture groups.
@@ -1342,22 +970,6 @@ pub fn R_grep_fixed(pat: Option<&CStr>, target: Option<&CStr>, ignore_case: c_in
 // ---------------------------------------------------------------------------
 
 
-/// Match a string against a pattern (either fixed or ERE).
-fn match_str(
-    text: &str,
-    pat: &str,
-    fixed: bool,
-    ere_nodes: Option<&[EreNode]>,
-    ignore_case: bool,
-) -> bool {
-    if fixed {
-        fixed_search(text.as_bytes(), pat.as_bytes(), ignore_case).is_some()
-    } else if let Some(nodes) = ere_nodes {
-        ere_search(nodes, text.as_bytes(), ignore_case).is_some()
-    } else {
-        false
-    }
-}
 
 /// Shared ERE predicate for base helpers that accept R-style regex patterns.
 pub(crate) fn ere_is_match(pattern: &str, text: &str, ignore_case: bool) -> bool {
@@ -1760,221 +1372,6 @@ mod tests {
         assert_eq!(R_grep_fixed(Some(&pat), Some(&target3), 0), -1);
     }
 
-    // -- ERE compilation tests --
-
-    #[test]
-    fn test_compile_ere_literal() {
-        let nodes = test_ok(compile_ere("hello"));
-        assert_eq!(nodes.len(), 5);
-        assert!(matches!(&nodes[0], EreNode::Literal(b'h')));
-    }
-
-    #[test]
-    fn test_compile_ere_dot() {
-        let nodes = test_ok(compile_ere("a.c"));
-        assert_eq!(nodes.len(), 3);
-        assert!(matches!(&nodes[0], EreNode::Literal(b'a')));
-        assert!(matches!(&nodes[1], EreNode::AnyChar));
-        assert!(matches!(&nodes[2], EreNode::Literal(b'c')));
-    }
-
-    #[test]
-    fn test_compile_ere_star() {
-        let nodes = test_ok(compile_ere("ab*c"));
-        assert_eq!(nodes.len(), 4);
-        assert!(matches!(&nodes[0], EreNode::Literal(b'a')));
-        assert!(matches!(&nodes[1], EreNode::Literal(b'b')));
-        assert!(matches!(&nodes[2], EreNode::ZeroOrMore));
-        assert!(matches!(&nodes[3], EreNode::Literal(b'c')));
-    }
-
-    #[test]
-    fn test_compile_ere_plus() {
-        let nodes = test_ok(compile_ere("ab+c"));
-        assert_eq!(nodes.len(), 4);
-        assert!(matches!(&nodes[2], EreNode::OneOrMore));
-    }
-
-    #[test]
-    fn test_compile_ere_question() {
-        let nodes = test_ok(compile_ere("ab?c"));
-        assert_eq!(nodes.len(), 4);
-        assert!(matches!(&nodes[2], EreNode::ZeroOrOne));
-    }
-
-    #[test]
-    fn test_compile_ere_char_class() {
-        let nodes = test_ok(compile_ere("[abc]"));
-        assert_eq!(nodes.len(), 1);
-        if let EreNode::CharClass(chars, negated) = &nodes[0] {
-            assert_eq!(chars, b"abc");
-            assert!(!negated);
-        } else {
-            panic!("Expected CharClass");
-        }
-    }
-
-    #[test]
-    fn test_compile_ere_negated_char_class() {
-        let nodes = test_ok(compile_ere("[^abc]"));
-        assert_eq!(nodes.len(), 1);
-        if let EreNode::CharClass(_, negated) = &nodes[0] {
-            assert!(negated);
-        } else {
-            panic!("Expected CharClass");
-        }
-    }
-
-    #[test]
-    fn test_compile_ere_anchors() {
-        let nodes = test_ok(compile_ere("^hello$"));
-        assert_eq!(nodes.len(), 7);
-        assert!(matches!(&nodes[0], EreNode::StartAnchor));
-        assert!(matches!(&nodes[6], EreNode::EndAnchor));
-    }
-
-    #[test]
-    fn test_compile_ere_escaped() {
-        let nodes = test_ok(compile_ere(r"\d+"));
-        assert_eq!(nodes.len(), 2);
-        assert!(matches!(&nodes[0], EreNode::CharClass(_, false)));
-        assert!(matches!(&nodes[1], EreNode::OneOrMore));
-    }
-
-    // -- ERE matching tests --
-
-    #[test]
-    fn test_ere_match_literal() {
-        let nodes = test_ok(compile_ere("hello"));
-        assert!(ere_search(&nodes, b"say hello world", false).is_some());
-        assert!(ere_search(&nodes, b"say world", false).is_none());
-    }
-
-    #[test]
-    fn test_ere_match_dot() {
-        let nodes = test_ok(compile_ere("a.c"));
-        let Some(m) = ere_search(&nodes, b"abc", false) else {
-            panic!("expected ERE match for 'abc'");
-        };
-        assert_eq!(m.start, 0);
-        assert_eq!(m.end, 3);
-
-        let Some(m) = ere_search(&nodes, b"aXc", false) else {
-            panic!("expected ERE match for 'aXc'");
-        };
-        assert_eq!(m.start, 0);
-        assert_eq!(m.end, 3);
-
-        assert!(ere_search(&nodes, b"ac", false).is_none());
-    }
-
-    #[test]
-    fn test_ere_match_star() {
-        let nodes = test_ok(compile_ere("ab*c"));
-        let Some(m) = ere_search(&nodes, b"ac", false) else {
-            panic!("expected ERE match for 'ac'");
-        };
-        assert_eq!(m.start, 0);
-        assert_eq!(m.end, 2);
-
-        let Some(m) = ere_search(&nodes, b"abbbc", false) else {
-            panic!("expected ERE match for 'abbbc'");
-        };
-        assert_eq!(m.start, 0);
-        assert_eq!(m.end, 5);
-
-        assert!(ere_search(&nodes, b"adc", false).is_none());
-    }
-
-    #[test]
-    fn test_ere_match_plus() {
-        let nodes = test_ok(compile_ere("ab+c"));
-        assert!(ere_search(&nodes, b"ac", false).is_none());
-        let Some(m) = ere_search(&nodes, b"abc", false) else {
-            panic!("expected ERE match for 'abc'");
-        };
-        assert_eq!(m.start, 0);
-        assert_eq!(m.end, 3);
-
-        let Some(m) = ere_search(&nodes, b"abbbc", false) else {
-            panic!("expected ERE match for 'abbbc'");
-        };
-        assert_eq!(m.start, 0);
-        assert_eq!(m.end, 5);
-    }
-
-    #[test]
-    fn test_ere_match_question() {
-        let nodes = test_ok(compile_ere("ab?c"));
-        let Some(m) = ere_search(&nodes, b"ac", false) else {
-            panic!("expected ERE match for 'ac'");
-        };
-        assert_eq!(m.start, 0);
-        assert_eq!(m.end, 2);
-
-        let Some(m) = ere_search(&nodes, b"abc", false) else {
-            panic!("expected ERE match for 'abc'");
-        };
-        assert_eq!(m.start, 0);
-        assert_eq!(m.end, 3);
-    }
-
-    #[test]
-    fn test_ere_match_anchor() {
-        let nodes = test_ok(compile_ere("^hello"));
-        assert!(ere_search(&nodes, b"hello world", false).is_some());
-        assert!(ere_search(&nodes, b"say hello", false).is_none());
-
-        let nodes = test_ok(compile_ere("world$"));
-        assert!(ere_search(&nodes, b"hello world", false).is_some());
-        assert!(ere_search(&nodes, b"world hello", false).is_none());
-    }
-
-    #[test]
-    fn test_ere_match_char_class() {
-        // Test single char class match (no quantifier)
-        let nodes = test_ok(compile_ere("[aeiou]"));
-        let Some(m) = ere_search(&nodes, b"hello", false) else {
-            panic!("expected ERE match for 'hello'");
-        };
-        assert_eq!(m.start, 1);
-        assert_eq!(m.end, 2);
-
-        let nodes = test_ok(compile_ere("[0-9]+"));
-        let Some(m) = ere_search(&nodes, b"abc123def", false) else {
-            panic!("expected ERE match for 'abc123def'");
-        };
-        assert_eq!(m.start, 3);
-        assert_eq!(m.end, 6);
-    }
-
-    #[test]
-    fn test_ere_match_ignore_case() {
-        let nodes = test_ok(compile_ere("hello"));
-        assert!(ere_search(&nodes, b"HELLO", true).is_some());
-        assert!(ere_search(&nodes, b"HeLLo", true).is_some());
-    }
-
-    #[test]
-    fn test_ere_match_escaped_digit() {
-        let nodes = test_ok(compile_ere(r"\d+"));
-        let Some(m) = ere_search(&nodes, b"abc123def", false) else {
-            panic!("expected ERE match for 'abc123def'");
-        };
-        assert_eq!(m.start, 3);
-        assert_eq!(m.end, 6);
-    }
-
-    #[test]
-    fn test_ere_match_escaped_word() {
-        let nodes = test_ok(compile_ere(r"\w+"));
-        let Some(m) = ere_search(&nodes, b"  hello  ", false) else {
-            panic!("expected ERE match for '  hello  '");
-        };
-        assert_eq!(m.start, 2);
-        assert_eq!(m.end, 7);
-    }
-
     // -- gsub tests --
 
     #[test]
@@ -1999,21 +1396,6 @@ mod tests {
     fn test_gsub_fixed_no_match() {
         let result = R_gsub_fixed_inner(b"xyz", b"hello world", b"Rust", false, false);
         assert_eq!(result, b"hello world".to_vec());
-    }
-
-    #[test]
-    fn test_ere_gsub_basic() {
-        let nodes = test_ok(compile_ere(r"\d+"));
-        // global=false: only first match replaced
-        let result = ere_gsub(&nodes, b"abc123def456", b"X", false, false);
-        assert_eq!(result, b"abcXdef456".to_vec());
-    }
-
-    #[test]
-    fn test_ere_gsub_global() {
-        let nodes = test_ok(compile_ere("[aeiou]"));
-        let result = ere_gsub(&nodes, b"hello world", b"_", true, false);
-        assert_eq!(result, b"h_ll_ w_rld".to_vec());
     }
 
     #[test]
@@ -2056,23 +1438,6 @@ mod tests {
             perl_replace(r"(?<=a)b", "ab cb", "B", true, false).as_deref(),
             Some("aB cb")
         );
-    }
-
-    // -- match_str tests --
-
-    #[test]
-    fn test_match_str_fixed() {
-        assert!(match_str("hello world", "world", true, None, false));
-        assert!(!match_str("hello world", "xyz", true, None, false));
-    }
-
-    #[test]
-    fn test_match_str_ere() {
-        let nodes = test_ok(compile_ere("hel+o"));
-        assert!(match_str("helo world", "", false, Some(&nodes), false));
-        assert!(match_str("hello world", "", false, Some(&nodes), false));
-        assert!(match_str("helllo world", "", false, Some(&nodes), false));
-        assert!(!match_str("heo world", "", false, Some(&nodes), false));
     }
 
     // -- R_grep_fixed_inner tests --

@@ -196,5 +196,4 @@ pub use sexp::CancellationToken;
 pub(crate) use sexp::attrib_core;
 
 #[allow(dead_code, non_camel_case_types)]
-pub mod tre;
 pub(crate) mod unix;
