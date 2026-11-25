@@ -348,111 +348,57 @@ fn math4_2(
 
 // --- dchisq(x, df, log) ---
 
-pub fn do_dchisq(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
-    math2_1(sa, sb, sI, chisq::dchisq_inner)
-}
 
 // --- dexp(x, scale, log) ---
 
-pub fn do_dexp(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
-    math2_1(sa, sb, sI, exponential::dexp_inner)
-}
 
 // --- dgeom(x, p, log) ---
 
-pub fn do_dgeom(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
-    math2_1(sa, sb, sI, geometric::dgeom_inner)
-}
 
 // --- dpois(x, lambda, log) ---
 
-pub fn do_dpois(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
-    math2_1(sa, sb, sI, poisson::dpois_inner)
-}
 
 // --- dt(x, df, log) ---
 
-pub fn do_dt(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
-    math2_1(sa, sb, sI, t_dist::dt_inner)
-}
 
 // --- dsignrank(x, n, log) ---
 
-pub fn do_dsignrank(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
-    signrank::evaluate(sa, sb, sI, R_NilValue(), signrank::Kind::Density)
-}
 
 // --- pchisq(x, df, lower_tail, log_p) ---
 
-pub fn do_pchisq(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math2_2(sa, sb, sI, sJ, chisq::pchisq_inner)
-}
 
 // --- qchisq(p, df, lower_tail, log_p) ---
 
-pub fn do_qchisq(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math2_2(sa, sb, sI, sJ, chisq::qchisq_inner)
-}
 
 // --- pexp(x, scale, lower_tail, log_p) ---
 
-pub fn do_pexp(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math2_2(sa, sb, sI, sJ, exponential::pexp_inner)
-}
 
 // --- qexp(p, scale, lower_tail, log_p) ---
 
-pub fn do_qexp(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math2_2(sa, sb, sI, sJ, exponential::qexp_inner)
-}
 
 // --- pgeom(x, p, lower_tail, log_p) ---
 
-pub fn do_pgeom(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math2_2(sa, sb, sI, sJ, geometric::pgeom_inner)
-}
 
 // --- qgeom(p, prob, lower_tail, log_p) ---
 
-pub fn do_qgeom(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math2_2(sa, sb, sI, sJ, geometric::qgeom_inner)
-}
 
 // --- ppois(x, lambda, lower_tail, log_p) ---
 
-pub fn do_ppois(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math2_2(sa, sb, sI, sJ, poisson::ppois_inner)
-}
 
 // --- qpois(p, lambda, lower_tail, log_p) ---
 
-pub fn do_qpois(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math2_2(sa, sb, sI, sJ, poisson::qpois_inner)
-}
 
 // --- pt(x, df, lower_tail, log_p) ---
 
-pub fn do_pt(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math2_2(sa, sb, sI, sJ, t_dist::pt_inner)
-}
 
 // --- qt(p, df, lower_tail, log_p) ---
 
-pub fn do_qt(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math2_2(sa, sb, sI, sJ, t_dist::qt_inner)
-}
 
 // --- psignrank(x, n, lower_tail, log_p) ---
 
-pub fn do_psignrank(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    signrank::evaluate(sa, sb, sI, sJ, signrank::Kind::Cdf)
-}
 
 // --- qsignrank(p, n, lower_tail, log_p) ---
 
-pub fn do_qsignrank(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    signrank::evaluate(sa, sb, sI, sJ, signrank::Kind::Quantile)
-}
 
 // ===========================================================================
 // Math3 functions (3-argument)
@@ -460,93 +406,48 @@ pub fn do_qsignrank(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
 
 // --- dbeta(x, a, b, log) ---
 
-pub fn do_dbeta(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    math3_1(sa, sb, sc, sI, beta::dbeta_inner)
-}
 
 // --- dbinom(x, n, p, log) ---
 
-pub fn do_dbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    math3_1(sa, sb, sc, sI, binomial::dbinom_inner)
-}
 
 // --- dcauchy(x, location, scale, log) ---
 
-pub fn do_dcauchy(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    math3_1(sa, sb, sc, sI, cauchy::dcauchy_inner)
-}
 
 // --- df(x, df1, df2, log) ---
 
-pub fn do_df(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    math3_1(sa, sb, sc, sI, f_dist::df_inner)
-}
 
 // --- dgamma(x, shape, scale, log) ---
 
-pub fn do_dgamma(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    math3_1(sa, sb, sc, sI, gamma::dgamma_inner)
-}
 
 // --- dlnorm(x, meanlog, sdlog, log) ---
 
-pub fn do_dlnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    math3_1(sa, sb, sc, sI, lnorm::dlnorm_inner)
-}
 
 // --- dlogis(x, location, scale, log) ---
 
-pub fn do_dlogis(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    math3_1(sa, sb, sc, sI, logistic::dlogis_inner)
-}
 
 // --- dnbinom(x, size, prob, log) ---
 
-pub fn do_dnbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    math3_1(sa, sb, sc, sI, nbinom::dnbinom_inner)
-}
 
 // --- dnbinom_mu(x, size, mu, log) ---
 
-pub fn do_dnbinom_mu(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    math3_1(sa, sb, sc, sI, nbinom::dnbinom_mu_inner)
-}
 
 // --- dnorm(x, mean, sd, log) ---
 
-pub fn do_dnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    math3_1(sa, sb, sc, sI, normal::dnorm4_inner)
-}
 
 // --- dweibull(x, shape, scale, log) ---
 
-pub fn do_dweibull(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    math3_1(sa, sb, sc, sI, weibull::dweibull_inner)
-}
 
 // --- dunif(x, min, max, log) ---
 
-pub fn do_dunif(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    math3_1(sa, sb, sc, sI, uniform::dunif_inner)
-}
 
 // --- dnt(x, df, ncp, log) ---
 
-pub fn do_dnt(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    math3_1(sa, sb, sc, sI, nt_dist::dnt_inner)
-}
 
 // --- dnchisq(x, df, ncp, log) ---
 
-pub fn do_dnchisq(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    math3_1(sa, sb, sc, sI, nchisq::dnchisq_inner)
-}
 
 // --- dwilcox(x, m, n, log) ---
 
-pub fn do_dwilcox(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    math3_1(sa, sb, sc, sI, wilcox::dwilcox_inner)
-}
 
 // ===========================================================================
 // Math3_2 functions (3-argument with 2 int flags)
@@ -554,153 +455,63 @@ pub fn do_dwilcox(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
 
 // --- pbeta, qbeta ---
 
-pub fn do_pbeta(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, beta::pbeta_inner)
-}
 
-pub fn do_qbeta(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, beta::qbeta_inner)
-}
 
 // --- pbinom, qbinom ---
 
-pub fn do_pbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, binomial::pbinom_inner)
-}
 
-pub fn do_qbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, binomial::qbinom_inner)
-}
 
 // --- pcauchy, qcauchy ---
 
-pub fn do_pcauchy(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, cauchy::pcauchy_inner)
-}
 
-pub fn do_qcauchy(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, cauchy::qcauchy_inner)
-}
 
 // --- pf, qf ---
 
-pub fn do_pf(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, f_dist::pf_inner)
-}
 
-pub fn do_qf(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, f_dist::qf_inner)
-}
 
 // --- pgamma, qgamma ---
 
-pub fn do_pgamma(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, gamma::pgamma_inner)
-}
 
-pub fn do_qgamma(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, gamma::qgamma_inner)
-}
 
 // --- plnorm, qlnorm ---
 
-pub fn do_plnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, lnorm::plnorm_inner)
-}
 
-pub fn do_qlnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, lnorm::qlnorm_inner)
-}
 
 // --- plogis, qlogis ---
 
-pub fn do_plogis(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, logistic::plogis_inner)
-}
 
-pub fn do_qlogis(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, logistic::qlogis_inner)
-}
 
 // --- pnbinom, qnbinom ---
 
-pub fn do_pnbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, nbinom::pnbinom_inner)
-}
 
-pub fn do_qnbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, nbinom::qnbinom_inner)
-}
 
 // --- pnbinom_mu, qnbinom_mu ---
 
-pub fn do_pnbinom_mu(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, nbinom::pnbinom_mu_inner)
-}
 
-pub fn do_qnbinom_mu(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, nbinom::qnbinom_mu_inner)
-}
 
 // --- pnorm, qnorm ---
 
-pub fn do_pnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, normal::pnorm5_inner)
-}
 
-pub fn do_qnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, normal::qnorm5_inner)
-}
 
 // --- pweibull, qweibull ---
 
-pub fn do_pweibull(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, weibull::pweibull_inner)
-}
 
-pub fn do_qweibull(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, weibull::qweibull_inner)
-}
 
 // --- punif, qunif ---
 
-pub fn do_punif(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, uniform::punif_inner)
-}
 
-pub fn do_qunif(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, uniform::qunif_inner)
-}
 
 // --- pnt, qnt ---
 
-pub fn do_pnt(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, nt_dist::pnt_inner)
-}
 
-pub fn do_qnt(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, nt_dist::qnt_inner)
-}
 
 // --- pnchisq, qnchisq ---
 
-pub fn do_pnchisq(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, nchisq::pnchisq_inner)
-}
 
-pub fn do_qnchisq(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, nchisq::qnchisq_inner)
-}
 
 // --- pwilcox, qwilcox ---
 
-pub fn do_pwilcox(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, wilcox::pwilcox_inner)
-}
 
-pub fn do_qwilcox(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math3_2(sa, sb, sc, sI, sJ, wilcox::qwilcox_inner)
-}
 
 // ===========================================================================
 // Math4 functions (4-argument)
@@ -708,61 +519,28 @@ pub fn do_qwilcox(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
 
 // --- dhyper(x, r, b, n, log) ---
 
-pub fn do_dhyper(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP) -> SEXP {
-    math4_1(sa, sb, sc, sd, sI, hypergeometric::dhyper_inner)
-}
 
 // --- dnbeta(x, a, b, ncp, log) ---
 
-pub fn do_dnbeta(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP) -> SEXP {
-    math4_1(sa, sb, sc, sd, sI, nbeta::dnbeta_inner)
-}
 
 // --- dnf(x, df1, df2, ncp, log) ---
 
-pub fn do_dnf(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP) -> SEXP {
-    math4_1(sa, sb, sc, sd, sI, nf_dist::dnf_inner)
-}
 
 // --- phyper, qhyper ---
 
-pub fn do_phyper(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math4_2(sa, sb, sc, sd, sI, sJ, hypergeometric::phyper_inner)
-}
 
-pub fn do_qhyper(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math4_2(sa, sb, sc, sd, sI, sJ, hypergeometric::qhyper_inner)
-}
 
 // --- pnbeta, qnbeta ---
 
-pub fn do_pnbeta(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math4_2(sa, sb, sc, sd, sI, sJ, nbeta::pnbeta_inner)
-}
 
-pub fn do_qnbeta(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math4_2(sa, sb, sc, sd, sI, sJ, nbeta::qnbeta_inner)
-}
 
 // --- pnf, qnf ---
 
-pub fn do_pnf(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math4_2(sa, sb, sc, sd, sI, sJ, nf_dist::pnf_inner)
-}
 
-pub fn do_qnf(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math4_2(sa, sb, sc, sd, sI, sJ, nf_dist::qnf_inner)
-}
 
 // --- ptukey, qtukey ---
 
-pub fn do_ptukey(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math4_2(sa, sb, sc, sd, sI, sJ, tukey::ptukey_inner)
-}
 
-pub fn do_qtukey(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    math4_2(sa, sb, sc, sd, sI, sJ, tukey::qtukey_inner)
-}
 
 // ===========================================================================
 // signrank_free / wilcox_free -- stubs (no-op, no caching in our port)
@@ -783,29 +561,40 @@ pub(crate) unsafe extern "C-unwind" fn c_wilcox_free(_args: SEXP) -> SEXP {
     stats_wilcox_free(R_NilValue())
 }
 
+
+pub(crate) unsafe extern "C-unwind" fn c_psignrank(a: SEXP, b: SEXP, i: SEXP, j: SEXP) -> SEXP {
+    signrank::evaluate(a, b, i, j, signrank::Kind::Cdf)
+}
+pub(crate) unsafe extern "C-unwind" fn c_qsignrank(a: SEXP, b: SEXP, i: SEXP, j: SEXP) -> SEXP {
+    signrank::evaluate(a, b, i, j, signrank::Kind::Quantile)
+}
+pub(crate) unsafe extern "C-unwind" fn c_dsignrank(a: SEXP, b: SEXP, i: SEXP) -> SEXP {
+    signrank::evaluate(a, b, i, R_NilValue(), signrank::Kind::Density)
+}
+
 macro_rules! wrap3 {
-    ($c:ident, $do:ident) => {
+    ($c:ident, $helper:ident, $kernel:expr) => {
         unsafe extern "C-unwind" fn $c(a: SEXP, b: SEXP, c: SEXP) -> SEXP {
-            $do(a, b, c)
+            $helper(a, b, c, $kernel)
         }
     };
 }
 macro_rules! wrap4 {
-    ($c:ident, $do:ident) => {
+    ($c:ident, $helper:ident, $kernel:expr) => {
         unsafe extern "C-unwind" fn $c(a: SEXP, b: SEXP, c: SEXP, d: SEXP) -> SEXP {
-            $do(a, b, c, d)
+            $helper(a, b, c, d, $kernel)
         }
     };
 }
 macro_rules! wrap5 {
-    ($c:ident, $do:ident) => {
+    ($c:ident, $helper:ident, $kernel:expr) => {
         unsafe extern "C-unwind" fn $c(a: SEXP, b: SEXP, c: SEXP, d: SEXP, e: SEXP) -> SEXP {
-            $do(a, b, c, d, e)
+            $helper(a, b, c, d, e, $kernel)
         }
     };
 }
 macro_rules! wrap6 {
-    ($c:ident, $do:ident) => {
+    ($c:ident, $helper:ident, $kernel:expr) => {
         unsafe extern "C-unwind" fn $c(
             a: SEXP,
             b: SEXP,
@@ -814,88 +603,85 @@ macro_rules! wrap6 {
             e: SEXP,
             f: SEXP,
         ) -> SEXP {
-            $do(a, b, c, d, e, f)
+            $helper(a, b, c, d, e, f, $kernel)
         }
     };
 }
 
-wrap3!(c_dchisq, do_dchisq);
-wrap3!(c_dexp, do_dexp);
-wrap3!(c_dgeom, do_dgeom);
-wrap3!(c_dpois, do_dpois);
-wrap3!(c_dt, do_dt);
-wrap3!(c_dsignrank, do_dsignrank);
+wrap3!(c_dchisq, math2_1, chisq::dchisq_inner);
+wrap3!(c_dexp, math2_1, exponential::dexp_inner);
+wrap3!(c_dgeom, math2_1, geometric::dgeom_inner);
+wrap3!(c_dpois, math2_1, poisson::dpois_inner);
+wrap3!(c_dt, math2_1, t_dist::dt_inner);
 
-wrap4!(c_pchisq, do_pchisq);
-wrap4!(c_qchisq, do_qchisq);
-wrap4!(c_pexp, do_pexp);
-wrap4!(c_qexp, do_qexp);
-wrap4!(c_pgeom, do_pgeom);
-wrap4!(c_qgeom, do_qgeom);
-wrap4!(c_ppois, do_ppois);
-wrap4!(c_qpois, do_qpois);
-wrap4!(c_pt, do_pt);
-wrap4!(c_qt, do_qt);
-wrap4!(c_psignrank, do_psignrank);
-wrap4!(c_qsignrank, do_qsignrank);
-wrap4!(c_dbeta, do_dbeta);
-wrap4!(c_dbinom, do_dbinom);
-wrap4!(c_dcauchy, do_dcauchy);
-wrap4!(c_df, do_df);
-wrap4!(c_dgamma, do_dgamma);
-wrap4!(c_dlnorm, do_dlnorm);
-wrap4!(c_dlogis, do_dlogis);
-wrap4!(c_dnbinom, do_dnbinom);
-wrap4!(c_dnbinom_mu, do_dnbinom_mu);
-wrap4!(c_dnorm, do_dnorm);
-wrap4!(c_dweibull, do_dweibull);
-wrap4!(c_dunif, do_dunif);
-wrap4!(c_dnt, do_dnt);
-wrap4!(c_dnchisq, do_dnchisq);
-wrap4!(c_dwilcox, do_dwilcox);
+wrap4!(c_pchisq, math2_2, chisq::pchisq_inner);
+wrap4!(c_qchisq, math2_2, chisq::qchisq_inner);
+wrap4!(c_pexp, math2_2, exponential::pexp_inner);
+wrap4!(c_qexp, math2_2, exponential::qexp_inner);
+wrap4!(c_pgeom, math2_2, geometric::pgeom_inner);
+wrap4!(c_qgeom, math2_2, geometric::qgeom_inner);
+wrap4!(c_ppois, math2_2, poisson::ppois_inner);
+wrap4!(c_qpois, math2_2, poisson::qpois_inner);
+wrap4!(c_pt, math2_2, t_dist::pt_inner);
+wrap4!(c_qt, math2_2, t_dist::qt_inner);
+wrap4!(c_dbeta, math3_1, beta::dbeta_inner);
+wrap4!(c_dbinom, math3_1, binomial::dbinom_inner);
+wrap4!(c_dcauchy, math3_1, cauchy::dcauchy_inner);
+wrap4!(c_df, math3_1, f_dist::df_inner);
+wrap4!(c_dgamma, math3_1, gamma::dgamma_inner);
+wrap4!(c_dlnorm, math3_1, lnorm::dlnorm_inner);
+wrap4!(c_dlogis, math3_1, logistic::dlogis_inner);
+wrap4!(c_dnbinom, math3_1, nbinom::dnbinom_inner);
+wrap4!(c_dnbinom_mu, math3_1, nbinom::dnbinom_mu_inner);
+wrap4!(c_dnorm, math3_1, normal::dnorm4_inner);
+wrap4!(c_dweibull, math3_1, weibull::dweibull_inner);
+wrap4!(c_dunif, math3_1, uniform::dunif_inner);
+wrap4!(c_dnt, math3_1, nt_dist::dnt_inner);
+wrap4!(c_dnchisq, math3_1, nchisq::dnchisq_inner);
+wrap4!(c_dwilcox, math3_1, wilcox::dwilcox_inner);
 
-wrap5!(c_pbeta, do_pbeta);
-wrap5!(c_qbeta, do_qbeta);
-wrap5!(c_pbinom, do_pbinom);
-wrap5!(c_qbinom, do_qbinom);
-wrap5!(c_pcauchy, do_pcauchy);
-wrap5!(c_qcauchy, do_qcauchy);
-wrap5!(c_pf, do_pf);
-wrap5!(c_qf, do_qf);
-wrap5!(c_pgamma, do_pgamma);
-wrap5!(c_qgamma, do_qgamma);
-wrap5!(c_plnorm, do_plnorm);
-wrap5!(c_qlnorm, do_qlnorm);
-wrap5!(c_plogis, do_plogis);
-wrap5!(c_qlogis, do_qlogis);
-wrap5!(c_pnbinom, do_pnbinom);
-wrap5!(c_qnbinom, do_qnbinom);
-wrap5!(c_pnbinom_mu, do_pnbinom_mu);
-wrap5!(c_qnbinom_mu, do_qnbinom_mu);
-wrap5!(c_pnorm, do_pnorm);
-wrap5!(c_qnorm, do_qnorm);
-wrap5!(c_pweibull, do_pweibull);
-wrap5!(c_qweibull, do_qweibull);
-wrap5!(c_punif, do_punif);
-wrap5!(c_qunif, do_qunif);
-wrap5!(c_pnt, do_pnt);
-wrap5!(c_qnt, do_qnt);
-wrap5!(c_pnchisq, do_pnchisq);
-wrap5!(c_qnchisq, do_qnchisq);
-wrap5!(c_pwilcox, do_pwilcox);
-wrap5!(c_qwilcox, do_qwilcox);
-wrap5!(c_dhyper, do_dhyper);
-wrap5!(c_dnbeta, do_dnbeta);
-wrap5!(c_dnf, do_dnf);
+wrap5!(c_pbeta, math3_2, beta::pbeta_inner);
+wrap5!(c_qbeta, math3_2, beta::qbeta_inner);
+wrap5!(c_pbinom, math3_2, binomial::pbinom_inner);
+wrap5!(c_qbinom, math3_2, binomial::qbinom_inner);
+wrap5!(c_pcauchy, math3_2, cauchy::pcauchy_inner);
+wrap5!(c_qcauchy, math3_2, cauchy::qcauchy_inner);
+wrap5!(c_pf, math3_2, f_dist::pf_inner);
+wrap5!(c_qf, math3_2, f_dist::qf_inner);
+wrap5!(c_pgamma, math3_2, gamma::pgamma_inner);
+wrap5!(c_qgamma, math3_2, gamma::qgamma_inner);
+wrap5!(c_plnorm, math3_2, lnorm::plnorm_inner);
+wrap5!(c_qlnorm, math3_2, lnorm::qlnorm_inner);
+wrap5!(c_plogis, math3_2, logistic::plogis_inner);
+wrap5!(c_qlogis, math3_2, logistic::qlogis_inner);
+wrap5!(c_pnbinom, math3_2, nbinom::pnbinom_inner);
+wrap5!(c_qnbinom, math3_2, nbinom::qnbinom_inner);
+wrap5!(c_pnbinom_mu, math3_2, nbinom::pnbinom_mu_inner);
+wrap5!(c_qnbinom_mu, math3_2, nbinom::qnbinom_mu_inner);
+wrap5!(c_pnorm, math3_2, normal::pnorm5_inner);
+wrap5!(c_qnorm, math3_2, normal::qnorm5_inner);
+wrap5!(c_pweibull, math3_2, weibull::pweibull_inner);
+wrap5!(c_qweibull, math3_2, weibull::qweibull_inner);
+wrap5!(c_punif, math3_2, uniform::punif_inner);
+wrap5!(c_qunif, math3_2, uniform::qunif_inner);
+wrap5!(c_pnt, math3_2, nt_dist::pnt_inner);
+wrap5!(c_qnt, math3_2, nt_dist::qnt_inner);
+wrap5!(c_pnchisq, math3_2, nchisq::pnchisq_inner);
+wrap5!(c_qnchisq, math3_2, nchisq::qnchisq_inner);
+wrap5!(c_pwilcox, math3_2, wilcox::pwilcox_inner);
+wrap5!(c_qwilcox, math3_2, wilcox::qwilcox_inner);
+wrap5!(c_dhyper, math4_1, hypergeometric::dhyper_inner);
+wrap5!(c_dnbeta, math4_1, nbeta::dnbeta_inner);
+wrap5!(c_dnf, math4_1, nf_dist::dnf_inner);
 
-wrap6!(c_phyper, do_phyper);
-wrap6!(c_qhyper, do_qhyper);
-wrap6!(c_pnbeta, do_pnbeta);
-wrap6!(c_qnbeta, do_qnbeta);
-wrap6!(c_pnf, do_pnf);
-wrap6!(c_qnf, do_qnf);
-wrap6!(c_ptukey, do_ptukey);
-wrap6!(c_qtukey, do_qtukey);
+wrap6!(c_phyper, math4_2, hypergeometric::phyper_inner);
+wrap6!(c_qhyper, math4_2, hypergeometric::qhyper_inner);
+wrap6!(c_pnbeta, math4_2, nbeta::pnbeta_inner);
+wrap6!(c_qnbeta, math4_2, nbeta::qnbeta_inner);
+wrap6!(c_pnf, math4_2, nf_dist::pnf_inner);
+wrap6!(c_qnf, math4_2, nf_dist::qnf_inner);
+wrap6!(c_ptukey, math4_2, tukey::ptukey_inner);
+wrap6!(c_qtukey, math4_2, tukey::qtukey_inner);
 
 
 pub(crate) fn lookup_call(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
