@@ -56,6 +56,9 @@ pub(crate) const T_EMPTYENV: u8 = 42;
 pub(crate) const T_UNBOUND: u8 = 43;
 pub(crate) const T_MISSING: u8 = 44;
 pub(crate) const T_BASENAMESPACE: u8 = 45;
+/// Namespace/package environments written by name and resolved through the
+/// runtime namespace loader, mirroring GNU's NAMESPACESXP/PACKAGESXP items.
+pub(crate) const T_NAMESPACE: u8 = 46;
 // Namespace/package environments serialize by name (persistent reference).
 pub(crate) const T_PERSIST_NS: u8 = 50;
 

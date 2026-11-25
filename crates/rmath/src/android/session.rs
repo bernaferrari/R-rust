@@ -652,6 +652,13 @@ impl RSession {
         crate::mainutils::serialize::convert_gnu_lazy_record_to_rbg1(record, mode)
     }
 
+    /// Conversion-validation variant returning the raw RBG1 frame.
+    #[doc(hidden)]
+    pub fn convert_lazy_record_to_rbg1_frame(&mut self, record: &[u8], mode: u8) -> Result<Vec<u8>, String> {
+        let _guard = self.core.activate();
+        crate::mainutils::serialize::convert_gnu_lazy_record_to_rbg1_frame(record, mode)
+    }
+
     pub fn eval(&mut self, code: &str) -> RResult {
         self.eval_script(code)
     }

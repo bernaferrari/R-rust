@@ -102,6 +102,22 @@ impl GraphWriter {
     fn emit_node(&mut self, s: SEXP) -> Result<Vec<u8>, String> {
         let mut out = Vec::new();
         let stype = SEXPTYPE(TYPEOF(s));
+        // Package and namespace environments never inline: they serialize as
+        // named references resolved through the runtime namespace loader,
+        // mirroring GNU's NAMESPACESXP/PACKAGESXP items. This preserves
+        // namespace identity and sharing across independently loaded records.
+        if stype == SEXPTYPE::ENVSXP
+            && crate::mainutils::serialize::core::persistent_package_or_namespace(s)
+        {
+            if let Some(name) = namespace_reference_name(s) {
+                out.push(T_NAMESPACE);
+                push_meta(&mut out, s);
+                let bytes = name.into_bytes();
+                out.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
+                out.extend_from_slice(&bytes);
+                return Ok(out);
+            }
+        }
         // Persistent references first (GNU consults the refhook before any
         // other check): namespace/package environments serialize by name.
         if stype == SEXPTYPE::ENVSXP {
@@ -325,15 +341,31 @@ impl GraphWriter {
                     T_SPECIAL
                 });
                 push_meta(&mut out, s);
-                let offset = PRIMOFFSET(s) as usize;
-                let entry = crate::mainutils::names::R_FunTab.get(offset).ok_or("invalid primitive offset")?;
-                let mut end = entry.name.len();
-                if end > 0 && entry.name[end - 1] == 0 {
-                    end -= 1;
-                }
-                let name = &entry.name[..end];
+                let offset = PRIMOFFSET(s);
+                // Canonical primitives serialize by their R_FunTab name.
+                // Rust-only portable primitives carry a session-local negative
+                // offset and serialize by their registry name instead; the
+                // reader recreates them through the same registry, so both
+                // kinds round-trip by name.
+                let name: Vec<u8> = if offset >= 0 {
+                    let entry = crate::mainutils::names::R_FunTab
+                        .get(offset as usize)
+                        .ok_or("invalid primitive offset")?;
+                    let mut end = entry.name.len();
+                    if end > 0 && entry.name[end - 1] == 0 {
+                        end -= 1;
+                    }
+                    entry.name[..end].to_vec()
+                } else {
+                    let owner = crate::sexp::owner::OwnerToken::current()
+                        .map_err(|e| e.to_string())?;
+                    let object = owner.sexp(s).map_err(|e| e.to_string())?;
+                    crate::eval::primitive::portable_primitive_name(object)
+                        .ok_or("portable primitive missing from registry")?
+                        .into_bytes()
+                };
                 out.extend_from_slice(&(name.len() as u32).to_le_bytes());
-                out.extend_from_slice(name);
+                out.extend_from_slice(&name);
             }
 
             other => {
@@ -359,4 +391,29 @@ fn singleton_record(tag: u8, s: SEXP) -> Vec<u8> {
 
 fn push_meta(out: &mut Vec<u8>, s: SEXP) {
     out.extend_from_slice(&meta_of(s).to_le_bytes());
+}
+
+/// Extract the reference name for a package or namespace environment:
+/// the namespace spec's package name, or the `package:` search-path name
+/// with its prefix stripped, mirroring how the transitional GNU reader
+/// resolves both item kinds through the namespace loader.
+fn namespace_reference_name(s: SEXP) -> Option<String> {
+    unsafe {
+        let info = crate::sexp::envir::R_findVarInFrame(s, crate::sexp::symbol::install_str(".__NAMESPACE__."));
+        if TYPEOF(info) == SEXPTYPE::ENVSXP {
+            let spec = crate::sexp::envir::R_findVarInFrame(info, crate::sexp::symbol::install_str("spec"));
+            if TYPEOF(spec) == SEXPTYPE::STRSXP && XLENGTH(spec) > 0 {
+                let bytes = charsxp_as_utf8(STRING_ELT(spec, 0));
+                return String::from_utf8(bytes).ok();
+            }
+        }
+        let name = crate::sexp::attrib_core::getAttrib(s, crate::sexp::symbol::install_str("name"));
+        if TYPEOF(name) == SEXPTYPE::STRSXP && XLENGTH(name) > 0 {
+            let bytes = charsxp_as_utf8(STRING_ELT(name, 0));
+            if let Ok(text) = String::from_utf8(bytes) {
+                return Some(text.strip_prefix("package:").unwrap_or(&text).to_string());
+            }
+        }
+        None
+    }
 }

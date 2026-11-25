@@ -1289,11 +1289,73 @@ pub fn convert_gnu_lazy_record_to_rbg1(record: &[u8], mode: u8) -> Result<Vec<u8
         super::raw_codecs::DecodeError::Invalid => "invalid lazy record framing".to_string(),
         super::raw_codecs::DecodeError::Resource(message) => message,
     })?;
+    // Migration hooks live in the conversion session's global environment under
+    // well-known names. The read hook tags persistent references as placeholder
+    // environments instead of materializing them; the write hook re-emits those
+    // placeholders as named T_PERSIST_NS references, preserving the original
+    // sharing semantics across the format conversion. Both default to nil for
+    // reference-free databases such as datasets.
+    let lookup = |name: &str| -> SEXP {
+        let sym = crate::sexp::symbol::install_str(name);
+        let value = unsafe {
+            crate::sexp::envir::R_findVarInFrame(crate::sexp::globals::R_GlobalEnv(), sym)
+        };
+        if value == crate::sexp::globals::R_UnboundValue() {
+            R_NilValue()
+        } else {
+            value
+        }
+    };
+    let read_hook = lookup("rbg1_convert_read_hook");
+    let write_hook = lookup("rbg1_convert_write_hook");
+    let _hook_guards = [read_hook, write_hook].map(|value| {
+        (!value.is_null() && value != R_NilValue()).then(|| protect(value))
+    });
     let mut reader = BinaryReader::new(&plain);
+    if !read_hook.is_null() && read_hook != R_NilValue() {
+        reader.set_persist_hook(read_hook);
+    }
     let decoded = decode_stream_object(&owner, &mut reader);
     owner.require_active().map_err(|e| e.to_string())?;
     let _decoded_guard = protect(decoded);
-    let frame = crate::mainutils::rbg1::write_object_hooked(decoded, R_NilValue())?;
+    let frame = crate::mainutils::rbg1::write_object_hooked(decoded, write_hook)?;
     let recoded = super::raw_codecs::encode(&owner, &frame, mode)?;
     Ok(recoded.to_vec())
+}
+
+/// Conversion-validation variant: same decode/re-encode pipeline but returns
+/// the raw RBG1 frame bytes without lazy-record recompression.
+#[doc(hidden)]
+pub fn convert_gnu_lazy_record_to_rbg1_frame(record: &[u8], mode: u8) -> Result<Vec<u8>, String> {
+    let owner = current_owner();
+    let _pin = owner.pin().map_err(|e| e.to_string())?;
+    owner.require_active().map_err(|e| e.to_string())?;
+    let plain = super::raw_codecs::decode(&owner, record, mode).map_err(|e| match e {
+        super::raw_codecs::DecodeError::Invalid => "invalid lazy record framing".to_string(),
+        super::raw_codecs::DecodeError::Resource(message) => message,
+    })?;
+    let lookup = |name: &str| -> SEXP {
+        let sym = crate::sexp::symbol::install_str(name);
+        let value = unsafe {
+            crate::sexp::envir::R_findVarInFrame(crate::sexp::globals::R_GlobalEnv(), sym)
+        };
+        if value == crate::sexp::globals::R_UnboundValue() {
+            R_NilValue()
+        } else {
+            value
+        }
+    };
+    let read_hook = lookup("rbg1_convert_read_hook");
+    let write_hook = lookup("rbg1_convert_write_hook");
+    let _hook_guards = [read_hook, write_hook].map(|value| {
+        (!value.is_null() && value != R_NilValue()).then(|| protect(value))
+    });
+    let mut reader = BinaryReader::new(&plain);
+    if !read_hook.is_null() && read_hook != R_NilValue() {
+        reader.set_persist_hook(read_hook);
+    }
+    let decoded = decode_stream_object(&owner, &mut reader);
+    owner.require_active().map_err(|e| e.to_string())?;
+    let _decoded_guard = protect(decoded);
+    crate::mainutils::rbg1::write_object_hooked(decoded, write_hook)
 }

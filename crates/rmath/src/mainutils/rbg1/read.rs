@@ -151,6 +151,12 @@ impl<'a> GraphReader<'a> {
                     data.extend_from_slice(&bytes);
                 }
             }
+            T_NAMESPACE => {
+                let n = self.u32()? as usize;
+                let bytes = self.bytes(n)?;
+                data.extend_from_slice(&bytes);
+                len = 1;
+            }
             T_GLOBALENV | T_BASEENV | T_EMPTYENV | T_UNBOUND | T_MISSING | T_BASENAMESPACE => {}
             other => return Err(format!("RBG1: unknown node tag {other}")),
         }
@@ -267,6 +273,22 @@ fn allocate_node(node: &Parsed, hook: SEXP) -> Result<SEXP, String> {
         T_UNBOUND => R_UnboundValue(),
         T_MISSING => R_MissingArg(),
         T_BASENAMESPACE => crate::sexp::envir::R_BaseNamespace(),
+        T_NAMESPACE => {
+            let name = String::from_utf8_lossy(&node.data).to_string();
+            if name.is_empty() || name == "base" {
+                R_BaseEnv()
+            } else {
+                crate::mainutils::essentials::load_package_namespace_by_name(&name).unwrap_or_else(
+                    |_| {
+                        crate::sexp::memory_ext::NewEnvironment(
+                            R_NilValue(),
+                            R_BaseEnv(),
+                            R_NilValue(),
+                        )
+                    },
+                )
+            }
+        }
         T_PERSIST_NS => {
             if hook.is_null() || hook == R_NilValue() {
                 return Err("RBG1: persistent reference requires a restore hook".into());
@@ -405,7 +427,7 @@ fn link_node(node: &Parsed, obj: SEXP, objects: &[SEXP]) -> Result<(), String> {
             let attrib = child(objects, node.refs[3])?;
             fill_promise(obj, env, value, expr, attrib, node.meta)?;
         }
-        T_GLOBALENV | T_BASEENV | T_EMPTYENV | T_UNBOUND | T_MISSING | T_BASENAMESPACE | T_PERSIST_NS => {}
+        T_GLOBALENV | T_BASEENV | T_EMPTYENV | T_UNBOUND | T_MISSING | T_BASENAMESPACE | T_PERSIST_NS | T_NAMESPACE => {}
         other => return Err(format!("RBG1: cannot link tag {other}")),
     }
     Ok(())
@@ -455,15 +477,21 @@ fn fill_promise(
 fn resolve_primitive(name: &str, tag: u8) -> Result<SEXP, String> {
     let name_cstr = std::ffi::CString::new(name).map_err(|_| "invalid primitive name".to_string())?;
     let idx = unsafe { crate::mainutils::names::StrToInternal(name_cstr.as_ptr()) };
+    let kind = if tag == T_BUILTIN {
+        SEXPTYPE::BUILTINSXP
+    } else {
+        SEXPTYPE::SPECIALSXP
+    };
     if idx == crate::sexp::ffi::NA_INTEGER {
-        return Err(format!("RBG1: unknown primitive '{name}'"));
+        // Rust-only portable primitives serialize by registry name; recreate
+        // them through the same portable registry the writer consulted.
+        let prim = unsafe { crate::eval::primitive::make_primitive_binding(name, kind) };
+        if prim.is_null() {
+            return Err(format!("RBG1: unknown primitive '{name}'"));
+        }
+        return Ok(prim);
     }
     let entry = &crate::mainutils::names::R_FunTab[idx as usize];
     let eval_type = entry.eval % 10;
-    let want_builtin = tag == T_BUILTIN;
-    // eval_type 1 = builtin, 0 = special in the GNU encoding.
-    if (eval_type == 1) != want_builtin {
-        // Prefer exactness but tolerate the mismatch: the registry knows best.
-    }
     Ok(unsafe { crate::mainutils::dstruct::mkPRIMSXP(idx, eval_type) })
 }
