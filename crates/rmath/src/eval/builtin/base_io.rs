@@ -121,7 +121,7 @@ pub(super) const BASE_IO: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "gzfile",
-        handler: crate::mainutils::essentials::do_gzfile,
+        handler: crate::mainutils::connections::do_gzfile,
     },
     EvaluatedBuiltin {
         name: "gzcon",
@@ -145,7 +145,7 @@ pub(super) const BASE_IO: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "pipe",
-        handler: crate::mainutils::essentials::do_pipe,
+        handler: crate::mainutils::connections::do_pipe,
     },
     EvaluatedBuiltin {
         name: "socketConnection",

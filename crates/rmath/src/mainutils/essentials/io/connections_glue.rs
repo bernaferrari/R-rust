@@ -21,38 +21,8 @@ pub fn do_flush_console(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP
 // Extended connection constructors
 // ---------------------------------------------------------------------------
 
-/// R's `gzfile(description, open, encoding, compression)` — gzip connection.
-/// Simplified: delegates to connections.rs when available, else returns description.
-pub fn do_gzfile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let desc = CAR(args);
-    if desc.is_null() || desc == R_NilValue() {
-        return R_NilValue();
-    }
-    // Delegate to connections.rs full implementation
-    crate::mainutils::connections::do_gzfile(_call, _op, args, _rho)
-}
 
-/// R's `pipe(description, open, encoding)` — pipe connection.
-/// Simplified: delegates to connections.rs when available, else returns description.
-pub fn do_pipe(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let desc = CAR(args);
-    if desc.is_null() || desc == R_NilValue() {
-        return R_NilValue();
-    }
-    // Delegate to connections.rs full implementation
-    crate::mainutils::connections::do_pipe(_call, _op, args, _rho)
-}
 
-/// R's `fifo(description, open, blocking)` — FIFO connection.
-/// Simplified: delegates to connections.rs when available, else returns description.
-pub fn do_fifo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let desc = CAR(args);
-    if desc.is_null() || desc == R_NilValue() {
-        return R_NilValue();
-    }
-    // Delegate to connections.rs full implementation
-    crate::mainutils::connections::do_fifo(_call, _op, args, _rho)
-}
 
 /// R's `socketConnection(host, port, open, blocking, server, encoding)` — socket connection.
 /// Simplified: stub that returns NULL.
