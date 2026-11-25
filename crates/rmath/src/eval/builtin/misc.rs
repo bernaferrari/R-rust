@@ -833,7 +833,7 @@ pub(super) const MISC: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "close",
-        handler: crate::mainutils::essentials::do_close,
+        handler: crate::mainutils::connections::do_close,
     },
     EvaluatedBuiltin {
         name: "fifo",

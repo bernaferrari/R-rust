@@ -821,7 +821,7 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "getLoadedDLLs" => Some(crate::mainutils::rdynload::do_getDllTable),
         "getSymbolInfo" => Some(crate::mainutils::rdynload::do_getSymbolInfo),
         "serialize" => Some(crate::mainutils::serialize::do_serialize_internal),
-        "dput" => Some(crate::mainutils::deparse::do_dput),
+        "dput" => Some(crate::mainutils::deparse::owned_dput::do_dput),
         // GNU internal contract `(expr, functions, max.names, unique)`;
         // the R-level all.vars/all.names wrappers pass distinct flags.
         "all.names" => Some(crate::mainutils::list::do_allnames),

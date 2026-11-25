@@ -4,29 +4,9 @@ use super::*;
 // Connection basics (simplified)
 // ---------------------------------------------------------------------------
 
-/// R's `file(description)` — create a file connection.
-/// Delegates to the session-owned connection table.
-pub fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    crate::mainutils::connections::do_file(_call, _op, args, _rho)
-}
 
-/// R's `url(description)` — create a URL connection.
-/// Delegates to the session-owned connection table.
-pub fn do_url(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    crate::mainutils::connections::do_url(_call, _op, args, _rho)
-}
 
-/// R's `close(con)` — close a connection.
-/// Delegates to the session-owned connection table.
-pub fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    crate::mainutils::connections::do_close(_call, _op, args, _rho)
-}
 
-/// R's `flush(con)` — flush a connection.
-/// Delegates to the session-owned connection table.
-pub fn do_flush(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    crate::mainutils::connections::do_flush(_call, _op, args, _rho)
-}
 
 /// R's `flush.console()` — flush pending console output.
 pub fn do_flush_console(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
@@ -105,41 +85,12 @@ pub fn do_isSeekable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     crate::mainutils::connections::do_isseekable(_call, _op, args, _rho)
 }
 
-/// R's `seek(con, where, origin, rw)` — seek in a connection.
-/// Simplified: delegates to connections.rs.
-pub fn do_seek(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    crate::mainutils::connections::do_seek(_call, _op, args, _rho)
-}
 
-/// R's `pushBack(lines, con, newLine)` — push back lines to a connection.
-/// Simplified: no-op stub.
-pub fn do_pushBack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    crate::mainutils::connections::do_pushBack(_call, _op, args, _rho)
-}
 
-/// R's `pushBackClear(con)` — clear push back buffer.
-pub fn do_pushBackClear(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    crate::mainutils::connections::do_pushBackClear(_call, _op, args, _rho)
-}
 
-/// R's `pushBackLength(con)` — get push back buffer length.
-/// Simplified: returns 0.
-pub fn do_pushBackLength(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    crate::mainutils::connections::do_pushBackLength(_call, _op, args, _rho)
-}
 
 // ---------------------------------------------------------------------------
 // Binary I/O
 // ---------------------------------------------------------------------------
 
-/// R's `readBin(con, what, n, size, signed, endian)` — read binary data.
-/// Delegates to connections.rs for full implementation.
-pub fn do_readBin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    crate::mainutils::connections::do_readBin(_call, _op, args, _rho)
-}
 
-/// R's `writeBin(object, con, size, endian, useBytes)` — write binary data.
-/// Delegates to connections.rs for full implementation.
-pub fn do_writeBin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    crate::mainutils::connections::do_writeBin(_call, _op, args, _rho)
-}

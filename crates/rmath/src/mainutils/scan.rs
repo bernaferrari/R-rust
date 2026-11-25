@@ -331,14 +331,6 @@ pub unsafe fn strtoraw(nptr: *const c_char, endptr: *mut *mut c_char) -> std::os
 // do_scan (.Internal(scan ...))
 // ---------------------------------------------------------------------------
 
-/// `scan()` compatibility entry point.
-///
-/// The registered builtin lives in `essentials`; keep this legacy module entry
-/// delegated to the same implementation so future callers do not observe a
-/// null-pointer placeholder.
-pub fn do_scan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    crate::mainutils::essentials::do_scan(call, op, args, rho)
-}
 
 // ---------------------------------------------------------------------------
 // do_readln (readline())

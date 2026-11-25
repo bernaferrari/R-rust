@@ -112,7 +112,7 @@ pub mod dispatch;
 pub mod elements;
 pub mod entry;
 pub mod local_parse_data;
-mod owned_dput;
+pub(crate) mod owned_dput;
 mod owned_line_buffer;
 mod owned_output;
 pub mod predicates;

@@ -1151,12 +1151,6 @@ pub(crate) fn dispatch_xlength(x: SEXP, _call: SEXP, _rho: SEXP) -> usize {
 // do_lengths
 // ---------------------------------------------------------------------------
 
-/// `lengths(x, use.names)` -- return a vector of the lengths of elements.
-///
-/// Ported from R's `do_lengths` in array.c (line 536).
-pub fn do_lengths(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    crate::mainutils::essentials::do_lengths(call, op, args, env)
-}
 
 // ---------------------------------------------------------------------------
 // do_rowscols
@@ -1224,12 +1218,6 @@ pub unsafe fn do_matprod(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // do_transpose
 // ---------------------------------------------------------------------------
 
-/// `t(x)` -- transpose a matrix.
-///
-/// Ported from R's `do_transpose` in array.c (line 1569).
-pub fn do_transpose(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    crate::mainutils::essentials::do_transpose(call, op, args, env)
-}
 
 // ---------------------------------------------------------------------------
 // do_aperm
@@ -1279,7 +1267,7 @@ pub fn do_aperm(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     // Special case for 2D arrays (PR#19133): the only non-identity
     // permutation of two dims is the transpose, so delegate to `t()`.
     if ndim == 2 {
-        let transposed = do_transpose(call, op, args, env);
+        let transposed = crate::mainutils::essentials::do_transpose(call, op, args, env);
         if resize {
             // c69642: aperm preserves names(dim). The 2D fast path used
             // to return t()'s fresh dim vector with those names dropped.
@@ -1429,12 +1417,6 @@ pub fn do_array(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // do_diag
 // ---------------------------------------------------------------------------
 
-/// `diag(x, nrow, ncol)` -- extract or construct a diagonal matrix.
-///
-/// Ported from R's `do_diag` in array.c (line 2259).
-pub fn do_diag(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    crate::mainutils::essentials::do_diag(call, op, args, env)
-}
 
 // ---------------------------------------------------------------------------
 // do_backsolve

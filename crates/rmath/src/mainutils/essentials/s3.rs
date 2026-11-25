@@ -112,16 +112,7 @@ fn methods_function(ans: SEXP) -> SEXP {
 // S3 dispatch, environment functions, I/O extensions
 // ---------------------------------------------------------------------------
 
-/// R's `UseMethod(generic, obj)` — delegate to the translated object-system
-/// dispatch implementation.
-pub fn do_usemethod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    crate::mainutils::objects::do_usemethod(call, op, args, rho)
-}
 
-/// R's `missing(x)` — check if argument was missing in call.
-pub fn do_missing(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    crate::eval::missing::do_missing(call, op, args, rho)
-}
 
 /// R's `parent.frame(n)` — get enclosing environment.
 ///

@@ -148,10 +148,6 @@ pub fn do_noquote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     x
 }
 
-/// R's `deparse(x)` — convert an object or expression to source-like text.
-pub fn do_deparse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    crate::mainutils::deparse::do_deparse(_call, _op, args, _rho)
-}
 
 // ---------------------------------------------------------------------------
 // String/vector completion: charmatch, pmatch, strtoi, strtrim

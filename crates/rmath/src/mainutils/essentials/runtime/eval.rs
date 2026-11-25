@@ -912,10 +912,6 @@ impl Drop for EvalSrcrefGuard {
     }
 }
 
-/// R's `substitute(expr, env)` — substitute symbols in expression.
-pub fn do_substitute(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    crate::mainutils::coerce::do_substitute(_call, _op, args, _rho)
-}
 
 /// R's `quote(expr)` — return expression unevaluated.
 pub fn do_quote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

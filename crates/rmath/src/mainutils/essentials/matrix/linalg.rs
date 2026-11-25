@@ -706,7 +706,7 @@ pub fn do_svd(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             crate::modules::lapack::lapack_impl::La_svd(jobu, x, s, u, vt)
         };
         let _la = protect(la);
-        let v = crate::mainutils::array::do_transpose(call, op, Rf_cons(vt, R_NilValue()), rho);
+        let v = crate::mainutils::essentials::do_transpose(call, op, Rf_cons(vt, R_NilValue()), rho);
         let _v = protect(v);
         if is_cmplx {
             // GNU svd(): V = Conj(t(VT)).

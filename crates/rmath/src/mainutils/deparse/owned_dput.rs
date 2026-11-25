@@ -11,7 +11,7 @@ fn required<T>(value: SexpResult<T>) -> T {
     value.unwrap_or_else(|error| r_error(error.to_string()))
 }
 
-pub(super) fn do_dput(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub(crate) fn do_dput(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     required(OwnerToken::with_current(|owner| {
         let pin = required(owner.pin());
         let factory = owner.node_factory();

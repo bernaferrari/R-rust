@@ -369,13 +369,6 @@ fn deparse_default_backtick(expr: SEXP) -> bool {
 // do_dput — .Internal(dput(x, file, .deparseOpts(control)))
 // ---------------------------------------------------------------------------
 
-/// Implementation of R's `dput()` function.
-///
-/// Writes a deparsed representation of an R object to a file or connection.
-/// Port of `do_dput` in deparse.c.
-pub fn do_dput(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    super::owned_dput::do_dput(call, op, args, rho)
-}
 
 /// Implementation of R's `dump()` function.
 ///

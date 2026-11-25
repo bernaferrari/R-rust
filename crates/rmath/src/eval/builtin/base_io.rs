@@ -33,7 +33,7 @@ pub(super) const BASE_IO: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "deparse",
-        handler: crate::mainutils::essentials::do_deparse,
+        handler: crate::mainutils::deparse::do_deparse,
     },
     EvaluatedBuiltin {
         name: "file.path",
@@ -89,7 +89,7 @@ pub(super) const BASE_IO: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "url",
-        handler: crate::mainutils::essentials::do_url,
+        handler: crate::mainutils::connections::do_url,
     },
     EvaluatedBuiltin {
         name: "rawConnection",
@@ -113,7 +113,7 @@ pub(super) const BASE_IO: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "flush",
-        handler: crate::mainutils::essentials::do_flush,
+        handler: crate::mainutils::connections::do_flush,
     },
     EvaluatedBuiltin {
         name: "flush.console",
@@ -153,23 +153,23 @@ pub(super) const BASE_IO: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "seek",
-        handler: crate::mainutils::essentials::do_seek,
+        handler: crate::mainutils::connections::do_seek,
     },
     EvaluatedBuiltin {
         name: "pushBack",
-        handler: crate::mainutils::essentials::do_pushBack,
+        handler: crate::mainutils::connections::do_pushBack,
     },
     EvaluatedBuiltin {
         name: "pushBackLength",
-        handler: crate::mainutils::essentials::do_pushBackLength,
+        handler: crate::mainutils::connections::do_pushBackLength,
     },
     EvaluatedBuiltin {
         name: "readBin",
-        handler: crate::mainutils::essentials::do_readBin,
+        handler: crate::mainutils::connections::do_readBin,
     },
     EvaluatedBuiltin {
         name: "writeBin",
-        handler: crate::mainutils::essentials::do_writeBin,
+        handler: crate::mainutils::connections::do_writeBin,
     },
     EvaluatedBuiltin {
         name: "printCoefmat",

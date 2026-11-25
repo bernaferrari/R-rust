@@ -22,6 +22,7 @@ use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 use super::dispatch::DispatchGroup;
+use crate::mainutils::relop::do_relop_dflt;
 
 // ---------------------------------------------------------------------------
 // External default method declarations
@@ -48,69 +49,13 @@ pub fn R_binary(call: SEXP, op: SEXP, lhs: SEXP, rhs: SEXP) -> SEXP {
     crate::eval::arithmetic::do_arith(call, op, arg_list, R_NilValue())
 }
 
-/// `do_math1(call, op, args, rho)` - math function of one argument.
-///
-/// Defined in math.c. Implements math functions like abs, sqrt, log, etc.
-// no_mangle removed (duplicate)
-pub fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    // Forward to the arithmetic module's do_math1 dispatcher.
-    crate::eval::arithmetic::do_math1(call, op, args, rho)
-}
 
-/// `do_relop_dflt(call, op, lhs, rhs)` - relational operator default.
-///
-/// Defined in relop.c. Implements comparison operators.
-// no_mangle removed (duplicate)
-pub fn do_relop_dflt(call: SEXP, op: SEXP, lhs: SEXP, rhs: SEXP) -> SEXP {
-    crate::mainutils::relop::do_relop_dflt(call, op, lhs, rhs)
-}
 
-/// `do_logic(call, op, args, rho)` - logical operator default.
-///
-/// Defined in complex.c. Implements &, |, ! operators.
-// no_mangle removed (duplicate)
-pub fn do_logic(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::mainutils::logic::do_logic(call, op, args, rho) }
-}
 
-/// `do_subset_dflt(call, op, args, rho)` - [ default method.
-///
-/// Defined in subset.c.
-// no_mangle removed (duplicate)
-pub fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    crate::mainutils::subset::do_subset_dflt(call, op, args, rho)
-}
 
-/// `do_subassign_dflt(call, op, args, rho)` - `[<-` default method.
-///
-/// Defined in subassign.c.
-pub fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    crate::mainutils::subassign::do_subassign_dflt(call, op, args, rho)
-}
 
-/// `do_c_dflt(call, op, args, rho)` - c() default method.
-///
-/// Defined in coerce.c.
-// no_mangle removed (duplicate)
-pub fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    crate::mainutils::bind::do_c_dflt(call, op, args, rho)
-}
 
-/// `do_subset2_dflt(call, op, args, rho)` - `[[` default method.
-///
-/// Defined in subset.c.
-// no_mangle removed (duplicate)
-pub fn do_subset2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    crate::mainutils::subset::do_subset2_dflt(call, op, args, rho)
-}
 
-/// `do_subassign2_dflt(call, op, args, rho)` - `[[<-` default method.
-///
-/// Defined in subassign.c.
-// no_mangle removed (duplicate)
-pub fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    crate::mainutils::subassign::do_subassign2_dflt(call, op, args, rho)
-}
 
 // ---------------------------------------------------------------------------
 // seq_int -- create an integer sequence n1:n2

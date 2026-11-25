@@ -1216,12 +1216,6 @@ impl<'s> MSet<'s> {
 // do_* stubs for GC-related .Internal / .Primitive calls
 // ---------------------------------------------------------------------------
 
-/// gc() implementation.
-///
-/// This is the equivalent of R's `do_gc()`.
-pub fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    crate::mainutils::essentials::do_gc(_call, _op, _args, _rho)
-}
 
 /// gcinfo() implementation (stub).
 ///

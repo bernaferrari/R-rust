@@ -220,7 +220,7 @@ pub(super) const GRAPHICS_EXTERNAL: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "layout",
-        handler: crate::mainutils::essentials::do_layout,
+        handler: crate::library::graphics::par::do_layout,
     },
     EvaluatedBuiltin {
         name: "getGraphicsEvent",

@@ -75,10 +75,6 @@ pub fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `layout(...)` — session-owned base graphics layout state.
-pub fn do_layout(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    crate::library::graphics::par::do_layout(_call, _op, _args, _rho)
-}
 
 /// R's `getGraphicsEvent(prompt, onMouseDown, ...)` — no Android event loop is attached here.
 pub fn do_getGraphicsEvent(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
