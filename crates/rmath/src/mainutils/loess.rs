@@ -168,30 +168,6 @@ pub(crate) fn do_predict(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     )
 }
 
-pub(crate) fn do_predict_lm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    use crate::sexp::accessors::{CAR, CDR, TAG};
-    use crate::sexp::constructors::Rf_cons;
-    use crate::sexp::globals::R_NilValue;
-    use crate::sexp::protect::protect;
-    let mut ev = R_NilValue();
-    let mut tail = R_NilValue();
-    let mut cell = args;
-    while !cell.is_null() && cell != R_NilValue() {
-        let val = eval_sexp(CAR(cell), rho);
-        let node = Rf_cons(val, R_NilValue());
-        let _n = protect(node);
-        crate::sexp::accessors::SETTAG(node, TAG(cell));
-        if ev.is_null() || ev == R_NilValue() {
-            ev = node;
-            tail = node;
-        } else {
-            crate::sexp::accessors::SETCDR(tail, node);
-            tail = node;
-        }
-        cell = CDR(cell);
-    }
-    crate::mainutils::essentials::do_predict_lm(call, op, ev, rho)
-}
 pub(crate) fn do_predict_loess(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     apply_base(
         "predict.loess",
