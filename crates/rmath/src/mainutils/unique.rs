@@ -771,59 +771,9 @@ fn all_safe(args: Sexp<'_>) -> Result<SEXP, String> {
 // FFI functions with catch_unwind delegation
 // ---------------------------------------------------------------------------
 
-/// Implementation of R's `unique()` builtin.
-///
-/// `.Internal(unique(x, incomparables, fromLast, nmax))`
-/// PRIMVAL(op) == 1 in the C source; here called directly as do_unique.
-///
-/// Test-only in this port: the registered `unique` builtin dispatches to
-/// `crate::mainutils::essentials::do_unique`; this raw pairlist wrapper is
-/// exercised by the unit tests below.
-pub fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    let args_s =
-        wrap_current(args).unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
-    let x = args_s
-        .try_pairlist_arg(0)
-        .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
-    unique_safe(x, false, NA_INTEGER).unwrap_or_else(|message| -> SEXP { unique_error(message) })
-}
 
-/// Implementation of R's `duplicated()` builtin.
-///
-/// `.Internal(duplicated(x, incomparables, fromLast, nmax))`
-///
-/// Test-only in this port: the registered `duplicated` builtin dispatches to
-/// `crate::mainutils::essentials::do_duplicated`; this raw pairlist wrapper
-/// is exercised by the unit tests below.
-pub fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    let args_s =
-        wrap_current(args).unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
-    let x = args_s
-        .try_pairlist_arg(0)
-        .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
-    duplicated_safe(x, false, NA_INTEGER)
-        .unwrap_or_else(|message| -> SEXP { unique_error(message) })
-}
 
-/// Implementation of R's `any()` builtin.
-///
-/// `.Internal(any(..., na.rm = FALSE))`
-/// PRIMVAL(op) == 2 in the C source.
-pub fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    let args_s =
-        wrap_current(args).unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
-    any_safe(args_s).unwrap_or_else(|message| -> SEXP { unique_error(message) })
-}
 
-/// Implementation of R's `all()` builtin.
-///
-/// `.Internal(all(..., na.rm = FALSE))`
-/// PRIMVAL(op) == 1 in the C source.
-pub fn do_all(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    let args_s =
-        wrap_current(args).unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
-    all_safe(args_s).unwrap_or_else(|message| -> SEXP { unique_error(message) })
-}
 
 // ---------------------------------------------------------------------------
 // Tests
