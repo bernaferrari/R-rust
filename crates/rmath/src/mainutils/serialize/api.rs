@@ -1312,6 +1312,7 @@ pub fn convert_gnu_lazy_record_to_rbg1(record: &[u8], mode: u8) -> Result<Vec<u8
         (!value.is_null() && value != R_NilValue()).then(|| protect(value))
     });
     let mut reader = BinaryReader::new(&plain);
+    reader.set_max_depth(100_000);
     if !read_hook.is_null() && read_hook != R_NilValue() {
         reader.set_persist_hook(read_hook);
     }
@@ -1351,6 +1352,7 @@ pub fn convert_gnu_lazy_record_to_rbg1_frame(record: &[u8], mode: u8) -> Result<
         (!value.is_null() && value != R_NilValue()).then(|| protect(value))
     });
     let mut reader = BinaryReader::new(&plain);
+    reader.set_max_depth(100_000);
     if !read_hook.is_null() && read_hook != R_NilValue() {
         reader.set_persist_hook(read_hook);
     }

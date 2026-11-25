@@ -258,3 +258,81 @@ fn convert_methods() {
     );
     eprintln!("methods conversion complete");
 }
+
+#[test]
+fn convert_remaining_packages() {
+    if std::env::var("RBG1_CONVERT").is_err() {
+        eprintln!("opt-in conversion harness: set RBG1_CONVERT=1 to run");
+        return;
+    }
+    // Deeply nested GNU objects recurse in the transitional reader; the
+    // migration runs on a dedicated large stack instead of weakening the
+    // production nesting bound.
+    std::thread::Builder::new()
+        .stack_size(1 << 30)
+        .spawn(convert_remaining_packages_inner)
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+fn convert_remaining_packages_inner() {
+    let mut session =
+        RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), "/tmp"));
+    let boot = session.eval(
+        "rbg1_convert_read_hook<-function(n){e<-new.env();attr(e,'rbg1pk')<-n;e};\
+         rbg1_convert_write_hook<-function(e){k<-attr(e,'rbg1pk');if(is.character(k))k else NULL};\
+         'hooks-ready'",
+    );
+    assert!(format!("{:?}", boot.typed).contains("hooks-ready"), "hook install failed: {:?}", boot.typed);
+
+    let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..").join("rmath").join("src").join("library")
+        .join("portable_package").join("assets");
+    struct Spec {
+        pkg: &'static str,
+        imports: bool,
+        sysdata: bool,
+    }
+    let only = std::env::var("RBG1_CONVERT_ONLY").ok();
+    for spec in [
+        Spec { pkg: "grDevices", imports: false, sysdata: false },
+        Spec { pkg: "graphics", imports: true, sysdata: false },
+        Spec { pkg: "stats", imports: true, sysdata: false },
+        Spec { pkg: "stats4", imports: true, sysdata: false },
+        Spec { pkg: "utils", imports: false, sysdata: true },
+        Spec { pkg: "tools", imports: false, sysdata: true },
+    ] {
+        if let Some(only) = &only {
+            if only != spec.pkg {
+                continue;
+            }
+        }
+        let dir = base.join(spec.pkg);
+        let mut extra = vec![
+            dir.join("exports.rds"),
+            dir.join("S3methods.rds"),
+        ];
+        if spec.imports {
+            extra.push(dir.join("imports.rds"));
+        }
+        convert_package_db(
+            &mut session,
+            &dir.join(format!("{}.rdb", spec.pkg)),
+            &dir.join("index.rds"),
+            1,
+            &extra,
+        );
+        if spec.sysdata {
+            convert_package_db(
+                &mut session,
+                &dir.join("sysdata.rdb"),
+                &dir.join("sysdata-index.rds"),
+                1,
+                &[],
+            );
+        }
+        eprintln!("{} conversion complete", spec.pkg);
+    }
+    eprintln!("all remaining packages converted");
+}

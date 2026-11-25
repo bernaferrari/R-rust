@@ -26,8 +26,11 @@ pub(crate) fn read_item_in_context(
 ) -> Result<SEXP, String> {
     // Bound native stack usage independently of the R evaluation stack.
     // This reader is private; a panic discards it at the session boundary.
-    if reader.item_depth >= 128 {
-        return Err("read error: serialized object nesting exceeds 128 levels".into());
+    if reader.item_depth >= reader.max_depth {
+        return Err(format!(
+            "read error: serialized object nesting exceeds {} levels",
+            reader.max_depth
+        ));
     }
     reader.item_depth += 1;
     let result = { read_item_body(reader, ref_table, context) };
@@ -197,8 +200,11 @@ pub(crate) fn read_bc_language(
     refs: &mut ReadRefTable,
     reps: SEXP,
 ) -> Result<SEXP, String> {
-    if reader.item_depth >= 128 {
-        return Err("read error: bytecode language nesting exceeds 128 levels".into());
+    if reader.item_depth >= reader.max_depth {
+        return Err(format!(
+            "read error: bytecode language nesting exceeds {} levels",
+            reader.max_depth
+        ));
     }
     reader.item_depth += 1;
     let result = (|| {

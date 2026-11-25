@@ -8,6 +8,7 @@ impl<'a> BinaryReader<'a> {
             ascii_body: false,
             xdr_body: false,
             item_depth: 0,
+            max_depth: 128,
             bc_source_depth: 0,
             persist_hook: ptr::null_mut(),
             lazy_restore: None,
@@ -19,6 +20,10 @@ impl<'a> BinaryReader<'a> {
     /// Build a reader whose bytes arrive on demand through `fill(buf, need)`,
     /// which must grow `buf` to length `need` (or return false at end of
     /// input). The source is never read beyond what the decoder asks for.
+    pub(crate) fn set_max_depth(&mut self, depth: usize) {
+        self.max_depth = depth;
+    }
+
     pub(crate) fn new_pull(
         owner: &crate::sexp::owner::OwnerToken<'_>,
         fill: &'a mut dyn FnMut(&mut super::super::owned_input::InputBytes, usize) -> bool,
@@ -29,6 +34,7 @@ impl<'a> BinaryReader<'a> {
             ascii_body: false,
             xdr_body: false,
             item_depth: 0,
+            max_depth: 128,
             bc_source_depth: 0,
             persist_hook: ptr::null_mut(),
             lazy_restore: None,

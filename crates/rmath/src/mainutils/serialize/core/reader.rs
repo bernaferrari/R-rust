@@ -7,6 +7,10 @@ pub struct BinaryReader<'a> {
     pub ascii_body: bool,
     pub xdr_body: bool,
     pub(crate) item_depth: usize,
+    /// Nesting bound for recursive item reading. Production readers keep the
+    /// conservative default sized for small eval-thread stacks; migration
+    /// conversion runs on a large dedicated stack and opts higher.
+    pub(crate) max_depth: usize,
     pub(crate) bc_source_depth: usize,
     pub(crate) persist_hook: SEXP,
     pub(crate) lazy_restore: Option<super::api::LazyLoadRestore>,
