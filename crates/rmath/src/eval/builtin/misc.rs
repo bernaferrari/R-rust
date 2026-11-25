@@ -277,15 +277,15 @@ pub(super) const MISC: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "gettext",
-        handler: crate::mainutils::essentials::do_gettext,
+        handler: crate::mainutils::errors::do_gettext,
     },
     EvaluatedBuiltin {
         name: "ngettext",
-        handler: crate::mainutils::essentials::do_ngettext,
+        handler: crate::mainutils::errors::do_ngettext,
     },
     EvaluatedBuiltin {
         name: "bindtextdomain",
-        handler: crate::mainutils::essentials::do_bindtextdomain,
+        handler: crate::mainutils::errors::do_bindtextdomain,
     },
     EvaluatedBuiltin {
         name: "nclass.Sturges",

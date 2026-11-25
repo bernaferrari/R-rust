@@ -1296,27 +1296,3 @@ pub fn Rf_message_append(format: Option<&CStr>, append: c_int) {
     }
 }
 
-/// do_message — R's message() builtin.
-/// Ported from errors.c.
-pub fn do_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    checkArity(op, args);
-
-    let mut c_call: SEXP = ptr::null_mut();
-    if asLogical(CAR(args)) != 0 {
-        c_call = findCall();
-    }
-    let mut args = CDR(args);
-
-    let append = asLogical(CAR(args));
-    args = CDR(args);
-
-    if isNull(CAR(args)) == 0 {
-        SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.as_c_int()));
-        if isValidString(CAR(args)) != 0 {
-            let msg = super::helpers::diagnostic_cstring(STRING_ELT(CAR(args), 0));
-            Rf_message_append(Some(&msg), append);
-        }
-    }
-
-    globals::R_NilValue()
-}

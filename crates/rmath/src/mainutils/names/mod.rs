@@ -854,7 +854,7 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "Recall" => Some(crate::eval::eval::do_recall),
         "file.show" => Some(crate::mainutils::platform::do_fileshow),
         "stop" => Some(crate::mainutils::errors::do_stop_internal),
-        "warning" => Some(crate::mainutils::errors::do_warning),
+        "warning" => Some(crate::mainutils::essentials::do_warning),
         "gettext" => Some(crate::mainutils::errors::do_gettext),
         "ngettext" => Some(crate::mainutils::errors::do_ngettext),
         "bindtextdomain" => Some(crate::mainutils::errors::do_bindtextdomain),

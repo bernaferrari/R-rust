@@ -207,21 +207,6 @@ pub fn do_addRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     globals::R_NilValue()
 }
 
-/// do_invokeRestart — invoke a restart.
-pub fn do_invokeRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    checkArity(op, args);
-    let r = CAR(args);
-    if TYPEOF(r) != SEXPTYPE::VECSXP || LENGTH(r) < 2 {
-        errorcall_cstr(call, c"bad restart");
-    }
-    // invokeRestart would jump to the restart; for now just panic
-    let exit = VECTOR_ELT(r, 1);
-    if isNull(exit) != 0 {
-        set_restart_stack(globals::R_NilValue());
-        jump_to_top_ex(0, 0, 1, 1, 1);
-    }
-    ptr::null_mut() // unreachable
-}
 
 /// do_addTryHandlers — add tryCatch handlers.
 pub fn do_addTryHandlers(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
