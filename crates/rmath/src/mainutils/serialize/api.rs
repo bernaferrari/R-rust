@@ -51,7 +51,10 @@ pub fn R_serialize_with_xdr(
         } else {
             SnapshotFormat::Native
         };
-        let data = serialize_snapshot(&owner, object, fun, version, format, &[]);
+        let _ = version;
+        let _ = format;
+        let data = crate::mainutils::rbg1::write_object_hooked(object, fun)
+            .unwrap_or_else(|failure| error(&failure));
         let raw = raw_from_bytes(&data);
         if raw.is_null() {
             error("serialize exceeds session memory limit");
@@ -622,6 +625,10 @@ fn unserialize_owned_input(
             error("read error")
         });
         let payload = decompressed.as_deref().unwrap_or(data);
+        if payload.starts_with(crate::mainutils::rbg1::MAGIC) {
+            return crate::mainutils::rbg1::read_object_hooked(payload, hook_data)
+                .unwrap_or_else(|failure| error(&failure));
+        }
         let mut reader = BinaryReader::new(payload);
         reader.lazy_restore = lazy_restore;
         reader.set_persist_hook(hook_data);
@@ -808,6 +815,56 @@ fn R_unserialize_from_conn(index: std::os::raw::c_int, hook: SEXP) -> SEXP {
         // Sniffing and buffering a gzip payload here consumed later objects
         // and made hook-observed cursor positions describe the wrong stream.
         let mut reader = BinaryReader::new_pull(&owner, &mut fill);
+        // RBG1 frames are self-delimiting. Detection happens inside the
+        // reader's own pull buffer: bytes are fetched through the same
+        // accounting the GNU decoder would use, so nothing is ever lost —
+        // even when decoding fails mid-stream.
+        let is_rbg1 = {
+            let pull = reader.pull.as_mut().unwrap_or_else(|| error("pull missing"));
+            (pull.fill)(&mut pull.buf, 4)
+                && pull.buf.len() >= 4
+                && pull.buf[0] == b'R'
+                && pull.buf[1] == b'B'
+                && pull.buf[2] == b'G'
+                && pull.buf[3] == b'1'
+        };
+        if is_rbg1 {
+            let header_len = crate::mainutils::rbg1::HEADER_LEN;
+            let total = {
+                let pull = reader.pull.as_mut().unwrap_or_else(|| error("pull missing"));
+                if !(pull.fill)(&mut pull.buf, header_len) {
+                    error("truncated RBG1 stream header");
+                }
+                let compressed_len =
+                    u64::from_le_bytes(pull.buf[17..25].try_into().unwrap()) as usize;
+                let total = header_len + compressed_len;
+                if !(pull.fill)(&mut pull.buf, total) {
+                    error("truncated RBG1 stream frame");
+                }
+                total
+            };
+            let frame = reader
+                .read_bytes(total)
+                .map(|slice| slice.to_vec())
+                .unwrap_or_else(|failure| error(&failure));
+            owner
+                .require_active()
+                .unwrap_or_else(|e| error(&e.to_string()));
+            let value = crate::mainutils::rbg1::read_object_hooked(&frame, hook.as_raw())
+                .unwrap_or_else(|failure| error(&failure));
+            let result = owner.sexp(value).unwrap_or_else(|e| error(&e.to_string()));
+            let leftover = reader.leftover();
+            if !leftover.is_empty() {
+                owner
+                    .require_active()
+                    .unwrap_or_else(|e| error(&e.to_string()));
+                let index = token
+                    .require_current()
+                    .unwrap_or_else(|message| error(&message));
+                crate::mainutils::connections::connection_pushback(index, leftover);
+            }
+            return result.as_raw();
+        }
         configure_conn_hooks(&owner, &mut reader, hook.as_raw());
         let result = decode_stream_object(&owner, &mut reader);
         let result = owner.sexp(result).unwrap_or_else(|e| error(&e.to_string()));

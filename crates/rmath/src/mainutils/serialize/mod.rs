@@ -250,8 +250,8 @@ fn parse_swapped_len_prefix(data: &[u8]) -> Option<usize> {
 mod api;
 mod ascii_numbers;
 mod compress;
-mod core;
-mod lazyload;
+pub(crate) mod core;
+pub(crate) mod lazyload;
 mod owned_input;
 mod owned_output;
 mod raw_codecs;

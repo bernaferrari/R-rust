@@ -93,6 +93,7 @@ pub mod rlocale;
 pub mod rng;
 pub mod rng_dispatch;
 pub mod rstrptime;
+pub mod rbg1;
 pub mod saveload;
 pub mod scan;
 pub mod seq;
