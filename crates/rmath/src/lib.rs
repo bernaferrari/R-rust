@@ -183,6 +183,11 @@ pub(crate) mod eval;
 pub(crate) mod library;
 #[allow(dead_code, non_camel_case_types)]
 pub(crate) mod mainutils;
+
+#[doc(hidden)]
+pub use mainutils::serialize::convert_gnu_lazy_record_to_rbg1;
+#[doc(hidden)]
+pub use sexp::context::RError;
 #[allow(dead_code, non_camel_case_types)]
 pub(crate) mod modules;
 pub(crate) use mainutils as main;

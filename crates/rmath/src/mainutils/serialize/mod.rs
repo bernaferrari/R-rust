@@ -248,6 +248,9 @@ fn parse_swapped_len_prefix(data: &[u8]) -> Option<usize> {
 }
 
 mod api;
+
+#[doc(hidden)]
+pub use api::convert_gnu_lazy_record_to_rbg1;
 mod ascii_numbers;
 mod compress;
 pub(crate) mod core;

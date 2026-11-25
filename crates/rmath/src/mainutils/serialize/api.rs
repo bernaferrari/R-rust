@@ -660,6 +660,20 @@ pub(crate) fn unserialize_native_snapshot(
     } else {
         hook.as_raw()
     };
+    // RBG1 frames materialize through the graph reader; anything else is a
+    // legacy GNU stream during the migration.
+    if data.len() >= 4 && data[..4] == *crate::mainutils::rbg1::MAGIC {
+        let frame_len = crate::mainutils::rbg1::frame_total_len(data).unwrap_or(0);
+        if frame_len != data.len() {
+            return Err(crate::sexp::object::SexpError::EvaluationFailed {
+                message: "trailing bytes after RBG1 lazy record".to_string(),
+            });
+        }
+        let value = crate::mainutils::rbg1::read_object_hooked(data, hook_data)
+            .map_err(|message| crate::sexp::object::SexpError::EvaluationFailed { message })?;
+        owner.require_active()?;
+        return owner.sexp(value)?.into_owned();
+    }
     // SAFETY: the native slice is immutable and its caller owns its complete
     // backing across callbacks. The original hook graph is owned above.
     let result = { unserialize_owned_input(owner, data, hook_data, lazy_restore) };
@@ -1260,3 +1274,26 @@ mod persistence_tests;
 #[cfg(test)]
 #[path = "connection_stream_tests.rs"]
 mod connection_stream_tests;
+
+/// One-shot migration tooling: convert one compressed GNU-format lazy-load
+/// record into the equivalent record carrying an RBG1 frame, keeping the
+/// outer compression framing byte-identical in structure. Doc-hidden dev
+/// tooling for the asset migration, not stable public API. Must be called
+/// inside an active session.
+#[doc(hidden)]
+pub fn convert_gnu_lazy_record_to_rbg1(record: &[u8], mode: u8) -> Result<Vec<u8>, String> {
+    let owner = current_owner();
+    let _pin = owner.pin().map_err(|e| e.to_string())?;
+    owner.require_active().map_err(|e| e.to_string())?;
+    let plain = super::raw_codecs::decode(&owner, record, mode).map_err(|e| match e {
+        super::raw_codecs::DecodeError::Invalid => "invalid lazy record framing".to_string(),
+        super::raw_codecs::DecodeError::Resource(message) => message,
+    })?;
+    let mut reader = BinaryReader::new(&plain);
+    let decoded = decode_stream_object(&owner, &mut reader);
+    owner.require_active().map_err(|e| e.to_string())?;
+    let _decoded_guard = protect(decoded);
+    let frame = crate::mainutils::rbg1::write_object_hooked(decoded, R_NilValue())?;
+    let recoded = super::raw_codecs::encode(&owner, &frame, mode)?;
+    Ok(recoded.to_vec())
+}

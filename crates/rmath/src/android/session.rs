@@ -643,6 +643,15 @@ impl RSession {
     ///
     /// Parses and evaluates code against this session's isolated global
     /// environment.
+    /// One-shot migration tooling: convert a compressed GNU-format lazy-load
+    /// record into the equivalent record carrying an RBG1 frame. Doc-hidden
+    /// dev tooling for the asset migration, not stable public API.
+    #[doc(hidden)]
+    pub fn convert_lazy_record_to_rbg1(&mut self, record: &[u8], mode: u8) -> Result<Vec<u8>, String> {
+        let _guard = self.core.activate();
+        crate::mainutils::serialize::convert_gnu_lazy_record_to_rbg1(record, mode)
+    }
+
     pub fn eval(&mut self, code: &str) -> RResult {
         self.eval_script(code)
     }
