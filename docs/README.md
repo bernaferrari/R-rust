@@ -10,6 +10,7 @@ reviews remain available in Git history.
 - [Website and playground](../website/README.md)
 - [LOESS, graphics, grid and mathematical labels](loess-and-portable-graphics.md)
 - [Runtime architecture](rust-r-port-architecture.md)
+- [Pure-Rust foundation plan (dropping C ABI, Fortran & .rds)](pure-rust-foundation-plan.md)
 
 ## Compatibility and safety
 
