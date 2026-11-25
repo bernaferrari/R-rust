@@ -236,3 +236,31 @@ python3 scripts/unsafe_syntax_report.py --production
 ```
 
 Update `docs/rust-r-port-architecture.md` and `docs/safe-api-audit.md` as each phase completes so documentation never drifts behind the code.
+
+---
+
+## 5. Implementation Progress Log
+
+### 2026-11-25 — Phase 1 dead-code and consolidation milestones (all pushed to `main`)
+
+Beads epic `rport-xs7hh` tracks the work; `.1` (dead shims) and `.2` (compression/crypto/env) are **closed**. Completed milestones:
+
+| Commit | Milestone |
+| --- | --- |
+| `10f879220` | Deleted `trio/` (3.6k LOC), `tcltk` stub, alloca/flexiblas/mkdtemp/strdup/strncasecmp, transitional math facade modules |
+| `1a3cd690d` | Removed `staticlib`/`cdylib` artifacts, `libRmath` shim, `mainutils/inlined.rs` |
+| `86932aa61` | **Fortran backend removed** — pure-Rust `faer` sole LAPACK backend; accelerate/veclib/init_win deleted; rwishart/loess use Rust paths only |
+| `2d942de53` | `lzma-rust2` sole xz backend; fixed latent `memCompress()` integer-type dispatch bug (xz/bz2/none paths were unreachable) |
+| `19eb0411b` | RustCrypto `md-5`/`sha2` replaced 820 LOC hand-ported crypto (incl. md5 overflow panic bug); `tools::md5sum` registration gap filed as `rport-d41m9` |
+| `df229ce82` | **Per-session environment overlay** — eliminated `std::env::set_var` multi-session UB; subprocess env propagation via overlay; no more homebrew `R_HOME` shellout |
+| `32d367f62` | GNU gettext `intl/` tree deleted (1,975 LOC), replaced by minimal `DomainBindingState` |
+| `7989cf8b8` | `memory_main.rs`: 46 dead C memory shims deleted (~560 LOC) |
+| `f283e41b6` | 237 dead zero-reference functions deleted across 64 mainutils files (~3,880 LOC) |
+| `cab799353` | 112 dead functions deleted across `eval/`, `library/`, `sexp/` (~1,100 LOC) |
+| `ccbbbd0c7` | Final 12 stragglers + reusable `scripts/dead_fn_scan.py` tooling |
+
+**Dedup state (`rport-xs7hh.3`, in progress):** mechanical zero-reference tier complete. Remaining: (a) ~566 candidates with internal cross-references needing cluster analysis — rerun `scripts/dead_fn_scan.py` after each batch since deletions cascade; (b) the semantic tier — 189 duplicated builtin names where parallel dispatch paths (`eval/builtin` handler tables vs `.Internal` `internal_builtin_handler` in `mainutils/names/mod.rs:811+`) reference *different* implementations. Correct method: unify dispatch on one implementation per name (usually the faithful/modern one), verify behavior, then delete the shadowed copy. Detailed analysis in the beads issue notes.
+
+**Known pre-existing issues (not regressions):** `loess_isolation` fails 3/3 on clean HEAD ("expected integer vector, got 10"); `reg.finalizer` wiring verification filed as `rport-psnhc`; rmath lib tests have ~23 pre-existing compile errors.
+
+**Infrastructure note:** `bd dolt push` is blocked by the never-configured origin remote (user URL pending since October); `.beads/issues.jsonl` git export is the durability channel — re-export with `bd export -o .beads/issues.jsonl` and commit at each session close.
