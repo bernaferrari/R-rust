@@ -48,6 +48,7 @@ pub(crate) const T_PROM: u8 = 15;
 pub(crate) const T_BUILTIN: u8 = 16;
 pub(crate) const T_SPECIAL: u8 = 17;
 pub(crate) const T_S4: u8 = 18;
+pub(crate) const T_BCODE: u8 = 19;
 // Singleton pseudo-nodes: no payload, resolved at materialization.
 pub(crate) const T_GLOBALENV: u8 = 40;
 pub(crate) const T_BASEENV: u8 = 41;

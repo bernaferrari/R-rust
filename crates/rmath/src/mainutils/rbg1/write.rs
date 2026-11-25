@@ -222,6 +222,22 @@ impl GraphWriter {
                     out.push(RAW_ELT(s, i as _));
                 }
             }
+            SEXPTYPE::BCODESXP => {
+                // R-level length is presentation-only for bytecode (always
+                // one); the true slot count is the vector layout length.
+                out.push(T_BCODE);
+                push_meta(&mut out, s);
+                let len = crate::sexp::memory::checked_header(s)
+                    .map(|(_, _, header)| header.vecsxp_length())
+                    .ok_or("RBG1: bytecode object is not owned by this session")?;
+                out.extend_from_slice(&(len as u32).to_le_bytes());
+                let attrib = self.intern(ATTRIB(s));
+                out.extend_from_slice(&attrib.to_le_bytes());
+                for i in 0..len {
+                    let elt = self.intern(VECTOR_ELT(s, i));
+                    out.extend_from_slice(&elt.to_le_bytes());
+                }
+            }
             SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP | SEXPTYPE::S4SXP => {
                 out.push(match stype {
                     SEXPTYPE::VECSXP => T_VEC,
@@ -319,11 +335,7 @@ impl GraphWriter {
                 out.extend_from_slice(&(name.len() as u32).to_le_bytes());
                 out.extend_from_slice(name);
             }
-            SEXPTYPE::BCODESXP => {
-                return Err(
-                    "bytecode serialization is not yet supported in RBG1".into(),
-                );
-            }
+
             other => {
                 return Err(format!(
                     "RBG1: cannot serialize object of type {}",

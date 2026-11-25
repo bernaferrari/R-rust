@@ -118,7 +118,7 @@ impl<'a> GraphReader<'a> {
                 refs.push(self.u32()?);
                 data = self.bytes(len as usize * 16)?;
             }
-            T_STR | T_VEC | T_EXPR | T_S4 => {
+            T_STR | T_VEC | T_EXPR | T_S4 | T_BCODE => {
                 len = self.u32()?;
                 refs.push(self.u32()?); // attrib
                 for _ in 0..len {
@@ -184,6 +184,37 @@ fn materialize(nodes: &[Parsed], hook: SEXP) -> Result<SEXP, String> {
     for (idx, node) in nodes.iter().enumerate().skip(1) {
         link_node(node, objects[idx], &objects)?;
     }
+    // Pass 2c: reconstruct environment frames now that every pairlist cell
+    // is fully linked. Bindings go through defineVar so the host binding
+    // representation (frame/hash) stays canonical.
+    for (idx, node) in nodes.iter().enumerate().skip(1) {
+        if node.tag != T_ENV {
+            continue;
+        }
+        let obj = objects[idx];
+        let mut cell = child(&objects, node.refs[1])?;
+        let mut seen = std::collections::HashSet::new();
+        while !cell.is_null() && cell != R_NilValue() {
+            if TYPEOF(cell) != SEXPTYPE::LISTSXP || !seen.insert(cell as usize) {
+                return Err("RBG1: invalid or cyclic environment binding list".into());
+            }
+            if LEVELS(cell) & ((1 << 15) | (1 << 14)) != 0 {
+                return Err(
+                    "restoration of active or individually locked bindings is not supported"
+                        .into(),
+                );
+            }
+            let symbol = TAG(cell);
+            if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                return Err("RBG1: invalid environment binding name".into());
+            }
+            crate::sexp::envir::defineVar(symbol, CAR(cell), obj);
+            cell = CDR(cell);
+        }
+        if node.extra != 0 {
+            crate::sexp::envir::lock_environment_raw(obj);
+        }
+    }
     // A nil root interned as index 0 produces no records: the object is nil.
     Ok(objects.get(1).copied().unwrap_or_else(R_NilValue))
 }
@@ -220,6 +251,7 @@ fn allocate_node(node: &Parsed, hook: SEXP) -> Result<SEXP, String> {
         T_VEC => Rf_allocVector3(SEXPTYPE::VECSXP, node.len as _),
         T_EXPR => Rf_allocVector3(SEXPTYPE::EXPRSXP, node.len as _),
         T_S4 => Rf_allocVector3(SEXPTYPE::S4SXP, node.len as _),
+        T_BCODE => Rf_allocVector3(SEXPTYPE::BCODESXP, node.len as _),
         T_LIST => crate::sexp::memory_ext::allocSExp(SEXPTYPE::LISTSXP),
         T_LANG => crate::sexp::memory_ext::allocSExp(SEXPTYPE::LANGSXP),
         T_CLOS => crate::sexp::memory_ext::allocSExp(SEXPTYPE::CLOSXP),
@@ -322,7 +354,7 @@ fn link_node(node: &Parsed, obj: SEXP, objects: &[SEXP]) -> Result<(), String> {
             }
             restore_meta(obj, node.meta);
         }
-        T_VEC | T_EXPR | T_S4 => {
+        T_VEC | T_EXPR | T_S4 | T_BCODE => {
             let attrib = child(objects, node.refs[0])?;
             SET_ATTRIB(obj, attrib);
             for i in 0..node.len as usize {
@@ -354,37 +386,16 @@ fn link_node(node: &Parsed, obj: SEXP, objects: &[SEXP]) -> Result<(), String> {
             restore_meta(obj, node.meta);
         }
         T_ENV => {
+            // Frame reconstruction is deferred to pass 2c: the binding
+            // pairlist cells are validated structurally, so they must be
+            // fully linked first — and cyclic environments can order the
+            // frame nodes after the environment node itself.
             let enclos = child(objects, node.refs[0])?;
-            let frame = child(objects, node.refs[1])?;
             let attrib = child(objects, node.refs[2])?;
             if !enclos.is_null() && enclos != R_NilValue() && TYPEOF(enclos) == SEXPTYPE::ENVSXP {
                 SET_ENCLOS(obj, enclos);
             }
             SET_ATTRIB(obj, attrib);
-            // Reconstruct bindings through defineVar so the host binding
-            // representation (frame/hash) stays canonical.
-            let mut cell = frame;
-            let mut seen = std::collections::HashSet::new();
-            while !cell.is_null() && cell != R_NilValue() {
-                if TYPEOF(cell) != SEXPTYPE::LISTSXP || !seen.insert(cell as usize) {
-                    return Err("RBG1: invalid or cyclic environment binding list".into());
-                }
-                if LEVELS(cell) & ((1 << 15) | (1 << 14)) != 0 {
-                    return Err(
-                        "restoration of active or individually locked bindings is not supported"
-                            .into(),
-                    );
-                }
-                let symbol = TAG(cell);
-                if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
-                    return Err("RBG1: invalid environment binding name".into());
-                }
-                crate::sexp::envir::defineVar(symbol, CAR(cell), obj);
-                cell = CDR(cell);
-            }
-            if node.extra != 0 {
-                crate::sexp::envir::lock_environment_raw(obj);
-            }
             restore_meta(obj, node.meta);
         }
         T_PROM => {
