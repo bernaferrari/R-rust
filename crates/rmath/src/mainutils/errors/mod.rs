@@ -117,7 +117,7 @@ mod deferred;
 mod do_fns;
 mod format;
 mod helpers;
-mod messages;
+pub(crate) mod messages;
 mod render;
 mod rendered_cache;
 pub(crate) use rendered_cache::RenderedMessage;

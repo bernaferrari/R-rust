@@ -162,20 +162,33 @@ pub fn do_bindtextdomain(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-fn bindtextdomain_impl(
-    domain: Option<&CStr>,
-    dirname: Option<&CStr>,
-) -> Option<std::ffi::CString> {
-    crate::intl::bindtextdom::bind_domain(domain, dirname)
+/// Per-session bindtextdomain bindings. GNU gettext's catalog machinery is
+/// intentionally absent — R-level gettext is untranslated passthrough and no
+/// catalog lookup was ever wired — so the only live behavior is remembering
+/// domain→directory bindings, including query-without-set semantics.
+#[derive(Default)]
+pub(crate) struct DomainBindingState {
+    pub bindings: std::collections::HashMap<std::ffi::CString, std::ffi::CString>,
 }
 
-#[cfg(any(target_os = "android", target_arch = "wasm32"))]
 fn bindtextdomain_impl(
     domain: Option<&CStr>,
     dirname: Option<&CStr>,
 ) -> Option<std::ffi::CString> {
-    domain.and(dirname).map(CStr::to_owned)
+    let domain = domain.filter(|domain| !domain.is_empty())?;
+    Some(crate::sexp::instance::with_required_current_instance(|inst| {
+        let state = unsafe { &mut (*inst).domain_binding_state };
+        if let Some(dirname) = dirname {
+            state
+                .bindings
+                .insert(domain.to_owned(), dirname.to_owned());
+        }
+        state
+            .bindings
+            .get(domain)
+            .cloned()
+            .unwrap_or_else(|| c"/".to_owned())
+    }))
 }
 
 fn sexp_string_cstr(value: SEXP) -> Option<std::ffi::CString> {

@@ -477,9 +477,10 @@ pub struct RInstance {
     pub(crate) startup_state: crate::mainutils::startup::StartupRuntimeState,
     /// Per-instance main.c top-level loop and callback state.
     pub(crate) main_state: crate::mainutils::main::MainRuntimeState,
-    /// Per-instance gettext catalog and domain state.
-    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-    pub(crate) intl_state: crate::intl::types::IntlRuntimeState,
+    /// Per-session bindtextdomain bindings (the only live gettext behavior;
+    /// R-level gettext itself is untranslated passthrough).
+    pub(crate) domain_binding_state:
+        crate::mainutils::errors::messages::DomainBindingState,
     /// Per-instance timezone cache for the root tzone module.
     pub(crate) tzone_state: crate::tzone::TzRuntimeState,
     /// Per-instance symbol table for session-local interning.
@@ -761,8 +762,7 @@ impl RInstance {
             unix_system_state: crate::unix::system::UnixSystemRuntimeState::default(),
             startup_state: crate::mainutils::startup::StartupRuntimeState::default(),
             main_state: crate::mainutils::main::MainRuntimeState::default(),
-            #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-            intl_state: crate::intl::types::IntlRuntimeState::default(),
+            domain_binding_state: crate::mainutils::errors::messages::DomainBindingState::default(),
             tzone_state: crate::tzone::TzRuntimeState::default(),
             symbols: HashMap::new(),
             symbol_nodes: Vec::new(),

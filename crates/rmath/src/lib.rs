@@ -179,8 +179,6 @@ pub mod xdr;
 pub mod android;
 #[allow(dead_code, non_camel_case_types)]
 pub(crate) mod eval;
-#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-pub(crate) mod intl;
 #[allow(dead_code, non_camel_case_types)]
 pub(crate) mod library;
 #[allow(dead_code, non_camel_case_types)]
