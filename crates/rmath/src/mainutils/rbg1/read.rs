@@ -130,8 +130,13 @@ impl<'a> GraphReader<'a> {
                 refs.push(self.u32()?);
                 data = self.bytes(len as usize)?;
             }
-            T_LIST | T_LANG | T_CLOS | T_PROM => {
+            T_LIST | T_LANG | T_CLOS | T_PROM | T_DOTS => {
                 for _ in 0..4 {
+                    refs.push(self.u32()?);
+                }
+            }
+            T_EXTPTR => {
+                for _ in 0..3 {
                     refs.push(self.u32()?);
                 }
             }
@@ -256,13 +261,21 @@ fn allocate_node(node: &Parsed, hook: SEXP) -> Result<SEXP, String> {
         T_RAW => Rf_allocVector3(SEXPTYPE::RAWSXP, node.len as _),
         T_VEC => Rf_allocVector3(SEXPTYPE::VECSXP, node.len as _),
         T_EXPR => Rf_allocVector3(SEXPTYPE::EXPRSXP, node.len as _),
-        T_S4 => Rf_allocVector3(SEXPTYPE::S4SXP, node.len as _),
+        T_S4 => {
+            let s = crate::sexp::memory_ext::allocSExp(SEXPTYPE::S4SXP);
+            if !s.is_null() {
+                crate::sexp::accessors::SET_S4_OBJECT(s);
+            }
+            s
+        }
         T_BCODE => Rf_allocVector3(SEXPTYPE::BCODESXP, node.len as _),
         T_LIST => crate::sexp::memory_ext::allocSExp(SEXPTYPE::LISTSXP),
+        T_DOTS => crate::sexp::memory_ext::allocSExp(SEXPTYPE::DOTSXP),
         T_LANG => crate::sexp::memory_ext::allocSExp(SEXPTYPE::LANGSXP),
         T_CLOS => crate::sexp::memory_ext::allocSExp(SEXPTYPE::CLOSXP),
         T_ENV => crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_BaseEnv(), R_NilValue()),
         T_PROM => crate::sexp::memory_ext::allocSExp(SEXPTYPE::PROMSXP),
+        T_EXTPTR => crate::sexp::memory_ext::allocSExp(SEXPTYPE::EXTPTRSXP),
         T_BUILTIN | T_SPECIAL => {
             let name = String::from_utf8_lossy(&node.data).into_owned();
             resolve_primitive(&name, node.tag)?
@@ -385,7 +398,7 @@ fn link_node(node: &Parsed, obj: SEXP, objects: &[SEXP]) -> Result<(), String> {
             }
             restore_meta(obj, node.meta);
         }
-        T_LIST | T_LANG => {
+        T_LIST | T_LANG | T_DOTS => {
             let car = child(objects, node.refs[0])?;
             let cdr = child(objects, node.refs[1])?;
             let tag = child(objects, node.refs[2])?;
@@ -404,6 +417,15 @@ fn link_node(node: &Parsed, obj: SEXP, objects: &[SEXP]) -> Result<(), String> {
             SET_CLOENV(obj, env);
             SET_FORMALS(obj, formals);
             SET_BODY(obj, body);
+            SET_ATTRIB(obj, attrib);
+            restore_meta(obj, node.meta);
+        }
+        T_EXTPTR => {
+            let prot = child(objects, node.refs[0])?;
+            let tag = child(objects, node.refs[1])?;
+            let attrib = child(objects, node.refs[2])?;
+            crate::mainutils::memory_main::R_SetExternalPtrProtected(obj, prot);
+            crate::mainutils::memory_main::R_SetExternalPtrTag(obj, tag);
             SET_ATTRIB(obj, attrib);
             restore_meta(obj, node.meta);
         }

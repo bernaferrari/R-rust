@@ -397,7 +397,7 @@ pub(crate) fn read_item_body(
             Some(&mut flags.hastag),
         );
         match SEXPTYPE(flags.stype) {
-            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => read_list_item(reader, ref_table, flags),
+            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP => read_list_item(reader, ref_table, flags),
             SEXPTYPE::CLOSXP => read_closure_item(reader, ref_table, flags),
             SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => read_references_item(reader, ref_table, flags),
             _ => read_remaining_item(reader, ref_table, packed, flags, context),

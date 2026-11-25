@@ -59,6 +59,13 @@ pub(crate) const T_BASENAMESPACE: u8 = 45;
 /// Namespace/package environments written by name and resolved through the
 /// runtime namespace loader, mirroring GNU's NAMESPACESXP/PACKAGESXP items.
 pub(crate) const T_NAMESPACE: u8 = 46;
+/// External pointers serialize as their protected/tag/attribute subgraphs;
+/// the address itself is meaningless across sessions and reads back null,
+/// mirroring GNU's WriteItem handling of EXTPTRSXP.
+pub(crate) const T_EXTPTR: u8 = 47;
+/// `...` pairlist nodes: same CAR/CDR/TAG/ATTRIB shape as LISTSXP/LANGSXP
+/// but carrying a distinct type identity.
+pub(crate) const T_DOTS: u8 = 48;
 // Namespace/package environments serialize by name (persistent reference).
 pub(crate) const T_PERSIST_NS: u8 = 50;
 

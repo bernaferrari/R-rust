@@ -130,3 +130,131 @@ fn convert_datasets() {
     }
     eprintln!("datasets conversion complete: {} objects", new_inventory.len());
 }
+
+fn hex_encode(s: &str) -> String {
+    s.bytes().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Convert one portable package lazy database end to end: every record in
+/// variables and references, the index keys, and the metadata rds files.
+/// `package` is the asset directory under portable_package assets or the
+/// methods portable assets, given as absolute paths by the caller.
+fn convert_package_db(
+    session: &mut RSession,
+    rdb_path: &std::path::Path,
+    index_path: &std::path::Path,
+    mode: u8,
+    extra_rds: &[std::path::PathBuf],
+) {
+    // Parse the index in-session: shuttle entries as hex-encoded name + key.
+    std::fs::copy(index_path, "/tmp/conv-idx-in.rds").unwrap();
+    let probe = session.eval(
+        "x<-readRDS('/tmp/conv-idx-in.rds');\
+         enc<-function(nm)paste(as.character(charToRaw(nm)),collapse='');\
+         vlines<-vapply(names(x$variables),function(nm)paste(enc(nm),x$variables[[nm]][1],x$variables[[nm]][2]),'');\
+         rlines<-vapply(names(x$references),function(nm)paste(enc(nm),x$references[[nm]][1],x$references[[nm]][2]),'');\
+         paste('V',length(vlines),'R',length(rlines));\
+         writeLines(c(vlines,'---REFS---',rlines),'/tmp/conv-keys.txt');\
+         'keys-extracted'",
+    );
+    let rendered = format!("{:?}", probe.typed);
+    assert!(rendered.contains("keys-extracted"), "key extraction failed: {} {:?}", probe.output, probe.typed);
+
+    let keys_text = std::fs::read_to_string("/tmp/conv-keys.txt").unwrap();
+    let blob = std::fs::read(rdb_path).unwrap();
+    let mut new_blob: Vec<u8> = Vec::new();
+    let mut keymap = String::new();
+    let mut section_variables = true;
+    let (mut nv, mut nr) = (0usize, 0usize);
+    for line in keys_text.lines() {
+        if line == "---REFS---" {
+            section_variables = false;
+            continue;
+        }
+        let mut parts = line.splitn(3, ' ');
+        let hexname = parts.next().unwrap_or("");
+        if hexname.is_empty() { continue; }
+        let off: usize = parts.next().and_then(|v| v.parse().ok()).expect("offset");
+        let len: usize = parts.next().and_then(|v| v.parse().ok()).expect("len");
+        let record = &blob[off..off + len];
+        let record_vec = record.to_vec();
+        let converted = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            session.convert_lazy_record_to_rbg1(&record_vec, mode)
+        }))
+        .map_err(|payload| {
+            if let Some(e) = payload.downcast_ref::<rmath::RError>() { e.message.clone() }
+            else if let Some(s) = payload.downcast_ref::<String>() { s.clone() }
+            else if let Some(s) = payload.downcast_ref::<&str>() { s.to_string() }
+            else { "non-string panic payload".to_string() }
+        })
+        .and_then(|r| r)
+        .unwrap_or_else(|message| panic!("conversion of {hexname} failed: {message}"));
+        let new_offset = new_blob.len();
+        new_blob.extend_from_slice(&converted);
+        keymap.push_str(&format!("{} {} {} {}\n", hexname, new_offset, converted.len(), if section_variables { "v" } else { "r" }));
+        if section_variables { nv += 1; } else { nr += 1; }
+    }
+    eprintln!("converted {nv} variables + {nr} references records");
+    std::fs::write(rdb_path, &new_blob).unwrap();
+    std::fs::write("/tmp/conv-keymap.txt", &keymap).unwrap();
+
+    // Rewrite the index keys in-session and save as RBG1.
+    let rewrite = session.eval(
+        "km<-read.table('/tmp/conv-keymap.txt',header=FALSE,colClasses=c('character','integer','integer','character'));\
+         idx<-readRDS('/tmp/conv-idx-in.rds');\
+         iv<-which(km[[4]]=='v');ir<-which(km[[4]]=='r');\
+         kv<-lapply(iv,function(i)as.integer(c(km[i,2],km[i,3])));\
+         kr<-lapply(ir,function(i)as.integer(c(km[i,2],km[i,3])));\
+         idx$variables[]<-kv;\
+         if(length(ir))idx$references[]<-kr;\
+         saveRDS(idx,'/tmp/conv-idx-out.rds');\
+         paste('index-rewritten',length(kv),length(kr))",
+    );
+    let rendered = format!("{:?}", rewrite.typed);
+    assert!(rendered.contains("index-rewritten"), "index rewrite failed: {} {:?}", rewrite.output, rewrite.typed);
+    std::fs::copy("/tmp/conv-idx-out.rds", index_path).unwrap();
+    eprintln!("index rewritten");
+
+    // Format-convert metadata rds files.
+    for path in extra_rds {
+        if !path.exists() { continue; }
+        let name = path.file_name().unwrap().to_string_lossy();
+        std::fs::copy(path.as_path(), format!("/tmp/conv-meta-{name}")).unwrap();
+        let script = format!(
+            "x<-readRDS('/tmp/conv-meta-{name}');saveRDS(x,'/tmp/conv-meta-{name}-out');'ok-{name}'"
+        );
+        let r = session.eval(&script);
+        let rendered = format!("{:?}", r.typed);
+        assert!(rendered.contains(&format!("ok-{name}")), "conversion of {name} failed: {} {:?}", r.output, r.typed);
+        std::fs::copy(format!("/tmp/conv-meta-{name}-out"), path).unwrap();
+        eprintln!("converted metadata {name}");
+    }
+}
+
+#[test]
+fn convert_methods() {
+    if std::env::var("RBG1_CONVERT").is_err() {
+        eprintln!("opt-in conversion harness: set RBG1_CONVERT=1 to run");
+        return;
+    }
+    let mut session =
+        RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), "/tmp"));
+    let boot = session.eval(
+        "rbg1_convert_read_hook<-function(n){e<-new.env();attr(e,'rbg1pk')<-n;e};\
+         rbg1_convert_write_hook<-function(e){k<-attr(e,'rbg1pk');if(is.character(k))k else NULL};\
+         'hooks-ready'",
+    );
+    assert!(format!("{:?}", boot.typed).contains("hooks-ready"), "hook install failed: {:?}", boot.typed);
+
+    let assets = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..").join("rmath").join("src").join("library")
+        .join("methods").join("portable").join("assets");
+    convert_package_db(
+        &mut session,
+        &assets.join("methods.rdb"),
+        &assets.join("index.rds"),
+        1,
+        &[assets.join("exports.rds"), assets.join("S3methods.rds")],
+    );
+    eprintln!("methods conversion complete");
+}

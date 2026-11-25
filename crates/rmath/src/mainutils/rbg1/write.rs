@@ -254,12 +254,8 @@ impl GraphWriter {
                     out.extend_from_slice(&elt.to_le_bytes());
                 }
             }
-            SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP | SEXPTYPE::S4SXP => {
-                out.push(match stype {
-                    SEXPTYPE::VECSXP => T_VEC,
-                    SEXPTYPE::EXPRSXP => T_EXPR,
-                    _ => T_S4,
-                });
+            SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => {
+                out.push(if stype == SEXPTYPE::VECSXP { T_VEC } else { T_EXPR });
                 push_meta(&mut out, s);
                 let len = XLENGTH(s);
                 out.extend_from_slice(&(len as u32).to_le_bytes());
@@ -270,10 +266,37 @@ impl GraphWriter {
                     out.extend_from_slice(&elt.to_le_bytes());
                 }
             }
-            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => {
-                out.push(if stype == SEXPTYPE::LISTSXP { T_LIST } else { T_LANG });
+            SEXPTYPE::S4SXP => {
+                // GNU serialize.c: S4SXP is attributes-only. The object is a
+                // fixed node, not a vector — slots live in attributes.
+                out.push(T_S4);
+                push_meta(&mut out, s);
+                out.extend_from_slice(&0u32.to_le_bytes());
+                let attrib = self.intern(ATTRIB(s));
+                out.extend_from_slice(&attrib.to_le_bytes());
+            }
+            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP => {
+                out.push(match stype {
+                    SEXPTYPE::LISTSXP => T_LIST,
+                    SEXPTYPE::DOTSXP => T_DOTS,
+                    _ => T_LANG,
+                });
                 push_meta(&mut out, s);
                 for part in [CAR(s), CDR(s), TAG(s), ATTRIB(s)] {
+                    let r = self.intern(part);
+                    out.extend_from_slice(&r.to_le_bytes());
+                }
+            }
+            SEXPTYPE::EXTPTRSXP => {
+                // GNU serialize.c writes the protected and tag subgraphs; the
+                // address itself is not serialized.
+                out.push(T_EXTPTR);
+                push_meta(&mut out, s);
+                for part in [
+                    crate::mainutils::memory_main::R_ExternalPtrProtected(s),
+                    crate::mainutils::memory_main::R_ExternalPtrTag(s),
+                    ATTRIB(s),
+                ] {
                     let r = self.intern(part);
                     out.extend_from_slice(&r.to_le_bytes());
                 }
