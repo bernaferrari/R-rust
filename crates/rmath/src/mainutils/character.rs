@@ -582,46 +582,6 @@ pub unsafe fn chartr_safe<'a>(x: Sexp<'a>, old: Sexp<'a>, new: Sexp<'a>) -> Resu
     .map_err(|error| error.to_string())?
 }
 
-/// Translate characters in `x`: replace characters in `old` with corresponding
-/// characters in `new`.
-///
-/// This is the Rust port of R's `do_chartr` from character.c.
-/// Uses the shared original-runtime simple casing implementation.
-pub unsafe fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        match OwnerToken::with_current(|owner| {
-            let _pin = match owner.pin() {
-                Ok(pin) => pin,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-            let args_s = match owner.sexp(args) {
-                Ok(value) => value,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-            let old = match args_s.clone().try_pairlist_arg(0).clone() {
-                Ok(s) => s,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-            let new = match args_s.clone().try_pairlist_arg(1).clone() {
-                Ok(s) => s,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-            let x = match args_s.try_pairlist_arg(2) {
-                Ok(s) => s,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-
-            match chartr_safe(x, old, new) {
-                Ok(result) => result,
-                Err(_) => crate::sexp::globals::R_NilValue(),
-            }
-        }) {
-            Ok(value) => value,
-            Err(_) => return crate::sexp::globals::R_NilValue(),
-        }
-    }))
-    .unwrap_or_else(|_| crate::sexp::globals::R_NilValue())
-}
 
 // ---------------------------------------------------------------------------
 // do_toupper — convert to uppercase
@@ -632,13 +592,6 @@ pub fn toupper_safe(x: Sexp<'_>) -> Result<SEXP, String> {
     case_transform_safe(x, true).map_err(|e| e.to_string())
 }
 
-/// Convert characters in a character vector to uppercase.
-///
-/// This is the Rust port of R's `do_tolower`/`do_toupper` from character.c.
-/// Uses the shared original-runtime simple casing implementation.
-pub fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    case_entry(args, true)
-}
 
 // ---------------------------------------------------------------------------
 // do_tolower — convert to lowercase
@@ -649,13 +602,6 @@ pub fn tolower_safe(x: Sexp<'_>) -> Result<SEXP, String> {
     case_transform_safe(x, false).map_err(|e| e.to_string())
 }
 
-/// Convert characters in a character vector to lowercase.
-///
-/// This is the Rust port of R's `do_tolower` from character.c.
-/// Uses the shared original-runtime simple casing implementation.
-pub fn do_tolower(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    case_entry(args, false)
-}
 
 /// Shared safe implementation for toupper and tolower.
 fn case_transform_safe(
@@ -760,98 +706,6 @@ pub fn nchar_safe(
     .map_err(|error| error.to_string())?
 }
 
-/// Count the number of characters in each element of a character vector.
-///
-/// This is the Rust port of R's `do_nchar` from character.c.
-/// Supports type = "bytes", "chars", "width".
-pub fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        match OwnerToken::with_current(|owner| {
-            let _pin = match owner.pin() {
-                Ok(pin) => pin,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-            let args_s = match owner.sexp(args) {
-                Ok(value) => value,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-
-            let x_arg = match args_s.clone().try_pairlist_arg(0).clone() {
-                Ok(s) => s,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-
-            let stype = match args_s.clone().try_pairlist_arg(1).clone() {
-                Ok(s) => s,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-
-            if stype.clone().typeof_() != SEXPTYPE::STRSXP || stype.clone().len() != 1 {
-                return crate::sexp::globals::R_NilValue();
-            }
-            let type_char = match stype.try_string_elt(0) {
-                Ok(s) => s,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-            let type_str = match type_char.try_as_string() {
-                Ok(s) => s,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-            let type_str_trimmed = type_str.trim();
-
-            let type_code: NcharType = if type_str_trimmed.starts_with("bytes") {
-                NcharType::Bytes
-            } else if type_str_trimmed.starts_with("chars") {
-                NcharType::Chars
-            } else if type_str_trimmed.starts_with("width") {
-                NcharType::Width
-            } else {
-                return crate::sexp::globals::R_NilValue();
-            };
-
-            let allow_na_arg = match args_s.clone().try_pairlist_arg(2).clone() {
-                Ok(s) => s,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-            let allow_na_val = as_logical(&allow_na_arg);
-            let allow_na = if allow_na_val == crate::sexp::ffi::NA_LOGICAL {
-                false
-            } else {
-                allow_na_val != 0
-            };
-
-            // Parse keepNA (fourth arg, optional)
-            let nargs = XLENGTH(args);
-            let keep_na: bool;
-            if nargs >= 4 {
-                let keep_na_arg = match args_s.try_pairlist_arg(3) {
-                    Ok(s) => s,
-                    Err(_) => return crate::sexp::globals::R_NilValue(),
-                };
-                let keep_na_val = as_logical(&keep_na_arg);
-                if keep_na_val == crate::sexp::ffi::NA_LOGICAL {
-                    keep_na = type_code != NcharType::Width;
-                } else {
-                    keep_na = keep_na_val != 0;
-                }
-            } else {
-                keep_na = type_code != NcharType::Width;
-            }
-
-            if owner.require_active().is_err() {
-                return crate::sexp::globals::R_NilValue();
-            }
-            match nchar_safe(x_arg, type_code, allow_na, keep_na) {
-                Ok(result) => result,
-                Err(_) => crate::sexp::globals::R_NilValue(),
-            }
-        }) {
-            Ok(value) => value,
-            Err(_) => return crate::sexp::globals::R_NilValue(),
-        }
-    }))
-    .unwrap_or_else(|_| crate::sexp::globals::R_NilValue())
-}
 
 // ---------------------------------------------------------------------------
 // do_substr — substring extraction
@@ -936,48 +790,6 @@ pub unsafe fn substr_safe<'a>(
     .map_err(|error| error.to_string())?
 }
 
-/// Extract substrings from a character vector.
-///
-/// This is the Rust port of R's `do_substr` from character.c.
-/// Uses the shared original-runtime simple casing implementation.
-pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        match OwnerToken::with_current(|owner| {
-            let _pin = match owner.pin() {
-                Ok(pin) => pin,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-            let args_s = match owner.sexp(args) {
-                Ok(value) => value,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-
-            let x = match args_s.clone().try_pairlist_arg(0).clone() {
-                Ok(s) => s,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-
-            let sa = match args_s.clone().try_pairlist_arg(1).clone() {
-                Ok(s) => s,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-
-            let so = match args_s.try_optional_pairlist_arg(2) {
-                Ok(s) => s,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-
-            match substr_safe(x, sa, so) {
-                Ok(result) => result,
-                Err(_) => crate::sexp::globals::R_NilValue(),
-            }
-        }) {
-            Ok(value) => value,
-            Err(_) => return crate::sexp::globals::R_NilValue(),
-        }
-    }))
-    .unwrap_or_else(|_| crate::sexp::globals::R_NilValue())
-}
 
 // ---------------------------------------------------------------------------
 // Tests
