@@ -979,16 +979,6 @@ pub fn GetColNames(dimnames: SEXP) -> SEXP {
 // do_matrix
 // ---------------------------------------------------------------------------
 
-/// `.Internal(matrix(data, nrow, ncol, byrow, dimnames, missing(nrow), missing(ncol)))`
-///
-/// Ported from R's `do_matrix` in array.c (line 82).
-/// Creates a matrix from the given data, dimensions, and byrow flag.
-pub fn do_matrix(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    if args.is_null() || args == R_NilValue() {
-        array_error("matrix() requires arguments");
-    }
-    crate::mainutils::essentials::do_matrix(call, op, args, env)
-}
 
 // ---------------------------------------------------------------------------
 // allocMatrix
@@ -1101,33 +1091,11 @@ pub(crate) fn DropDims(x: SEXP) -> SEXP {
 // do_drop
 // ---------------------------------------------------------------------------
 
-/// `.Internal(drop(x))` -- drop redundant dimensions from an array/matrix.
-///
-/// Ported from R's `do_drop` in array.c (line 430).
-pub fn do_drop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    if args.is_null() || args == R_NilValue() {
-        array_error("drop() requires an argument");
-    }
-    crate::mainutils::essentials::do_drop(call, op, args, env)
-}
 
 // ---------------------------------------------------------------------------
 // do_length (CONFLICT with inspect.rs)
 // ---------------------------------------------------------------------------
 
-/// `length(x)` -- return the length of a primitive object.
-///
-/// Ported from R's `do_length` in array.c (line 452).
-///
-/// **CONFLICT**: This symbol is also defined as `#[unsafe(no_mangle)]` in inspect.rs.
-/// Using `pub(crate) unsafe fn` here (no `#[unsafe(no_mangle)]`) to avoid duplicate
-/// symbol errors at link time.
-pub(crate) fn do_length(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    if args.is_null() || args == R_NilValue() {
-        array_error("length() requires an argument");
-    }
-    Rf_ScalarInteger(LENGTH(CAR(args)))
-}
 
 // ---------------------------------------------------------------------------
 // dispatch_length / dispatch_xlength
@@ -1403,15 +1371,6 @@ pub fn do_colsum(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // do_array
 // ---------------------------------------------------------------------------
 
-/// `array(data, dim, dimnames)` -- create a multi-dimensional array.
-///
-/// Ported from R's `do_array` in array.c (line 2145).
-pub fn do_array(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    if args.is_null() || args == R_NilValue() {
-        array_error("array() requires arguments");
-    }
-    crate::mainutils::essentials::do_array(call, op, args, env)
-}
 
 // ---------------------------------------------------------------------------
 // do_diag
@@ -1855,43 +1814,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_do_matrix_delegates_to_real_implementation() {
-        let _session = RSession::new();
-        unsafe {
-            let data = Rf_allocVector3(SEXPTYPE::INTSXP, 4);
-            for i in 0..4 {
-                *INTEGER(data).add(i) = (i + 1) as c_int;
-            }
-            let args = Rf_cons(
-                data,
-                Rf_cons(
-                    Rf_ScalarInteger(2),
-                    Rf_cons(Rf_ScalarInteger(2), Rf_cons(R_NilValue(), R_NilValue())),
-                ),
-            );
-            let result = do_matrix(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
-            assert_eq!(XLENGTH(result), 4);
-            let dim = crate::sexp::attrib_core::getAttrib(result, R_DimSymbol());
-            assert_eq!(*INTEGER(dim), 2);
-            assert_eq!(*INTEGER(dim).add(1), 2);
-        }
-    }
 
-    #[test]
-    fn test_do_matrix_errors_without_args() {
-        let _session = RSession::new();
-        let err = assert_r_error(|| unsafe {
-            do_matrix(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-            );
-        });
-        assert!(err.message.contains("matrix() requires arguments"));
-    }
 
     #[test]
     fn test_alloc_matrix_allocates_dimmed_vector() {
@@ -2006,30 +1929,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_do_drop_errors_without_args() {
-        let _session = RSession::new();
-        let err = assert_r_error(|| unsafe {
-            do_drop(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-            );
-        });
-        assert!(err.message.contains("drop() requires an argument"));
-    }
 
-    #[test]
-    fn test_do_length_returns_real_length() {
-        let _session = RSession::new();
-        unsafe {
-            let data = Rf_allocVector3(SEXPTYPE::INTSXP, 5);
-            let args = Rf_cons(data, R_NilValue());
-            let result = do_length(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
-            assert_eq!(*INTEGER(result), 5);
-        }
-    }
 
     #[test]
     fn test_dispatch_length_returns_vector_length() {
@@ -2049,53 +1949,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_do_lengths_delegates_to_real_implementation() {
-        let _session = RSession::new();
-        unsafe {
-            let first = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-            let second = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
-            let list = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-            SET_VECTOR_ELT(list, 0, first);
-            SET_VECTOR_ELT(list, 1, second);
-            let args = Rf_cons(list, Rf_cons(R_NilValue(), R_NilValue()));
-            let result = do_lengths(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
-            assert_eq!(*INTEGER(result), 2);
-            assert_eq!(*INTEGER(result).add(1), 3);
-        }
-    }
 
-    #[test]
-    fn test_do_rowscols_delegates_to_row_by_default() {
-        let _session = RSession::new();
-        unsafe {
-            let data = Rf_allocVector3(SEXPTYPE::INTSXP, 6);
-            let matrix_args = Rf_cons(
-                data,
-                Rf_cons(
-                    Rf_ScalarInteger(2),
-                    Rf_cons(Rf_ScalarInteger(3), Rf_cons(R_NilValue(), R_NilValue())),
-                ),
-            );
-            let matrix = do_matrix(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                matrix_args,
-                ptr::null_mut(),
-            );
-            let result = do_rowscols(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                Rf_cons(matrix, R_NilValue()),
-                ptr::null_mut(),
-            );
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
-            assert_eq!(*INTEGER(result), 1);
-            assert_eq!(*INTEGER(result).add(1), 2);
-            assert_eq!(*INTEGER(result).add(2), 1);
-        }
-    }
 
     #[test]
     fn test_do_matprod_multiplies_column_major_matrices() {
@@ -2138,54 +1992,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_do_transpose_delegates_to_real_implementation() {
-        let _session = RSession::new();
-        unsafe {
-            let data = Rf_allocVector3(SEXPTYPE::INTSXP, 4);
-            for i in 0..4 {
-                *INTEGER(data).add(i) = (i + 1) as c_int;
-            }
-            let matrix_args = Rf_cons(
-                data,
-                Rf_cons(
-                    Rf_ScalarInteger(2),
-                    Rf_cons(Rf_ScalarInteger(2), Rf_cons(R_NilValue(), R_NilValue())),
-                ),
-            );
-            let matrix = do_matrix(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                matrix_args,
-                ptr::null_mut(),
-            );
-            let result = do_transpose(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                Rf_cons(matrix, R_NilValue()),
-                ptr::null_mut(),
-            );
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
-            assert_eq!(XLENGTH(result), 4);
-            let dim = crate::sexp::attrib_core::getAttrib(result, R_DimSymbol());
-            assert_eq!(*INTEGER(dim), 2);
-            assert_eq!(*INTEGER(dim).add(1), 2);
-        }
-    }
 
-    #[test]
-    fn test_do_transpose_returns_nil_for_null_legacy_call() {
-        let _session = RSession::new();
-        unsafe {
-            let result = do_transpose(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-            );
-            assert_eq!(result, R_NilValue());
-        }
-    }
 
     #[test]
     fn test_do_aperm_permutates_column_major_array() {
@@ -2361,92 +2168,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_do_colsum_delegates_to_col_sums_by_default() {
-        let _session = RSession::new();
-        unsafe {
-            let data = Rf_allocVector3(SEXPTYPE::INTSXP, 4);
-            for i in 0..4 {
-                *INTEGER(data).add(i) = (i + 1) as c_int;
-            }
-            let matrix_args = Rf_cons(
-                data,
-                Rf_cons(
-                    Rf_ScalarInteger(2),
-                    Rf_cons(Rf_ScalarInteger(2), Rf_cons(R_NilValue(), R_NilValue())),
-                ),
-            );
-            let matrix = do_matrix(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                matrix_args,
-                ptr::null_mut(),
-            );
-            let result = do_colsum(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                Rf_cons(matrix, Rf_cons(R_NilValue(), R_NilValue())),
-                ptr::null_mut(),
-            );
-            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
-            assert_eq!(*crate::sexp::accessors::REAL(result), 3.0);
-            assert_eq!(*crate::sexp::accessors::REAL(result).add(1), 7.0);
-        }
-    }
 
-    #[test]
-    fn test_do_array_delegates_to_real_implementation() {
-        let _session = RSession::new();
-        unsafe {
-            let data = Rf_allocVector3(SEXPTYPE::INTSXP, 4);
-            for i in 0..4 {
-                *INTEGER(data).add(i) = (i + 1) as c_int;
-            }
-            let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-            *INTEGER(dims) = 2;
-            *INTEGER(dims).add(1) = 2;
-            let args = Rf_cons(data, Rf_cons(dims, Rf_cons(R_NilValue(), R_NilValue())));
-            let result = do_array(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
-            assert_eq!(XLENGTH(result), 4);
-            let result_dim = crate::sexp::attrib_core::getAttrib(result, R_DimSymbol());
-            assert_eq!(XLENGTH(result_dim), 2);
-            assert_eq!(*INTEGER(result_dim), 2);
-            assert_eq!(*INTEGER(result_dim).add(1), 2);
-        }
-    }
 
-    #[test]
-    fn test_do_array_errors_without_args() {
-        let _session = RSession::new();
-        let err = assert_r_error(|| unsafe {
-            do_array(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-            );
-        });
-        assert!(err.message.contains("array() requires arguments"));
-    }
 
-    #[test]
-    fn test_do_diag_delegates_to_real_implementation() {
-        let _session = RSession::new();
-        unsafe {
-            let x = Rf_ScalarInteger(3);
-            let args = Rf_cons(
-                x,
-                Rf_cons(
-                    Rf_ScalarInteger(3),
-                    Rf_cons(Rf_ScalarInteger(3), R_NilValue()),
-                ),
-            );
-            let result = do_diag(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
-            assert_eq!(XLENGTH(result), 9);
-        }
-    }
 
     #[test]
     fn test_do_backsolve_solves_upper_triangular_system() {

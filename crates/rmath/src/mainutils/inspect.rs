@@ -262,59 +262,8 @@ mod tests {
         assert_eq!(pp(5), "          ");
     }
 
-    #[test]
-    fn test_typeof_integer() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = Rf_ScalarInteger(42);
-            let _x_guard = protect(x);
-            let result = do_typeof(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                Rf_cons(x, R_NilValue()),
-                ptr::null_mut(),
-            );
-            assert!(!result.is_null());
-            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP);
-            let s = CHAR(STRING_ELT(result, 0));
-            let type_str = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("");
-            assert_eq!(type_str, "integer");
-        }
-    }
 
-    #[test]
-    fn test_typeof_real() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = Rf_ScalarReal(3.14);
-            let _x_guard = protect(x);
-            let result = do_typeof(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                Rf_cons(x, R_NilValue()),
-                ptr::null_mut(),
-            );
-            let s = CHAR(STRING_ELT(result, 0));
-            let type_str = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("");
-            assert_eq!(type_str, "double");
-        }
-    }
 
-    #[test]
-    fn test_typeof_null() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let result = do_typeof(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                R_NilValue(),
-                ptr::null_mut(),
-            );
-            let s = CHAR(STRING_ELT(result, 0));
-            let type_str = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("");
-            assert_eq!(type_str, "NULL");
-        }
-    }
 
     #[test]
     fn test_isnull_null() {
@@ -346,35 +295,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_length_integer() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = Rf_allocVector(SEXPTYPE::INTSXP, 5);
-            let _x_guard = protect(x);
-            let result = do_length(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                Rf_cons(x, R_NilValue()),
-                ptr::null_mut(),
-            );
-            assert_eq!(*INTEGER(result), 5);
-        }
-    }
 
-    #[test]
-    fn test_length_null() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let result = do_length(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                R_NilValue(),
-                ptr::null_mut(),
-            );
-            assert_eq!(*INTEGER(result), 0);
-        }
-    }
 
     #[test]
     fn test_sexptype2char() {

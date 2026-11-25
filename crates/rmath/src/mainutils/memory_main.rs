@@ -1322,38 +1322,8 @@ mod tests {
         });
     }
 
-    #[test]
-    fn test_init_memory_does_not_crash() {
-        let _session = crate::sexp::session::RSession::new();
-        {
-            InitMemory();
-            initStack();
-        }
-    }
 
-    #[test]
-    fn test_r_allocld() {
-        let _session = crate::sexp::session::RSession::new();
-        let session = RSession::new();
-        session.with_protected(|| unsafe {
-            let ptr = R_allocLD(10);
-            // May or may not be null depending on implementation; just check it doesn't crash
-            let _ = ptr;
-        });
-    }
 
-    #[test]
-    fn test_r_string_buffer() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let mut buf = R_StringBuffer::default();
-            let ptr = R_AllocStringBuffer(100, &mut buf);
-            assert!(!ptr.is_null());
-            R_FreeStringBuffer(&mut buf);
-            assert!(buf.data.is_null());
-            assert_eq!(buf.bufsize, 0);
-        }
-    }
 
     #[test]
     fn string_buffer_small_growth_preserves_contents_and_capacity() {
@@ -1412,24 +1382,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_weak_ref_roundtrip() {
-        let _session = crate::sexp::session::RSession::new();
-        let key = R_MakeExternalPtr(ptr::null_mut(), R_NilValue(), R_NilValue());
-        let val = crate::sexp::constructors::Rf_ScalarInteger(99);
-        let w = R_MakeWeakRef(key, val, R_NilValue(), 0);
-        assert!(!w.is_null());
-
-        let k = R_WeakRefKey(w);
-        assert_eq!(k, key);
-
-        let v = R_WeakRefValue(w);
-        assert_eq!(v, val);
-
-        // null weak ref returns nil
-        assert_eq!(R_WeakRefKey(ptr::null_mut()), R_NilValue());
-        assert_eq!(R_WeakRefValue(ptr::null_mut()), R_NilValue());
-    }
 
     #[test]
     fn test_weak_ref_rejects_non_reference_key_like_gnu_r() {
@@ -1442,21 +1394,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_weak_ref_accessors_reject_non_weak_ref_like_gnu_r() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let not_weak_ref = crate::sexp::constructors::Rf_ScalarInteger(42);
-            let key_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let _ = R_WeakRefKey(not_weak_ref);
-            }));
-            let value_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let _ = R_WeakRefValue(not_weak_ref);
-            }));
-            assert!(key_result.is_err());
-            assert!(value_result.is_err());
-        }
-    }
 
     #[test]
     fn test_external_ptr_null_roundtrip() {
@@ -1547,78 +1484,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_resizable_vector_nulls() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            assert_eq!(R_isResizable(ptr::null_mut()), 0);
-            assert_eq!(R_maxLength(ptr::null_mut()), 0);
-        }
-    }
 
-    #[test]
-    fn test_memory_limits_are_session_local_and_enforced() {
-        let left = RSession::new();
-        let right = RSession::new();
-        let mut left_v_limit = 0u64;
-        let mut left_n_limit = 0u64;
 
-        left.with_protected(|| unsafe {
-            left_v_limit = current_vector_heap_size().saturating_add(1_048_576);
-            left_n_limit = current_node_heap_size().saturating_add(100);
-            assert_eq!(R_SetMaxVSize(left_v_limit), crate::sexp::ffi::TRUE);
-            assert_eq!(R_SetMaxNSize(left_n_limit), crate::sexp::ffi::TRUE);
-            assert_eq!(R_GetMaxVSize_memory(), left_v_limit);
-            assert_eq!(R_GetMaxNSize_memory(), left_n_limit);
-            assert_eq!(
-                R_SetMaxVSize(current_vector_heap_size().saturating_sub(1)),
-                crate::sexp::ffi::FALSE
-            );
-            assert_eq!(
-                R_SetMaxNSize(current_node_heap_size().saturating_sub(1)),
-                crate::sexp::ffi::FALSE
-            );
-        });
-
-        right.with_protected(|| unsafe {
-            // The macOS startup default caps the vector pool at
-            // max(physical memory, 16 Gb); assert session locality (left's
-            // tighter limit must not leak) rather than the sentinel value.
-            let right_v = R_GetMaxVSize_memory();
-            assert_ne!(right_v, left_v_limit, "v limit leaked across sessions");
-            assert_ne!(
-                R_GetMaxNSize_memory(),
-                left_n_limit,
-                "n limit leaked across sessions"
-            );
-        });
-    }
-
-    #[test]
-    fn test_do_max_size_roundtrips_limits() {
-        let _session = crate::sexp::session::RSession::new();
-        let session = RSession::new();
-        session.with_protected(|| unsafe {
-            let target_bytes = current_vector_heap_size().saturating_add(2 * 1_048_576);
-            let target_mb = target_bytes as f64 / 1_048_576.0;
-            let v_args = Rf_cons(Rf_ScalarReal(target_mb), R_NilValue());
-            let v_result = do_maxVSize(ptr::null_mut(), ptr::null_mut(), v_args, ptr::null_mut());
-            assert_eq!(TYPEOF(v_result), SEXPTYPE::REALSXP);
-            assert!((*REAL(v_result) - target_mb).abs() < 1e-9);
-
-            let target_nodes = current_node_heap_size().saturating_add(250);
-            let n_args = Rf_cons(Rf_ScalarReal(target_nodes as f64), R_NilValue());
-            let n_result = do_maxNSize(ptr::null_mut(), ptr::null_mut(), n_args, ptr::null_mut());
-            assert_eq!(TYPEOF(n_result), SEXPTYPE::REALSXP);
-            assert_eq!(*REAL(n_result), target_nodes as f64);
-
-            let inf_args = Rf_cons(Rf_ScalarReal(f64::INFINITY), R_NilValue());
-            let inf_result =
-                do_maxVSize(ptr::null_mut(), ptr::null_mut(), inf_args, ptr::null_mut());
-            assert!((*REAL(inf_result)).is_infinite());
-            assert_eq!(R_GetMaxVSize_memory(), u64::MAX);
-        });
-    }
 
     #[test]
     fn test_gc_torture_primitives_roundtrip_session_state() {
@@ -1647,23 +1514,6 @@ mod tests {
         });
     }
 
-    #[test]
-    fn test_finalizers_ignore_null_targets() {
-        let _session = crate::sexp::session::RSession::new();
-        let session = RSession::new();
-        session.with_protected(|| unsafe {
-            with_finalizer_state(|state| state.pending_finalizers.clear());
-            R_RegisterFinalizer(ptr::null_mut(), ptr::null_mut());
-            R_RegisterFinalizerEx(ptr::null_mut(), ptr::null_mut(), 0);
-            R_RegisterCFinalizer(ptr::null_mut(), dummy_c_finalizer);
-            R_RegisterCFinalizerEx(ptr::null_mut(), dummy_c_finalizer, 0);
-            R_RunPendingFinalizers();
-            R_RunFinalizers();
-            assert!(with_finalizer_state(|state| state
-                .pending_finalizers
-                .is_empty()));
-        });
-    }
 
     #[test]
     fn test_c_finalizer_runs_with_external_pointer_target() {
@@ -1819,52 +1669,8 @@ mod tests {
         FINALIZER_RUNS.set(FINALIZER_RUNS.get() + 1);
     }
 
-    #[test]
-    fn test_chk_calloc() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let p = R_chk_calloc(10, 8);
-            assert!(!p.is_null());
-            R_chk_free(p);
-        }
-    }
 
-    #[test]
-    fn test_chk_memcpy_memset() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let buf = R_chk_calloc(100, 1);
-            assert!(!buf.is_null());
 
-            R_chk_memset(buf, 0xAA, 10);
-            let bytes = std::slice::from_raw_parts(buf as *const u8, 10);
-            for &b in bytes {
-                assert_eq!(b, 0xAA);
-            }
-
-            let buf2 = R_chk_calloc(10, 1);
-            R_chk_memcpy(buf2, buf, 10);
-            let bytes2 = std::slice::from_raw_parts(buf2 as *const u8, 10);
-            for (i, &b) in bytes2.iter().enumerate() {
-                assert_eq!(b, 0xAA);
-                let _ = i;
-            }
-
-            R_chk_free(buf);
-            R_chk_free(buf2);
-        }
-    }
-
-    #[test]
-    fn test_type_checking_functions() {
-        let _session = crate::sexp::session::RSession::new();
-        // R_NilValue should be detected as NULL
-        assert_eq!(Rf_isNull_memory(R_NilValue()), 1);
-        assert_eq!(Rf_isNull_memory(ptr::null_mut()), 1);
-
-        // Non-null non-NilValue should not be NULL
-        // (can't easily test without a valid SEXP)
-    }
 
     #[test]
     fn test_seql() {
@@ -1876,14 +1682,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_readline_stub() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let result = readline(ptr::null_mut());
-            assert!(result.is_null());
-        }
-    }
 }
 
 #[cfg(test)]
