@@ -42,9 +42,9 @@ use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 pub use crate::nmath::special::mlutils::REprintf;
 
-// PRINTNAME is re-exported from inlined.rs
+// PRINTNAME comes from the canonical checked accessor module.
 #[allow(unused_imports)]
-use crate::mainutils::inlined::PRINTNAME;
+use crate::sexp::accessors::PRINTNAME;
 
 // ---------------------------------------------------------------------------
 // Checked CHARSXP text and string constructors

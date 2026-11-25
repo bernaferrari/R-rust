@@ -43,7 +43,6 @@ pub mod gram_main;
 pub mod graphics_ffi;
 pub mod grep;
 pub mod identical;
-pub mod inlined;
 pub mod inspect;
 pub mod lapack;
 pub mod list;
