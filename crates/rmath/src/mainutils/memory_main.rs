@@ -340,185 +340,24 @@ pub(crate) unsafe fn torture_action_in(instance: *mut RInstance, ticks: u32) -> 
 // R_alloc, vmaxget, vmaxset are already in sexp/memory_ext.rs.
 // ---------------------------------------------------------------------------
 
-/// Allocate transient memory for long double values.
-///
-/// This is the equivalent of R's `R_allocLD()`.
-/// For long double alignment, we overallocate by 1 element and align manually.
-pub(crate) fn R_allocLD(nelem: usize) -> *mut c_void {
-    unsafe {
-        // long double is 16 bytes on x86_64; alignment is 16
-        // We call R_alloc (from memory_ext.rs) with extra space and align
-        let ld_size = std::mem::size_of::<c_double>(); // approximate
-        let ld_align = std::mem::align_of::<u128>().max(16);
 
-        let raw = crate::sexp::memory_ext::R_alloc(ld_size, nelem + 1);
-        if raw.is_null() {
-            return ptr::null_mut();
-        }
-        let addr = raw as usize;
-        let aligned = (addr + ld_align - 1) & !(ld_align - 1);
-        aligned as *mut c_void
-    }
-}
 
-/// S compatibility: allocate zeroed transient memory.
-///
-/// This is the equivalent of R's `S_alloc()`.
-pub fn S_alloc(nelem: c_long, eltsize: c_int) -> *mut c_char {
-    unsafe {
-        let size = (nelem as usize) * (eltsize as usize);
-        let p = crate::sexp::memory_ext::R_alloc(eltsize as usize, nelem as usize) as *mut c_char;
-        if !p.is_null() && size > 0 {
-            ptr::write_bytes(p as *mut u8, 0, size);
-        }
-        p
-    }
-}
-
-/// S compatibility: reallocate transient memory.
-///
-/// This is the equivalent of R's `S_realloc()`.
-pub unsafe fn S_realloc(
-    p: *mut c_char,
-    new_len: c_long,
-    old_len: c_long,
-    size: c_int,
-) -> *mut c_char {
-    unsafe {
-        if new_len <= old_len {
-            return p;
-        }
-        let q = crate::sexp::memory_ext::R_alloc(size as usize, new_len as usize) as *mut c_char;
-        if !q.is_null() && !p.is_null() {
-            let nold = (old_len as usize) * (size as usize);
-            if nold > 0 {
-                ptr::copy_nonoverlapping(p, q, nold);
-            }
-            let nnew = (new_len as usize) * (size as usize);
-            if nnew > nold {
-                ptr::write_bytes(q.add(nold) as *mut u8, 0, nnew - nold);
-            }
-        }
-        q
-    }
-}
 
 // ---------------------------------------------------------------------------
 // GC-on-failure allocation wrappers
 // ---------------------------------------------------------------------------
 
-/// malloc with GC fallback.
-///
-/// This is the equivalent of R's `R_malloc_gc()`.
-pub fn R_malloc_gc(n: usize) -> *mut c_void {
-    unsafe {
-        let p = crate::mainutils::raw_heap::malloc(n);
-        if p.is_null() {
-            R_gc();
-            return crate::mainutils::raw_heap::malloc(n);
-        }
-        p
-    }
-}
 
-/// calloc with GC fallback.
-///
-/// This is the equivalent of R's `R_calloc_gc()`.
-pub fn R_calloc_gc(n: usize, s: usize) -> *mut c_void {
-    unsafe {
-        let p = crate::mainutils::raw_heap::calloc(n, s);
-        if p.is_null() {
-            R_gc();
-            return crate::mainutils::raw_heap::calloc(n, s);
-        }
-        p
-    }
-}
 
-/// realloc with GC fallback.
-///
-/// This is the equivalent of R's `R_realloc_gc()`.
-pub unsafe fn R_realloc_gc(p: *mut c_void, n: usize) -> *mut c_void {
-    unsafe {
-        let q = crate::mainutils::raw_heap::realloc(p, n);
-        if q.is_null() {
-            R_gc();
-            return crate::mainutils::raw_heap::realloc(p, n);
-        }
-        q
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Memory checking utilities
 // ---------------------------------------------------------------------------
 
-/// Checked calloc that errors on failure.
-///
-/// This is the equivalent of R's `R_chk_calloc()`.
-pub fn R_chk_calloc(nelem: usize, elsize: usize) -> *mut c_void {
-    unsafe {
-        let p = crate::mainutils::raw_heap::calloc(nelem, elsize);
-        if p.is_null() {
-            crate::mainutils::errors::Rf_error_cstr(c"memory allocation failed (calloc)");
-        }
-        p
-    }
-}
 
-/// Checked realloc that errors on failure.
-///
-/// This is the equivalent of R's `R_chk_realloc()`.
-pub unsafe fn R_chk_realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
-    unsafe {
-        let p = crate::mainutils::raw_heap::realloc(ptr, size);
-        if p.is_null() {
-            crate::mainutils::errors::Rf_error_cstr(c"memory allocation failed (realloc)");
-        }
-        p
-    }
-}
 
-/// Checked free.
-///
-/// This is the equivalent of R's `R_chk_free()`.
-pub unsafe fn R_chk_free(ptr: *mut c_void) {
-    unsafe {
-        if !ptr.is_null() {
-            crate::mainutils::raw_heap::free(ptr);
-        }
-    }
-}
 
-/// Checked memcpy with size limit.
-///
-/// This is the equivalent of R's `R_chk_memcpy()`.
-pub unsafe fn R_chk_memcpy(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void {
-    unsafe {
-        if n >= isize::MAX as usize {
-            error(&format!("object is too large ({} bytes)", n));
-        }
-        if n > 0 {
-            ptr::copy_nonoverlapping(src as *const u8, dest as *mut u8, n);
-        }
-        dest
-    }
-}
 
-/// Checked memset with size limit.
-///
-/// This is the equivalent of R's `R_chk_memset()`.
-pub unsafe fn R_chk_memset(s: *mut c_void, c: c_int, n: usize) -> *mut c_void {
-    unsafe {
-        if n >= isize::MAX as usize {
-            error(&format!("object is too large ({} bytes)", n));
-        }
-        if n > 0 {
-            ptr::write_bytes(s as *mut u8, c as u8, n);
-        }
-        s
-    }
-}
 
 // ---------------------------------------------------------------------------
 // sexptype2char
@@ -565,51 +404,14 @@ pub fn sexptype2char(type_: SEXPTYPE) -> *const c_char {
 // Rf_isSymbol, Rf_isReal, etc. are in sexp/constructors.rs.
 // ---------------------------------------------------------------------------
 
-/// Check if SEXP is NULL (NILSXP). Returns c_int (0/1).
-/// Duplicate of sexp::accessors::Rf_isNull — kept for callers in this module.
-pub(crate) fn Rf_isNull_memory(s: SEXP) -> c_int {
-    c_int::from(s.is_null() || s == R_NilValue())
-}
 
-/// Check if SEXP is a symbol.
-pub(crate) fn Rf_isSymbol_memory(s: SEXP) -> c_int {
-    Rf_isSymbol(s)
-}
 
-/// Check if SEXP is a logical vector.
-pub(crate) fn Rf_isLogical_memory(s: SEXP) -> c_int {
-    Rf_isLogical(s)
-}
 
-/// Check if SEXP is a real (numeric) vector.
-pub(crate) fn Rf_isReal_memory(s: SEXP) -> c_int {
-    Rf_isReal(s)
-}
 
-/// Check if SEXP is a complex vector.
-pub(crate) fn Rf_isComplex_memory(s: SEXP) -> c_int {
-    Rf_isComplex(s)
-}
 
-/// Check if SEXP is an expression.
-pub(crate) fn Rf_isExpression_memory(s: SEXP) -> c_int {
-    c_int::from(TYPEOF(s) == SEXPTYPE::EXPRSXP)
-}
 
-/// Check if SEXP is an environment.
-pub(crate) fn Rf_isEnvironment_memory(s: SEXP) -> c_int {
-    Rf_isEnvironment(s)
-}
 
-/// Check if SEXP is a string (character vector).
-pub(crate) fn Rf_isString_memory(s: SEXP) -> c_int {
-    Rf_isString(s)
-}
 
-/// Check if SEXP is an S4 object.
-pub(crate) fn Rf_isObject_memory(s: SEXP) -> c_int {
-    c_int::from(TYPEOF(s) == SEXPTYPE::OBJSXP)
-}
 
 // ---------------------------------------------------------------------------
 // R_PreserveObject / R_ReleaseObject (duplicates — no #[unsafe(no_mangle)])
@@ -617,13 +419,7 @@ pub(crate) fn Rf_isObject_memory(s: SEXP) -> c_int {
 // Already in sexp/protect.rs with #[unsafe(no_mangle)].
 // ---------------------------------------------------------------------------
 
-pub(crate) fn R_PreserveObject_memory(s: SEXP) {
-    crate::sexp::protect::R_PreserveObject(s);
-}
 
-pub(crate) fn R_ReleaseObject_memory(s: SEXP) {
-    crate::sexp::protect::R_ReleaseObject(s);
-}
 
 // ---------------------------------------------------------------------------
 // Weak references and finalizers
@@ -675,19 +471,6 @@ pub fn R_MakeWeakRef(key: SEXP, val: SEXP, fin: SEXP, onexit: c_int) -> SEXP {
     })
 }
 
-/// Create a weak reference with a native finalizer.
-///
-/// This is the equivalent of R's `R_MakeWeakRefC()`.
-///
-/// # Safety
-/// `fin` must remain callable for the lifetime of the registration and be
-/// safe to invoke with the key's SEXP cast to `*mut c_void`, without unwinding
-/// through the C ABI.
-pub unsafe fn R_MakeWeakRefC(key: SEXP, val: SEXP, fin: R_CFinalizer_t, onexit: c_int) -> SEXP {
-    make_weak_ref(key, val, R_NilValue(), || {
-        register_c_finalizer(key, fin, onexit != 0);
-    })
-}
 
 pub fn R_WeakRefKey(w: SEXP) -> SEXP {
     {
@@ -699,19 +482,6 @@ pub fn R_WeakRefKey(w: SEXP) -> SEXP {
     }
 }
 
-pub fn R_WeakRefValue(w: SEXP) -> SEXP {
-    {
-        if w.is_null() {
-            return R_NilValue();
-        }
-        validate_weak_ref_object(w);
-        CDR(w)
-    }
-}
-
-pub fn R_RegisterFinalizer(s: SEXP, fun: SEXP) {
-    R_RegisterFinalizerEx(s, fun, 0);
-}
 
 pub fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, onexit: c_int) {
     {
@@ -725,6 +495,11 @@ pub fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, onexit: c_int) {
         register_r_finalizer(s, fun, onexit != 0);
     }
 }
+
+pub fn R_RegisterFinalizer(s: SEXP, fun: SEXP) {
+    R_RegisterFinalizerEx(s, fun, 0);
+}
+
 
 pub fn R_RegisterCFinalizer(s: SEXP, fun: R_CFinalizer_t) {
     R_RegisterCFinalizerEx(s, fun, 0);
@@ -928,11 +703,6 @@ fn is_valid_r_finalizer(fun: SEXP) -> bool {
     }
 }
 
-pub fn R_RunFinalizers() {
-    unsafe {
-        R_RunPendingFinalizers();
-    }
-}
 
 /// Mark ready keys and all R finalizer functions. The trace only visits
 /// checked heap metadata and cannot run R code or invoke providers.
@@ -1232,36 +1002,8 @@ pub(crate) fn R_GetMaxNSize_memory() -> u64 {
     .unwrap_or(u64::MAX)
 }
 
-/// Set the maximum vector heap size.
-pub fn R_SetMaxVSize(size: u64) -> c_int {
-    let current = current_vector_heap_size();
-    with_memory_state(|state| {
-        if size == u64::MAX || size >= current {
-            state.max_v_size = size;
-            crate::sexp::ffi::TRUE
-        } else {
-            crate::sexp::ffi::FALSE
-        }
-    })
-}
 
-/// Set the maximum node heap size.
-pub fn R_SetMaxNSize(size: u64) -> c_int {
-    let current = current_node_heap_size();
-    with_memory_state(|state| {
-        if size == u64::MAX || size >= current {
-            state.max_n_size = size;
-            crate::sexp::ffi::TRUE
-        } else {
-            crate::sexp::ffi::FALSE
-        }
-    })
-}
 
-/// Set the protection stack size.
-pub fn R_SetPPSize(_size: u64) {
-    // Arena-based allocation doesn't need PP stack sizing
-}
 
 fn current_vector_heap_size() -> u64 {
     unsafe { crate::sexp::memory::with_arena(|arena| arena.total_bytes_allocated() as u64) }
@@ -1277,24 +1019,7 @@ fn current_node_heap_size() -> u64 {
 // R_ReadConsole and R_WriteConsole are in unix/system.rs.
 // ---------------------------------------------------------------------------
 
-/// Read from the active console callback.
-/// Duplicate — no #[unsafe(no_mangle)] (already in unix/system.rs).
-pub(crate) unsafe fn R_ReadConsole_memory(
-    prompt: *const c_char,
-    buf: *mut c_char,
-    len: c_int,
-    addtohistory: c_int,
-) -> c_int {
-    // SAFETY: forwarded raw pointers satisfy `R_ReadConsole`'s contract per this function's own `# Safety` requirements.
-    unsafe { crate::unix::system::R_ReadConsole(prompt, buf as *mut u8, len, addtohistory) }
-}
 
-/// Write to the active console callback.
-/// Duplicate — no #[unsafe(no_mangle)] (already in unix/system.rs).
-pub(crate) unsafe fn R_WriteConsole_memory(buf: *const c_char, len: c_int) {
-    // SAFETY: forwarded raw pointers satisfy `R_WriteConsole`'s contract per this function's own `# Safety` requirements.
-    unsafe { crate::unix::system::R_WriteConsole(buf, len) }
-}
 
 // ---------------------------------------------------------------------------
 // readline wrapper
@@ -1390,22 +1115,6 @@ pub unsafe fn R_AllocStringBuffer(blen: usize, buf: *mut R_StringBuffer) -> *mut
     }
 }
 
-/// Free a string buffer.
-///
-/// This is the equivalent of R's `R_FreeStringBuffer()`.
-pub unsafe fn R_FreeStringBuffer(buf: *mut R_StringBuffer) {
-    unsafe {
-        if buf.is_null() {
-            return;
-        }
-        let buf = &mut *buf;
-        if !buf.data.is_null() {
-            drop(Vec::from_raw_parts(buf.data as *mut u8, 0, buf.bufsize));
-            buf.data = ptr::null_mut();
-        }
-        buf.bufsize = 0;
-    }
-}
 
 /// Free a string buffer only if it is larger than defaultSize.
 ///
@@ -1475,236 +1184,33 @@ impl<'s> MSet<'s> {
     }
 }
 
-/// Create a new multi-set for protecting objects.
-///
-/// This is the equivalent of R's `R_NewPreciousMSet()`.
-///
-/// Multi-set representation: `CONS(store, npreserved)` with `TAG() == initialSize`.
-/// `store` is a VECSXP or R_NilValue. `npreserved` is an INTSXP of length 1.
-pub fn R_NewPreciousMSet(initialSize: c_int) -> SEXP {
-    if initialSize < 0 {
-        error("'initialSize' must be non-negative");
-    }
-    checked_memory(OwnerToken::with_current(|owner| {
-        let counter = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-        checked_memory(owner.require_active());
-        let counter = checked_memory(owner.sexp(counter));
-        let set = Rf_cons(R_NilValue(), counter.as_raw());
-        checked_memory(owner.require_active());
-        let set = checked_memory(owner.sexp(set));
-        let initial = Rf_ScalarInteger(initialSize);
-        checked_memory(owner.require_active());
-        SETTAG(set.as_raw(), initial);
-        set.as_raw()
-    }))
-}
 
-/// Add an object to a multi-set.
-///
-/// This is the equivalent of R's `R_PreserveInMSet()`.
-///
-/// Ported from `r-source/src/main/memory.c:3733`.
-pub fn R_PreserveInMSet(x: SEXP, mset: SEXP) {
-    if x == R_NilValue() || crate::mainutils::relop::isSymbol(x) != 0 {
-        return;
-    }
-    checked_memory(OwnerToken::with_current(|owner| {
-        let object = checked_memory(owner.sexp(x));
-        let mset = mset_check(owner.sexp(mset));
-        loop {
-            let current = MSet::read(&mset);
-            let index = i64::from(current.len);
-            let next = current
-                .len
-                .checked_add(1)
-                .unwrap_or_else(|| error("Multi-set overflow"));
-            let mut count = mset_check(SexpMut::try_from_checked(current.count.clone()));
-            if index < current.store.len() {
-                let mut store = mset_check(SexpMut::try_from_checked(current.store.clone()));
-                checked_memory(store.try_set_vector_elt(index, object));
-                checked_memory(count.try_set_integer_elt(0, next));
-                return;
-            }
-            let capacity = if current.store.is_nil() {
-                match mset_check(current.initial.try_integer_elt(0)) {
-                    0 => 4,
-                    n if n > 0 => i64::from(n),
-                    _ => error("Invalid mset"),
-                }
-            } else {
-                current
-                    .store
-                    .len()
-                    .checked_mul(2)
-                    .filter(|n| *n > index && *n < i64::from(c_int::MAX))
-                    .unwrap_or_else(|| error("Multi-set overflow"))
-            };
-            let raw = Rf_allocVector3(SEXPTYPE::VECSXP, capacity);
-            checked_memory(owner.require_active());
-            let mut replacement =
-                checked_memory(SexpMut::try_from_checked(checked_memory(owner.sexp(raw))));
-            // The growth allocation can invoke a callback that changed this
-            // same set; only publish when the cells we read are unchanged.
-            let latest = MSet::read(&mset);
-            if latest.len != current.len
-                || latest.store.as_raw() != current.store.as_raw()
-                || latest.count.as_raw() != current.count.as_raw()
-                || latest.initial.as_raw() != current.initial.as_raw()
-            {
-                continue;
-            }
-            for i in 0..index {
-                let value = checked_memory(current.store.try_vector_elt(i));
-                checked_memory(replacement.try_set_vector_elt(i, value));
-            }
-            checked_memory(replacement.try_set_vector_elt(index, object));
-            SETCAR(mset.as_raw(), replacement.as_raw());
-            checked_memory(count.try_set_integer_elt(0, next));
-            return;
-        }
-    }));
-}
 
-/// Remove (one instance of) the object from the multi-set.
-///
-/// This is the equivalent of R's `R_ReleaseFromMSet()`.
-///
-/// Ported from `r-source/src/main/memory.c:3767`.
-pub fn R_ReleaseFromMSet(x: SEXP, mset: SEXP) {
-    if x == R_NilValue() || crate::mainutils::relop::isSymbol(x) != 0 {
-        return;
-    }
-    checked_memory(OwnerToken::with_current(|owner| {
-        let object = checked_memory(owner.sexp(x));
-        let mset = mset_check(owner.sexp(mset));
-        let current = MSet::read(&mset);
-        let n = i64::from(current.len);
-        let Some(i) = (0..n)
-            .rev()
-            .find(|&i| checked_memory(current.store.try_vector_elt(i)).as_raw() == object.as_raw())
-        else {
-            return;
-        };
-        let mut count = mset_check(SexpMut::try_from_checked(current.count.clone()));
-        let mut output = mset_check(SexpMut::try_from_checked(current.store.clone()));
-        for j in i..n - 1 {
-            let value = checked_memory(current.store.try_vector_elt(j + 1));
-            checked_memory(output.try_set_vector_elt(j, value));
-        }
-        let nil = checked_memory(owner.sexp(R_NilValue()));
-        checked_memory(output.try_set_vector_elt(n - 1, nil));
-        checked_memory(count.try_set_integer_elt(0, current.len - 1));
-    }));
-}
 
 // ---------------------------------------------------------------------------
 // Resizable vector support
 // ---------------------------------------------------------------------------
 
-/// Check if a vector is resizable.
-///
-/// This is the equivalent of R's `R_isResizable()`.
-pub fn R_isResizable(x: SEXP) -> c_int {
-    c_int::from(crate::sexp::accessors::has_resizable_flag(x))
-}
 
-/// Get the maximum length of a resizable vector.
-///
-/// This is the equivalent of R's `R_maxLength()`.
-pub fn R_maxLength(x: SEXP) -> R_xlen_t {
-    {
-        if x.is_null() {
-            return 0;
-        }
-        LENGTH(x) as R_xlen_t
-    }
-}
 
-/// Allocate a resizable vector.
-///
-/// This is the equivalent of R's `R_allocResizableVector()`.
-pub fn R_allocResizableVector(type_: SEXPTYPE, maxlen: R_xlen_t) -> SEXP {
-    Rf_allocVector3(type_.0, maxlen)
-}
 
-/// Duplicate a vector and make it resizable.
-///
-/// This is the equivalent of R's `R_duplicateAsResizable()`.
-pub fn R_duplicateAsResizable(x: SEXP) -> SEXP {
-    let dup = crate::mainutils::duplicate::Rf_duplicate(x);
-    crate::sexp::accessors::set_resizable_flag(dup);
-    dup
-}
 
 // ---------------------------------------------------------------------------
 // Protection stack error handlers
 // ---------------------------------------------------------------------------
 
-/// Signal a protect stack overflow error.
-///
-/// This is the equivalent of R's `R_signal_protect_error()`.
-pub fn R_signal_protect_error() {
-    {
-        crate::mainutils::errors::errorcall_cstr(R_NilValue(), c"protect stack overflow");
-    }
-}
 
-pub fn R_signal_unprotect_error() {
-    {
-        crate::mainutils::errors::errorcall_cstr(R_NilValue(), c"unprotect stack underflow");
-    }
-}
 
 // ---------------------------------------------------------------------------
 // InitMemory / initStack stubs
 // ---------------------------------------------------------------------------
 
-/// Initialize R's memory subsystem.
-///
-/// This is the equivalent of R's `InitMemory()`.
-pub fn InitMemory() {
-    // Arena and GC state are owned by the active RInstance.
-}
 
-/// Reset the protection stack.
-///
-/// This is the equivalent of R's `initStack()`.
-pub fn initStack() {
-    // Arena-based allocation doesn't need PP stack sizing
-}
 
 // ---------------------------------------------------------------------------
 // Memory profile
 // ---------------------------------------------------------------------------
 
-/// Return a small session-local memory profile.
-///
-/// This is the equivalent of R's `do_memoryprofile()`.
-pub fn do_memoryprofile(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    checked_memory(OwnerToken::with_current(|owner| {
-        let raw = Rf_allocVector3(SEXPTYPE::REALSXP, 4);
-        checked_memory(owner.require_active());
-        if raw.is_null() {
-            return R_NilValue();
-        }
-        let mut result =
-            checked_memory(SexpMut::try_from_checked(checked_memory(owner.sexp(raw))));
-        let (nodes, free, bytes) = checked_memory(owner.with_arena(|arena| {
-            (
-                arena.node_count(),
-                arena.free_count(),
-                arena.total_bytes_allocated(),
-            )
-        }));
-        let peak = crate::sexp::gengc::get_gc_stats()
-            .peak_memory
-            .max(bytes);
-        for (i, value) in [nodes, free, bytes, peak].into_iter().enumerate() {
-            checked_memory(result.try_set_real_elt(i as R_xlen_t, value as f64));
-        }
-        result.freeze().as_raw()
-    }))
-}
 
 // ---------------------------------------------------------------------------
 // do_* stubs for GC-related .Internal / .Primitive calls
@@ -1748,78 +1254,8 @@ pub fn do_gctorture2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     old
 }
 
-/// maxVSize() implementation.
-///
-/// This is the equivalent of R's `do_maxVSize()`.
-pub fn do_maxVSize(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    {
-        const MB: f64 = 1_048_576.0;
-        let new_limit_mb = crate::mainutils::coerce::asReal(CAR(args));
-        if new_limit_mb > 0.0 {
-            if new_limit_mb.is_infinite() {
-                let _ = R_SetMaxVSize(u64::MAX);
-            } else {
-                let new_limit = (new_limit_mb * MB).ceil();
-                if new_limit >= u64::MAX as f64 {
-                    let _ = R_SetMaxVSize(u64::MAX);
-                } else {
-                    let _ = R_SetMaxVSize(new_limit as u64);
-                }
-            }
-        }
 
-        let limit = R_GetMaxVSize_memory();
-        if limit == u64::MAX {
-            Rf_ScalarReal(f64::INFINITY)
-        } else {
-            Rf_ScalarReal(limit as f64 / MB)
-        }
-    }
-}
 
-/// maxNSize() implementation.
-///
-/// This is the equivalent of R's `do_maxNSize()`.
-pub fn do_maxNSize(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    {
-        let new_limit = crate::mainutils::coerce::asReal(CAR(args));
-        if new_limit > 0.0 {
-            if new_limit.is_infinite() || new_limit >= u64::MAX as f64 {
-                let _ = R_SetMaxNSize(u64::MAX);
-            } else {
-                let _ = R_SetMaxNSize(new_limit.ceil() as u64);
-            }
-        }
-
-        let limit = R_GetMaxNSize_memory();
-        if limit == u64::MAX {
-            Rf_ScalarReal(f64::INFINITY)
-        } else {
-            Rf_ScalarReal(limit as f64)
-        }
-    }
-}
-
-/// Register finalizer .Internal call.
-///
-/// This is the equivalent of R's `do_regFinaliz()`.
-pub fn do_regFinaliz(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let obj = CAR(args);
-    let fun = CADR(args);
-    let onexit = crate::mainutils::coerce::asLogical(CADDR(args));
-    let t = TYPEOF(obj);
-    if t != SEXPTYPE::ENVSXP && t != SEXPTYPE::EXTPTRSXP {
-        error("first argument must be environment or external pointer");
-    }
-    if TYPEOF(fun) != SEXPTYPE::CLOSXP {
-        error("second argument must be a function");
-    }
-    if onexit == crate::sexp::ffi::NA_LOGICAL {
-        error("third argument must be 'TRUE' or 'FALSE'");
-    }
-    R_RegisterFinalizerEx(obj, fun, onexit);
-    R_NilValue()
-}
 
 // ---------------------------------------------------------------------------
 // Seql (string equality, encoding-aware)
