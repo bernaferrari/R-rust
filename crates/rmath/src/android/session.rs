@@ -644,29 +644,6 @@ impl RSession {
     /// Parses and evaluates code against this session's isolated global
     /// environment.
     /// One-shot migration tooling: convert a compressed GNU-format lazy-load
-    /// record into the equivalent record carrying an RBG1 frame. Doc-hidden
-    /// dev tooling for the asset migration, not stable public API.
-    #[doc(hidden)]
-    pub fn convert_lazy_record_to_rbg1(&mut self, record: &[u8], mode: u8) -> Result<Vec<u8>, String> {
-        let _guard = self.core.activate();
-        crate::mainutils::serialize::convert_gnu_lazy_record_to_rbg1(record, mode)
-    }
-
-    /// Conversion-validation variant returning the raw RBG1 frame.
-    #[doc(hidden)]
-    pub fn convert_lazy_record_to_rbg1_frame(&mut self, record: &[u8], mode: u8) -> Result<Vec<u8>, String> {
-        let _guard = self.core.activate();
-        crate::mainutils::serialize::convert_gnu_lazy_record_to_rbg1_frame(record, mode)
-    }
-
-    /// Convert a bare uncompressed GNU serialization stream into an RBG1 frame,
-    /// activating the session for object materialization.
-    #[doc(hidden)]
-    pub fn convert_gnu_stream_to_rbg1_frame(&mut self, plain: &[u8]) -> Result<Vec<u8>, String> {
-        let _guard = self.core.activate();
-        crate::mainutils::serialize::convert_gnu_stream_to_rbg1_frame(plain)
-    }
-
     pub fn eval(&mut self, code: &str) -> RResult {
         self.eval_script(code)
     }
