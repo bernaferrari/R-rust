@@ -223,14 +223,6 @@ pub(crate) fn real_elt_or_default(x: SEXP, i: R_xlen_t, default: f64) -> f64 {
     }
 }
 
-pub(crate) fn numeric_elt_as_count(x: SEXP, i: R_xlen_t) -> usize {
-    let value = real_elt_or_default(x, i, 0.0);
-    if value.is_finite() {
-        (value as i64).max(0) as usize
-    } else {
-        0
-    }
-}
 
 pub(crate) fn named_logical_arg(args: SEXP, name: &str) -> Option<bool> {
     let mut current = args;

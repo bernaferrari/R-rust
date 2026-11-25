@@ -1183,13 +1183,6 @@ pub(super) fn default_warning_cstr(call: SEXP, message: &CStr) {
     unsafe { vwarningcall_dflt(call, message.as_ptr(), ptr::null_mut()) };
 }
 
-/// Issue an immediate warning (bypass collection).
-pub fn warningcall_immediate(call: SEXP, message: &CStr) {
-    let prev = immediate_warning();
-    set_immediate_warning(true);
-    default_warning_cstr(call, message);
-    set_immediate_warning(prev);
-}
 
 /// Issue a warning (without call).
 /// Rust callers should use [`Rf_warning_cstr`].

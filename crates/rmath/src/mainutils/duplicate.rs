@@ -1903,22 +1903,6 @@ pub fn xcopyVectorWithRecycle(dst: SEXP, src: SEXP, dstart: R_xlen_t, n: R_xlen_
 // ---------------------------------------------------------------------------
 
 
-/// Fill integer matrix with recycling.
-pub unsafe fn xfillIntegerMatrixWithRecycle(
-    dst: *mut c_int,
-    src: *mut c_int,
-    dstart: R_xlen_t,
-    drows: R_xlen_t,
-    srows: R_xlen_t,
-    cols: R_xlen_t,
-    nsrc: R_xlen_t,
-) {
-    unsafe {
-        fill_matrix_iterate(dstart, drows, srows, cols, nsrc, |didx, sidx| {
-            *dst.add(didx as usize) = *src.add(sidx as usize);
-        });
-    }
-}
 
 
 

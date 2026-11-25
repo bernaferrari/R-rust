@@ -76,10 +76,6 @@ pub fn IS_LOW_SURROGATE(wch: wint_t) -> bool {
     wch >= LOW_SURROGATE_START && wch <= LOW_SURROGATE_END
 }
 
-#[inline]
-pub fn IS_SURROGATE_PAIR(hs: wint_t, ls: wint_t) -> bool {
-    IS_HIGH_SURROGATE(hs) && IS_LOW_SURROGATE(ls)
-}
 
 // -----------------------------------------------------------------------
 // Data table structures
@@ -503,30 +499,6 @@ static Ri18n_wctype_func: &[Ri18n_wctype_func_l] = &[
 // Public API: width functions
 // -----------------------------------------------------------------------
 
-/// Return the display width of a Unicode code point.
-///
-/// This is a replacement for `wcwidth()` that takes CJK locale into account.
-/// Unlike the POSIX description, this does not return -1 for non-printable
-/// Unicode points; unknown characters are assumed to have width one.
-///
-/// # Safety
-/// The caller must ensure `c` is a valid Unicode code point.
-pub fn Ri18n_wcwidth(c: R_wchar_t) -> c_int {
-    // This quickly gives one for printing ASCII characters
-    if c > 0x1F && c < 0x7F {
-        return 1;
-    }
-
-    // Cache the locale id (in C this uses a static variable)
-    let lc = get_locale_id();
-
-    let wd = wcwidthsearch(c, table_wcwidth, table_wcwidth_count as c_int, lc);
-    if wd >= 0 {
-        return wd; // currently all are 1 or 2.
-    }
-    let zw = wcsearch(c, zero_width, zero_width_count as c_int);
-    if zw != 0 { 0 } else { 1 } // assume unknown chars are width one.
-}
 
 
 // -----------------------------------------------------------------------

@@ -738,19 +738,6 @@ pub fn do_hat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     result
 }
 
-/// GNU `hatvalues(model)` — extract `$hat` or compute `hat(residuals)`.
-pub fn do_hatvalues(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    let obj = CAR(args);
-    let h = list_named_elt(obj, "hat");
-    if h != R_NilValue() {
-        return h;
-    }
-    let x = list_named_elt(obj, "x");
-    if x != R_NilValue() {
-        return do_hat(_call, _op, Rf_cons(x, R_NilValue()), rho);
-    }
-    R_NilValue()
-}
 
 
 /// GNU `effects(lm)` — first two QR effects for intercept + `1:n`.
@@ -839,73 +826,7 @@ pub fn do_numeric_deriv(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 
-/// GNU `cooks.distance` as `((e/((1-h)*sd))^2 * h) / p`.
-pub fn do_cooks_distance(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let obj = CAR(args);
-    let resid = list_named_elt(obj, "residuals");
-    let hat = list_named_elt(obj, "hat");
-    let sigma = list_named_elt(obj, "sigma");
-    let rank = list_named_elt(obj, "rank");
-    if resid == R_NilValue() || hat == R_NilValue() || sigma == R_NilValue() {
-        return R_NilValue();
-    }
-    let n = XLENGTH(resid).min(XLENGTH(hat));
-    let s = elt_real_safe(sigma, 0);
-    let p = if rank == R_NilValue() {
-        1.0
-    } else {
-        elt_real_safe(rank, 0)
-    };
-    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-    let _r = protect(result);
-    for i in 0..n {
-        let e = elt_real_safe(resid, i);
-        let h = elt_real_safe(hat, i);
-        let den = (1.0 - h) * s;
-        let d = if den != 0.0 && p != 0.0 && den.is_finite() {
-            let t = e / den;
-            t * t * h / p
-        } else {
-            f64::NAN
-        };
-        set_real_checked(result, (i as usize) as R_xlen_t, d);
-    }
-    result
-}
 
-/// GNU `dffits` as `e * sqrt(h) / (sigma * (1-h))`.
-pub fn do_dffits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let obj = CAR(args);
-    let resid = list_named_elt(obj, "residuals");
-    let hat = list_named_elt(obj, "hat");
-    let sigma = list_named_elt(obj, "sigma");
-    if resid == R_NilValue() || hat == R_NilValue() || sigma == R_NilValue() {
-        return R_NilValue();
-    }
-    let n = XLENGTH(resid).min(XLENGTH(hat));
-    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-    let _r = protect(result);
-    for i in 0..n {
-        let e = elt_real_safe(resid, i);
-        let h = elt_real_safe(hat, i);
-        let s = if XLENGTH(sigma) > 1 {
-            elt_real_safe(sigma, i)
-        } else {
-            elt_real_safe(sigma, 0)
-        };
-        let den = s * (1.0 - h);
-        set_real_checked(
-            result,
-            (i as usize) as R_xlen_t,
-            if den != 0.0 && den.is_finite() && h >= 0.0 {
-                e * h.sqrt() / den
-            } else {
-                f64::NAN
-            },
-        );
-    }
-    result
-}
 
 
 fn invert_square(a: &[f64], p: usize) -> Option<Vec<f64>> {

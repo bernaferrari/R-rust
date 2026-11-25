@@ -144,12 +144,6 @@ mod tests {
 // Initialization helpers (minimal, self-contained implementations)
 // ---------------------------------------------------------------------------
 
-// Initialize the R startup parameters (exposed for compatibility).
-pub fn R_DefParamsEx(_Rp: *mut c_void, _RstartVersion: c_int) -> c_int {
-    // The full parameter population logic exists in the Rust ports of other
-    // startup pieces. For this port we simply return 0 to indicate success.
-    0
-}
 
 
 

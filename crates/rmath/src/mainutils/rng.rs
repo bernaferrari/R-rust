@@ -71,20 +71,8 @@ where
     )
 }
 
-pub fn rng_next_double() -> f64 {
-    with_main_rng_state(|state| state.mt.next_f64())
-}
 
-pub fn rng_next_u32() -> u32 {
-    with_main_rng_state(|state| state.mt.next_u32())
-}
 
-pub fn set_rng_seed(seed: i32) {
-    with_main_rng_state(|state| {
-        state.seed = seed;
-        state.mt = MT19937::new(seed as u32);
-    });
-}
 
 
 // Public API surface expected to resemble the C RNG.c port surface for the subset
