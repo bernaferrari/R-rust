@@ -89,17 +89,6 @@ pub fn do_levelsgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // do_tsp — tsp(x) and tsp(x) <- value
 // ---------------------------------------------------------------------------
 
-/// Get or set the tsp (time series parameters) attribute.
-pub fn do_tsp(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    let _ = (call, op, env);
-
-    if Rf_length(args) == 1 {
-        let x = CAR(args);
-        return crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_TspSymbol());
-    }
-
-    error("wrong number of arguments");
-}
 
 // ---------------------------------------------------------------------------
 // do_tspgets — set tsp attribute
@@ -121,19 +110,6 @@ pub fn do_tspgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // do_comment — comment(x) and comment(x) <- value
 // ---------------------------------------------------------------------------
 
-/// Get or set the comment attribute.
-pub fn do_comment(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    let _ = (call, op, env);
-
-    let comment_sym = crate::sexp::symbol::install_str("comment");
-
-    if Rf_length(args) == 1 {
-        let x = CAR(args);
-        return crate::eval::attrib_core::getAttrib(x, comment_sym);
-    }
-
-    error("wrong number of arguments");
-}
 
 // ---------------------------------------------------------------------------
 // do_commentgets — set comment attribute
@@ -156,24 +132,6 @@ pub fn do_commentgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // do_attr — attr(x, which) and attr(x, which) <- value
 // ---------------------------------------------------------------------------
 
-/// Get or set a single attribute.
-pub fn do_attr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    let _ = (call, op, env);
-
-    let nargs = Rf_length(args);
-    if nargs < 2 {
-        error("either 2 or 3 arguments are required");
-    }
-
-    let x = CAR(args);
-    let which = CADR(args);
-
-    if nargs == 2 {
-        return crate::eval::attrib_core::getAttrib(x, which);
-    }
-
-    error("either 2 or 3 arguments are required");
-}
 
 // ---------------------------------------------------------------------------
 // do_attrgets — set a single attribute
@@ -269,15 +227,6 @@ pub fn do_namesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // do_isobject — check if object has explicit class
 // ---------------------------------------------------------------------------
 
-/// Check if an object has an explicit class attribute.
-pub fn do_isobject(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    let _ = (call, op, env);
-    if Rf_length(args) < 1 {
-        error("wrong number of arguments");
-    }
-    let x = CAR(args);
-    Rf_ScalarLogical(crate::eval::attrib_core::isObject(x))
-}
 
 // ---------------------------------------------------------------------------
 // do_shortRowNames — .Internal(shortRowNames(x, type))

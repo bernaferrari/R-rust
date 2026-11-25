@@ -2241,13 +2241,6 @@ pub fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // do_unclass
 // ---------------------------------------------------------------------------
 
-pub fn do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    let x = CAR(args);
-    if !x.is_null() {
-        crate::sexp::attrib_core::setAttrib(x, R_ClassSymbol(), R_NilValue());
-    }
-    x
-}
 
 // ---------------------------------------------------------------------------
 // isEnvironment (public, #[unsafe(no_mangle)])

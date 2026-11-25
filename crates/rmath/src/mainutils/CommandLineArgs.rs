@@ -255,31 +255,6 @@ fn set_no_renviron(value: bool) {
 // do_commandArgs — the .Internal(commandArgs())
 // ---------------------------------------------------------------------------
 
-/// .Internal handler: returns a STRSXP character vector of the stored
-/// command-line arguments.
-pub fn do_commandArgs(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    let _ = call;
-    let _ = op;
-    let _ = args;
-    let _ = env;
-
-    let command_line_args = with_startup_state(|state| state.command_line_args.clone());
-    let num_args = command_line_args.len().min(c_int::MAX as usize);
-    let vals = Rf_allocVector(SEXPTYPE::STRSXP, num_args as c_int);
-
-    if vals.is_null() {
-        return ptr::null_mut();
-    }
-
-    for (i, arg) in command_line_args.iter().take(num_args).enumerate() {
-        if let Some(arg) = arg {
-            let charsxp = crate::sexp::constructors::mk_char_bytes(arg.to_bytes());
-            SET_STRING_ELT(vals, i as R_xlen_t, charsxp);
-        }
-    }
-
-    vals
-}
 
 // ---------------------------------------------------------------------------
 // R_common_command_line — process common command-line options

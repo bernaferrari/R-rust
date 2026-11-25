@@ -598,28 +598,6 @@ pub fn elem_is_na(s: SEXP) -> c_int {
     }
 }
 
-/// R-level `is.*` predicate dispatcher.
-///
-/// This is the `do_is()` function from coerce.c, implementing is.null,
-/// is.logical, is.integer, is.double, is.complex, is.character, etc.
-pub fn do_is(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let args_s = match crate::mainutils::essentials::active_owner().sexp(args) {
-            Ok(s) => s,
-            Err(_) => return Rf_ScalarLogical(0),
-        };
-        let x = match args_s.try_pairlist_arg(0) {
-            Ok(s) => s,
-            Err(_) => return Rf_ScalarLogical(0),
-        };
-        let op0 = PRIMVAL(op);
-        match is_type_safe(x, op0) {
-            Ok(result) => Rf_ScalarLogical(result),
-            Err(_) => Rf_ScalarLogical(0),
-        }
-    }))
-    .unwrap_or_else(|_| Rf_ScalarLogical(0))
-}
 
 /// R-level `is.vector()` entry point.
 ///

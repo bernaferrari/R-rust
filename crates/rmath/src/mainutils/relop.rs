@@ -538,42 +538,6 @@ where
 // do_relop -- main entry point for relational operators
 // ---------------------------------------------------------------------------
 
-/// Main dispatch for relational operators.
-///
-/// Checks for group dispatch via `DispatchGroup`, then delegates to
-/// `do_relop_dflt` for the default implementation.
-pub fn do_relop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    let arg1 = CAR(args);
-    let arg2 = CADR(args);
-
-    // Prefer the evaluator DispatchGroup that actually applies methods.
-    // Skip ordered factors so the dedicated Ops.ordered path keeps stock warnings.
-    if !checked_has_class(arg1, "ordered") && !checked_has_class(arg2, "ordered") {
-        let mut ans: SEXP = R_NilValue();
-        // SAFETY: "Ops" is a NUL-terminated literal, `ans` is a live local
-        // out-slot, and call/op/args/env are the evaluator's rooted inputs.
-        let dispatched = unsafe {
-            crate::eval::dispatch::DispatchGroup(
-                b"Ops\0".as_ptr() as *const c_char,
-                call,
-                op,
-                args,
-                env,
-                &mut ans,
-            )
-        };
-        if dispatched != 0 {
-            return ans;
-        }
-    }
-
-    let argc = Rf_length(args);
-    if argc != 2 {
-        relop_error("operator needs two arguments");
-    }
-
-    do_relop_dflt(call, op, arg1, arg2)
-}
 
 // ---------------------------------------------------------------------------
 // compute_lang_equal

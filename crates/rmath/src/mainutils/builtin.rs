@@ -354,99 +354,12 @@ pub fn do_returnValue(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // do_args — args()
 // ---------------------------------------------------------------------------
 
-pub fn do_args(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    {
-        check_arity(op, args);
-        let mut input = CAR(args);
-        if TYPEOF(input) == SEXPTYPE::STRSXP && LENGTH(input) == 1 {
-            let s = installTrChar(first_string_char(input));
-            input = find_fun(s, rho);
-        }
-        if TYPEOF(input) == SEXPTYPE::CLOSXP {
-            let s = allocSExp(SEXPTYPE::CLOSXP);
-            SET_FORMALS(s, FORMALS(input));
-            SET_BODY(s, R_NilValue());
-            SET_CLOENV(s, R_GlobalEnv());
-            return s;
-        }
-        if TYPEOF(input) == SEXPTYPE::BUILTINSXP || TYPEOF(input) == SEXPTYPE::SPECIALSXP {
-            let args_env =
-                find_var_in_frame(R_BaseEnv(), crate::sexp::symbol::install_str(".ArgsEnv"));
-            let env = if TYPEOF(args_env) == SEXPTYPE::PROMSXP {
-                eval_sexp(args_env, R_BaseEnv())
-            } else {
-                args_env
-            };
-            let nm_sym = install_prim_name(input);
-            let s2 = find_var_in_frame(env, nm_sym);
-            if s2 != R_UnboundValue() {
-                let s = duplicate_sexp(s2);
-                SET_BODY(s, R_NilValue());
-                SET_CLOENV(s, R_GlobalEnv());
-                return s;
-            }
-            let generic_env = find_var_in_frame(
-                R_BaseEnv(),
-                crate::sexp::symbol::install_str(".GenericArgsEnv"),
-            );
-            let env2 = if TYPEOF(generic_env) == SEXPTYPE::PROMSXP {
-                eval_sexp(generic_env, R_BaseEnv())
-            } else {
-                generic_env
-            };
-            let s3 = find_var_in_frame(env2, nm_sym);
-            if s3 != R_UnboundValue() {
-                let s = allocSExp(SEXPTYPE::CLOSXP);
-                SET_FORMALS(s, FORMALS(s3));
-                SET_BODY(s, R_NilValue());
-                SET_CLOENV(s, R_GlobalEnv());
-                return s;
-            }
-        }
-        R_NilValue()
-    }
-}
 
 // ---------------------------------------------------------------------------
 // do_formals, do_body, do_bodyCode
 // ---------------------------------------------------------------------------
 
-pub fn do_formals(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    {
-        check_arity(op, args);
-        let mut input = CAR(args);
-        if TYPEOF(input) == SEXPTYPE::PROMSXP {
-            input = eval_sexp(input, _rho);
-        }
-        if TYPEOF(input) == SEXPTYPE::CLOSXP {
-            let f = FORMALS(input);
-            RAISE_NAMED(f, crate::sexp::accessors::NAMED(input));
-            f
-        } else {
-            if TYPEOF(input) != SEXPTYPE::BUILTINSXP && TYPEOF(input) != SEXPTYPE::SPECIALSXP {
-                warningcall(call, "argument is not a function");
-            }
-            R_NilValue()
-        }
-    }
-}
 
-pub fn do_body(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    {
-        check_arity(op, args);
-        let input = CAR(args);
-        if TYPEOF(input) == SEXPTYPE::CLOSXP {
-            let b = BODY(input);
-            RAISE_NAMED(b, crate::sexp::accessors::NAMED(input));
-            b
-        } else {
-            if TYPEOF(input) != SEXPTYPE::BUILTINSXP && TYPEOF(input) != SEXPTYPE::SPECIALSXP {
-                warningcall(call, "argument is not a function");
-            }
-            R_NilValue()
-        }
-    }
-}
 
 pub fn do_bodyCode(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
@@ -622,14 +535,6 @@ pub fn do_envirName(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // do_cat — cat() (simplified for embedded use)
 // ---------------------------------------------------------------------------
 
-pub fn do_cat(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    {
-        check_arity(op, args);
-        // In embedded/headless mode, cat() is a no-op
-        // Full implementation would need the connections subsystem
-        R_NilValue()
-    }
-}
 
 // ---------------------------------------------------------------------------
 // do_makelist — list()
