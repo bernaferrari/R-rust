@@ -253,29 +253,5 @@ pub fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `sys.nframe()` — returns the number of frames on the call stack.
-pub fn do_sys_nframe(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let top = crate::sexp::context::R_GlobalContext();
-        Rf_ScalarInteger(crate::eval::context::framedepth(top))
-    }
-}
 
-/// R's `sys.function(which)` — returns the function at the given frame level.
-pub fn do_sys_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let which = context_index_arg(args, 0);
-        let top = crate::sexp::context::R_GlobalContext();
-        if top.is_null() {
-            R_NilValue()
-        } else {
-            crate::eval::context::R_sysfunction(which, top)
-        }
-    }
-}
 
-/// R's `on.exit(expr, add, after)` — register an exit handler for the
-/// current function context.
-pub fn do_on_exit(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::eval::special::do_on_exit_from_args(args, rho) }
-}

@@ -51,14 +51,6 @@ pub(crate) fn set_datetime_class_from(result: SEXP, source: SEXP, class: Datetim
     }
 }
 
-pub(crate) fn integer_or_logical_elt(value: SEXP, index: c_int) -> c_int {
-    match TYPEOF(value) {
-        t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-            integer_like_elt(&owner_sexp(active_owner(), value), index as R_xlen_t)
-        }
-        _ => NA_INTEGER,
-    }
-}
 
 pub fn do_cache_class(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     check1arg_cstr(args, call, c"class");

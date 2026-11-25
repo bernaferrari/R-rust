@@ -1271,16 +1271,6 @@ pub(crate) fn perl_captures(pattern: &str, text: &str, ignore_case: bool) -> Opt
         .and_then(|regex| regex.captures(text))
 }
 
-/// All non-overlapping perl matches with their capture spans, in order —
-/// the iteration do_gregexpr's perl branch needs (grep.c re-runs pcre2_exec
-/// per global match). Unset groups are `None`, like `perl_captures`.
-pub(crate) fn perl_captures_all(
-    pattern: &str,
-    text: &str,
-    ignore_case: bool,
-) -> Option<RegexMatches> {
-    mode_captures_all(pattern, text, ignore_case, false)
-}
 
 /// Capture-group metadata for a perl pattern: `(group count excluding the
 /// implicit whole-match group 0, group names)` where unnamed groups map to
@@ -2045,12 +2035,6 @@ pub fn R_pcre_exec(
     -1
 }
 
-/// Placeholder: `R_pcre_config` -- PCRE configuration query.
-///
-/// Returns 0 as a safe stub.
-pub fn R_pcre_config_stub(_what: c_int, _where: *mut c_int) -> c_int {
-    0
-}
 
 // ---------------------------------------------------------------------------
 // Tests

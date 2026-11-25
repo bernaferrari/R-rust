@@ -752,111 +752,6 @@ pub fn do_hatvalues(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     R_NilValue()
 }
 
-/// GNU `influence.measures(model)` — cbind(dfbetas, dffit, cov.r, cook.d, hat).
-pub fn do_influence_measures(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    let obj = CAR(args);
-    let one = Rf_cons(obj, R_NilValue());
-    let _one = protect(one);
-    let db = do_dfbetas(call, op, one, rho);
-    let _db = protect(db);
-    let dff = do_dffits(call, op, one, rho);
-    let _dff = protect(dff);
-    let cr = do_covratio(call, op, one, rho);
-    let _cr = protect(cr);
-    let ck = do_cooks_distance(call, op, one, rho);
-    let _ck = protect(ck);
-    let mut hat = list_named_elt(obj, "hat");
-    if hat == R_NilValue() {
-        hat = do_hatvalues(call, op, one, rho);
-    }
-    let _hat = protect(hat);
-    let n = if hat != R_NilValue() {
-        XLENGTH(hat) as usize
-    } else if dff != R_NilValue() {
-        XLENGTH(dff) as usize
-    } else {
-        return R_NilValue();
-    };
-    let db_dim = if db != R_NilValue() {
-        crate::sexp::attrib_core::getAttrib(db, crate::sexp::attrib_core::R_DimSymbol())
-    } else {
-        R_NilValue()
-    };
-    let p = if !db_dim.is_null()
-        && db_dim != R_NilValue()
-        && TYPEOF(db_dim) == SEXPTYPE::INTSXP
-        && XLENGTH(db_dim) >= 2
-    {
-        integer_elt_checked(db_dim, (1) as R_xlen_t) as usize
-    } else if db != R_NilValue() {
-        1
-    } else {
-        0
-    };
-    let ncol = p + 4;
-    let mat = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, ncol as i32);
-    let _m = protect(mat);
-    for j in 0..p {
-        for i in 0..n {
-            set_real_checked(
-                mat,
-                (i + j * n) as R_xlen_t,
-                if db != R_NilValue() {
-                    real_elt_checked(db, (i + j * n) as R_xlen_t)
-                } else {
-                    f64::NAN
-                },
-            );
-        }
-    }
-    for i in 0..n {
-        set_real_checked(mat, (i + p * n) as R_xlen_t, elt_real_safe(dff, i as i64));
-        set_real_checked(
-            mat,
-            (i + (p + 1) * n) as R_xlen_t,
-            elt_real_safe(cr, i as i64),
-        );
-        set_real_checked(
-            mat,
-            (i + (p + 2) * n) as R_xlen_t,
-            elt_real_safe(ck, i as i64),
-        );
-        set_real_checked(
-            mat,
-            (i + (p + 3) * n) as R_xlen_t,
-            elt_real_safe(hat, i as i64),
-        );
-    }
-    let cn = Rf_allocVector3(SEXPTYPE::STRSXP, ncol as i64);
-    let _cn = protect(cn);
-    let coef = list_named_elt(obj, "coefficients");
-    let cnames =
-        crate::sexp::attrib_core::getAttrib(coef, crate::sexp::attrib_core::R_NamesSymbol());
-    for j in 0..p {
-        let nm = if !cnames.is_null()
-            && TYPEOF(cnames) == SEXPTYPE::STRSXP
-            && (j as i64) < XLENGTH(cnames)
-        {
-            STRING_ELT(cnames, j as i64)
-        } else {
-            mk_char_cstr(c"dfb")
-        };
-        SET_STRING_ELT(cn, j as i64, nm);
-    }
-    SET_STRING_ELT(cn, p as i64, mk_char_cstr(c"dffit"));
-    SET_STRING_ELT(cn, (p + 1) as i64, mk_char_cstr(c"cov.r"));
-    SET_STRING_ELT(cn, (p + 2) as i64, mk_char_cstr(c"cook.d"));
-    SET_STRING_ELT(cn, (p + 3) as i64, mk_char_cstr(c"hat"));
-    let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-    let _dn = protect(dn);
-    SET_VECTOR_ELT(dn, 1, cn);
-    crate::sexp::attrib_core::setAttrib(mat, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
-    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
-    let _r = protect(result);
-    SET_VECTOR_ELT(result, 0, mat);
-    crate::mainutils::essentials::set_string_names(result, &["infmat".to_string()]);
-    result
-}
 
 /// GNU `effects(lm)` — first two QR effects for intercept + `1:n`.
 pub fn do_effects(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -943,35 +838,6 @@ pub fn do_numeric_deriv(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-/// GNU `rstandard(model)` as `resid / (sigma * sqrt(1-hat))`.
-pub fn do_rstandard(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let obj = CAR(args);
-    let resid = list_named_elt(obj, "residuals");
-    let hat = list_named_elt(obj, "hat");
-    let sigma = list_named_elt(obj, "sigma");
-    if resid == R_NilValue() || hat == R_NilValue() || sigma == R_NilValue() {
-        return R_NilValue();
-    }
-    let n = XLENGTH(resid).min(XLENGTH(hat));
-    let s = elt_real_safe(sigma, 0);
-    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-    let _r = protect(result);
-    for i in 0..n {
-        let e = elt_real_safe(resid, i);
-        let h = elt_real_safe(hat, i);
-        let den = s * (1.0 - h).max(0.0).sqrt();
-        set_real_checked(
-            result,
-            (i as usize) as R_xlen_t,
-            if den > 0.0 && den.is_finite() {
-                e / den
-            } else {
-                f64::NAN
-            },
-        );
-    }
-    result
-}
 
 /// GNU `cooks.distance` as `((e/((1-h)*sd))^2 * h) / p`.
 pub fn do_cooks_distance(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -1041,39 +907,6 @@ pub fn do_dffits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     result
 }
 
-/// GNU `rstudent` as `e / (sigma_i * sqrt(1-hat))`.
-pub fn do_rstudent(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let obj = CAR(args);
-    let resid = list_named_elt(obj, "residuals");
-    let hat = list_named_elt(obj, "hat");
-    let sigma = list_named_elt(obj, "sigma");
-    if resid == R_NilValue() || hat == R_NilValue() || sigma == R_NilValue() {
-        return R_NilValue();
-    }
-    let n = XLENGTH(resid).min(XLENGTH(hat));
-    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-    let _r = protect(result);
-    for i in 0..n {
-        let e = elt_real_safe(resid, i);
-        let h = elt_real_safe(hat, i);
-        let s = if XLENGTH(sigma) > 1 {
-            elt_real_safe(sigma, i)
-        } else {
-            elt_real_safe(sigma, 0)
-        };
-        let den = s * (1.0 - h).max(0.0).sqrt();
-        set_real_checked(
-            result,
-            (i as usize) as R_xlen_t,
-            if den > 0.0 && den.is_finite() {
-                e / den
-            } else {
-                f64::NAN
-            },
-        );
-    }
-    result
-}
 
 fn invert_square(a: &[f64], p: usize) -> Option<Vec<f64>> {
     if p == 0 || a.len() != p * p {

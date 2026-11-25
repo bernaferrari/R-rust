@@ -201,14 +201,6 @@ pub fn set_error_call_less(call_less: bool) {
     with_error_state(|state| state.call_less = call_less);
 }
 
-/// Consume the call-less flag set by the most recent `verrorcall_dflt`.
-pub fn take_error_call_less() -> bool {
-    with_error_state(|state| {
-        let flag = state.call_less;
-        state.call_less = false;
-        flag
-    })
-}
 
 /// Record the call attributed to the error about to unwind.
 ///
@@ -642,10 +634,6 @@ pub fn R_SetShowErrorCalls(val: bool) {
     set_r_show_error_calls(val);
 }
 
-/// Set whether to show warning call traces.
-pub fn R_SetShowWarnCalls(val: bool) {
-    set_r_show_warn_calls(val);
-}
 
 /// Get the inError flag.
 pub fn R_GetInError() -> i32 {

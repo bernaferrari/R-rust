@@ -139,18 +139,3 @@ pub unsafe fn R_decompress3(input: SEXP, error: *mut Rboolean) -> SEXP {
 // R_snprintf utility
 // ---------------------------------------------------------------------------
 
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn Rsnprintf(buf: *mut c_char, size: usize, _format: *const c_char) -> c_int {
-    // SAFETY: `buf` is a caller-owned C buffer; the null check plus the
-    // single leading-NUL store cannot overrun its `size` bound.
-    unsafe {
-        if !buf.is_null() && size > 0 {
-            *buf = 0;
-        }
-        0
-    }
-}

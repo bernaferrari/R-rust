@@ -74,10 +74,6 @@ pub fn do_interactive(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     Rf_ScalarLogical(FALSE)
 }
 
-/// Alias for `interactive()`.
-pub fn do_is_interactive(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    Rf_ScalarLogical(FALSE)
-}
 
 /// R's `getRversion()` — returns an `R_system_version` package-version object.
 pub fn do_getRversion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
@@ -138,10 +134,6 @@ pub fn do_R_version_string(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
 // Complete R runtime
 // ---------------------------------------------------------------------------
 
-/// R-like `ls_args()` — list argument names of current function (simplified: return empty character).
-pub fn do_ls_args(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    Rf_allocVector3(SEXPTYPE::STRSXP, 0)
-}
 
 /// R's `deparse1(expr, collapse, width.cutoff)` — deparse to a single string.
 pub fn do_deparse1(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

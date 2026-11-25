@@ -136,26 +136,6 @@ pub fn check_logical_arg(arg: SEXP, name: &str) -> c_int {
     v
 }
 
-pub fn positional_or(args: SEXP, index: usize, default: SEXP) -> SEXP {
-    {
-        let mut cell = args;
-        for _ in 0..index {
-            if cell.is_null() || cell == R_NilValue() {
-                return default;
-            }
-            cell = CDR(cell);
-        }
-        if cell.is_null() || cell == R_NilValue() {
-            return default;
-        }
-        let value = CAR(cell);
-        if value.is_null() || value == R_NilValue() || value == R_MissingArg() {
-            default
-        } else {
-            value
-        }
-    }
-}
 
 pub fn arg_by_name_or_position(args: SEXP, position: usize, names: &[&str], default: SEXP) -> SEXP {
     let mut cell = args;

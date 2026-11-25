@@ -19,10 +19,6 @@ pub fn do_findRestart(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `restarts()` — list available restarts.
-pub fn do_restarts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    restart_stack_as_list()
-}
 
 /// R's `invokeRestart(restart, ...)` — call a restart and return to its dynamic extent.
 pub fn do_invokeRestart(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {

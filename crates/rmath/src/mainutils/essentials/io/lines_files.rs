@@ -133,68 +133,7 @@ pub fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     result
 }
 
-/// R's `file.exists(...)` — check if files exist.
-pub fn do_file_exists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    if x.is_null() || x == R_NilValue() {
-        return Rf_ScalarLogical(FALSE);
-    }
-    let n = XLENGTH(x);
-    let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-    if result.is_null() {
-        return R_NilValue();
-    }
-    let _result_guard = protect(result);
-    let mut dst = owner_sexp_mut(result);
-    for i in 0..n {
-        let path = elt_to_string(x, i);
-        sexp_ok(dst.try_set_logical_elt(
-            (i as usize) as R_xlen_t,
-            if std::path::Path::new(&path).exists()
-                || crate::library::builtin_files::path_exists(&path)
-            {
-                TRUE
-            } else {
-                FALSE
-            },
-        ));
-    }
-    result
-}
 
-/// R's `list.files(path)` — list files in directory.
-pub fn do_list_files(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let path_arg = CAR(args);
-    let path = if path_arg.is_null() || path_arg == R_NilValue() {
-        ".".to_string()
-    } else {
-        elt_to_string(path_arg, 0)
-    };
-
-    let entries: Vec<String> = std::fs::read_dir(&path)
-        .map(|dir| {
-            dir.filter_map(|e| e.ok())
-                .filter_map(|e| e.file_name().into_string().ok())
-                .collect()
-        })
-        .unwrap_or_default();
-
-    let n = entries.len();
-    let result = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
-    if result.is_null() {
-        return R_NilValue();
-    }
-    let _result_guard = protect(result);
-
-    for (i, name) in entries.iter().enumerate() {
-        let cstr = CString::new(name.as_str()).unwrap_or_default();
-        let charsxp = mk_char_cstr(&cstr);
-        if !charsxp.is_null() {
-            crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
-        }
-    }
-    result
-}
 
 /// R's `system(command, intern = FALSE)` — run a system command.
 pub fn do_system(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

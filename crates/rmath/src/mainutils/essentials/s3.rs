@@ -91,143 +91,6 @@ pub(crate) fn apply_s3_closure_method(
     }
 }
 
-/// R's `methods(generic)` — list methods known to the Rust runtime.
-pub fn do_methods(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let mut class_arg = R_NilValue();
-    let mut generic_arg = R_NilValue();
-    let mut cell = args;
-    while !cell.is_null() && cell != R_NilValue() {
-        let tag = TAG(cell);
-        let name = if tag.is_null() || tag == R_NilValue() {
-            String::new()
-        } else {
-            charsxp_text(PRINTNAME(tag)).unwrap_or_default()
-        };
-        if name == "class" {
-            class_arg = CAR(cell);
-        } else if name.is_empty() && generic_arg == R_NilValue() {
-            generic_arg = CAR(cell);
-        }
-        cell = CDR(cell);
-    }
-    if !class_arg.is_null() && class_arg != R_NilValue() {
-        if XLENGTH(class_arg) > 1 {
-            crate::mainutils::errors::Rf_warning_cstr(
-                c"'class' is of length > 1; only the first element will be used",
-            );
-        }
-        let class_name = elt_to_string(class_arg, 0);
-        let suffix = format!(".{class_name}");
-        let mut methods = all_runtime_method_names()
-            .into_iter()
-            .filter(|name| name.ends_with(&suffix))
-            .collect::<Vec<_>>();
-        methods.sort();
-        let ans = methods_function(string_vector(&methods));
-        let info = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
-        let info_class = mk_string_cstr(c"data.frame");
-        crate::sexp::attrib_core::setAttrib(
-            info,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            info_class,
-        );
-        let info_names = Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        crate::sexp::attrib_core::setAttrib(
-            info,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-            info_names,
-        );
-        let row_names = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-        crate::sexp::attrib_core::setAttrib(info, install_str("row.names"), row_names);
-        crate::sexp::attrib_core::setAttrib(ans, install_str("info"), info);
-        return ans;
-    }
-    if generic_arg.is_null() || generic_arg == R_NilValue() {
-        return methods_function(string_vector(&all_runtime_method_names()));
-    }
-    let mut generic = String::new();
-    if TYPEOF(generic_arg) == SEXPTYPE::STRSXP {
-        generic = elt_to_string(generic_arg, 0);
-    } else {
-        let mut call_cell = CDR(call);
-        while !call_cell.is_null() && call_cell != R_NilValue() {
-            let tag = TAG(call_cell);
-            let tagged = !tag.is_null() && tag != R_NilValue();
-            if !tagged {
-                let expr = CAR(call_cell);
-                if TYPEOF(expr) == SEXPTYPE::SYMSXP {
-                    let pname = PRINTNAME(expr);
-                    if !pname.is_null() {
-                        generic = charsxp_text(pname).unwrap_or_default();
-                    }
-                }
-                break;
-            }
-            call_cell = CDR(call_cell);
-        }
-    }
-    let prefix = format!("{generic}.");
-    let mut methods = all_runtime_method_names()
-        .into_iter()
-        .filter(|name| name.starts_with(&prefix))
-        .collect::<Vec<_>>();
-    let base = crate::eval::runtime::base_env();
-    if !base.is_null() {
-        for name in crate::mainutils::essentials::shared::frame_binding_names(base, true) {
-            if name.starts_with(&prefix) && !methods.iter().any(|m| m == &name) {
-                methods.push(name);
-            }
-        }
-    }
-    methods.sort();
-    let ans = methods_function(string_vector(&methods));
-    let n = methods.len() as i64;
-    let info = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-    let from = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-    let visible = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-    let rows = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-    let owner = active_owner();
-    if let (Ok(mut from_mut), Ok(mut visible_mut), Ok(mut rows_mut)) = (
-        owner.sexp(from).and_then(SexpMut::try_from_checked),
-        owner.sexp(visible).and_then(SexpMut::try_from_checked),
-        owner.sexp(rows).and_then(SexpMut::try_from_checked),
-    ) {
-        for i in 0..n {
-            if let Ok(charsxp) = owner.sexp(mk_char_cstr(c"base")) {
-                let _ = from_mut.try_set_string_elt(i, charsxp);
-            }
-            let _ = visible_mut.try_set_logical_elt(i, 1);
-            let cname = std::ffi::CString::new(methods[i as usize].as_str()).unwrap_or_default();
-            if let Ok(charsxp) = owner.sexp(mk_char_cstr(&cname)) {
-                let _ = rows_mut.try_set_string_elt(i, charsxp);
-            }
-        }
-    }
-    if let Ok(mut info_mut) = owner.sexp(info).and_then(SexpMut::try_from_checked) {
-        for (i, value) in [from, visible].into_iter().enumerate() {
-            if let Ok(value) = owner.sexp(value) {
-                let _ = info_mut.try_set_vector_elt(i as R_xlen_t, value);
-            }
-        }
-    }
-    let inames = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-    if let Ok(mut inames_mut) = owner.sexp(inames).and_then(SexpMut::try_from_checked) {
-        for (i, text) in [c"from", c"visible"].into_iter().enumerate() {
-            if let Ok(charsxp) = owner.sexp(mk_char_cstr(&text)) {
-                let _ = inames_mut.try_set_string_elt(i as R_xlen_t, charsxp);
-            }
-        }
-    }
-    crate::sexp::attrib_core::setAttrib(info, crate::sexp::attrib_core::R_NamesSymbol(), inames);
-    crate::sexp::attrib_core::setAttrib(
-        info,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        mk_string_cstr(c"data.frame"),
-    );
-    crate::sexp::attrib_core::setAttrib(info, install_str("row.names"), rows);
-    crate::sexp::attrib_core::setAttrib(ans, install_str("info"), info);
-    ans
-}
 
 fn all_runtime_method_names() -> Vec<String> {
     let mut methods = crate::eval::builtin::builtin_handler_names()
@@ -361,79 +224,9 @@ pub(crate) fn sys_query_context() -> *mut crate::sexp::context::RCNTXT {
         top
     }
 }
-/// R's `sys.call(which)` — get the call that's currently being evaluated.
-pub fn do_sys_call(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let which = context_index_arg(args, 0);
-        let top = sys_query_context();
-        if top.is_null() {
-            R_NilValue()
-        } else {
-            crate::eval::context::R_syscall(which, top)
-        }
-    }
-}
 
-/// R's `sys.calls()` — the calls for each frame on the context stack.
-///
-/// Upstream collects the call of every CTXT_FUNCTION context as a
-/// PAIRLIST ordered outermost-first: `sys.calls()[[1]]` is the outermost
-/// call and the last element is the `sys.calls()` expression itself
-/// (upstream do_sys fills `allocList(nframe)` with `R_syscall(i, cptr)`
-/// for `i` in `1..=nframe`; a positive n counts up from the globalEnv,
-/// so syscall(1) is the outermost frame). Calls are shallow-duplicated
-/// so later mutation cannot rewrite the stack; zeallot's error paths
-/// deparse these to attribute assignment-operator calls.
-pub fn do_sys_calls(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    // sys.calls is a builtin here, so (outside forced promises) the
-    // innermost context is its caller's frame already — no own closure
-    // frame to skip, unlike upstream's
-    // getLexicalContext(R_GlobalContext->sysparent).
-    let start = sys_query_context();
-    if start.is_null() {
-        R_NilValue()
-    } else {
-        crate::eval::context::frame_value_list(start, crate::sexp::context::FrameValues::Calls)
-    }
-}
 
-/// R's `sys.parent(n = 1)` — S-frame number of the n-th parent frame,
-/// such that `sys.frame(sys.parent(n))` is the n-th parent environment
-/// (upstream do_sys: `i = framedepth(cptr); while n > 0 { i =
-/// R_sysparent(nframe - i + 1, cptr) }`).
-pub fn do_sys_parent(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let n = context_index_arg(args, 1);
-        if n == NA_INTEGER {
-            base_error("invalid 'n' argument");
-        }
-        let cptr = sys_query_context();
-        if cptr.is_null() {
-            return Rf_ScalarInteger(0);
-        }
-        let nframe = crate::eval::context::framedepth(cptr);
-        let mut i = nframe;
-        let mut count = n;
-        while count > 0 {
-            i = crate::eval::context::R_sysparent(nframe - i + 1, cptr);
-            count -= 1;
-        }
-        Rf_ScalarInteger(i)
-    }
-}
 
-/// R's `sys.frame(which)` — get frame at specified level.
-pub fn do_sys_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let which = context_index_arg(args, 0);
-        let top = sys_query_context();
-        if top.is_null() {
-            crate::sexp::globals::R_GlobalEnv()
-        } else {
-            crate::eval::context::R_sysframe(which, top)
-        }
-    }
-}
 
 pub(crate) fn pairlist_len(mut list: SEXP) -> c_int {
     {
@@ -553,32 +346,6 @@ pub fn do_file_path(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     crate::mainutils::paste_impl::do_filepath_public(call, op, args, env)
 }
 
-/// R's `dir.exists(paths)` — check if directories exist.
-pub fn do_dir_exists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    if x.is_null() || x == R_NilValue() {
-        return Rf_ScalarLogical(FALSE);
-    }
-    let n = XLENGTH(x);
-    let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-    if result.is_null() {
-        return R_NilValue();
-    }
-    let _result_guard = protect(result);
-    let mut dst = owner_sexp_mut(result);
-    for i in 0..n {
-        let path = elt_to_string(x, i);
-        sexp_ok(dst.try_set_logical_elt(
-            (i as usize) as R_xlen_t,
-            if std::path::Path::new(&path).is_dir() {
-                TRUE
-            } else {
-                FALSE
-            },
-        ));
-    }
-    result
-}
 
 /// R's `file.create(...)` — create empty files.
 pub fn do_file_create(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -1131,11 +898,6 @@ mod as_data_frame_tests {
     }
 }
 
-/// R's `as.list(x)` — generic list conversion.
-/// Delegates to do_as_list but available as a separate entry point.
-pub fn do_as_list_generic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    do_as_list(_call, _op, args, _rho)
-}
 
 // ---------------------------------------------------------------------------
 // Complete data operations
@@ -1325,93 +1087,12 @@ fn set_na_action_attribute(source: SEXP, result: SEXP, dropped: &[R_xlen_t], act
     crate::sexp::attrib_core::setAttrib(result, install_str("na.action"), action);
 }
 
-/// R's `is_complete(x)` — logical vector of complete cases for a single vector.
-pub fn do_is_complete(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    if x.is_null() || x == R_NilValue() {
-        return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
-    }
-    let n = XLENGTH(x);
-    let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-    if result.is_null() {
-        return R_NilValue();
-    }
-    let _p = protect(result);
-    let mut dst = owner_sexp_mut(result);
-    for i in 0..n {
-        let na = atomic_value_is_missing(x, i);
-        sexp_ok(dst.try_set_logical_elt((i as usize) as R_xlen_t, if na { FALSE } else { TRUE }));
-    }
-    result
-}
 
 // ---------------------------------------------------------------------------
 // Complete S3
 // ---------------------------------------------------------------------------
 
-/// R-like `rownames_to_column(x, var)` — convert row names to a leading column.
-pub fn do_rownames_to_column(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    {
-        let x = CAR(args);
-        if !is_data_frame_like(x) {
-            data_frame_error("rownames_to_column() requires a data frame");
-        }
-        let var_arg = arg_by_name_or_position(args, &["var"], 1);
-        let var = if var_arg.is_null() || var_arg == R_NilValue() || XLENGTH(var_arg) == 0 {
-            "rowname".to_string()
-        } else {
-            elt_to_string(var_arg, 0)
-        };
 
-        let mut names = data_frame_column_names(x);
-        let mut columns = data_frame_columns(x);
-        names.insert(0, var);
-        columns.insert(0, string_vector(&data_frame_row_names(x)));
-        build_data_frame(columns, names, data_frame_row_names_attr(x))
-    }
-}
-
-/// R-like `column_to_rownames(x, var)` — convert a column to row names.
-pub fn do_column_to_rownames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    if !is_data_frame_like(x) {
-        data_frame_error("column_to_rownames() requires a data frame");
-    }
-    let var_arg = arg_by_name_or_position(args, &["var"], 1);
-    let var = if var_arg.is_null() || var_arg == R_NilValue() || XLENGTH(var_arg) == 0 {
-        "rowname".to_string()
-    } else {
-        elt_to_string(var_arg, 0)
-    };
-    let names = data_frame_column_names(x);
-    let Some(row_col) = names.iter().position(|name| name == &var) else {
-        data_frame_error(format!("column '{}' not found", var));
-    };
-
-    let x_owned = owner_sexp(active_owner(), x);
-    let mut out_names = Vec::new();
-    let mut out_columns = Vec::new();
-    for (i, name) in names.into_iter().enumerate() {
-        if i != row_col {
-            out_names.push(name);
-            out_columns.push(
-                x_owned
-                    .try_vector_elt(i as R_xlen_t)
-                    .map(|elt| elt.as_raw())
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-            );
-        }
-    }
-    let row_col_value = x_owned
-        .try_vector_elt(row_col as R_xlen_t)
-        .map(|elt| elt.as_raw())
-        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-    build_data_frame(
-        out_columns,
-        out_names,
-        string_vector(&vector_to_string_values(row_col_value)),
-    )
-}
 
 /// R-like `relocate(x, cols, .before, .after)` — reorder data-frame columns.
 pub fn do_relocate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -2310,25 +1991,6 @@ pub fn do_getS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `hasS3method(generic, class)` — check if S3 method exists.
-pub fn do_hasS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    let generic = elt_to_string(CAR(args), 0);
-    let class = elt_to_string(CAR(CDR(args)), 0);
-    let Some(method_sym) = crate::mainutils::objects::s3_method_symbol(&generic, &class) else {
-        return Rf_ScalarLogical(FALSE);
-    };
-    let method = crate::mainutils::objects::lookup_s3_method_symbol(
-        method_sym,
-        rho,
-        rho,
-        effective_s3_defrho(rho),
-    );
-    Rf_ScalarLogical(if is_function_value(method) {
-        TRUE
-    } else {
-        FALSE
-    })
-}
 
 /// R's `registerS3method(generic, class, method)` — register S3 method.
 pub fn do_registerS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {

@@ -15,14 +15,6 @@ pub fn CallHook(x: SEXP, fun: SEXP) -> SEXP {
     }
 }
 
-pub fn checkNotPromise(val: SEXP) -> SEXP {
-    {
-        if TYPEOF(val) == SEXPTYPE::PROMSXP {
-            error("cannot return a promise (PROMSXP) object");
-        }
-        val
-    }
-}
 
 pub fn appendRawToFile(file: SEXP, bytes: SEXP) -> SEXP {
     {

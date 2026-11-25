@@ -586,58 +586,6 @@ fn pretty_num_split(args: SEXP) -> (SEXP, SEXP) {
     (x, head)
 }
 
-/// GNU `prettyNum(x, big.mark, decimal.mark)`.
-pub fn do_prettyNum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let (x, rest) = pretty_num_split(args);
-    if x.is_null() || x == R_NilValue() {
-        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-    }
-    let n = XLENGTH(x);
-    let mut drop0 = false;
-    let mut scan = rest;
-    while !scan.is_null() && scan != R_NilValue() {
-        let tag = TAG(scan);
-        if !tag.is_null() && tag != R_NilValue() {
-            let name = charsxp_text(PRINTNAME(tag)).unwrap_or_default();
-            if name == "drop0trailing" {
-                drop0 = crate::main::coerce::asLogical(CAR(scan)) != 0;
-            }
-        }
-        scan = CDR(scan);
-    }
-    let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-    let _out = protect(out);
-    if TYPEOF(x) == SEXPTYPE::STRSXP {
-        for i in 0..n {
-            let s = elt_to_string(x, i);
-            let s = pretty_num_one(&s, "", drop0, ".", "", 5);
-            let c = std::ffi::CString::new(s).unwrap_or_default();
-            SET_STRING_ELT(out, i, mk_char_cstr(&c));
-        }
-        return out;
-    }
-    for i in 0..n {
-        let elt = if TYPEOF(x) == SEXPTYPE::INTSXP {
-            Rf_ScalarInteger(integer_elt_checked(x, (i as usize) as R_xlen_t))
-        } else if TYPEOF(x) == SEXPTYPE::REALSXP {
-            Rf_ScalarReal(real_elt_checked(x, (i as usize) as R_xlen_t))
-        } else if TYPEOF(x) == SEXPTYPE::STRSXP {
-            let one = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-            SET_STRING_ELT(one, 0, STRING_ELT(x, i));
-            one
-        } else {
-            x
-        };
-        let _elt = protect(elt);
-        let call_args = Rf_cons(elt, rest);
-        let _call_args = protect(call_args);
-        let formatted = format_numeric_vector(elt, 1, call_args);
-        if TYPEOF(formatted) == SEXPTYPE::STRSXP && XLENGTH(formatted) > 0 {
-            SET_STRING_ELT(out, i, STRING_ELT(formatted, 0));
-        }
-    }
-    out
-}
 
 /// R's `format(x, digits, nsmall)` — format numbers as strings.
 pub fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

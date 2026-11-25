@@ -66,39 +66,6 @@ pub fn do_fileappend(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `file.create()` — create file(s).
-pub fn do_filecreate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CAR, LENGTH, STRING_ELT};
-        use crate::sexp::constructors::Rf_allocVector3;
-        use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
-        use crate::sexp::globals::R_NilValue;
-
-        let s = CAR(args);
-        let ans = Rf_allocVector3(
-            SEXPTYPE::LGLSXP.as_c_int(),
-            LENGTH(s) as crate::sexp::ffi::R_xlen_t,
-        );
-        let _ans_guard = protect(ans);
-        let pa = crate::sexp::accessors::LOGICAL(ans);
-
-        for i in 0..LENGTH(s) as usize {
-            let elt = STRING_ELT(s, i as crate::sexp::ffi::R_xlen_t);
-            if elt.is_null() || elt == R_NilValue() {
-                *pa.add(i) = crate::sexp::ffi::NA_INTEGER;
-            } else {
-                let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
-                let path = c.to_str().unwrap_or("");
-                *pa.add(i) = if create_file_with_session_umask(path).is_ok() {
-                    TRUE
-                } else {
-                    FALSE
-                };
-            }
-        }
-        ans
-    }
-}
 
 /// R's `file.remove()` — remove file(s).
 pub fn do_fileremove(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -1182,16 +1149,6 @@ pub fn do_listdirs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     ans
 }
 
-/// R's `R.home` — return R home directory.
-///
-/// Uses R_HOME environment variable, or falls back to the directory
-/// containing the rmath library.
-pub fn do_Rhome(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    use std::env;
-
-    let home = env::var("R_HOME").unwrap_or_else(|_| discover_r_home());
-    crate::sexp::constructors::mk_string_bytes(CString::new(home).unwrap_or_default().to_bytes())
-}
 
 fn discover_r_home() -> String {
     // The runtime is self-contained: there is deliberately no host-GNU
@@ -1377,44 +1334,6 @@ pub fn do_unlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     }
 }
 
-/// R's `Sys.getlocale()` — get locale category.
-pub fn do_getlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CAR, INTEGER};
-        use crate::sexp::globals::R_NilValue;
-
-        let category = CAR(args);
-        let locale = if !category.is_null() && category != R_NilValue() {
-            match *INTEGER(category) {
-                1 => "LC_ALL",
-                2 => "LC_COLLATE",
-                3 => "LC_CTYPE",
-                4 => "LC_MONETARY",
-                5 => "LC_NUMERIC",
-                6 => "LC_TIME",
-                7 => "LC_MESSAGES",
-                _ => "LC_ALL",
-            }
-        } else {
-            "LC_ALL"
-        };
-
-        // Use std::env for locale info
-        let val = match locale {
-            "LC_ALL" => std::env::var("LC_ALL")
-                .unwrap_or_else(|_| std::env::var("LANG").unwrap_or_else(|_| "C".to_string())),
-            "LC_COLLATE" => std::env::var("LC_COLLATE").unwrap_or_else(|_| String::new()),
-            "LC_CTYPE" => std::env::var("LC_CTYPE").unwrap_or_else(|_| String::new()),
-            "LC_MONETARY" => std::env::var("LC_MONETARY").unwrap_or_else(|_| String::new()),
-            "LC_NUMERIC" => std::env::var("LC_NUMERIC").unwrap_or_else(|_| String::new()),
-            "LC_TIME" => std::env::var("LC_TIME").unwrap_or_else(|_| String::new()),
-            "LC_MESSAGES" => std::env::var("LC_MESSAGES").unwrap_or_else(|_| String::new()),
-            _ => String::new(),
-        };
-
-        crate::sexp::constructors::mk_string_bytes(CString::new(val).unwrap_or_default().to_bytes())
-    }
-}
 
 /// R's `Sys.setlocale()` — set locale.
 pub fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -1502,82 +1421,3 @@ pub fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `Sys.localeconv()` — locale conventions.
-pub fn do_localeconv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::SET_STRING_ELT;
-        use crate::sexp::constructors::Rf_allocVector3;
-        use crate::sexp::ffi::SEXPTYPE;
-
-        #[cfg(not(target_arch = "wasm32"))]
-        let lc = libc::localeconv();
-        let ans = Rf_allocVector3(SEXPTYPE::STRSXP, 7);
-        let _ans_guard = protect(ans);
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 7);
-        let _names_guard = protect(names);
-
-        let field_names = [
-            "decimal_point",
-            "thousands_sep",
-            "int_curr_symbol",
-            "currency_symbol",
-            "mon_decimal_point",
-            "positive_sign",
-            "negative_sign",
-        ];
-        #[cfg(not(target_arch = "wasm32"))]
-        let field_ptrs: [*const c_char; 7] = [
-            (*lc).decimal_point,
-            (*lc).thousands_sep,
-            (*lc).int_curr_symbol,
-            (*lc).currency_symbol,
-            (*lc).mon_decimal_point,
-            (*lc).positive_sign,
-            (*lc).negative_sign,
-        ];
-        // wasm32: no locale subsystem; report the C-locale conventions —
-        // the same values do_Sys_localeconv() documents as the portable
-        // fallback ("." decimal point, empty separators/signs/symbols).
-        #[cfg(target_arch = "wasm32")]
-        let field_ptrs: [*const c_char; 7] = [
-            c".".as_ptr(),
-            c"".as_ptr(),
-            c"".as_ptr(),
-            c"".as_ptr(),
-            c"".as_ptr(),
-            c"".as_ptr(),
-            c"".as_ptr(),
-        ];
-
-        for (i, (name, val)) in field_names.iter().zip(field_ptrs.iter()).enumerate() {
-            SET_STRING_ELT(
-                names,
-                i as crate::sexp::ffi::R_xlen_t,
-                crate::sexp::constructors::mk_char_bytes(
-                    CString::new(*name).unwrap_or_default().to_bytes(),
-                ),
-            );
-            if !val.is_null() {
-                let s = CStr::from_ptr(*val);
-                SET_STRING_ELT(
-                    ans,
-                    i as crate::sexp::ffi::R_xlen_t,
-                    crate::sexp::constructors::mk_char_bytes(
-                        CString::new(s.to_str().unwrap_or(""))
-                            .unwrap_or_default()
-                            .to_bytes(),
-                    ),
-                );
-            } else {
-                SET_STRING_ELT(
-                    ans,
-                    i as crate::sexp::ffi::R_xlen_t,
-                    crate::sexp::constructors::mk_char_str(""),
-                );
-            }
-        }
-
-        crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), names);
-        ans
-    }
-}

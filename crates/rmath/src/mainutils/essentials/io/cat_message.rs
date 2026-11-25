@@ -4,20 +4,7 @@ use super::*;
 // Complete I/O
 // ---------------------------------------------------------------------------
 
-/// R-like `cat_args(...)` — cat with better formatting.
-pub fn do_cat_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    do_cat(_call, _op, args, _rho)
-}
 
-/// R-like `message_args(...)` — message with domain.
-pub fn do_message_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    {
-        let output = condition_message_text(args, &["domain", "appendLF"]);
-        eprintln!("{}", output);
-        crate::sexp::globals::set_R_Visible(FALSE);
-        R_NilValue()
-    }
-}
 
 /// R's `packageStartupMessage(...)` — startup message.
 pub fn do_package_startup_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
@@ -445,33 +432,8 @@ pub fn do_force(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // Complete I/O — enhanced cat, message, warning
 // ---------------------------------------------------------------------------
 
-/// R's enhanced `cat(..., file, sep, fill, labels, append)` — simplified.
-pub fn do_cat_enhanced(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    // Simplified: delegates to existing do_cat
-    do_cat(_call, _op, args, _rho)
-}
 
-/// R's enhanced `message(..., domain, appendLF)` — simplified.
-pub fn do_message_enhanced(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    {
-        let output = condition_message_text(args, &["domain", "appendLF"]);
-        eprintln!("{}", output);
-        R_NilValue()
-    }
-}
 
-/// R's enhanced `warning(..., call., immediate., noBreaks., domain.)` — simplified.
-pub fn do_warning_enhanced(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    {
-        let mut output =
-            condition_message_text(args, &["call.", "immediate.", "noBreaks.", "domain"]);
-        if output.is_empty() {
-            output = "warning".to_string();
-        }
-        eprintln!("Warning: {}", output);
-        R_NilValue()
-    }
-}
 
 #[cfg(test)]
 mod tests {

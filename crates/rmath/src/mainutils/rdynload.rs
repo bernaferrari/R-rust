@@ -484,26 +484,6 @@ pub unsafe fn R_registerRoutines(
     1
 }
 
-/// # Safety
-/// `info` must be null or a live `DllInfo` handle from the DLL table; `name`
-/// must be null or a live NUL-terminated string for the call.
-pub unsafe fn R_getDLLRegisteredSymbol(
-    info: *const DllInfo,
-    name: *const c_char,
-    sym_type: c_int,
-) -> DL_FUNC {
-    if name.is_null() {
-        return None;
-    }
-    // SAFETY: `info` satisfies this function's contract; null maps to `None`.
-    let info = unsafe { info.as_ref() }?;
-    // SAFETY: `name` is non-null and NUL-terminated for the call.
-    let name = unsafe { CStr::from_ptr(name) };
-    info.registrations
-        .borrow()
-        .lookup(name, sym_type)
-        .and_then(|routine| routine.function)
-}
 
 /// Dynamic `dlsym` fallback after registered lookup misses.
 fn lookup_dynamic(info: &DllInfo, name: &CStr) -> DL_FUNC {

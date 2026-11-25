@@ -655,37 +655,6 @@ pub fn array_dimension_attribute(value: SEXP, data_len: R_xlen_t) -> Result<SEXP
     Ok(dim)
 }
 
-pub fn valid_array_dimnames(dimnames: SEXP, dim: SEXP) -> bool {
-    if dimnames.is_null() || dimnames == R_NilValue() {
-        return true;
-    }
-    if TYPEOF(dimnames) != SEXPTYPE::VECSXP {
-        return false;
-    }
-    let dim_count = XLENGTH(dim);
-    if XLENGTH(dimnames) > dim_count {
-        return false;
-    }
-    let owner = active_owner();
-    let dimnames = owner_sexp(owner, dimnames);
-    let dim = owner_sexp(owner, dim);
-    for i in 0..XLENGTH(dimnames.as_raw()) {
-        let Ok(names) = dimnames.try_vector_elt(i) else {
-            continue;
-        };
-        if names.as_raw().is_null() || names.as_raw() == R_NilValue() {
-            continue;
-        }
-        let extent = match dim.try_integer_elt(i) {
-            Ok(v) => v as R_xlen_t,
-            Err(error) => crate::sexp::context::r_error(error.to_string()),
-        };
-        if XLENGTH(names.as_raw()) != extent {
-            return false;
-        }
-    }
-    true
-}
 
 pub fn retained_dimname(dimnames: SEXP, axis: R_xlen_t) -> SEXP {
     if dimnames.is_null() || dimnames == R_NilValue() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {

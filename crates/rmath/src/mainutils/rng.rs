@@ -86,9 +86,6 @@ pub fn set_rng_seed(seed: i32) {
     });
 }
 
-pub fn get_rng_seed() -> i32 {
-    with_main_rng_state(|state| state.seed)
-}
 
 // Public API surface expected to resemble the C RNG.c port surface for the subset
 // This is a pragmatic, idiomatic Rust port with faithful MT19937 backbone for
@@ -96,14 +93,5 @@ pub fn get_rng_seed() -> i32 {
 // intentionally routed through the same MT19937 under the hood to maintain
 // a single, robust implementation path for this port.
 
-pub fn init_rng_from_seed(seed: i32) {
-    set_rng_seed(seed);
-}
 
-pub fn random_double() -> f64 {
-    rng_next_double()
-}
 
-pub fn random_uint() -> u32 {
-    rng_next_u32()
-}

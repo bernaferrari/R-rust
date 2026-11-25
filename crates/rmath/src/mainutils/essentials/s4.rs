@@ -26,10 +26,6 @@ use crate::sexp::protect::protect;
 // Complete S3/S4: class, isS4, is
 // ---------------------------------------------------------------------------
 
-/// R's `class(x)` — get S3 class vector.
-pub fn do_S3_class(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    do_class_get(_call, _op, args, _rho)
-}
 
 /// R's `isS4(x)` — check if object is S4.
 pub fn do_isS4(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -1367,13 +1363,6 @@ pub fn do_representation(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     result
 }
 
-/// R's `containsClass(class1, class2)` — check class containment.
-pub fn do_containsClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    {
-        // Delegates to extends
-        do_extends(_call, _op, args, _rho)
-    }
-}
 
 /// R's `possibleExtends(class1, class2)` — check possible extensions.
 pub fn do_possibleExtends(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -1427,12 +1416,6 @@ pub fn do_isGeneric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     Rf_ScalarLogical(FALSE)
 }
 
-/// R's `isMethod(f, signature)` — check if method exists.
-pub fn do_isMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let _f = CAR(args);
-    let _sig = CAR(CDR(args));
-    Rf_ScalarLogical(FALSE)
-}
 
 /// R's `findMethod(f, signature)` — find S4 method.
 pub fn do_findMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

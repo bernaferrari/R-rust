@@ -51,194 +51,20 @@ pub fn do_endsWith(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     super::vector_text_entry::evaluate(args, rho, super::vector_text_owned::Operation::Suffix)
 }
 
-/// R's `str_pad(x, width, side="left", pad=" ")` — pad strings to a width.
-pub fn do_str_pad(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    let width_arg = CAR(CDR(args));
-    let side_arg = CAR(CDR(CDR(args)));
-    let pad_arg = CAR(CDR(CDR(CDR(args))));
-    if x.is_null() || x == R_NilValue() {
-        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-    }
-    let width = if width_arg.is_null() || width_arg == R_NilValue() {
-        1usize
-    } else {
-        real_or_default(width_arg, 1.0).max(0.0) as usize
-    };
-    let side = if side_arg.is_null() || side_arg == R_NilValue() {
-        "left".to_string()
-    } else {
-        elt_to_string(side_arg, 0)
-    };
-    let pad_char = if pad_arg.is_null() || pad_arg == R_NilValue() {
-        " ".to_string()
-    } else {
-        elt_to_string(pad_arg, 0)
-    };
-    let n = XLENGTH(x);
-    let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-    if result.is_null() {
-        return R_NilValue();
-    }
-    let _result_guard = protect(result);
-    for i in 0..n {
-        let s = elt_to_string(x, i);
-        let slen = s.chars().count();
-        let padded = if slen >= width {
-            s
-        } else {
-            let diff = width - slen;
-            let pad_str: String = pad_char.chars().cycle().take(diff).collect();
-            match side.as_str() {
-                "left" => format!("{}{}", pad_str, s),
-                "right" => format!("{}{}", s, pad_str),
-                "both" => {
-                    let left = diff / 2;
-                    let right = diff - left;
-                    let lp: String = pad_char.chars().cycle().take(left).collect();
-                    let rp: String = pad_char.chars().cycle().take(right).collect();
-                    format!("{}{}{}", lp, s, rp)
-                }
-                _ => format!("{}{}", pad_str, s),
-            }
-        };
-        let cstr = CString::new(padded).unwrap_or_default();
-        let charsxp = mk_char_cstr(&cstr);
-        if !charsxp.is_null() {
-            crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
-        }
-    }
-    result
-}
 
-/// R's `str_count(x, pattern)` — count occurrences of pattern in strings.
-pub fn do_str_count(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    let pattern_arg = CAR(CDR(args));
-    if x.is_null() || x == R_NilValue() || pattern_arg.is_null() {
-        return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-    }
-    let pattern = elt_to_string(pattern_arg, 0);
-    let n = XLENGTH(x);
-    let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-    if result.is_null() {
-        return R_NilValue();
-    }
-    let _result_guard = protect(result);
-    let mut dst = owner_sexp_mut(result);
-    for i in 0..n {
-        let s = elt_to_string(x, i);
-        let count = if pattern.is_empty() {
-            s.len() + 1
-        } else {
-            s.matches(&pattern).count()
-        };
-        sexp_ok(dst.try_set_integer_elt((i as usize) as R_xlen_t, count as c_int));
-    }
-    result
-}
 
-/// R's `str_replace(x, pattern, replacement)` — alias for sub.
-pub fn do_str_replace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    do_sub(_call, _op, args, _rho)
-}
 
 // ---------------------------------------------------------------------------
 // R runtime type checks: is.language, is.call, is.symbol, is.name,
 //   is.pairlist, is.function, is.expression, is.environment
 // ---------------------------------------------------------------------------
 
-/// R-like `str_detect(x, pattern)` — returns logical vector indicating which elements match.
-pub fn do_str_detect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    let pattern_arg = CAR(CDR(args));
 
-    if x.is_null() || x == R_NilValue() || pattern_arg.is_null() || pattern_arg == R_NilValue() {
-        return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
-    }
-
-    let pattern_str = elt_to_string(pattern_arg, 0);
-    let n = XLENGTH(x).max(1);
-    let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-    if result.is_null() {
-        return R_NilValue();
-    }
-    let _p = protect(result);
-    let mut dst = owner_sexp_mut(result);
-
-    for i in 0..n {
-        let s = elt_to_string(x, i);
-        let matches = s.contains(&pattern_str);
-        sexp_ok(
-            dst.try_set_logical_elt((i as usize) as R_xlen_t, if matches { TRUE } else { FALSE }),
-        );
-    }
-    result
-}
-
-/// R-like `str_extract(x, pattern)` — extracts first occurrence of pattern from each element.
-pub fn do_str_extract(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    let pattern_arg = CAR(CDR(args));
-
-    if x.is_null() || x == R_NilValue() || pattern_arg.is_null() || pattern_arg == R_NilValue() {
-        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-    }
-
-    let pattern_str = elt_to_string(pattern_arg, 0);
-    let n = XLENGTH(x).max(1);
-    let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-    if result.is_null() {
-        return R_NilValue();
-    }
-    let _p = protect(result);
-
-    for i in 0..n {
-        let s = elt_to_string(x, i);
-        let extracted = if let Some(start) = s.find(&pattern_str) {
-            let end = start + pattern_str.len();
-            &s[start..end]
-        } else {
-            "NA"
-        };
-        let cs = CString::new(extracted).unwrap_or_default();
-        let charsxp = mk_char_cstr(&cs);
-        if !charsxp.is_null() {
-            crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
-        }
-    }
-    result
-}
 
 // ---------------------------------------------------------------------------
 // Complete string/vector
 // ---------------------------------------------------------------------------
 
-/// R-like `str_interp(string, values)` — interpolate values into string (simplified: sprintf-like).
-pub fn do_str_interp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let string_arg = CAR(args);
-    let values_arg = CAR(CDR(args));
-    if string_arg.is_null() || string_arg == R_NilValue() {
-        return mk_string_cstr(c"");
-    }
-    let fmt = elt_to_string(string_arg, 0);
-    if values_arg.is_null() || values_arg == R_NilValue() {
-        return mk_string_cstr(&CString::new(fmt).unwrap_or_default());
-    }
-    let n = XLENGTH(values_arg).max(1);
-    let mut vals: Vec<String> = Vec::new();
-    for i in 0..n {
-        vals.push(elt_to_string(values_arg, i));
-    }
-    // Simple %s replacement
-    let mut result = fmt.clone();
-    for v in &vals {
-        if let Some(pos) = result.find("%s") {
-            result.replace_range(pos..pos + 2, v);
-        }
-    }
-    mk_string_cstr(&CString::new(result).unwrap_or_default())
-}
 
 /// GNU `strwrap(...)` — dispatch to the verbatim base closure so wrapping
 /// (width 0.9*getOption("width"), indent/exdent/prefix/initial) is identical.
@@ -271,26 +97,6 @@ pub fn do_strwrap(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-/// R-like `strwrap(x, width)` / `str_wrap(x, width)` — wrap text to width.
-pub fn do_str_wrap(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    if x.is_null() || x == R_NilValue() {
-        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-    }
-    let width_arg = arg_by_name_or_position(args, &["width"], 1);
-    let width = if width_arg.is_null() || width_arg == R_NilValue() || XLENGTH(width_arg) == 0 {
-        0
-    } else {
-        numeric_elt_as_count(width_arg, 0)
-    }
-    .max(1);
-
-    let mut lines = Vec::new();
-    for i in 0..XLENGTH(x) {
-        lines.extend(wrap_text_words(&elt_to_string(x, i), width));
-    }
-    string_vector(&lines)
-}
 
 fn wrap_text_words(text: &str, width: usize) -> Vec<String> {
     let mut lines = Vec::new();
@@ -317,23 +123,6 @@ fn wrap_text_words(text: &str, width: usize) -> Vec<String> {
     lines
 }
 
-/// R-like `path_package(package, ...)` — find package paths through the session library policy.
-pub fn do_path_package(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let package_arg = arg_by_name_or_position(args, &["package"], 0);
-    if package_arg.is_null() || package_arg == R_NilValue() || XLENGTH(package_arg) == 0 {
-        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-    }
-
-    let mut paths = Vec::new();
-    for i in 0..XLENGTH(package_arg) {
-        let package = elt_to_string(package_arg, i);
-        let path = public_package_path(&package);
-        if !path.is_empty() {
-            paths.push(path);
-        }
-    }
-    string_vector(&paths)
-}
 
 /// R's `system.file(..., package)` — find files inside an installed package.
 pub fn do_system_file(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -419,54 +208,6 @@ fn system_file_parts(args: SEXP) -> Vec<String> {
 // Complete string operations — str_locate, str_sub variants
 // ---------------------------------------------------------------------------
 
-/// R's `str_locate(x, pattern)` — locate first occurrence of pattern (simplified).
-pub fn do_str_locate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    let pattern = CAR(CDR(args));
-    if x.is_null() || x == R_NilValue() || pattern.is_null() {
-        return R_NilValue();
-    }
-    // Return a 1x2 matrix with start/end (simplified: return c(start, end))
-    let result = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-    if result.is_null() {
-        return R_NilValue();
-    }
-    let _p = protect(result);
-    let mut dst = owner_sexp_mut(result);
-    // Simplified: set to NA (no match)
-    sexp_ok(dst.try_set_integer_elt(0, NA_INTEGER));
-    sexp_ok(dst.try_set_integer_elt(1 as R_xlen_t, NA_INTEGER));
-    result
-}
 
-/// R's `str_locate_all(x, pattern)` — locate all occurrences (simplified).
-pub fn do_str_locate_all(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    let _pattern = CAR(CDR(args));
-    if x.is_null() || x == R_NilValue() {
-        return R_NilValue();
-    }
-    // Return empty matrix
-    Rf_allocVector3(SEXPTYPE::INTSXP, 0)
-}
 
-/// R's `str_sub(x, start, end)` — extract substring (alias for substr).
-pub fn do_str_sub(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    do_substr(_call, _op, args, _rho)
-}
 
-/// R's `str_sub_all(x, start, end)` — all substrings (simplified).
-pub fn do_str_sub_all(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    if x.is_null() || x == R_NilValue() {
-        return R_NilValue();
-    }
-    // Return input as list
-    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
-    if result.is_null() {
-        return R_NilValue();
-    }
-    let _p = protect(result);
-    SET_VECTOR_ELT(result, 0, x);
-    result
-}

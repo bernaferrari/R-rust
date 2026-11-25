@@ -19,11 +19,11 @@ use crate::sexp::ffi::{
 };
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
+use crate::sexp::symbol::Rf_install;
 
 use crate::mainutils::essentials::{
-    active_owner, cat_elt_to_string, charsxp_cstring, charsxp_text_of, charsxp_utf8_lossy,
-    elt_to_string, find_var_in_frame, install_cstr, install_str, integer_like_elt, is_string_na,
-    mk_char_cstr, mk_string_cstr, owner_sexp,
+    active_owner, cat_elt_to_string, charsxp_utf8_lossy, elt_to_string, integer_like_elt,
+    is_string_na, owner_sexp,
 };
 use crate::sexp::object::{Sexp, SexpMut, SexpResult};
 
@@ -69,7 +69,8 @@ fn cplx_elt(x: SEXP, i: R_xlen_t) -> Rcomplex {
 /// Checked element write through the active owner.
 fn set_result<T>(x: SEXP, write: impl FnOnce(&mut SexpMut<'_>) -> SexpResult<T>) -> T {
     let mut dst = owned_mut(x);
-    write(&mut dst).unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    write(&mut dst)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
 /// Lossy text of a CHARSXP reached through the active owner.
@@ -133,7 +134,8 @@ fn do_paste_impl(args: SEXP, default_sep: &str, paste0: bool) -> SEXP {
         if arg_vecs.is_empty() || max_len == 0 {
             if collapse.is_some() {
                 let s = c"";
-                return mk_string_cstr(&s);
+                // SAFETY: `s` is a NUL-terminated C string literal.
+                return unsafe { Rf_mkString(s.as_ptr()) };
             }
             return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
         }
@@ -153,7 +155,8 @@ fn do_paste_impl(args: SEXP, default_sep: &str, paste0: bool) -> SEXP {
             }
             let joined = parts.join(&sep);
             let cstr = CString::new(joined).unwrap_or_default();
-            let charsxp = mk_char_cstr(&cstr);
+            // SAFETY: `cstr` is a live NUL-terminated CString.
+            let charsxp = unsafe { crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()) };
             if !charsxp.is_null() {
                 SET_STRING_ELT(result, i, charsxp);
             }
@@ -165,7 +168,8 @@ fn do_paste_impl(args: SEXP, default_sep: &str, paste0: bool) -> SEXP {
                 .collect::<Vec<_>>()
                 .join(&collapse);
             let cstr = CString::new(collapsed).unwrap_or_default();
-            let out = mk_string_cstr(&cstr);
+            // SAFETY: `cstr` is a live NUL-terminated CString.
+            let out = unsafe { Rf_mkString(cstr.as_ptr()) };
             return out;
         }
         result
@@ -400,7 +404,11 @@ fn is_internal_cat_args(args: SEXP) -> bool {
 
 pub fn do_print(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
-        let m = crate::mainutils::essentials::match_formals(call, args, &["x", "digits", "..."]);
+        // SAFETY: `call` and `args` are live SEXPs handed down by the
+        // evaluator; the returned slots borrow the same argument graph.
+        let m = unsafe {
+            crate::mainutils::match_mod::match_formal_slots(call, args, &["x", "digits", "..."])
+        };
 
         let x = *m.first().unwrap_or(&R_NilValue());
         if x.is_null() || x == R_NilValue() {
@@ -447,14 +455,18 @@ pub fn do_print(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     0
                 };
                 if d > 0 {
-                    let old = crate::mainutils::format::format_set_R_print(
-                        crate::mainutils::format::RPrint {
-                            digits: d,
-                            scipen: crate::mainutils::options::GetOptionScipen(),
-                            na_width: 2,
-                            na_width_noquote: 2,
-                        },
-                    );
+                    // SAFETY: `format_set_R_print` and `GetOptionScipen` touch
+                    // the live session print options; no payload borrow is held.
+                    let old = unsafe {
+                        crate::mainutils::format::format_set_R_print(
+                            crate::mainutils::format::RPrint {
+                                digits: d,
+                                scipen: crate::mainutils::options::GetOptionScipen(),
+                                na_width: 2,
+                                na_width_noquote: 2,
+                            },
+                        )
+                    };
                     Some(RestorePrint { old })
                 } else {
                     None
@@ -509,7 +521,8 @@ pub fn do_typeof(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             let s = c"NULL";
-            return mk_string_cstr(&s);
+            // SAFETY: `s` is a NUL-terminated C string literal.
+            return unsafe { Rf_mkString(s.as_ptr()) };
         }
         let name = match TYPEOF(x) {
             t if t == SEXPTYPE::LGLSXP => "logical",
@@ -548,7 +561,8 @@ pub fn do_typeof(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
 
         let s = CString::new(name).unwrap_or_default();
-        mk_string_cstr(&s)
+        // SAFETY: `s` is a live NUL-terminated CString.
+        unsafe { Rf_mkString(s.as_ptr()) }
     }
 }
 
@@ -558,14 +572,18 @@ pub fn do_mode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let x = CAR(args);
         // GNU mode.R: is.call → "(" if the head deparses as "(", else "call".
         if !x.is_null() && x != R_NilValue() && TYPEOF(x) == SEXPTYPE::LANGSXP {
-            let chars = crate::eval::attrib_core::language_implicit_class_chars(x);
+            // SAFETY: `x` is a live LANGSXP SEXP rooted by the caller's
+            // argument graph; the returned CHARSXP shares that root.
+            let chars = unsafe { crate::eval::attrib_core::language_implicit_class_chars(x) };
             let head = chars_text(chars).unwrap_or_default();
             let name = if head == "(" { "(" } else { "call" };
             let cstr = std::ffi::CString::new(name).unwrap_or_default();
-            return mk_string_cstr(&cstr);
+            // SAFETY: `cstr` is a live NUL-terminated CString.
+            return unsafe { Rf_mkString(cstr.as_ptr()) };
         }
         let s = CString::new(mode_name(x)).unwrap_or_default();
-        mk_string_cstr(&s)
+        // SAFETY: `s` is a live NUL-terminated CString.
+        unsafe { Rf_mkString(s.as_ptr()) }
     }
 }
 
@@ -574,7 +592,8 @@ pub fn do_storage_mode_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     {
         let x = CAR(args);
         let s = CString::new(storage_mode_name(x)).unwrap_or_default();
-        mk_string_cstr(&s)
+        // SAFETY: `s` is a live NUL-terminated CString.
+        unsafe { Rf_mkString(s.as_ptr()) }
     }
 }
 
@@ -769,7 +788,10 @@ pub fn do_names(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return names_from_environment(x);
         }
         // Get names attribute
-        let names = crate::sexp::attrib_core::getAttrib(x, install_str("names"));
+        // SAFETY: `c"names"` is a NUL-terminated C string literal.
+        let names = crate::sexp::attrib_core::getAttrib(x, unsafe {
+            Rf_install(c"names".as_ptr())
+        });
         if !names.is_null() && names != R_NilValue() {
             return names;
         }
@@ -804,7 +826,8 @@ pub fn do_unname(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        let result = crate::mainutils::duplicate::duplicate(x);
+        // SAFETY: `x` is a live SEXP rooted by the caller's argument graph.
+        let result = unsafe { crate::mainutils::duplicate::duplicate(x) };
         if result.is_null() || result == R_NilValue() {
             return result;
         }
@@ -829,7 +852,8 @@ pub fn do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        let result = crate::mainutils::duplicate::duplicate(x);
+        // SAFETY: `x` is a live SEXP rooted by the caller's argument graph.
+        let result = unsafe { crate::mainutils::duplicate::duplicate(x) };
         if result.is_null() || result == R_NilValue() {
             return result;
         }
@@ -893,7 +917,10 @@ fn string_vector(names: &[String]) -> SEXP {
         let _result_guard = protect(result);
         for (i, name) in names.iter().enumerate() {
             let c_name = CString::new(name.as_str()).unwrap_or_default();
-            SET_STRING_ELT(result, i as R_xlen_t, mk_char_cstr(&c_name));
+            // SAFETY: `c_name` is a live NUL-terminated CString.
+            SET_STRING_ELT(result, i as R_xlen_t, unsafe {
+                Rf_mkChar(c_name.as_ptr())
+            });
         }
         result
     }
@@ -930,7 +957,9 @@ pub fn do_which(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let mut dst = owned_mut(result);
             for (i, &idx) in indices.iter().enumerate() {
                 dst.try_set_integer_elt(i as R_xlen_t, idx)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(error.to_string())
+                    });
             }
         }
         // GNU summary.c do_which: names of TRUE elements follow the indices.
@@ -1097,7 +1126,8 @@ fn set_ifelse_value(
                         crate::sexp::globals::R_NaString()
                     } else {
                         let c_text = CString::new(text).unwrap_or_default();
-                        mk_char_cstr(&c_text)
+                        // SAFETY: `c_text` is a live NUL-terminated CString.
+                        unsafe { Rf_mkChar(c_text.as_ptr()) }
                     }
                 };
                 SET_STRING_ELT(result, out_index, value);
@@ -1280,7 +1310,9 @@ fn table_data_frame(frame: SEXP) -> SEXP {
             for i in 0..total {
                 result_mut
                     .try_set_integer_elt(i, 0)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(error.to_string())
+                    });
             }
             for row in 0..nrow {
                 let mut stride = 1i64;
@@ -1299,7 +1331,9 @@ fn table_data_frame(frame: SEXP) -> SEXP {
                     });
                     result_mut
                         .try_set_integer_elt(index, count + 1)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
                 }
             }
         }
@@ -1309,7 +1343,9 @@ fn table_data_frame(frame: SEXP) -> SEXP {
             for j in 0..nd {
                 dim_mut
                     .try_set_integer_elt(j as R_xlen_t, labels[j].len() as i32)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(error.to_string())
+                    });
             }
         }
         crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), dim);
@@ -1321,7 +1357,8 @@ fn table_data_frame(frame: SEXP) -> SEXP {
             let labs = Rf_allocVector3(SEXPTYPE::STRSXP, labels[j].len() as i64);
             for (i, lab) in labels[j].iter().enumerate() {
                 let cstr = std::ffi::CString::new(lab.as_str()).unwrap_or_default();
-                SET_STRING_ELT(labs, i as i64, mk_char_cstr(&cstr));
+                // SAFETY: `cstr` is a live NUL-terminated CString.
+                SET_STRING_ELT(labs, i as i64, unsafe { Rf_mkChar(cstr.as_ptr()) });
             }
             SET_VECTOR_ELT(dimnames, j as i64, labs);
             let nm = if !frame_names.is_null()
@@ -1333,7 +1370,8 @@ fn table_data_frame(frame: SEXP) -> SEXP {
                 String::new()
             };
             let cstr = std::ffi::CString::new(nm).unwrap_or_default();
-            SET_STRING_ELT(dnn, j as i64, mk_char_cstr(&cstr));
+            // SAFETY: `cstr` is a live NUL-terminated CString.
+            SET_STRING_ELT(dnn, j as i64, unsafe { Rf_mkChar(cstr.as_ptr()) });
         }
         crate::sexp::attrib_core::setAttrib(
             dimnames,
@@ -1345,7 +1383,8 @@ fn table_data_frame(frame: SEXP) -> SEXP {
             crate::sexp::attrib_core::R_DimNamesSymbol(),
             dimnames,
         );
-        let class = mk_string_cstr(c"table");
+        // SAFETY: `c"table"` is a NUL-terminated C string literal.
+        let class = unsafe { Rf_mkString(c"table".as_ptr()) };
         crate::sexp::attrib_core::setAttrib(
             result,
             crate::sexp::attrib_core::R_ClassSymbol(),
@@ -1500,7 +1539,9 @@ pub fn do_table(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let mut dst = owned_mut(result);
             for (i, &count) in counts.iter().enumerate() {
                 dst.try_set_integer_elt(i as R_xlen_t, count.min(c_int::MAX as i64) as c_int)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(error.to_string())
+                    });
             }
         }
 
@@ -1509,7 +1550,10 @@ pub fn do_table(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let _names_p = protect(names);
             for (i, label) in labels.iter().enumerate() {
                 let cstr = CString::new(label.as_str()).unwrap_or_default();
-                SET_STRING_ELT(names, i as R_xlen_t, mk_char_cstr(&cstr));
+                // SAFETY: `cstr` is a live NUL-terminated CString.
+                SET_STRING_ELT(names, i as R_xlen_t, unsafe {
+                    Rf_mkChar(cstr.as_ptr())
+                });
             }
             crate::sexp::attrib_core::setAttrib(
                 result,
@@ -1518,7 +1562,8 @@ pub fn do_table(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             );
         }
 
-        let class = mk_string_cstr(c"table");
+        // SAFETY: `c"table"` is a NUL-terminated C string literal.
+        let class = unsafe { Rf_mkString(c"table".as_ptr()) };
         if !class.is_null() {
             let _class_p = protect(class);
             crate::sexp::attrib_core::setAttrib(
@@ -1529,9 +1574,13 @@ pub fn do_table(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         if let Some(title) = table_title(call, args) {
             let cstr = CString::new(title).unwrap_or_default();
-            let title_value = mk_string_cstr(&cstr);
+            // SAFETY: `cstr` is a live NUL-terminated CString; `c"table.name"`
+            // is a NUL-terminated C string literal.
+            let title_value = unsafe { Rf_mkString(cstr.as_ptr()) };
             let _title_p = protect(title_value);
-            crate::sexp::attrib_core::setAttrib(result, install_str("table.name"), title_value);
+            crate::sexp::attrib_core::setAttrib(result, unsafe {
+                Rf_install(c"table.name".as_ptr())
+            }, title_value);
         }
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
         if !dim.is_null() {
@@ -1554,7 +1603,8 @@ pub fn do_table(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         crate::sexp::globals::R_NaString()
                     } else {
                         let cstr = CString::new(label.as_str()).unwrap_or_default();
-                        mk_char_cstr(&cstr)
+                        // SAFETY: `cstr` is a live NUL-terminated CString.
+                        unsafe { Rf_mkChar(cstr.as_ptr()) }
                     };
                     SET_STRING_ELT(dim_labels, i as R_xlen_t, charsxp);
                 }
@@ -1565,7 +1615,10 @@ pub fn do_table(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if !dimnames_names.is_null() {
                     let _dimnames_names_p = protect(dimnames_names);
                     let cstr = CString::new(title).unwrap_or_default();
-                    SET_STRING_ELT(dimnames_names, 0, mk_char_cstr(&cstr));
+                    // SAFETY: `cstr` is a live NUL-terminated CString.
+                    SET_STRING_ELT(dimnames_names, 0, unsafe {
+                        Rf_mkChar(cstr.as_ptr())
+                    });
                     crate::sexp::attrib_core::setAttrib(
                         dimnames,
                         crate::sexp::attrib_core::R_NamesSymbol(),
@@ -1630,23 +1683,32 @@ impl Ord for RealTableKey {
 
 fn format_table_real(v: f64) -> String {
     {
-        let digits_sym = install_str("digits");
-        let saved = crate::mainutils::options::GetOption1(digits_sym);
-        let _saved = protect(saved);
-        let max = Rf_ScalarInteger(15);
-        let _max = protect(max);
-        crate::mainutils::options::R_SetOption(digits_sym, max);
-        let mut warn = 0;
-        let s = crate::mainutils::printutils::StringFromReal(v, &mut warn);
-        crate::mainutils::options::R_SetOption(digits_sym, saved);
-        if s.is_null() {
-            return format!("{v}");
+        use std::os::raw::c_char;
+        // SAFETY: the options/print boundary below runs inside the evaluator
+        // on the active instance; `b"digits\0"` is NUL-terminated, `warn` is a
+        // live out-parameter, and `s` is a CHARSXP retained by the session.
+        unsafe {
+            let digits_sym = Rf_install(b"digits\0".as_ptr() as *const c_char);
+            let saved = crate::mainutils::options::GetOption1(digits_sym);
+            let _saved = protect(saved);
+            let max = Rf_ScalarInteger(15);
+            let _max = protect(max);
+            crate::mainutils::options::R_SetOption(digits_sym, max);
+            let mut warn = 0;
+            let s = crate::mainutils::printutils::StringFromReal(v, &mut warn);
+            crate::mainutils::options::R_SetOption(digits_sym, saved);
+            if s.is_null() {
+                return format!("{v}");
+            }
+            let p = CHAR(s);
+            if p.is_null() {
+                return format!("{v}");
+            }
+            std::ffi::CStr::from_ptr(p)
+                .to_str()
+                .unwrap_or("")
+                .to_string()
         }
-        let p = charsxp_text_of(s);
-        if p.is_null() {
-            return format!("{v}");
-        }
-        p.as_cstr().to_str().unwrap_or("").to_string()
     }
 }
 
@@ -1823,7 +1885,8 @@ pub fn do_as_character(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let seconds = real_elt(x, i);
                 let charsxp = crate::mainutils::essentials::posix_seconds_to_iso(seconds, false)
                     .and_then(|text| CString::new(text).ok())
-                    .map(|text| mk_char_cstr(&text))
+                    // SAFETY: `text` is a live NUL-terminated CString.
+                    .map(|text| unsafe { Rf_mkChar(text.as_ptr()) })
                     .unwrap_or_else(crate::sexp::globals::R_NaString);
                 SET_STRING_ELT(result, i, charsxp);
             }
@@ -1840,7 +1903,8 @@ pub fn do_as_character(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let days = real_elt(x, i);
                 let charsxp = crate::mainutils::essentials::date_days_to_iso(days)
                     .and_then(|text| CString::new(text).ok())
-                    .map(|text| mk_char_cstr(&text))
+                    // SAFETY: `text` is a live NUL-terminated CString.
+                    .map(|text| unsafe { Rf_mkChar(text.as_ptr()) })
                     .unwrap_or_else(crate::sexp::globals::R_NaString);
                 SET_STRING_ELT(result, i, charsxp);
             }
@@ -1867,9 +1931,12 @@ pub fn do_as_character(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if TYPEOF(x) == SEXPTYPE::SYMSXP {
             let name = PRINTNAME(x);
             if name.is_null() || name == R_NilValue() {
-                return mk_string_cstr(c"");
+                // SAFETY: `c""` is a NUL-terminated C string literal.
+                return unsafe { Rf_mkString(c"".as_ptr()) };
             }
-            return mk_string_cstr(&charsxp_cstring(name));
+            // SAFETY: `name` is the live PRINTNAME CHARSXP of symbol `x`;
+            // its payload is NUL-terminated for the lifetime of `x`.
+            return unsafe { Rf_mkString(CHAR(name)) };
         }
         if TYPEOF(x) == SEXPTYPE::VECSXP || TYPEOF(x) == SEXPTYPE::EXPRSXP {
             let n = XLENGTH(x);
@@ -1899,7 +1966,8 @@ pub fn do_as_character(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     if !line.is_null() && line != R_NilValue() && XLENGTH(line) > 0 {
                         STRING_ELT(line, 0)
                     } else {
-                        mk_char_cstr(c"")
+                        // SAFETY: `c""` is a NUL-terminated C string literal.
+                        unsafe { Rf_mkChar(c"".as_ptr()) }
                     }
                 };
                 SET_STRING_ELT(result, i, chars);
@@ -1974,7 +2042,9 @@ pub fn do_as_logical(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     };
                     out_mut
                         .try_set_logical_elt(i, bit)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
                 }
             }
             return out;
@@ -2017,7 +2087,7 @@ pub fn do_as_vector(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     {
         // SAFETY: this primitive runs inside the evaluator on the active
         // original owner; no arena or payload loan crosses the acquisition.
-        let owner = crate::mainutils::essentials::current_owner()
+        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
         let _pin = owner
             .pin()
@@ -2144,7 +2214,8 @@ pub fn do_as_symbol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 fn duplicate_without_attributes(x: SEXP) -> SEXP {
     {
-        let result = crate::mainutils::duplicate::duplicate(x);
+        // SAFETY: `x` is a live SEXP rooted by the caller's argument graph.
+        let result = unsafe { crate::mainutils::duplicate::duplicate(x) };
         if !result.is_null() && result != R_NilValue() {
             SET_ATTRIB(result, R_NilValue());
             SET_OBJECT(result, 0);
@@ -2181,10 +2252,11 @@ pub fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             let attrs = crate::sexp::accessors::ATTRIB(x);
             if !attrs.is_null() && attrs != R_NilValue() {
-                crate::sexp::accessors::SET_ATTRIB(
-                    result,
-                    crate::mainutils::duplicate::duplicate(attrs),
-                );
+                // SAFETY: `attrs` is the live attribute chain of `x`, rooted by
+                // the caller's argument graph.
+                crate::sexp::accessors::SET_ATTRIB(result, unsafe {
+                    crate::mainutils::duplicate::duplicate(attrs)
+                });
             }
             return result;
         }
@@ -2242,7 +2314,9 @@ pub fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 } else if t == SEXPTYPE::RAWSXP {
                     let v = owned(x)
                         .try_raw_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
                     set_result(elem, |dst| dst.try_set_raw_elt(0, v));
                 } else if t == SEXPTYPE::CPLXSXP {
                     let v = cplx_elt(x, i);
@@ -2268,7 +2342,8 @@ pub fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && TYPEOF(names) == SEXPTYPE::STRSXP
             && XLENGTH(names) == n
         {
-            let names = crate::mainutils::duplicate::duplicate(names);
+            // SAFETY: `names` is a live STRSXP rooted by `x`'s attribute graph.
+            let names = unsafe { crate::mainutils::duplicate::duplicate(names) };
             if !names.is_null() {
                 crate::sexp::attrib_core::setAttrib(
                     result,
@@ -2332,11 +2407,13 @@ pub fn do_as_list_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             if let Some(name) = tag_name(TAG(frame)) {
                 if all_names || !name.starts_with('.') {
                     let c_name = CString::new(name.as_str()).unwrap_or_default();
-                    let sym = install_cstr(&c_name);
-                    let mut value = find_var_in_frame(x, sym);
+                    // SAFETY: `c_name` is a live NUL-terminated CString; `x`
+                    // is a live ENVSXP whose frame rooted `sym`'s print name.
+                    let sym = unsafe { Rf_install(c_name.as_ptr()) };
+                    let mut value = unsafe { crate::sexp::envir::R_findVarInFrame(x, sym) };
                     if TYPEOF(value) == SEXPTYPE::PROMSXP {
                         // SAFETY: `value` is a live PROMSXP in environment `x`.
-                        value = crate::eval::eval::Rf_eval(value, x);
+                        value = unsafe { crate::eval::eval::Rf_eval(value, x) };
                     }
                     if !value.is_null() && value != crate::sexp::globals::R_UnboundValue() {
                         entries.push((name, value));
@@ -2384,7 +2461,10 @@ pub fn do_as_list_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         }
         if !names.is_empty() {
             let names_vec = string_vector(&names);
-            crate::sexp::attrib_core::setAttrib(result, install_str("names"), names_vec);
+            // SAFETY: `c"names"` is a NUL-terminated C string literal.
+            crate::sexp::attrib_core::setAttrib(result, unsafe {
+                Rf_install(c"names".as_ptr())
+            }, names_vec);
         }
         result
     }
@@ -2393,7 +2473,9 @@ pub fn do_as_list_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 fn function_as_list(fun: SEXP) -> SEXP {
     {
         let formals = crate::sexp::accessors::FORMALS(fun);
-        let body = crate::eval::jit::R_BytecodeExpr(crate::sexp::accessors::BODY(fun));
+        // SAFETY: `fun` is a live CLOSXP rooted by the caller's argument
+        // graph; its BODY cell shares that root.
+        let body = unsafe { crate::eval::jit::R_BytecodeExpr(crate::sexp::accessors::BODY(fun)) };
         let n = pairlist_len(formals) as R_xlen_t;
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n + 1);
         let _result = protect(result);
@@ -2485,7 +2567,10 @@ fn environment_as_list(env: SEXP) -> SEXP {
             names.push(name.clone());
         }
         let names_vec = string_vector(&names);
-        crate::sexp::attrib_core::setAttrib(result, install_str("names"), names_vec);
+        // SAFETY: `c"names"` is a NUL-terminated C string literal.
+        crate::sexp::attrib_core::setAttrib(result, unsafe {
+            Rf_install(c"names".as_ptr())
+        }, names_vec);
         result
     }
 }

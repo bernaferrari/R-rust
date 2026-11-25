@@ -42,12 +42,6 @@ pub fn R_CheckStack() {
     }
 }
 
-/// Check for stack overflow with extra space.
-pub fn R_CheckStack2(_extra: usize) {
-    {
-        R_CheckStack();
-    }
-}
 
 /// Check for user interrupts.
 pub fn R_CheckUserInterrupt() {
@@ -163,12 +157,6 @@ pub fn onintr() {
     }
 }
 
-/// Handle interrupt signal without resume option.
-pub fn onintrNoResume() {
-    {
-        jump_to_top_ex(0, 1, 0, 0, 0);
-    }
-}
 
 // Restart handling
 // ---------------------------------------------------------------------------

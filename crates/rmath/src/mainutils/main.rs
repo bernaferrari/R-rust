@@ -144,25 +144,13 @@ pub fn R_SetCollectWarnings(v: c_int) {
 // Time limits (stubs)
 // ---------------------------------------------------------------------------
 
-pub fn resetTimeLimits() {
-    // Unimplemented
-}
 
-pub fn checkTimeLimits() {
-    // Unimplemented
-}
 
 // ---------------------------------------------------------------------------
 // SrcRef state (stubs)
 // ---------------------------------------------------------------------------
 
-pub fn R_InitSrcRefState(_cntxt: *mut std::ffi::c_void) {
-    // Unimplemented
-}
 
-pub fn R_FinalizeSrcRefState() {
-    // Unimplemented
-}
 
 // ---------------------------------------------------------------------------
 // Parse status
@@ -713,13 +701,7 @@ pub fn R_GetMaxNSize() -> u64 {
     crate::mainutils::memory_main::R_GetMaxNSize_memory()
 }
 
-pub fn R_GetVSize() -> u64 {
-    unsafe { crate::sexp::memory::with_arena(|a| a.total_bytes_allocated() as u64) }
-}
 
-pub fn R_GetNSize() -> u64 {
-    unsafe { crate::sexp::memory::with_arena(|a| a.node_count() as u64) }
-}
 
 // ---------------------------------------------------------------------------
 // Tests

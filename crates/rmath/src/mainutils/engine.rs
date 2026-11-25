@@ -1375,17 +1375,6 @@ pub fn R_GE_rasterScale(
     raster_scale(sraster, sw, sh, draster, dw, dh);
 }
 
-/// Scale a raster image using bilinear interpolation.
-pub fn R_GE_rasterInterpolate(
-    sraster: &[c_uint],
-    sw: c_int,
-    sh: c_int,
-    draster: &mut [c_uint],
-    dw: c_int,
-    dh: c_int,
-) {
-    raster_interpolate(sraster, sw, sh, draster, dw, dh);
-}
 
 /// Calculate the size needed for a rotated raster image.
 pub fn R_GE_rasterRotatedSize(
@@ -1410,31 +1399,7 @@ pub fn R_GE_rasterRotatedOffset(
     (*xoff, *yoff) = raster_rotated_offset(w, h, angle, botleft != 0);
 }
 
-/// Copy a raster image into the middle of a larger raster (for rotation).
-pub fn R_GE_rasterResizeForRotation(
-    sraster: &[c_uint],
-    w: c_int,
-    h: c_int,
-    newRaster: &mut [c_uint],
-    wnew: c_int,
-    hnew: c_int,
-    gc: GEContext<'_>,
-) {
-    raster_resize_for_rotation(sraster, w, h, newRaster, wnew, hnew, gc);
-}
 
-/// Rotate a raster image.
-pub fn R_GE_rasterRotate(
-    sraster: &[c_uint],
-    w: c_int,
-    h: c_int,
-    angle: c_double,
-    draster: &mut [c_uint],
-    gc: GEContext<'_>,
-    smoothAlpha: c_int,
-) {
-    raster_rotate(sraster, w, h, angle, draster, gc, smoothAlpha != 0);
-}
 
 // ---------------------------------------------------------------------------
 // Path drawing (GEgroup API)

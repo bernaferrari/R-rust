@@ -140,9 +140,6 @@ pub(crate) fn load_package_dependencies(
     }
 }
 
-pub(crate) fn package_needs_compilation(description: &Path) -> Result<bool, String> {
-    Ok(needs_compilation(&read_package_description(description)?))
-}
 
 pub(super) fn validate_package_source(
     package: &str,

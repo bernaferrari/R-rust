@@ -99,20 +99,7 @@ pub unsafe fn set_workspace_name(fn_ptr: *const c_char) -> bool {
 // Core entry points (C -> Rust translations)
 // ---------------------------------------------------------------------------
 
-// Restore the global environment if requested.
-pub fn R_RestoreGlobalEnv() {
-    // In this thin port we do not perform a full workspace restore. The
-    // surrounding crate wires up the real restore path via higher level
-    // abstractions. We keep the contract visible and do nothing here so
-    // that callers can rely on a deterministic no-op when restoration is not
-    // required by the user environment.
-}
 
-// Save the global environment. This is a no-op in this port unless called
-// by higher-level code which performs the actual persistence.
-pub fn R_SaveGlobalEnv() {
-    // Intentionally left as a no-op for this port.
-}
 
 #[cfg(test)]
 mod tests {
@@ -164,39 +151,11 @@ pub fn R_DefParamsEx(_Rp: *mut c_void, _RstartVersion: c_int) -> c_int {
     0
 }
 
-// Define default startup parameters.
-pub fn R_DefParams(_Rp: *mut c_void) {
-    {
-        let _ = R_DefParamsEx(_Rp, 0);
-    }
-}
 
-// Process environment-driven size hints for vectors and language/runtime heaps.
-pub fn R_SizeFromEnv(_Rp: *mut c_void) {
-    // Not implemented here; the surrounding crates expose environment-driven
-    // configuration through other, higher-level components.
-}
 
-// Apply requested sizes for vector and language heaps.
-pub fn SetSize(_vsize: usize, _nsize: usize) {
-    // No-op in this port; see higher-level components for actual sizing logic.
-}
 
-// Apply maximum sizes for heaps.
-pub fn SetMaxSize(_vsize: usize, _nsize: usize) {
-    // No-op in this port.
-}
 
-// Helper to normalise a boolean value coming from the startup parameters.
-pub fn checkBool(inVal: c_int, _name: *const c_char) -> bool {
-    inVal != 0
-}
 
-// Apply runtime parameters to the system. This is a lightweight port and does
-// not mutate global state directly here.
-pub fn R_SetParams(_Rp: *mut c_void) {
-    // Intentionally left as a no-op in this port.
-}
 
 // ---------------------------------------------------------------------------
 // Public re-exports / module glue

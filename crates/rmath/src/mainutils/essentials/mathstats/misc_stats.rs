@@ -508,38 +508,6 @@ pub fn do_weighted_mean(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     Rf_ScalarReal(if den != 0.0 { num / den } else { f64::NAN })
 }
 
-/// GNU `poly(x, 1, simple=TRUE)` — centered unit-norm linear term.
-pub fn do_poly(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    let n = XLENGTH(x) as usize;
-    if n < 2 {
-        return R_NilValue();
-    }
-    let mut mean = 0.0;
-    for i in 0..n {
-        mean += elt_real_safe(x, i as i64);
-    }
-    mean /= n as f64;
-    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
-    let _r = protect(result);
-    let mut ss = 0.0;
-    for i in 0..n {
-        let v = elt_real_safe(x, i as i64) - mean;
-        set_real_checked(result, (i) as R_xlen_t, v);
-        ss += v * v;
-    }
-    let s = ss.sqrt();
-    if s > 0.0 {
-        for i in 0..n {
-            set_real_checked(
-                result,
-                (i) as R_xlen_t,
-                real_elt_checked(result, (i) as R_xlen_t) / s,
-            );
-        }
-    }
-    result
-}
 
 /// GNU `loglin(table, margin, start, fit, eps, iter, param, print)` — port of
 /// r-source/src/library/stats/R/loglin.R, calling the AS 51 kernel
@@ -1181,19 +1149,6 @@ fn smirnov_row_totals(z: SEXP) -> Vec<i32> {
     }
 }
 
-/// GNU `polym(x, y, degree=1, raw=TRUE)` — two-column raw design.
-pub fn do_polym(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    let y = CAR(CDR(args));
-    let n = XLENGTH(x).min(XLENGTH(y)) as usize;
-    let result = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 2);
-    let _r = protect(result);
-    for i in 0..n {
-        set_real_checked(result, (i) as R_xlen_t, elt_real_safe(x, i as i64));
-        set_real_checked(result, (i + n) as R_xlen_t, elt_real_safe(y, i as i64));
-    }
-    result
-}
 
 fn med3(a: f64, b: f64, c: f64) -> f64 {
     let mut m = b;

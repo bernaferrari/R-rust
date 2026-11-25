@@ -378,26 +378,6 @@ pub fn do_print_formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     do_print(_call, _op, args, _rho)
 }
 
-/// R's `print.call(x)` — print call/language object.
-pub fn do_print_call(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            println!("NULL");
-            return R_NilValue();
-        }
-        // Print as deparse-like output
-        let s = do_deparse(_call, _op, args, _rho);
-        if !s.is_null() && TYPEOF(s) == SEXPTYPE::STRSXP {
-            let n = XLENGTH(s);
-            for i in 0..n {
-                println!("{}", elt_to_string(s, i));
-            }
-        }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
-    }
-}
 
 /// R's `print.pairlist(x)` — print pairlist.
 pub fn do_print_pairlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

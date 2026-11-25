@@ -528,63 +528,6 @@ pub fn Ri18n_wcwidth(c: R_wchar_t) -> c_int {
     if zw != 0 { 0 } else { 1 } // assume unknown chars are width one.
 }
 
-/// Return the display width of a wide-character string.
-///
-/// This is a replacement for `wcswidth()`. Strings in R are restricted
-/// to 2^31-1 bytes but could conceivably have a width exceeding that.
-///
-/// Unlike the POSIX description, this does not return -1 for strings
-/// containing non-printable Unicode points.
-///
-/// # Safety
-/// `wc` must point to a valid null-terminated wide-character string,
-/// or `n` must specify a valid length. The caller must ensure the
-/// pointer is valid for reads up to `n` elements or until a null terminator.
-pub unsafe fn Ri18n_wcswidth(wc: *const c_int, n: usize) -> c_int {
-    unsafe {
-        if wc.is_null() {
-            return 0;
-        }
-
-        let mut rs: c_int = 0;
-        let mut remaining = n;
-        let mut idx = 0usize;
-
-        while remaining > 0 {
-            let ch = *wc.add(idx);
-            if ch == 0 {
-                break;
-            }
-
-            if idx + 1 < n {
-                let next_ch = *wc.add(idx + 1);
-                if IS_SURROGATE_PAIR(ch as wint_t, next_ch as wint_t) {
-                    // Surrogate pairs should only occur with 'short' wchar_t,
-                    // that is Windows and perhaps 32-bit AIX.
-                    let val: R_wchar_t = ((ch & 0x3FF) << 10) + (next_ch & 0x3FF) + 0x010000;
-                    let now = Ri18n_wcwidth(val);
-                    if now == -1 {
-                        return -1;
-                    }
-                    rs += now;
-                    idx += 2;
-                    remaining -= 2;
-                    continue;
-                }
-            }
-
-            let now = Ri18n_wcwidth(ch);
-            if now == -1 {
-                return -1;
-            }
-            rs += now;
-            idx += 1;
-            remaining -= 1;
-        }
-
-        rs
-    }
-}
 
 // -----------------------------------------------------------------------
 // Public API: case conversion

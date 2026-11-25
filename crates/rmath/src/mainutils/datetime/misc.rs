@@ -782,91 +782,15 @@ pub fn R_isLeapYear(year: c_int) -> c_int {
 // FFI-compatible standalone functions
 // ---------------------------------------------------------------------------
 
-/// FFI-compatible leap year test.
-pub fn R_isleap(year: c_int) -> c_int {
-    if isleap(year) { 1 } else { 0 }
-}
 
-/// FFI-compatible days-in-year function.
-pub fn R_days_in_year(year: c_int) -> c_int {
-    days_in_year(year)
-}
 
-/// FFI-compatible days-in-month function.
-///
-/// `mon` is 0-based (0=Jan), `yr` is years since 1900.
-pub fn R_days_in_month(mon: c_int, yr: c_int) -> c_int {
-    days_in_month(mon, yr)
-}
 
-/// FFI-compatible validate_tm.
-pub unsafe fn R_validate_tm(tm: *mut stm) -> c_int {
-    unsafe {
-        if tm.is_null() {
-            return -1;
-        }
-        validate_tm(&mut *tm)
-    }
-}
 
-/// FFI-compatible mktime-like function (UTC only, no timezone correction).
-///
-/// Returns seconds since epoch as a double, or NA_REAL on error.
-pub unsafe fn R_timegm00_ffi(tm: *mut stm) -> c_double {
-    unsafe {
-        if tm.is_null() {
-            return NA_REAL;
-        }
-        timegm00(&mut *tm)
-    }
-}
 
-/// FFI-compatible mkdate00.
-pub unsafe fn R_mkdate00(tm: *mut stm) -> c_double {
-    unsafe {
-        if tm.is_null() {
-            return NA_REAL;
-        }
-        mkdate00(&mut *tm)
-    }
-}
 
-/// FFI-compatible likely_strftime_overflow.
-pub unsafe fn R_likely_strftime_overflow(tm: *const stm) -> c_int {
-    unsafe {
-        if tm.is_null() {
-            return 0;
-        }
-        if likely_strftime_overflow(&*tm) { 1 } else { 0 }
-    }
-}
 
-/// FFI-compatible julian2dtime.
-pub unsafe fn R_julian2dtime(x_i: c_double, tm: *mut stm) -> c_int {
-    unsafe {
-        if tm.is_null() {
-            return 0;
-        }
-        if julian2dtime(x_i, &mut *tm) { 1 } else { 0 }
-    }
-}
 
-/// FFI-compatible dtime2julian.
-pub fn R_dtime2julian(
-    secs: c_double,
-    tm_min: c_int,
-    tm_hour: c_int,
-    tm_mday: c_int,
-    tm_mon: c_int,
-    tm_year: c_int,
-) -> c_double {
-    dtime2julian(secs, tm_min, tm_hour, tm_mday, tm_mon, tm_year)
-}
 
-/// FFI-compatible R_ISLeapYear.
-pub fn R_R_ISLeapYear(year: c_int) -> c_int {
-    if R_ISLeapYear(year) { 1 } else { 0 }
-}
 
 // ---------------------------------------------------------------------------
 // Tests

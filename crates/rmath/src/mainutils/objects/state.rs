@@ -239,15 +239,6 @@ pub(crate) fn set_s4_slot_types(name: &str, slot_types: HashMap<String, String>)
     })
 }
 
-pub(crate) fn set_s4_validity(name: &str) -> bool {
-    with_objects_state(|state| {
-        let Some(class_def) = state.s4_classes.get_mut(name) else {
-            return false;
-        };
-        class_def.has_validity = true;
-        true
-    })
-}
 
 pub(crate) fn set_s4_validity_fn(name: &str, method: SEXP) -> bool {
     with_objects_runtime(|access| {

@@ -21,112 +21,31 @@ fn wrap_arg(x: SEXP) -> Sexp<'static> {
     checked(sexp_factory().wrap(x))
 }
 
-pub fn R_runif(a: c_double, b: c_double) -> c_double {
-    if !a.is_finite() || !b.is_finite() {
-        return f64::NAN;
-    }
-    if a > b {
-        return f64::NAN;
-    }
-    if a == b {
-        return a;
-    }
-    a + (b - a) * r_unif_rand()
-}
 
-pub fn R_rnorm(mu: c_double, sigma: c_double) -> c_double {
-    if !sigma.is_finite() {
-        return f64::NAN;
-    }
-    if sigma == 0.0 || !mu.is_finite() {
-        return mu;
-    }
-    mu + sigma * r_norm_rand()
-}
 
-pub fn R_rbinom(n: c_double, p: c_double) -> c_double {
-    crate::nmath::dist::binomial::rbinom(n, p)
-}
 
-pub fn R_rexp(rate: c_double) -> c_double {
-    crate::nmath::dist::exponential::rexp(rate)
-}
 
-pub fn R_rpois(mu: c_double) -> c_double {
-    crate::nmath::dist::poisson::rpois(mu)
-}
 
-pub fn R_rchisq(df: c_double) -> c_double {
-    crate::nmath::dist::chisq::rchisq(df)
-}
 
-pub fn R_rgamma(shape: c_double, scale: c_double) -> c_double {
-    crate::nmath::dist::gamma::rgamma(shape, scale)
-}
 
-pub fn R_rbeta(a: c_double, b: c_double) -> c_double {
-    crate::nmath::dist::beta::rbeta(a, b)
-}
 
-pub fn R_rt(df: c_double) -> c_double {
-    crate::nmath::dist::t_dist::rt(df)
-}
 
-pub fn R_rf(n1: c_double, n2: c_double) -> c_double {
-    crate::nmath::dist::f_dist::rf(n1, n2)
-}
 
-pub fn R_rcauchy(location: c_double, scale: c_double) -> c_double {
-    crate::nmath::dist::cauchy::rcauchy(location, scale)
-}
 
-pub fn R_rlnorm(meanlog: c_double, sdlog: c_double) -> c_double {
-    crate::nmath::dist::lnorm::rlnorm(meanlog, sdlog)
-}
 
-pub fn R_rlogis(location: c_double, scale: c_double) -> c_double {
-    crate::nmath::dist::logistic::rlogis(location, scale)
-}
 
-pub fn R_rweibull(shape: c_double, scale: c_double) -> c_double {
-    crate::nmath::dist::weibull::rweibull(shape, scale)
-}
 
-pub fn R_rwilcox(m: c_double, n: c_double) -> c_double {
-    crate::nmath::dist::wilcox::rwilcox(m, n)
-}
 
-pub fn R_rsignrank(n: c_double) -> c_double {
-    crate::nmath::dist::signrank::rsignrank(n)
-}
 
-pub fn R_rnbinom(size: c_double, prob: c_double) -> c_double {
-    crate::nmath::dist::nbinom::rnbinom(size, prob)
-}
 
-pub fn R_rnbinom_mu(size: c_double, mu: c_double) -> c_double {
-    crate::nmath::dist::nbinom::rnbinom_mu(size, mu)
-}
 
-pub fn R_rnchisq(df: c_double, ncp: c_double) -> c_double {
-    crate::nmath::dist::nchisq::rnchisq(df, ncp)
-}
 
-pub fn R_rhyper(nn1: c_double, nn2: c_double, kk: c_double) -> c_double {
-    crate::nmath::dist::hypergeometric::rhyper(nn1, nn2, kk)
-}
 
-pub fn R_rgeom(p: c_double) -> c_double {
-    crate::nmath::dist::geometric::rgeom(p)
-}
 
 pub fn R_unif_index(dn: c_double) -> c_double {
     r_R_unif_index(dn)
 }
 
-pub fn R_sample_kind() -> c_int {
-    r_sample_kind() as c_int
-}
 
 pub fn R_binom_kind() -> c_int {
     r_binom_kind() as c_int
@@ -1326,33 +1245,12 @@ pub fn SampleReplace_r(n: usize, nans: usize) -> Vec<c_int> {
     ans
 }
 
-/// Equal probability sampling without replacement using the R RNG.
-pub fn SampleNoReplace_r(n: usize, nans: usize) -> Vec<c_int> {
-    let mut perm: Vec<c_int> = (1..=n as c_int).collect();
-    for i in 0..nans {
-        let remaining = (n - i) as f64;
-        let j = r_R_unif_index(remaining) as usize;
-        if j >= n - i {
-            continue;
-        }
-        perm.swap(i, j);
-    }
-    perm[..nans].to_vec()
-}
 
 // ---------------------------------------------------------------------------
 // S compatibility stubs
 // ---------------------------------------------------------------------------
 
-pub fn seed_in(ignored: *mut std::os::raw::c_long) {
-    let _ = ignored;
-    GetRNGstate();
-}
 
-pub fn seed_out(ignored: *mut std::os::raw::c_long) {
-    let _ = ignored;
-    PutRNGstate();
-}
 
 // ---------------------------------------------------------------------------
 // Tests

@@ -1008,24 +1008,6 @@ pub fn coerceSymbol(v: SEXP, type_: SEXPTYPE) -> SEXP {
     }
 }
 
-/// Create a tag (symbol) from an SEXP.
-/// If x is already a symbol or NULL, return it. If x is a string of length >= 1,
-/// install it as a symbol.
-pub fn CreateTag(x: SEXP) -> SEXP {
-    if isNull(x) || isSymbol(x) {
-        return x;
-    }
-    if isString(x) && LENGTH(x) >= 1 {
-        let s = STRING_ELT(x, 0);
-        if !isNull(s) {
-            if !char_bytes(s).is_empty() {
-                return installTrChar(s);
-            }
-        }
-    }
-    // fallback: return NULL
-    R_NilValue()
-}
 
 /// Convert an SEXP to a function (closure).
 /// This matches R's asFunction() from coerce.c.

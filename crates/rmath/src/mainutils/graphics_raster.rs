@@ -148,11 +148,6 @@ pub(crate) fn affine_transform(
     [a, b, c, d, e, f]
 }
 
-/// Decode a color matrix, grayscale numeric matrix, or nativeRaster integer
-/// matrix into top-down row-major RGBA8 pixels.
-pub(crate) unsafe fn decode_raster_image(value: SEXP) -> RasterImage {
-    unsafe { decode_raster_image_input(value, false) }
-}
 
 unsafe fn decode_raster_image_input(value: SEXP, native_payload: bool) -> RasterImage {
     unsafe {

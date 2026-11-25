@@ -622,10 +622,3 @@ pub fn do_eSoftVersion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP 
     ans
 }
 
-/// R's `Sys.junction()` — create NTFS junction (Windows only).
-/// On non-Windows, returns FALSE.
-pub fn do_mkjunction(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    use crate::sexp::constructors::Rf_ScalarLogical;
-    use crate::sexp::ffi::FALSE;
-    Rf_ScalarLogical(FALSE)
-}

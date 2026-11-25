@@ -245,28 +245,4 @@ pub(super) fn split_logical_rank(value: &str) -> u8 {
     }
 }
 
-/// R's `melt(x)` — melt a data.frame to long format (simplified).
-pub fn do_melt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    {
-        // Simplified: return the input as-is
-        // A full implementation would reshape the data.frame
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        x
-    }
-}
 
-/// R's `cast(x, formula)` — cast melted data (simplified).
-pub fn do_cast(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    {
-        // Simplified: return the input as-is
-        // A full implementation would reshape using the formula
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        x
-    }
-}

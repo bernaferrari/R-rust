@@ -98,50 +98,13 @@ fn check_linear_gradient(pattern: SEXP) {
     }
 }
 
-pub fn R_GE_linearGradientX1(pattern: SEXP) -> c_double {
-    check_linear_gradient(pattern);
-    pattern_real(pattern, LINEAR_X1)
-}
 
-pub fn R_GE_linearGradientY1(pattern: SEXP) -> c_double {
-    check_linear_gradient(pattern);
-    pattern_real(pattern, LINEAR_Y1)
-}
 
-pub fn R_GE_linearGradientX2(pattern: SEXP) -> c_double {
-    check_linear_gradient(pattern);
-    pattern_real(pattern, LINEAR_X2)
-}
 
-pub fn R_GE_linearGradientY2(pattern: SEXP) -> c_double {
-    check_linear_gradient(pattern);
-    pattern_real(pattern, LINEAR_Y2)
-}
 
-pub fn R_GE_linearGradientNumStops(pattern: SEXP) -> c_int {
-    check_linear_gradient(pattern);
-    LENGTH(VECTOR_ELT(pattern, LINEAR_STOPS))
-}
 
-pub fn R_GE_linearGradientStop(pattern: SEXP, i: c_int) -> c_double {
-    check_linear_gradient(pattern);
-    pattern_elt(pattern, LINEAR_STOPS)
-        .try_real_elt(i as R_xlen_t)
-        .unwrap_or_else(|error| checked_error(error))
-}
 
-pub fn R_GE_linearGradientColour(pattern: SEXP, i: c_int) -> c_uint {
-    check_linear_gradient(pattern);
-    let colours = VECTOR_ELT(pattern, LINEAR_COLOURS);
-    // SAFETY: `colours` is a live colour vector borrowed for the duration of
-    // the call, satisfying RGBpar's erased-pointer contract.
-    unsafe { crate::mainutils::colors::RGBpar(colours as *mut c_void, i) }
-}
 
-pub fn R_GE_linearGradientExtend(pattern: SEXP) -> c_int {
-    check_linear_gradient(pattern);
-    pattern_int(pattern, LINEAR_EXTEND)
-}
 
 // ---------------------------------------------------------------------------
 // Radial gradient accessors
@@ -163,60 +126,15 @@ fn check_radial_gradient(pattern: SEXP) {
     }
 }
 
-pub fn R_GE_radialGradientCX1(pattern: SEXP) -> c_double {
-    check_radial_gradient(pattern);
-    pattern_real(pattern, RADIAL_CX1)
-}
 
-pub fn R_GE_radialGradientCY1(pattern: SEXP) -> c_double {
-    check_radial_gradient(pattern);
-    pattern_real(pattern, RADIAL_CY1)
-}
 
-pub fn R_GE_radialGradientR1(pattern: SEXP) -> c_double {
-    check_radial_gradient(pattern);
-    pattern_real(pattern, RADIAL_R1)
-}
 
-pub fn R_GE_radialGradientCX2(pattern: SEXP) -> c_double {
-    check_radial_gradient(pattern);
-    pattern_real(pattern, RADIAL_CX2)
-}
 
-pub fn R_GE_radialGradientCY2(pattern: SEXP) -> c_double {
-    check_radial_gradient(pattern);
-    pattern_real(pattern, RADIAL_CY2)
-}
 
-pub fn R_GE_radialGradientR2(pattern: SEXP) -> c_double {
-    check_radial_gradient(pattern);
-    pattern_real(pattern, RADIAL_R2)
-}
 
-pub fn R_GE_radialGradientNumStops(pattern: SEXP) -> c_int {
-    check_radial_gradient(pattern);
-    LENGTH(VECTOR_ELT(pattern, RADIAL_STOPS))
-}
 
-pub fn R_GE_radialGradientStop(pattern: SEXP, i: c_int) -> c_double {
-    check_radial_gradient(pattern);
-    pattern_elt(pattern, RADIAL_STOPS)
-        .try_real_elt(i as R_xlen_t)
-        .unwrap_or_else(|error| checked_error(error))
-}
 
-pub fn R_GE_radialGradientColour(pattern: SEXP, i: c_int) -> c_uint {
-    check_radial_gradient(pattern);
-    let colours = VECTOR_ELT(pattern, RADIAL_COLOURS);
-    // SAFETY: `colours` is a live colour vector borrowed for the duration of
-    // the call, satisfying RGBpar's erased-pointer contract.
-    unsafe { crate::mainutils::colors::RGBpar(colours as *mut c_void, i) }
-}
 
-pub fn R_GE_radialGradientExtend(pattern: SEXP) -> c_int {
-    check_radial_gradient(pattern);
-    pattern_int(pattern, RADIAL_EXTEND)
-}
 
 // ---------------------------------------------------------------------------
 // Tiling pattern accessors
@@ -235,35 +153,11 @@ fn check_tiling_pattern(pattern: SEXP) {
     }
 }
 
-pub fn R_GE_tilingPatternFunction(pattern: SEXP) -> SEXP {
-    check_tiling_pattern(pattern);
-    VECTOR_ELT(pattern, TILING_FUNCTION)
-}
 
-pub fn R_GE_tilingPatternX(pattern: SEXP) -> c_double {
-    check_tiling_pattern(pattern);
-    pattern_real(pattern, TILING_X)
-}
 
-pub fn R_GE_tilingPatternY(pattern: SEXP) -> c_double {
-    check_tiling_pattern(pattern);
-    pattern_real(pattern, TILING_Y)
-}
 
-pub fn R_GE_tilingPatternWidth(pattern: SEXP) -> c_double {
-    check_tiling_pattern(pattern);
-    pattern_real(pattern, TILING_WIDTH)
-}
 
-pub fn R_GE_tilingPatternHeight(pattern: SEXP) -> c_double {
-    check_tiling_pattern(pattern);
-    pattern_real(pattern, TILING_HEIGHT)
-}
 
-pub fn R_GE_tilingPatternExtend(pattern: SEXP) -> c_int {
-    check_tiling_pattern(pattern);
-    pattern_int(pattern, TILING_EXTEND)
-}
 
 // ---------------------------------------------------------------------------
 // Tests

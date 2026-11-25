@@ -1299,16 +1299,7 @@ fn sort_real_keys(state: &mut RadixSortState, keys: &[u64], o: &mut [c_int]) -> 
     sorted && !removed
 }
 
-/// Recursive radix sort for character strings (STRSXP vectors).
-pub fn cradix_r(_xsub: *mut c_void, _n: c_int, _radix: c_int) -> *mut c_void {
-    _xsub
-}
 
-/// Pre-processing for character sort. The Rust implementation sorts directly
-/// from STRSXP values, so no byte-offset side table is required.
-pub fn csort_pre(x: *mut c_void, _n: c_int) -> *mut c_void {
-    x
-}
 
 fn character_keys(x: SEXP, n: R_xlen_t) -> Vec<Option<Vec<u8>>> {
     let input = wrapped(x);
@@ -1381,88 +1372,7 @@ fn sort_character_keys(
 // Standalone sortedness checks (simple bool-returning variants)
 // ---------------------------------------------------------------------------
 
-/// Check if a double (f64) array is sorted in ascending order.
-///
-/// NA values (GNU NA_REAL payload 1954) are
-/// treated as greater than any non-NA value, so they sort to the end.
-///
-/// Returns `true` if the array is sorted in ascending order with NAs at
-/// the end, `false` otherwise.
-///
-/// # Safety
-/// - `x` must point to at least `n` valid f64 values.
-pub unsafe fn is_double_sorted(x: *const f64, n: usize) -> bool {
-    unsafe {
-        if n <= 1 {
-            return true;
-        }
-        let na_bits = NA_REAL.to_bits();
-        for i in 1..n {
-            let prev = *x.add(i - 1);
-            let curr = *x.add(i);
-            let prev_na = prev.to_bits() == na_bits;
-            let curr_na = curr.to_bits() == na_bits;
 
-            if prev_na && !curr_na {
-                // NA followed by non-NA: not sorted (NAs should be at end)
-                return false;
-            }
-            if prev_na && curr_na {
-                continue; // Both NA, acceptable
-            }
-            // Neither is NA: check ascending order
-            if curr < prev {
-                return false;
-            }
-        }
-        true
-    }
-}
-
-/// Check if a complex (Rcomplex) array is sorted in ascending order.
-///
-/// Sorting is by real part first, then by imaginary part when real parts
-/// are equal. NA values (where either component matches NA_REAL bit pattern)
-/// are treated as greater than any non-NA value, so they sort to the end.
-///
-/// Returns `true` if the array is sorted, `false` otherwise.
-///
-/// # Safety
-/// - `x` must point to at least `n` valid Rcomplex values.
-pub unsafe fn is_complex_sorted(x: *const Rcomplex, n: usize) -> bool {
-    unsafe {
-        if n <= 1 {
-            return true;
-        }
-        let na_bits = NA_REAL.to_bits();
-        for i in 1..n {
-            let prev = *x.add(i - 1);
-            let curr = *x.add(i);
-            let prev_na = prev.r.to_bits() == na_bits || prev.i.to_bits() == na_bits;
-            let curr_na = curr.r.to_bits() == na_bits || curr.i.to_bits() == na_bits;
-
-            if prev_na && !curr_na {
-                // NA followed by non-NA: not sorted
-                return false;
-            }
-            if prev_na && curr_na {
-                continue;
-            }
-            // Neither is NA: compare real first, then imaginary
-            if prev.r < curr.r {
-                continue;
-            }
-            if prev.r > curr.r {
-                return false;
-            }
-            // Equal real parts: compare imaginary
-            if prev.i > curr.i {
-                return false;
-            }
-        }
-        true
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Minimal malloc/realloc/free replacements (avoid libc crate)

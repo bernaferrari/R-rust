@@ -39,38 +39,5 @@ use crate::sexp::symbol::Rf_install;
 // Complete R runtime — parallel operations (simplified)
 // ---------------------------------------------------------------------------
 
-/// R's `parallel::mclapply(X, FUN, ...)` — parallel lapply (simplified serial version).
-pub fn do_mclapply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    do_lapply(call, op, args, rho)
-}
 
-/// R's `future.apply::future_lapply(X, FUN, ...)` — future lapply (simplified serial version).
-pub fn do_future_lapply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    do_lapply(call, op, args, rho)
-}
 
-/// R's `doParallel::foreach(...)` — parallel foreach (simplified serial version).
-pub fn do_foreach(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-
-    if x.is_null() || x == R_NilValue() {
-        return R_NilValue();
-    }
-
-    let n = XLENGTH(x).max(1) as usize;
-    let result = Rf_allocVector3(SEXPTYPE::VECSXP, n as R_xlen_t);
-    if result.is_null() {
-        return R_NilValue();
-    }
-    let _p = protect(result);
-
-    for i in 0..n {
-        let elt = if TYPEOF(x) == SEXPTYPE::VECSXP && i < XLENGTH(x) as usize {
-            crate::sexp::accessors::VECTOR_ELT(x, i as R_xlen_t)
-        } else {
-            R_NilValue()
-        };
-        crate::sexp::accessors::SET_VECTOR_ELT(result, i as R_xlen_t, elt);
-    }
-    result
-}

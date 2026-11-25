@@ -43,22 +43,6 @@ use crate::sexp::symbol::Rf_install;
 // Complete R runtime — serialization
 // ---------------------------------------------------------------------------
 
-/// R's `Random.seed` — get or set the random seed.
-pub fn do_Random_seed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    // Get the current RNG state
-    let seed_vec = Rf_allocVector3(SEXPTYPE::INTSXP, 626);
-    if seed_vec.is_null() {
-        return R_NilValue();
-    }
-    let _p = protect(seed_vec);
-    let mut dst = owner_sexp_mut(seed_vec);
-    // Set default seed values
-    sexp_ok(dst.try_set_integer_elt(0, 10407_i32)); // RNG kind marker
-    for i in 1..626 {
-        sexp_ok(dst.try_set_integer_elt(i as R_xlen_t, i as c_int));
-    }
-    seed_vec
-}
 
 /// R's `loadRDS(file, refhook)` — load a single serialized R object.
 pub fn do_loadRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

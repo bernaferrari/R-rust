@@ -141,17 +141,6 @@ fn utf8toutf16low(bytes: &[u8]) -> u32 {
     LOW_SURROGATE_START | ((u32::from(bytes[2]) & 0x0f) << 6) | (u32::from(bytes[3]) & 0x3f)
 }
 
-/// Convert UTF-8 (high surrogate wchar + string pointer) to UCS-32.
-///
-/// Port of R's `utf8toucs32` from util.c.
-///
-/// # Safety
-/// `s` must be readable for at least four bytes.
-pub unsafe fn Rf_utf8toucs32(high: u32, s: *const c_char) -> R_wchar_t {
-    // SAFETY: caller guarantees four readable bytes at `s`.
-    let bytes = unsafe { slice::from_raw_parts(s.cast::<u8>(), 4) };
-    utf16toucs(high, utf8toutf16low(bytes))
-}
 
 // ---------------------------------------------------------------------------
 // utf8toucs: convert a single UTF-8 character to wchar_t
@@ -1184,12 +1173,6 @@ pub fn StringBlank(x: *const c_void) -> Rboolean {
     }
 }
 
-/// Check if a string is valid in the current multibyte encoding.
-///
-/// Simplified: checks UTF-8 validity. In full R this checks against the locale encoding.
-pub unsafe fn mbcsValid(str: *const c_char) -> Rboolean {
-    unsafe { utf8Valid(str) }
-}
 
 /// Check if a byte string is valid UTF-8.
 ///

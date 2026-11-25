@@ -205,25 +205,6 @@ pub fn do_environment_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     do_env_name(_call, _op, args, _rho)
 }
 
-/// R-like `is_empty(env)` — check if environment is empty (simplified).
-pub fn do_is_empty(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let env = CAR(args);
-    if env.is_null() || env == R_NilValue() {
-        return Rf_ScalarLogical(TRUE);
-    }
-    let t = TYPEOF(env);
-    if t == SEXPTYPE::ENVSXP {
-        // Check frame - if it's NULL/NILSXP, env is empty
-        let frame = crate::sexp::accessors::FRAME(env);
-        if frame.is_null() || frame == R_NilValue() {
-            return Rf_ScalarLogical(TRUE);
-        }
-        return Rf_ScalarLogical(FALSE);
-    }
-    // For vectors, check length
-    let n = XLENGTH(env);
-    Rf_ScalarLogical(if n == 0 { TRUE } else { FALSE })
-}
 
 /// GNU `.Internal(env.profile(env))`.
 pub fn do_envprofile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

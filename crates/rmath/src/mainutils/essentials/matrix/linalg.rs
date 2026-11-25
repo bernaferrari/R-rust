@@ -745,10 +745,3 @@ pub fn do_svd(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // Matrix helpers
 // ---------------------------------------------------------------------------
 
-/// R's `which(x)` variant for arrays — returns 1-based row-major indices where x is TRUE.
-pub fn do_which_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    {
-        // Same as do_which for now — array-aware which is equivalent for logical vectors
-        do_which(_call, _op, args, _rho)
-    }
-}

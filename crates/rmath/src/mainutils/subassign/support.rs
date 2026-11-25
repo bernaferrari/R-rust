@@ -147,11 +147,6 @@ pub(crate) fn sym_Class() -> SEXP {
     install(c"class")
 }
 
-/// Get the "use.names" symbol (for subscript name passing).
-#[inline]
-pub(crate) fn sym_UseNames() -> SEXP {
-    install(c"use.names")
-}
 
 // ---------------------------------------------------------------------------
 // Local type-checking helpers
@@ -474,15 +469,6 @@ mod singleton_tests {
     }
 }
 
-/// Check if the call is an assignment call.
-#[inline]
-pub(crate) fn IS_ASSIGNMENT_CALL(call: SEXP) -> bool {
-    if isNull(call) {
-        return true;
-    }
-    let t = TYPEOF(call);
-    t == LANGSXP || t == SYMSXP
-}
 
 /// R_FixupRHS: fix up RHS for assignment (duplicate if needed).
 pub(crate) fn R_FixupRHS(x: SEXP, y: SEXP) -> SEXP {

@@ -163,26 +163,7 @@ fn has_disallowed_vector_attribute(x: SEXP) -> bool {
     false
 }
 
-/// R's `is.scalar(x)` — check if x has length 1 (simplified).
-pub fn do_is_scalar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    if x.is_null() || x == R_NilValue() {
-        return scalar_logical(FALSE);
-    }
-    let n = XLENGTH(x);
-    scalar_logical(if n == 1 { TRUE } else { FALSE })
-}
 
-/// R's `is.named(x)` — check if x has names attribute.
-pub fn do_is_named(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    if x.is_null() || x == R_NilValue() {
-        return scalar_logical(FALSE);
-    }
-    let names = crate::sexp::attrib_core::getAttrib(x, install_str("names"));
-    let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) > 0;
-    scalar_logical(if has_names { TRUE } else { FALSE })
-}
 
 /// R's `is.unsorted(x, na.rm = FALSE, strictly = FALSE)`.
 ///
@@ -440,25 +421,6 @@ pub fn do_is_primitive(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     })
 }
 
-/// R's `is.generic(x)` — check if x is a generic function (simplified).
-/// Returns TRUE for CLOSXP with "generic" in name or with useMethod call.
-pub fn do_is_generic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    if x.is_null() || x == R_NilValue() {
-        return scalar_logical(FALSE);
-    }
-    let t = TYPEOF(x);
-    // Simplified: primitives are always generic, closures need body check
-    if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-        return scalar_logical(TRUE);
-    }
-    if t == SEXPTYPE::CLOSXP {
-        // Check if name ends with common generic names
-        // Simplified: assume all closures could be generic
-        return scalar_logical(TRUE);
-    }
-    scalar_logical(FALSE)
-}
 
 // ---------------------------------------------------------------------------
 // Complete R runtime — isTRUE, isFALSE, any_na, all_na, any_nan, all_nan
@@ -541,71 +503,5 @@ pub fn do_any_na(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `allNA(x)` — returns TRUE if all elements are NA.
-pub fn do_all_na(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    if x.is_null() || x == R_NilValue() {
-        return scalar_logical(FALSE);
-    }
-    let n = XLENGTH(x);
-    if n == 0 {
-        return scalar_logical(FALSE);
-    }
-    for i in 0..n {
-        if !atomic_value_is_missing(x, i) {
-            return scalar_logical(FALSE);
-        }
-    }
-    scalar_logical(TRUE)
-}
 
-/// R's `anyNaN(x)` — returns TRUE if any element is NaN.
-pub fn do_any_nan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    if x.is_null() || x == R_NilValue() {
-        return scalar_logical(FALSE);
-    }
-    let t = TYPEOF(x);
-    if t != SEXPTYPE::REALSXP {
-        return scalar_logical(FALSE);
-    }
-    let n = XLENGTH(x);
-    let owner = active_owner();
-    let x_owned = owner_sexp(owner, x);
-    for i in 0..n {
-        let v = x_owned
-            .try_real_elt(i)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        if v.is_nan() {
-            return scalar_logical(TRUE);
-        }
-    }
-    scalar_logical(FALSE)
-}
 
-/// R's `allNaN(x)` — returns TRUE if all elements are NaN.
-pub fn do_all_nan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    if x.is_null() || x == R_NilValue() {
-        return scalar_logical(FALSE);
-    }
-    let t = TYPEOF(x);
-    if t != SEXPTYPE::REALSXP {
-        return scalar_logical(FALSE);
-    }
-    let n = XLENGTH(x);
-    if n == 0 {
-        return scalar_logical(FALSE);
-    }
-    let owner = active_owner();
-    let x_owned = owner_sexp(owner, x);
-    for i in 0..n {
-        let v = x_owned
-            .try_real_elt(i)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        if !v.is_nan() {
-            return scalar_logical(FALSE);
-        }
-    }
-    scalar_logical(TRUE)
-}

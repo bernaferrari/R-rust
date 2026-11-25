@@ -1767,41 +1767,6 @@ pub fn copyMatrix(s: SEXP, t: SEXP, byrow: c_int) {
 // xcopy*WithRecycle functions
 // ---------------------------------------------------------------------------
 
-/// Copy complex data with recycling.
-pub unsafe fn xcopyComplexWithRecycle(
-    dst: *mut Rcomplex,
-    src: *const Rcomplex,
-    dstart: R_xlen_t,
-    n: R_xlen_t,
-    nsrc: R_xlen_t,
-) {
-    unsafe {
-        if dst.is_null() || src.is_null() || n == 0 {
-            return;
-        }
-        if nsrc >= n {
-            for i in 0..n {
-                *dst.add((dstart + i) as usize) = *src.add(i as usize);
-            }
-            return;
-        }
-        if nsrc == 1 {
-            let val = *src;
-            for i in 0..n {
-                *dst.add((dstart + i) as usize) = val;
-            }
-            return;
-        }
-        let mut sidx: R_xlen_t = 0;
-        for i in 0..n {
-            if sidx == nsrc {
-                sidx = 0;
-            }
-            *dst.add((dstart + i) as usize) = *src.add(sidx as usize);
-            sidx += 1;
-        }
-    }
-}
 
 /// Copy integer data with recycling.
 pub unsafe fn xcopyIntegerWithRecycle(
@@ -1839,54 +1804,7 @@ pub unsafe fn xcopyIntegerWithRecycle(
     }
 }
 
-/// Copy logical data with recycling.
-pub unsafe fn xcopyLogicalWithRecycle(
-    dst: *mut c_int,
-    src: *const c_int,
-    dstart: R_xlen_t,
-    n: R_xlen_t,
-    nsrc: R_xlen_t,
-) {
-    unsafe {
-        xcopyIntegerWithRecycle(dst, src, dstart, n, nsrc);
-    }
-}
 
-/// Copy raw data with recycling.
-pub unsafe fn xcopyRawWithRecycle(
-    dst: *mut Rbyte,
-    src: *const Rbyte,
-    dstart: R_xlen_t,
-    n: R_xlen_t,
-    nsrc: R_xlen_t,
-) {
-    unsafe {
-        if dst.is_null() || src.is_null() || n == 0 {
-            return;
-        }
-        if nsrc >= n {
-            for i in 0..n {
-                *dst.add((dstart + i) as usize) = *src.add(i as usize);
-            }
-            return;
-        }
-        if nsrc == 1 {
-            let val = *src;
-            for i in 0..n {
-                *dst.add((dstart + i) as usize) = val;
-            }
-            return;
-        }
-        let mut sidx: R_xlen_t = 0;
-        for i in 0..n {
-            if sidx == nsrc {
-                sidx = 0;
-            }
-            *dst.add((dstart + i) as usize) = *src.add(sidx as usize);
-            sidx += 1;
-        }
-    }
-}
 
 /// Copy real (double) data with recycling.
 pub unsafe fn xcopyRealWithRecycle(
@@ -1984,22 +1902,6 @@ pub fn xcopyVectorWithRecycle(dst: SEXP, src: SEXP, dstart: R_xlen_t, n: R_xlen_
 // xfill*MatrixWithRecycle functions
 // ---------------------------------------------------------------------------
 
-/// Fill complex matrix with recycling.
-pub unsafe fn xfillComplexMatrixWithRecycle(
-    dst: *mut Rcomplex,
-    src: *mut Rcomplex,
-    dstart: R_xlen_t,
-    drows: R_xlen_t,
-    srows: R_xlen_t,
-    cols: R_xlen_t,
-    nsrc: R_xlen_t,
-) {
-    unsafe {
-        fill_matrix_iterate(dstart, drows, srows, cols, nsrc, |didx, sidx| {
-            *dst.add(didx as usize) = *src.add(sidx as usize);
-        });
-    }
-}
 
 /// Fill integer matrix with recycling.
 pub unsafe fn xfillIntegerMatrixWithRecycle(
@@ -2018,84 +1920,10 @@ pub unsafe fn xfillIntegerMatrixWithRecycle(
     }
 }
 
-/// Fill logical matrix with recycling.
-pub unsafe fn xfillLogicalMatrixWithRecycle(
-    dst: *mut c_int,
-    src: *mut c_int,
-    dstart: R_xlen_t,
-    drows: R_xlen_t,
-    srows: R_xlen_t,
-    cols: R_xlen_t,
-    nsrc: R_xlen_t,
-) {
-    unsafe {
-        xfillIntegerMatrixWithRecycle(dst, src, dstart, drows, srows, cols, nsrc);
-    }
-}
 
-/// Fill raw matrix with recycling.
-pub unsafe fn xfillRawMatrixWithRecycle(
-    dst: *mut Rbyte,
-    src: *mut Rbyte,
-    dstart: R_xlen_t,
-    drows: R_xlen_t,
-    srows: R_xlen_t,
-    cols: R_xlen_t,
-    nsrc: R_xlen_t,
-) {
-    unsafe {
-        fill_matrix_iterate(dstart, drows, srows, cols, nsrc, |didx, sidx| {
-            *dst.add(didx as usize) = *src.add(sidx as usize);
-        });
-    }
-}
 
-/// Fill real matrix with recycling.
-pub unsafe fn xfillRealMatrixWithRecycle(
-    dst: *mut c_double,
-    src: *mut c_double,
-    dstart: R_xlen_t,
-    drows: R_xlen_t,
-    srows: R_xlen_t,
-    cols: R_xlen_t,
-    nsrc: R_xlen_t,
-) {
-    unsafe {
-        fill_matrix_iterate(dstart, drows, srows, cols, nsrc, |didx, sidx| {
-            *dst.add(didx as usize) = *src.add(sidx as usize);
-        });
-    }
-}
 
-/// Fill string matrix with recycling.
-pub fn xfillStringMatrixWithRecycle(
-    dst: SEXP,
-    src: SEXP,
-    dstart: R_xlen_t,
-    drows: R_xlen_t,
-    srows: R_xlen_t,
-    cols: R_xlen_t,
-    nsrc: R_xlen_t,
-) {
-    fill_matrix_iterate(dstart, drows, srows, cols, nsrc, |didx, sidx| {
-        SET_STRING_ELT(dst, didx, STRING_ELT(src, sidx));
-    });
-}
 
-/// Fill generic vector matrix with recycling.
-pub fn xfillVectorMatrixWithRecycle(
-    dst: SEXP,
-    src: SEXP,
-    dstart: R_xlen_t,
-    drows: R_xlen_t,
-    srows: R_xlen_t,
-    cols: R_xlen_t,
-    nsrc: R_xlen_t,
-) {
-    fill_matrix_iterate(dstart, drows, srows, cols, nsrc, |didx, sidx| {
-        SET_VECTOR_ELT(dst, didx, VECTOR_ELT(src, sidx));
-    });
-}
 
 // ---------------------------------------------------------------------------
 // duplicate_attr: duplicate before attribute modification

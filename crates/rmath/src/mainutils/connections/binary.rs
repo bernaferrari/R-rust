@@ -448,14 +448,6 @@ fn raw_sink_result(
     access.with_native(|owner| owner.sexp(alloc_raw_result(bytes))?.into_owned())
 }
 
-pub fn read_binary_source(con: SEXP, limit: Option<usize>) -> AdmittedBinarySource {
-    let owner = current_owner();
-    let con = owner
-        .sexp(con)
-        .and_then(crate::sexp::Sexp::into_owned)
-        .unwrap_or_else(|error| r_error(&error.to_string()));
-    filename_owned::source_bytes(con, limit).unwrap_or_else(|error| r_error(&error))
-}
 
 pub fn read_integer_chunk(chunk: &[u8], order: ByteOrder, signed: bool) -> i32 {
     match chunk.len() {
@@ -661,9 +653,6 @@ pub fn decode_binary_result(
     }
 }
 
-pub fn encode_binary_object(object: SEXP, size_arg: SEXP, order: ByteOrder) -> Vec<u8> {
-    encode_binary_object_admitted(object, size_arg, order, |_| {})
-}
 
 fn binary_write_size(size: c_int, kind: BinaryKind) -> usize {
     let default = match kind {
@@ -838,25 +827,6 @@ fn encode_binary_object_selected_size(
     }
 }
 
-pub fn write_binary_sink(con: SEXP, bytes: &[u8]) -> SEXP {
-    if TYPEOF(con) == SEXPTYPE::RAWSXP {
-        return alloc_raw_result(bytes);
-    }
-    if TYPEOF(con) == SEXPTYPE::STRSXP {
-        let owner = current_owner();
-        let con = owner
-            .sexp(con)
-            .and_then(crate::sexp::Sexp::into_owned)
-            .unwrap_or_else(|error| r_error(&error.to_string()));
-        filename_owned::sink_bytes(con, bytes).unwrap_or_else(|error| r_error(&error));
-        return R_NilValue();
-    }
-    if !inherits_class(con, "connection") {
-        r_error("'con' is not a connection");
-    }
-    connection_write_bytes(as_integer(con), bytes);
-    R_NilValue()
-}
 
 // ---------------------------------------------------------------------------
 // do_readBin — readBin(con, what, n, size = NA, signed = TRUE, endian/swap)

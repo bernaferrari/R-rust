@@ -122,10 +122,6 @@ pub fn do_colnames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `names(x)` — get names attribute (alias for do_names).
-pub fn do_names_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    do_names(_call, _op, args, _rho)
-}
 
 /// GNU `names(x) <- value`. Pairlists and language objects store names
 /// as cell tags (including the head of a call as `""`).
@@ -1510,20 +1506,3 @@ mod tests {
     }
 }
 
-/// R's `attr(x, which) <- value` — set arbitrary attribute by name.
-pub fn do_setattr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    let which = CAR(CDR(args));
-    let value = CAR(CDR(CDR(args)));
-    if x.is_null() || x == R_NilValue() || which.is_null() || which == R_NilValue() {
-        return R_NilValue();
-    }
-    let attr_name = elt_to_string(which, 0);
-    crate::sexp::attrib_core::setAttrib(
-        x,
-        install_cstr(&CString::new(attr_name).unwrap_or_default()),
-        value,
-    );
-    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-    x
-}

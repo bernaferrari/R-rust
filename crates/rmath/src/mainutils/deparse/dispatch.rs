@@ -219,34 +219,7 @@ fn string_attribute_values(s: SEXP, attribute: &str) -> Vec<String> {
     out
 }
 
-pub fn s4_slot_value(s: SEXP, slot_name: &str, position: usize) -> Option<SEXP> {
-    if TYPEOF(s) != SEXPTYPE::VECSXP {
-        return None;
-    }
 
-    let names = string_attribute_values(s, "names");
-    for (i, name) in names.iter().enumerate() {
-        if name == slot_name && (i as R_xlen_t) < XLENGTH(s) {
-            return Some(VECTOR_ELT(s, i as R_xlen_t));
-        }
-    }
-
-    if (position as R_xlen_t) < XLENGTH(s) {
-        Some(VECTOR_ELT(s, position as R_xlen_t))
-    } else {
-        None
-    }
-}
-
-pub fn print_argument_name(name: &str, d: &mut LocalParseData) {
-    if !name.as_bytes().contains(&0) && is_valid_r_name_bytes(name.as_bytes()) {
-        append_line_bytes(name.as_bytes(), d);
-        return;
-    }
-    append_line_bytes(b"`", d);
-    print_owned_string(name.replace('`', "\\`"), d);
-    append_line_bytes(b"`", d);
-}
 
 pub fn print_r_string_literal(value: &str, d: &mut LocalParseData) {
     append_line_bytes(b"\"", d);

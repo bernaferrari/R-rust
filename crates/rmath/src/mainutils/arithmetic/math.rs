@@ -28,14 +28,6 @@ pub(crate) fn is_complex(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::CPLXSXP
 }
 
-/// Helper: check if SEXP is integer or logical.
-#[inline]
-pub(crate) fn is_integer_or_logical(x: SEXP) -> bool {
-    {
-        let t = TYPEOF(x);
-        t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP
-    }
-}
 
 /// Helper: NO_REFERENCES check (NAMED == 0).
 #[inline]

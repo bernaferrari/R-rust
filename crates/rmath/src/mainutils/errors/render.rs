@@ -602,20 +602,6 @@ pub fn errorcall_str(call: SEXP, message: &str) -> ! {
     unreachable!("errorcall never returns: verrorcall_dflt panics with RError");
 }
 
-/// Report an error like upstream `.Internal(.dfltStop(message, call))`:
-/// render "Error in <call> : <message>" (or "Error: <message>" for a
-/// null call) and panic with the bare-message `RError` payload WITHOUT
-/// walking the handler stack. Upstream `stop(<condition>)` signals the
-/// condition first (`.signalCondition`); the handler search already
-/// happened at signal time, so the default error must not repeat it.
-pub fn dflt_stop_str(call: SEXP, message: &str) -> ! {
-    {
-        let c_msg = std::ffi::CString::new(message).unwrap_or_default();
-        // SAFETY: `c_msg` is a live NUL-terminated message and `ap` is null.
-        unsafe { verrorcall_dflt(call, c_msg.as_ptr(), ptr::null_mut()) };
-        unreachable!("verrorcall_dflt panics with RError");
-    }
-}
 
 /// Run a builtin/special handler call, attributing unattributed errors to
 /// the R call being applied.
@@ -1224,11 +1210,6 @@ pub fn Rf_warning_cstr(message: &CStr) {
     warningcall_cstr(call, message);
 }
 
-/// Issue an immediate warning (without call).
-pub fn Rf_warning_immediate(message: &CStr) {
-    let call = getCurrentCall();
-    warningcall_immediate(call, message);
-}
 
 /// Issue a formatted warning with call (Rust helper).
 /// Equivalent to C's `warningcall(call, "%s", msg)`.
@@ -1300,16 +1281,6 @@ pub fn Rf_message(format: Option<&CStr>) {
     println!("{}", msg);
 }
 
-/// Issue a message with call.
-/// Ported from R's message handling in errors.c.
-pub fn messagecall(call: SEXP, format: Option<&CStr>) {
-    {
-        // In C, message() doesn't use the call for display,
-        // but it's passed for consistency
-        let _ = call; // suppress unused warning
-        Rf_message(format);
-    }
-}
 
 /// Issue a message with append flag.
 /// When append=TRUE, the message is appended without a newline prefix.
