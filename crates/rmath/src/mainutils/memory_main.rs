@@ -28,7 +28,7 @@ use std::ptr;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{ExtPtrBody, Listsxp, NA_INTEGER, NodeBody, R_xlen_t, SEXP, SEXPTYPE};
-use crate::sexp::globals::{R_GlobalEnv, R_NilValue};
+use crate::sexp::globals::{R_GlobalEnv, R_MissingArg, R_NilValue};
 use crate::sexp::heap::NodeLink;
 use crate::sexp::instance::{
     RInstance, with_finalizer_state_in, with_gc_state_in, with_memory_state_in,
@@ -1221,11 +1221,15 @@ impl<'s> MSet<'s> {
 ///
 /// This is the equivalent of R's `do_gcinfo()`.
 pub fn do_gcinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
+        crate::mainutils::essentials::base_error("argument \"verbose\" is missing, with no default");
+    }
     let old = Rf_ScalarLogical(with_memory_state(|state| state.gc_reporting));
     let i = crate::mainutils::coerce::asLogical(CAR(args));
     if i != crate::sexp::ffi::NA_LOGICAL {
         with_memory_state(|state| state.gc_reporting = i);
     }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
     old
 }
 
@@ -1235,16 +1239,31 @@ pub fn do_gctorture(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     } else {
         crate::sexp::ffi::FALSE
     });
-    let gap = crate::mainutils::coerce::asLogical(CAR(args));
+    let on = if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
+        Rf_ScalarLogical(crate::sexp::ffi::TRUE)
+    } else {
+        CAR(args)
+    };
+    let gap = crate::mainutils::coerce::asLogical(on);
     R_gc_torture(if gap != 0 { 1 } else { 0 }, 0, 0);
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
     old
 }
 
 pub fn do_gctorture2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
+        crate::mainutils::essentials::base_error("argument \"step\" is missing, with no default");
+    }
     let old = Rf_ScalarInteger(with_memory_state(|state| state.gc_force_gap));
     let gap = crate::mainutils::coerce::asInteger(CAR(args));
-    let wait = crate::mainutils::coerce::asInteger(CADR(args));
+    let wait = if CDR(args).is_null() || CDR(args) == R_NilValue() || CAR(CDR(args)) == R_MissingArg()
+    {
+        0
+    } else {
+        crate::mainutils::coerce::asInteger(CAR(CDR(args)))
+    };
     R_gc_torture(gap, wait, 0);
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
     old
 }
 

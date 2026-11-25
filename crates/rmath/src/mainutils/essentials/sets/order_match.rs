@@ -1474,7 +1474,7 @@ pub fn do_cumsum(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         {
             return dispatched;
         }
-        crate::mainutils::cum::do_cumsum(call, op, args, rho)
+        crate::mainutils::cum::cumulative(CAR(args), crate::mainutils::cum::Operation::Sum)
     }
 }
 
@@ -1493,7 +1493,7 @@ pub fn do_cumprod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         {
             return dispatched;
         }
-        crate::mainutils::cum::do_cumprod(call, op, args, rho)
+        crate::mainutils::cum::cumulative(CAR(args), crate::mainutils::cum::Operation::Product)
     }
 }
 

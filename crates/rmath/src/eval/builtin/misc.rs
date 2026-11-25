@@ -1369,15 +1369,15 @@ pub(super) const MISC: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "gcinfo",
-        handler: crate::mainutils::essentials::do_gcinfo,
+        handler: crate::mainutils::memory_main::do_gcinfo,
     },
     EvaluatedBuiltin {
         name: "gctorture",
-        handler: crate::mainutils::essentials::do_gctorture,
+        handler: crate::mainutils::memory_main::do_gctorture,
     },
     EvaluatedBuiltin {
         name: "gctorture2",
-        handler: crate::mainutils::essentials::do_gctorture2,
+        handler: crate::mainutils::memory_main::do_gctorture2,
     },
     EvaluatedBuiltin {
         name: "memory.size",

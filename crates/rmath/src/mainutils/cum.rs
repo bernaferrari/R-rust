@@ -11,20 +11,14 @@ use crate::sexp::globals::R_NilValue;
 use crate::sexp::{Sexp, SexpMut};
 
 #[derive(Clone, Copy)]
-enum Operation {
+pub(crate) enum Operation {
     Sum,
     Product,
 }
 
-pub fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    cumulative(CAR(args), Operation::Sum)
-}
 
-pub fn do_cumprod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    cumulative(CAR(args), Operation::Product)
-}
 
-fn cumulative(input: SEXP, operation: Operation) -> SEXP {
+pub(crate) fn cumulative(input: SEXP, operation: Operation) -> SEXP {
     if input.is_null() || input == R_NilValue() {
         return R_NilValue();
     }
