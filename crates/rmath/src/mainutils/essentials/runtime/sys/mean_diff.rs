@@ -3,7 +3,7 @@ use super::*;
 /// GNU `mean.Date(x)`.
 pub fn do_mean_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let m = crate::eval::arithmetic::do_mean(call, op, args, rho);
+        let m = crate::mainutils::summary::do_mean(call, op, args, rho);
         let _m = protect(m);
         set_single_class(m, "Date");
         m
@@ -23,7 +23,7 @@ pub fn do_mean_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 tz_s = charsxp_text(ch).unwrap_or_default();
             }
         }
-        let m = crate::eval::arithmetic::do_mean(call, op, args, rho);
+        let m = crate::mainutils::summary::do_mean(call, op, args, rho);
         let _m = protect(m);
         set_posixct_class(m, &tz_s);
         m

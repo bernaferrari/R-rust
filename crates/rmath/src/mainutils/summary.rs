@@ -15,7 +15,8 @@
 
 use crate::mainutils::essentials::{active_owner, owner_sexp};
 use crate::sexp::accessors::{
-    CAR, CDR, SET_COMPLEX_ELT, SET_INTEGER_ELT, SET_REAL_ELT, SETCDR, SETTAG, TAG, TYPEOF, XLENGTH,
+    CAR, CDR, INTEGER_ELT, REAL_ELT, SET_COMPLEX_ELT, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT,
+    SETCDR, SETTAG, TAG, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::{
     Rf_ScalarComplex, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3,
@@ -1039,7 +1040,33 @@ pub fn do_range(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// Note: mean is typically dispatched via do_summary when PRIMVAL(op) == 1,
 /// but this provides a standalone entry point.
 pub fn do_mean(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    let x = CAR(args);
+    // Upstream `.Internal(mean(x))` takes exactly one argument; rport
+    // additionally accepts an optional `na.rm` (tagged or second positional)
+    // so the Rust-ported `mean.Date`/`mean.POSIXct`/`mean.POSIXlt` methods,
+    // which forward their original arguments here, honor it. In upstream the
+    // stripping happens in `mean.default` at R level before the internal call.
+    let na_rm_sym = install_str("na.rm");
+    let mut x = R_NilValue();
+    let mut na_rm = false;
+    let mut positional = 0usize;
+    let mut cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        let value = CAR(cell);
+        let tag = TAG(cell);
+        if !tag.is_null() && tag == na_rm_sym {
+            na_rm = mean_truthy(value);
+        } else if positional == 0 {
+            x = value;
+            positional += 1;
+        } else if positional == 1 && (tag.is_null() || tag == R_NilValue()) {
+            na_rm = mean_truthy(value);
+            positional += 1;
+        }
+        cell = CDR(cell);
+    }
+    if na_rm {
+        x = mean_strip_na(x);
+    }
     match TYPEOF(x) {
         t if t == SEXPTYPE::LGLSXP => logical_mean_sexp(x),
         t if t == SEXPTYPE::INTSXP => integer_mean_sexp(x),
@@ -1050,6 +1077,93 @@ pub fn do_mean(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 message: "invalid 'type' of argument".to_string(),
             });
         }
+    }
+}
+
+/// R truthiness of a scalar flag argument like `na.rm`.
+fn mean_truthy(x: SEXP) -> bool {
+    if x.is_null() || x == R_NilValue() || XLENGTH(x) == 0 {
+        return false;
+    }
+    match TYPEOF(x) {
+        t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
+            let v = INTEGER_ELT(x, 0);
+            v != 0 && v != NA_INTEGER
+        }
+        t if t == SEXPTYPE::REALSXP => {
+            let v = REAL_ELT(x, 0);
+            v != 0.0 && !ISNAN(v)
+        }
+        _ => false,
+    }
+}
+
+/// `x[!is.na(x)]` for atomic numeric types: allocate a filtered copy with
+/// NA/NaN elements removed. Returns the input unchanged for other types.
+fn mean_strip_na(x: SEXP) -> SEXP {
+    let n = XLENGTH(x);
+    let v = checked_vec(x);
+    match TYPEOF(x) {
+        t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
+            let mut keep = 0usize;
+            for k in 0..n {
+                if int_elt(&v, k) != NA_INTEGER {
+                    keep += 1;
+                }
+            }
+            let out = Rf_allocVector3(TYPEOF(x), keep as R_xlen_t);
+            let mut j = 0usize;
+            for k in 0..n {
+                let e = int_elt(&v, k);
+                if e != NA_INTEGER {
+                    if TYPEOF(x) == SEXPTYPE::LGLSXP {
+                        SET_LOGICAL_ELT(out, j as c_int, e);
+                    } else {
+                        SET_INTEGER_ELT(out, j as c_int, e);
+                    }
+                    j += 1;
+                }
+            }
+            out
+        }
+        t if t == SEXPTYPE::REALSXP => {
+            let mut keep = 0usize;
+            for k in 0..n {
+                if !ISNAN(checked(v.try_real_elt(k))) {
+                    keep += 1;
+                }
+            }
+            let out = Rf_allocVector3(SEXPTYPE::REALSXP, keep as R_xlen_t);
+            let mut j = 0usize;
+            for k in 0..n {
+                let e = checked(v.try_real_elt(k));
+                if !ISNAN(e) {
+                    SET_REAL_ELT(out, j as c_int, e);
+                    j += 1;
+                }
+            }
+            out
+        }
+        t if t == SEXPTYPE::CPLXSXP => {
+            let mut keep = 0usize;
+            for k in 0..n {
+                let e = checked(v.try_complex_elt(k));
+                if !ISNAN(e.r) && !ISNAN(e.i) {
+                    keep += 1;
+                }
+            }
+            let out = Rf_allocVector3(SEXPTYPE::CPLXSXP, keep as R_xlen_t);
+            let mut j = 0usize;
+            for k in 0..n {
+                let e = checked(v.try_complex_elt(k));
+                if !ISNAN(e.r) && !ISNAN(e.i) {
+                    SET_COMPLEX_ELT(out, j as c_int, e);
+                    j += 1;
+                }
+            }
+            out
+        }
+        _ => x,
     }
 }
 

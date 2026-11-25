@@ -732,57 +732,6 @@ pub(crate) fn logical_arg_is_true(x: SEXP) -> bool {
     }
 }
 
-/// Handle `mean(x, na.rm = FALSE)` for atomic numeric vectors.
-///
-/// Full R reaches this through `mean.default`; the embedded evaluator keeps it
-/// as a primitive while preserving the C-level numeric behavior.
-pub unsafe fn do_mean(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut x = R_NilValue();
-        let mut na_rm = false;
-
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let arg = CAR(current);
-            if tag_name_is(TAG(current), "na.rm") {
-                na_rm = logical_arg_is_true(arg);
-            } else if x == R_NilValue() {
-                x = arg;
-            }
-            current = CDR(current);
-        }
-
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarReal(f64::NAN);
-        }
-
-        let Some(vector) = NumericVector::from_raw(x) else {
-            return Rf_ScalarReal(f64::NAN);
-        };
-
-        let mut total = 0.0;
-        let mut count = 0usize;
-        for i in 0..vector.clone().len() {
-            let value = vector.clone().real_at(i);
-            let is_na = value.to_bits() == R_NA_BIT_PATTERN;
-            let is_nan = value.is_nan() && !is_na;
-            if is_na || is_nan {
-                if na_rm {
-                    continue;
-                }
-                return Rf_ScalarReal(if is_na { NA_REAL } else { f64::NAN });
-            }
-            total += value;
-            count += 1;
-        }
-
-        if count == 0 {
-            Rf_ScalarReal(f64::NAN)
-        } else {
-            Rf_ScalarReal(total / count as f64)
-        }
-    }
-}
 
 /// Handle type-checking functions: is.numeric, is.integer, is.double,
 /// is.complex, is.logical, is.character, is.null, is.raw.
