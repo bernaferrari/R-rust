@@ -615,9 +615,12 @@ fn decompress_known(raw: &[u8]) -> Vec<u8> {
         }
     }
     if raw.len() >= 6 && raw.starts_with(&[0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00]) {
-        let mut input = std::io::Cursor::new(raw);
+        use std::io::Read;
         let mut out = Vec::new();
-        if lzma_rs::xz_decompress(&mut input, &mut out).is_ok() {
+        if lzma_rust2::XzReader::new(std::io::Cursor::new(raw), true)
+            .read_to_end(&mut out)
+            .is_ok()
+        {
             return out;
         }
     }

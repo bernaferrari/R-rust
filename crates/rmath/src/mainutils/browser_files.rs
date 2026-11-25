@@ -702,7 +702,7 @@ pub(crate) fn read_text_or_host(path: &str) -> io::Result<FileText> {
         let _workspace = reserve(4 * 1024 * 1024)?;
         output.read_from(bzip2::read::BzDecoder::new(&bytes[..]))?;
     } else if bytes.starts_with(&[0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00]) {
-        // lzma-rs accumulates an entire decoded block before writing it.
+        // lzma-rust2 accumulates a decoded block before writing it.
         // A streaming reader with a decoder limit also bounds that workspace.
         const WORKSPACE: usize = 16 * 1024 * 1024;
         let _workspace = reserve(WORKSPACE)?;
@@ -1033,7 +1033,13 @@ mod tests {
         let mut bz = bzip2::write::BzEncoder::new(Vec::new(), bzip2::Compression::fast());
         bz.write_all(&expanded).unwrap();
         let mut xz = Vec::new();
-        lzma_rs::xz_compress(&mut &b"answer <- 42\n"[..], &mut xz).unwrap();
+        {
+            use std::io::Write as _;
+            let options = lzma_rust2::XzOptions::with_preset(6);
+            let mut writer = lzma_rust2::XzWriter::new(&mut xz, options).unwrap();
+            writer.write_all(b"answer <- 42\n").unwrap();
+            writer.finish().unwrap();
+        }
         session
             .put_browser_file("bomb.gz", &gzip(&expanded))
             .unwrap();

@@ -464,7 +464,8 @@ pub fn open_xz_conn(conn: &mut RConn, mode: &str) -> io::Result<()> {
         if path.exists() {
             let file = File::open(path)?;
             let mut reader = BufReader::new(file);
-            lzma_rs::xz_decompress(&mut reader, &mut conn.raw_data)
+            lzma_rust2::XzReader::new(&mut reader, true)
+                .read_to_end(&mut conn.raw_data)
                 .map_err(|err| io::Error::other(err.to_string()))?;
         } else if mode.starts_with('r') {
             return Err(io::Error::new(io::ErrorKind::NotFound, "file not found"));
@@ -489,8 +490,15 @@ pub fn open_xz_conn(conn: &mut RConn, mode: &str) -> io::Result<()> {
 pub fn flush_xz_conn(conn: &mut RConn) -> io::Result<()> {
     let input = io::Cursor::new(&conn.raw_data);
     let mut reader = BufReader::new(input);
-    let mut output = File::create(&conn.description)?;
-    lzma_rs::xz_compress(&mut reader, &mut output)
+    let output = File::create(&conn.description)?;
+    let options = lzma_rust2::XzOptions::with_preset(6);
+    let mut writer = lzma_rust2::XzWriter::new(output, options)
+        .map_err(|err| io::Error::other(err.to_string()))?;
+    io::copy(&mut reader, &mut writer)?;
+    writer
+        .finish()
+        .map_err(|err| io::Error::other(err.to_string()))?;
+    Ok(())
 }
 // ---------------------------------------------------------------------------
 // do_url — url(description, open = "", mode = "r", blocking = TRUE, encoding = "", method = "default", headers = NULL)
@@ -1474,19 +1482,54 @@ fn raw_from(bytes: &[u8]) -> SEXP {
     alloc_raw_result(bytes)
 }
 
+/// GNU R's `memCompress` wrapper passes `type` as the integer result of
+/// `match(type, c("none", "gzip", "bzip2", "xz", "zstd"))`. Accept that
+/// integer encoding; a string is also accepted for direct internal calls.
 fn compress_type(args: SEXP) -> String {
+    const NAMES: [&str; 5] = ["none", "gzip", "bzip2", "xz", "zstd"];
+    compress_type_arg(args, &NAMES).unwrap_or_else(|| "gzip".to_string())
+}
+
+/// GNU R's `memDecompress` wrapper passes `type` as the integer result of
+/// `match(type, c("none", "gzip", "bzip2", "xz", "unknown", "zstd"))`.
+fn decompress_type(args: SEXP) -> String {
+    const NAMES: [&str; 6] = ["none", "gzip", "bzip2", "xz", "unknown", "zstd"];
+    compress_type_arg(args, &NAMES).unwrap_or_else(|| "unknown".to_string())
+}
+
+fn compress_type_arg(args: SEXP, names: &[&str]) -> Option<String> {
     let cell = CDR(args);
     if cell.is_null() || cell == R_NilValue() {
-        return "gzip".to_string();
+        return None;
     }
     let value = CAR(cell);
+    if TYPEOF(value) == SEXPTYPE::INTSXP && XLENGTH(value) > 0 {
+        let code = INTEGER_ELT(value, 0);
+        if code >= 1 && (code as usize) <= names.len() {
+            return Some(names[(code - 1) as usize].to_string());
+        }
+        return None;
+    }
     if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
         let ch = STRING_ELT(value, 0);
         if !ch.is_null() {
-            return String::from_utf8_lossy(&charsxp_as_utf8(ch)).into_owned();
+            return Some(String::from_utf8_lossy(&charsxp_as_utf8(ch)).into_owned());
         }
     }
-    "gzip".to_string()
+    None
+}
+
+/// Magic-byte detection for memDecompress(type = "unknown"), matching GNU R.
+fn detect_compress_type(input: &[u8]) -> &'static str {
+    if input.len() >= 2 && input[0] == 0x1f && input[1] == 0x8b {
+        "gzip"
+    } else if input.starts_with(b"BZh") {
+        "bzip2"
+    } else if input.starts_with(&[0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00]) {
+        "xz"
+    } else {
+        "none"
+    }
 }
 
 pub fn do_memCompress(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
@@ -1495,7 +1538,11 @@ pub fn do_memCompress(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let mut output = Vec::new();
         let kind = compress_type(args);
         let result = if kind == "xz" {
-            lzma_rs::xz_compress(&mut &input[..], &mut output)
+            let options = lzma_rust2::XzOptions::with_preset(6);
+            lzma_rust2::XzWriter::new(&mut output, options).and_then(|mut writer| {
+                use std::io::Write as _;
+                writer.write_all(&input).and_then(|()| writer.finish().map(|_| ()))
+            })
         } else if kind == "bzip2" {
             let mut enc = BzEncoder::new(output, BzCompression::default());
             let _ = enc.write_all(&input);
@@ -1510,6 +1557,9 @@ pub fn do_memCompress(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             output = enc.finish().unwrap_or_default();
             Ok(())
         };
+        if kind == "zstd" {
+            r_error("memCompress: zstd compression is not supported");
+        }
         if result.is_err() {
             r_error("memCompress failed");
         }
@@ -1520,10 +1570,19 @@ pub fn do_memCompress(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 pub fn do_memDecompress(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     {
         let input = bytes_of(CAR(args));
-        let kind = compress_type(args);
+        let mut kind = decompress_type(args);
+        if kind == "unknown" {
+            kind = detect_compress_type(&input).to_string();
+        }
+        if kind == "zstd" {
+            r_error("memDecompress: zstd compression is not supported");
+        }
         let mut output = Vec::new();
         let result = if kind == "xz" {
-            lzma_rs::xz_decompress(&mut &input[..], &mut output)
+            use std::io::Read as _;
+            lzma_rust2::XzReader::new(&input[..], true)
+                .read_to_end(&mut output)
+                .map(|_| ())
         } else if kind == "bzip2" {
             let mut dec = BzDecoder::new(&input[..]);
             let _ = dec.read_to_end(&mut output);
