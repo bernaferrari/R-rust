@@ -104,34 +104,6 @@ pub fn do_writeLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     R_NilValue()
 }
 
-/// R's `readLines(con)` — read lines from file.
-pub fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let con = CAR(args);
-    if con.is_null() {
-        return R_NilValue();
-    }
-    let path = elt_to_string(con, 0);
-
-    let lines = crate::mainutils::browser_files::read_text_or_host(&path)
-        .unwrap_or_else(|error| base_error(error.to_string()));
-    let line_vec: Vec<&str> = lines.lines().collect();
-    let n = line_vec.len();
-
-    let result = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
-    if result.is_null() {
-        return R_NilValue();
-    }
-    let _result_guard = protect(result);
-
-    for (i, line) in line_vec.iter().enumerate() {
-        let cstr = CString::new(*line).unwrap_or_default();
-        let charsxp = mk_char_cstr(&cstr);
-        if !charsxp.is_null() {
-            crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
-        }
-    }
-    result
-}
 
 
 

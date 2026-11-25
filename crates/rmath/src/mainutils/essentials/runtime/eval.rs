@@ -961,57 +961,6 @@ pub fn do_quote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     val
 }
 
-/// R's `parse(text)` — parse R code strings into an expression vector.
-pub fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let keep_source = {
-        let explicit = arg_by_name_or_position(args, &["keep.source"], usize::MAX);
-        let opt = if explicit != R_NilValue() {
-            explicit
-        } else {
-            crate::mainutils::options::GetOption1(install_cstr(c"keep.source"))
-        };
-        !opt.is_null() && crate::mainutils::coerce::asLogical(opt) == 1
-    };
-    let text_arg = arg_by_name_or_position(args, &["text"], 0);
-    let file_arg = arg_by_name_or_position(args, &["file"], 0);
-    if text_arg.is_null() || text_arg == R_NilValue() {
-        if !file_arg.is_null() && file_arg != R_NilValue() {
-            let file_path = elt_to_string(file_arg, 0);
-            let content = crate::mainutils::browser_files::read_text_or_host(&file_path)
-                .unwrap_or_else(|err| {
-                    base_error(format!("cannot open file '{}': {}", file_path, err))
-                });
-            if keep_source {
-                return parse_with_srcrefs(&content, &file_path);
-            }
-            return parse_source_expression_vector(&content);
-        }
-        return Rf_allocVector3(SEXPTYPE::EXPRSXP, 0);
-    }
-
-    let n = XLENGTH(text_arg);
-    if n == 0 {
-        return Rf_allocVector3(SEXPTYPE::EXPRSXP, 0);
-    }
-
-    let mut source = Vec::with_capacity(n as usize);
-    for i in 0..n {
-        if TYPEOF(text_arg) == SEXPTYPE::STRSXP && is_string_na(text_arg, i) {
-            std::panic::panic_any(RError {
-                message: "invalid 'text' argument".to_string(),
-            });
-        }
-        let text = elt_to_string(text_arg, i);
-        source.push(text);
-    }
-    let combined = source.join("\n");
-    if keep_source {
-        // Upstream parse(text=) attributes an unnamed srcfile (the
-        // renderer falls back to `(from #n)` for it).
-        return parse_with_srcrefs(&combined, "<text>");
-    }
-    parse_source_strings(&source)
-}
 
 /// Parse with byte spans and attach srcrefs + srcfile (keep.source).
 pub(crate) fn parse_with_srcrefs(content: &str, filename: &str) -> SEXP {
