@@ -21,3 +21,4 @@ png = "0.18.1"  # for encoding captured native rasters from real R graphics devi
 [dev-dependencies]
 pollster = "0.4"
 tempfile = "3"
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }

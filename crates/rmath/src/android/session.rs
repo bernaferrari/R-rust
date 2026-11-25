@@ -659,6 +659,14 @@ impl RSession {
         crate::mainutils::serialize::convert_gnu_lazy_record_to_rbg1_frame(record, mode)
     }
 
+    /// Convert a bare uncompressed GNU serialization stream into an RBG1 frame,
+    /// activating the session for object materialization.
+    #[doc(hidden)]
+    pub fn convert_gnu_stream_to_rbg1_frame(&mut self, plain: &[u8]) -> Result<Vec<u8>, String> {
+        let _guard = self.core.activate();
+        crate::mainutils::serialize::convert_gnu_stream_to_rbg1_frame(plain)
+    }
+
     pub fn eval(&mut self, code: &str) -> RResult {
         self.eval_script(code)
     }

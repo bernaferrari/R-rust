@@ -336,3 +336,178 @@ fn convert_remaining_packages_inner() {
     }
     eprintln!("all remaining packages converted");
 }
+
+/// Regenerate the wasm packed representation (wasm.data/wasm.blocks/
+/// wasm.index.rds) from the converted records: uncompressed RBG1 frames
+/// concatenated in logical space, gzip-compressed in blocks.
+#[test]
+fn convert_wasm_packed() {
+    if std::env::var("RBG1_CONVERT").is_err() {
+        eprintln!("opt-in conversion harness: set RBG1_CONVERT=1 to run");
+        return;
+    }
+    std::thread::Builder::new()
+        .stack_size(1 << 30)
+        .spawn(convert_wasm_packed_inner)
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+fn gzip_compress(data: &[u8]) -> Vec<u8> {
+    use std::io::Write;
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
+    encoder.write_all(data).unwrap();
+    encoder.finish().unwrap()
+}
+
+fn gzip_decompress(data: &[u8]) -> Vec<u8> {
+    use std::io::Read;
+    let mut out = Vec::new();
+    flate2::read::GzDecoder::new(data).read_to_end(&mut out).unwrap();
+    out
+}
+
+fn convert_wasm_packed_inner() {
+    let mut session =
+        RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), "/tmp"));
+    let boot = session.eval(
+        "rbg1_convert_read_hook<-function(n){e<-new.env();attr(e,'rbg1pk')<-n;e};\
+         rbg1_convert_write_hook<-function(e){k<-attr(e,'rbg1pk');if(is.character(k))k else NULL};\
+         'hooks-ready'",
+    );
+    assert!(format!("{:?}", boot.typed).contains("hooks-ready"), "hook install failed: {:?}", boot.typed);
+
+    let only = std::env::var("RBG1_CONVERT_ONLY").ok();
+    let pp = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..").join("rmath").join("src").join("library");
+    let mut dirs: Vec<std::path::PathBuf> = Vec::new();
+    for (pkg, base) in [
+        ("methods", pp.join("methods").join("portable").join("assets")),
+        ("grDevices", pp.join("portable_package").join("assets").join("grDevices")),
+        ("graphics", pp.join("portable_package").join("assets").join("graphics")),
+        ("stats", pp.join("portable_package").join("assets").join("stats")),
+        ("stats4", pp.join("portable_package").join("assets").join("stats4")),
+        ("utils", pp.join("portable_package").join("assets").join("utils")),
+        ("tools", pp.join("portable_package").join("assets").join("tools")),
+    ] {
+        if let Some(only) = &only {
+            if only != pkg {
+                continue;
+            }
+        }
+        dirs.push(base);
+    }
+    for dir in dirs {
+        let wasm_data = dir.join("wasm.data");
+        let wasm_blocks = dir.join("wasm.blocks");
+        let wasm_index = dir.join("wasm.index.rds");
+        if !wasm_data.exists() {
+            eprintln!("skipping {}: no wasm.data", dir.display());
+            continue;
+        }
+        // Inflate the logical space: concatenate gzip-decompressed blocks.
+        let data = std::fs::read(&wasm_data).unwrap();
+        let blocks = std::fs::read(&wasm_blocks).unwrap();
+        let mut logical = Vec::new();
+        let count = blocks.len() / 8;
+        for i in 0..count - 1 {
+            let packed_start = u32::from_be_bytes(blocks[i * 8 + 4..i * 8 + 8].try_into().unwrap()) as usize;
+            let packed_end = u32::from_be_bytes(blocks[i * 8 + 12..i * 8 + 16].try_into().unwrap()) as usize;
+            logical.extend_from_slice(&gzip_decompress(&data[packed_start..packed_end]));
+        }
+        // The final block is paired against the sentinel start entry; entries
+        // are cumulative ends, so blocks span entry[i-1] -> entry[i] with
+        // entry[0] the (0,0) sentinel. Iterate all windows.
+        logical.clear();
+        for i in 1..count {
+            let packed_start = u32::from_be_bytes(blocks[(i - 1) * 8 + 4..(i - 1) * 8 + 8].try_into().unwrap()) as usize;
+            let packed_end = u32::from_be_bytes(blocks[i * 8 + 4..i * 8 + 8].try_into().unwrap()) as usize;
+            logical.extend_from_slice(&gzip_decompress(&data[packed_start..packed_end]));
+        }
+        let logical_end_table = u32::from_be_bytes(blocks[(count - 1) * 8..(count - 1) * 8 + 4].try_into().unwrap()) as usize;
+        assert_eq!(logical.len(), logical_end_table, "logical length mismatch");
+
+        // Parse the wasm index keys in-session.
+        std::fs::copy(&wasm_index, "/tmp/conv-widx-in.rds").unwrap();
+        let probe = session.eval(
+            "x<-readRDS('/tmp/conv-widx-in.rds');\
+             enc<-function(nm)paste(as.character(charToRaw(nm)),collapse='');\
+             vlines<-vapply(names(x$variables),function(nm)paste(enc(nm),x$variables[[nm]][1],x$variables[[nm]][2]),'');\
+             rlines<-vapply(names(x$references),function(nm)paste(enc(nm),x$references[[nm]][1],x$references[[nm]][2]),'');\
+             writeLines(c(vlines,'---REFS---',rlines),'/tmp/conv-wkeys.txt');\
+             'wkeys-extracted'",
+        );
+        assert!(format!("{:?}", probe.typed).contains("wkeys-extracted"), "wasm key extraction failed: {} {:?}", probe.output, probe.typed);
+        let keys_text = std::fs::read_to_string("/tmp/conv-wkeys.txt").unwrap();
+
+        // Convert each logical record to an RBG1 frame; rebuild logical space.
+        let mut new_logical: Vec<u8> = Vec::new();
+        let mut keymap = String::new();
+        let mut section_variables = true;
+        let (mut nv, mut nr) = (0usize, 0usize);
+        for line in keys_text.lines() {
+            if line == "---REFS---" {
+                section_variables = false;
+                continue;
+            }
+            if line.is_empty() { continue; }
+            let mut parts = line.splitn(3, ' ');
+            let hexname = parts.next().unwrap_or("");
+            let off: usize = parts.next().and_then(|v| v.parse().ok()).expect("offset");
+            let len: usize = parts.next().and_then(|v| v.parse().ok()).expect("len");
+            let stream = logical[off..off + len].to_vec();
+            let frame = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                session.convert_gnu_stream_to_rbg1_frame(&stream)
+            }))
+            .map_err(|payload| {
+                if let Some(e) = payload.downcast_ref::<rmath::RError>() { e.message.clone() }
+                else if let Some(s) = payload.downcast_ref::<String>() { s.clone() }
+                else if let Some(s) = payload.downcast_ref::<&str>() { s.to_string() }
+                else { "non-string panic payload".to_string() }
+            })
+            .and_then(|r| r)
+            .unwrap_or_else(|message| panic!("wasm conversion of {hexname} failed: {message}"));
+            let new_offset = new_logical.len();
+            new_logical.extend_from_slice(&frame);
+            keymap.push_str(&format!("{} {} {} {}\n", hexname, new_offset, frame.len(), if section_variables { "v" } else { "r" }));
+            if section_variables { nv += 1; } else { nr += 1; }
+        }
+        eprintln!("wasm converted {nv} variables + {nr} references records");
+
+        // Pack: gzip blocks of at most ~256KiB logical, cumulative end table.
+        const BLOCK: usize = 256 * 1024;
+        let mut packed: Vec<u8> = Vec::new();
+        let mut table: Vec<u8> = Vec::new();
+        table.extend_from_slice(&0u32.to_be_bytes());
+        table.extend_from_slice(&0u32.to_be_bytes());
+        let mut pos = 0usize;
+        while pos < new_logical.len() {
+            let end = (pos + BLOCK).min(new_logical.len());
+            packed.extend_from_slice(&gzip_compress(&new_logical[pos..end]));
+            table.extend_from_slice(&(end as u32).to_be_bytes());
+            table.extend_from_slice(&(packed.len() as u32).to_be_bytes());
+            pos = end;
+        }
+        std::fs::write(&wasm_data, &packed).unwrap();
+        std::fs::write(&wasm_blocks, &table).unwrap();
+        std::fs::write("/tmp/conv-keymap.txt", &keymap).unwrap();
+
+        // Rewrite the wasm index keys positionally.
+        let rewrite = session.eval(
+            "km<-read.table('/tmp/conv-keymap.txt',header=FALSE,colClasses=c('character','integer','integer','character'));\
+             idx<-readRDS('/tmp/conv-widx-in.rds');\
+             iv<-which(km[[4]]=='v');ir<-which(km[[4]]=='r');\
+             kv<-lapply(iv,function(i)as.integer(c(km[i,2],km[i,3])));\
+             kr<-lapply(ir,function(i)as.integer(c(km[i,2],km[i,3])));\
+             idx$variables[]<-kv;\
+             if(length(ir))idx$references[]<-kr;\
+             saveRDS(idx,'/tmp/conv-widx-out.rds');\
+             paste('windex-rewritten',length(kv),length(kr))",
+        );
+        assert!(format!("{:?}", rewrite.typed).contains("windex-rewritten"), "wasm index rewrite failed: {} {:?}", rewrite.output, rewrite.typed);
+        std::fs::copy("/tmp/conv-widx-out.rds", &wasm_index).unwrap();
+        eprintln!("wasm packed conversion complete for {}", dir.display());
+    }
+    eprintln!("all wasm packed databases converted");
+}

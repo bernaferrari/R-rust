@@ -1324,6 +1324,45 @@ pub fn convert_gnu_lazy_record_to_rbg1(record: &[u8], mode: u8) -> Result<Vec<u8
     Ok(recoded.to_vec())
 }
 
+/// Convert a bare uncompressed GNU serialization stream (no lazy-record
+/// container) into an RBG1 frame. Used for the wasm packed databases, whose
+/// logical space stores uncompressed streams directly.
+#[doc(hidden)]
+pub fn convert_gnu_stream_to_rbg1_frame(plain: &[u8]) -> Result<Vec<u8>, String> {
+    convert_gnu_plain_stream_to_rbg1_frame(plain)
+}
+
+fn convert_gnu_plain_stream_to_rbg1_frame(plain: &[u8]) -> Result<Vec<u8>, String> {
+    let owner = current_owner();
+    let _pin = owner.pin().map_err(|e| e.to_string())?;
+    owner.require_active().map_err(|e| e.to_string())?;
+    let lookup = |name: &str| -> SEXP {
+        let sym = crate::sexp::symbol::install_str(name);
+        let value = unsafe {
+            crate::sexp::envir::R_findVarInFrame(crate::sexp::globals::R_GlobalEnv(), sym)
+        };
+        if value == crate::sexp::globals::R_UnboundValue() {
+            R_NilValue()
+        } else {
+            value
+        }
+    };
+    let read_hook = lookup("rbg1_convert_read_hook");
+    let write_hook = lookup("rbg1_convert_write_hook");
+    let _hook_guards = [read_hook, write_hook].map(|value| {
+        (!value.is_null() && value != R_NilValue()).then(|| protect(value))
+    });
+    let mut reader = BinaryReader::new(plain);
+    reader.set_max_depth(100_000);
+    if !read_hook.is_null() && read_hook != R_NilValue() {
+        reader.set_persist_hook(read_hook);
+    }
+    let decoded = decode_stream_object(&owner, &mut reader);
+    owner.require_active().map_err(|e| e.to_string())?;
+    let _decoded_guard = protect(decoded);
+    crate::mainutils::rbg1::write_object_hooked(decoded, write_hook)
+}
+
 /// Conversion-validation variant: same decode/re-encode pipeline but returns
 /// the raw RBG1 frame bytes without lazy-record recompression.
 #[doc(hidden)]
