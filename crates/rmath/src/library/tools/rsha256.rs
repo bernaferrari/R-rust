@@ -22,42 +22,10 @@ use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
 
-use super::sha256::Sha256Ctx;
+use sha2::Digest as _;
 
 const SHA256_HASH_SIZE: usize = 32;
 const SHA256_HEX_SIZE: usize = 64;
-
-/// Convenience function for init + process + finish (mirrors C's Rsha256_buffer).
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn rsha256_buffer(
-    buffer: *const std::ffi::c_void,
-    len: usize,
-    resblock: &mut [u8; 32],
-) -> bool {
-    let mut ctx = Sha256Ctx {
-        H: [0u32; 8],
-        total: [0u32; 2],
-        buflen: 0,
-        buffer: [0u8; 128],
-    };
-    // SAFETY: forwarded raw pointers satisfy `Rsha256_init_ctx`'s contract per this function's own `# Safety` requirements.
-    unsafe { crate::library::tools::sha256::Rsha256_init_ctx(&mut ctx) };
-    // SAFETY: forwarded raw pointers satisfy `Rsha256_process_bytes`'s contract per this function's own `# Safety` requirements.
-    unsafe { crate::library::tools::sha256::Rsha256_process_bytes(buffer, len, &mut ctx) };
-    // SAFETY: forwarded raw pointers satisfy `Rsha256_finish_ctx`'s contract per this function's own `# Safety` requirements.
-    let result = unsafe {
-        crate::library::tools::sha256::Rsha256_finish_ctx(
-            &mut ctx,
-            resblock.as_mut_ptr() as *mut std::ffi::c_void,
-        )
-    };
-    !result.is_null()
-}
 
 /// Compute SHA256 hash of files or a raw buffer.
 ///
@@ -78,16 +46,7 @@ pub fn Rsha256(files: SEXP) -> SEXP {
             }
             let raw_bytes = std::slice::from_raw_parts(raw_ptr, raw_len);
 
-            let mut resblock = [0u8; SHA256_HASH_SIZE];
-            let result = rsha256_buffer(
-                raw_bytes.as_ptr() as *const std::ffi::c_void,
-                raw_len,
-                &mut resblock,
-            );
-            if !result {
-                return Rf_mkString(ptr::null());
-            }
-
+            let resblock: [u8; SHA256_HASH_SIZE] = sha2::Sha256::digest(raw_bytes).into();
             let out = hex_encode_lower(&resblock);
             return Rf_mkString(out.as_ptr() as *const c_char);
         }
@@ -122,23 +81,10 @@ pub fn Rsha256(files: SEXP) -> SEXP {
 
             match std::fs::read(&path) {
                 Ok(data) => {
-                    let mut resblock = [0u8; SHA256_HASH_SIZE];
-                    let result = rsha256_buffer(
-                        data.as_ptr() as *const std::ffi::c_void,
-                        data.len(),
-                        &mut resblock,
-                    );
-                    if !result {
-                        let msg =
-                            std::ffi::CString::new(format!("sha256 failed on file '{}'", path))
-                                .unwrap_or_default();
-                        Rf_error_cstr(&msg);
-                        SET_STRING_ELT(ans, i as R_xlen_t, ptr::null_mut());
-                    } else {
-                        let out = hex_encode_lower(&resblock);
-                        let char_sxp = Rf_mkChar(out.as_ptr() as *const c_char);
-                        SET_STRING_ELT(ans, i as R_xlen_t, char_sxp);
-                    }
+                    let resblock: [u8; SHA256_HASH_SIZE] = sha2::Sha256::digest(&data).into();
+                    let out = hex_encode_lower(&resblock);
+                    let char_sxp = Rf_mkChar(out.as_ptr() as *const c_char);
+                    SET_STRING_ELT(ans, i as R_xlen_t, char_sxp);
                 }
                 Err(_) => {
                     SET_STRING_ELT(ans, i as R_xlen_t, ptr::null_mut());

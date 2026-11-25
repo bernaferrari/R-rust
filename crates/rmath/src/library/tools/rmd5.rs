@@ -12,7 +12,7 @@
  */
 
 use std::ffi::CStr;
-use std::os::raw::{c_char, c_void};
+use std::os::raw::c_char;
 use std::ptr;
 
 use crate::main::errors::{Rf_error, Rf_error_cstr};
@@ -22,7 +22,7 @@ use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
 
-use super::md5::md5_buffer;
+use md5::Digest as _;
 
 /// Compute MD5 hash of files or a raw buffer.
 ///
@@ -43,16 +43,7 @@ pub fn Rmd5(files: SEXP) -> SEXP {
             }
             let raw_bytes = std::slice::from_raw_parts(raw_ptr, raw_len);
 
-            let mut resblock = [0u8; 16];
-            let result = md5_buffer(
-                raw_bytes.as_ptr(),
-                raw_len as usize,
-                resblock.as_mut_ptr() as *mut c_void,
-            );
-            if result.is_null() {
-                return Rf_mkString(ptr::null());
-            }
-
+            let resblock: [u8; 16] = md5::Md5::digest(raw_bytes).into();
             let out = hex_encode_lower(&resblock);
             return Rf_mkString(out.as_ptr() as *const c_char);
         }
@@ -87,22 +78,10 @@ pub fn Rmd5(files: SEXP) -> SEXP {
 
             match std::fs::read(&path) {
                 Ok(data) => {
-                    let mut resblock = [0u8; 16];
-                    let result = md5_buffer(
-                        data.as_ptr(),
-                        data.len() as usize,
-                        resblock.as_mut_ptr() as *mut c_void,
-                    );
-                    if result.is_null() {
-                        let msg = std::ffi::CString::new(format!("md5 failed on file '{}'", path))
-                            .unwrap_or_default();
-                        Rf_error_cstr(&msg);
-                        SET_STRING_ELT(ans, i as R_xlen_t, ptr::null_mut());
-                    } else {
-                        let out = hex_encode_lower(&resblock);
-                        let char_sxp = Rf_mkChar(out.as_ptr() as *const c_char);
-                        SET_STRING_ELT(ans, i as R_xlen_t, char_sxp);
-                    }
+                    let resblock: [u8; 16] = md5::Md5::digest(&data).into();
+                    let out = hex_encode_lower(&resblock);
+                    let char_sxp = Rf_mkChar(out.as_ptr() as *const c_char);
+                    SET_STRING_ELT(ans, i as R_xlen_t, char_sxp);
                 }
                 Err(_) => {
                     SET_STRING_ELT(ans, i as R_xlen_t, ptr::null_mut());
