@@ -138,7 +138,7 @@ unsafe extern "C-unwind" fn c_rprof(args: crate::sexp::ffi::SEXP) -> crate::sexp
                 .wrap(args)
                 .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
             let nil = crate::sexp::globals::R_NilValue();
-            let result = crate::mainutils::essentials::do_Rprof(
+            let result = crate::eval::profiling::do_Rprof(
                 nil,
                 nil,
                 crate::sexp::accessors::CDR(arguments.as_raw()),

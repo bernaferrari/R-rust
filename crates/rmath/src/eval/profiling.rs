@@ -1621,7 +1621,7 @@ fn R_InitProfiling(
 /// When called with a non-empty filename, starts profiling to that file.
 /// When called with an empty filename, stops profiling.
 #[cfg(not(target_arch = "wasm32"))]
-pub unsafe fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_Rprof_native(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         crate::sexp::owner::OwnerToken::with_current(|owner| {
             let _pin = owner
@@ -1807,7 +1807,7 @@ pub fn do_Rprof_wasm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// Implement the `Rprofmem()` function for memory profiling.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn do_Rprofmem(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_Rprofmem_native(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -> SEXP {
     crate::sexp::owner::OwnerToken::with_current(|owner| {
         let _pin = owner
             .pin()
@@ -1893,6 +1893,27 @@ pub fn do_Rprofmem_wasm(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP
 // ---------------------------------------------------------------------------
 
 /// Implement the `Rprofaddr()` function for address profiling.
+/// Unified platform-dispatching entry for Rprof: real profiling on native,
+/// platform-unavailable error on wasm, invisible result on both.
+pub fn do_Rprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    #[cfg(not(target_arch = "wasm32"))]
+    let result = unsafe { do_Rprof_native(call, op, args, rho) };
+    #[cfg(target_arch = "wasm32")]
+    let result = do_Rprof_wasm(call, op, args, rho);
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    result
+}
+
+/// Unified platform-dispatching entry for Rprofmem, invisible result on both.
+pub fn do_Rprofmem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    #[cfg(not(target_arch = "wasm32"))]
+    let result = do_Rprofmem_native(call, op, args, rho);
+    #[cfg(target_arch = "wasm32")]
+    let result = do_Rprofmem_wasm(call, op, args, rho);
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    result
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 pub fn do_Rprofaddr(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     R_NilValue()

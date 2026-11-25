@@ -40,50 +40,6 @@ use crate::sexp::symbol::Rf_install;
 // Complete R runtime — Rprof, Rprofmem, gc, gcinfo, memory.size, object.size
 // ---------------------------------------------------------------------------
 
-/// R's `Rprof(filename, ...)` — session-owned profiling.
-///
-/// On wasm32 there is no `setitimer`/SIGPROF/file-descriptor profiler, so
-/// starting `Rprof()` raises the catchable R platform-unavailable error
-/// (matching upstream's `error(_("R profiling is not available on this system"))`
-/// fallback) instead of silently returning success. Stopping `Rprof()` with
-/// an empty filename stays a silent no-op.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn do_Rprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let result = crate::eval::profiling::do_Rprof(call, op, args, rho);
-        crate::sexp::globals::set_R_Visible(FALSE);
-        result
-    }
-}
-#[cfg(target_arch = "wasm32")]
-pub fn do_Rprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let result = crate::eval::profiling::do_Rprof_wasm(call, op, args, rho);
-        crate::sexp::globals::set_R_Visible(FALSE);
-        result
-    }
-}
-/// R's `Rprofmem(filename, ...)` — session-owned memory profiling.
-///
-/// On wasm32 memory profiling is unavailable, so this raises the same
-/// catchable R platform-unavailable error as `do_Rprof` (matching upstream's
-/// `error(_("memory profiling is not available on this system"))` fallback).
-#[cfg(not(target_arch = "wasm32"))]
-pub fn do_Rprofmem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    {
-        let result = crate::eval::profiling::do_Rprofmem(call, op, args, rho);
-        crate::sexp::globals::set_R_Visible(FALSE);
-        result
-    }
-}
-#[cfg(target_arch = "wasm32")]
-pub fn do_Rprofmem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let result = crate::eval::profiling::do_Rprofmem_wasm(call, op, args, rho);
-        crate::sexp::globals::set_R_Visible(FALSE);
-        result
-    }
-}
 
 #[derive(Clone, Copy, Debug, Default)]
 struct RuntimeMemorySnapshot {

@@ -1353,11 +1353,11 @@ pub(super) const MISC: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "Rprof",
-        handler: crate::mainutils::essentials::do_Rprof,
+        handler: crate::eval::profiling::do_Rprof,
     },
     EvaluatedBuiltin {
         name: "Rprofmem",
-        handler: crate::mainutils::essentials::do_Rprofmem,
+        handler: crate::eval::profiling::do_Rprofmem,
     },
     EvaluatedBuiltin {
         name: "gc",
