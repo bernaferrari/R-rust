@@ -99,26 +99,13 @@ pub fn read_object_hooked(bytes: &[u8], hook: SEXP) -> Result<SEXP, String> {
 
 /// Encode the payload with the framing header.
 fn encode_frame(payload: &[u8]) -> Vec<u8> {
-    use flate2::write::GzEncoder;
-    use flate2::Compression;
-    use std::io::Write as _;
-    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-    if encoder.write_all(payload).is_err() {
-        return encode_frame_raw(payload, COMPRESS_NONE);
-    }
-    match encoder.finish() {
-        Ok(compressed) => {
-            let mut out = Vec::with_capacity(HEADER_LEN + compressed.len());
-            out.extend_from_slice(MAGIC);
-            out.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
-            out.push(COMPRESS_GZIP);
-            out.extend_from_slice(&(payload.len() as u64).to_le_bytes());
-            out.extend_from_slice(&(compressed.len() as u64).to_le_bytes());
-            out.extend_from_slice(&compressed);
-            out
-        }
-        Err(_) => encode_frame_raw(payload, COMPRESS_NONE),
-    }
+    // Frames are stored uncompressed: compression is the container layer's
+    // job (gzcon, compressed save files), exactly as in GNU where serialize()
+    // output is plain bytes. Folding compression into the frame would both
+    // double-compress inside containers and defeat workspace memory
+    // accounting, which must charge the logical object size. The format's
+    // compression byte keeps the gzip variant available for future use.
+    encode_frame_raw(payload, COMPRESS_NONE)
 }
 
 fn encode_frame_raw(payload: &[u8], method: u8) -> Vec<u8> {
