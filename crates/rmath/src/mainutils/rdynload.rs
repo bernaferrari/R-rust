@@ -721,27 +721,15 @@ unsafe fn AddDLL(path: &CStr, as_local: c_int, now: c_int) -> Option<Rc<LoadedDl
     let name = extract_dll_name(path);
     let stored_path = path.to_owned();
 
-    let handle = {
-        // Single source of truth for RTLD flags (macOS vs Linux values
-        // differ); see unix::dynload::compute_dlopen_flag.
-        let flag = crate::unix::dynload::compute_dlopen_flag(as_local, now);
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            // SAFETY: `path` is a NUL-terminated shared-object path.
-            unsafe { dlopen(path.as_ptr(), flag) }
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            crate::unix::dynload::dlopen(path.as_ptr(), flag)
-        }
-    };
+    // Pure-Rust runtime: foreign shared objects can never load — they are
+    // C-ABI by definition. `dyn.load` fails cleanly through the existing
+    // error path, exactly as it always has on wasm32 and Android.
+    let _ = (as_local, now);
+    let handle: *mut std::ffi::c_void = std::ptr::null_mut();
 
     if handle.is_null() {
-        #[cfg(not(target_arch = "wasm32"))]
-        // SAFETY: `dlerror` returns a live NUL-terminated message or null.
-        let message = unsafe { dlerror() };
-        #[cfg(target_arch = "wasm32")]
-        let message = crate::unix::dynload::dlerror();
+        static MSG: &[u8] = b"foreign shared libraries are not supported in pure-Rust rport\0";
+        let message = MSG.as_ptr() as *mut std::ffi::c_char;
         // Take an owned copy promptly before mutating session state.
         let bytes = if message.is_null() {
             Vec::new()
