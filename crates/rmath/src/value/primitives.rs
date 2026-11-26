@@ -151,6 +151,13 @@ pub mod primitive_ids {
     pub const DATA_FRAME: u32 = 135;
     /// Split-apply-combine over grouped vectors.
     pub const AGGREGATE: u32 = 136;
+    /// Factor construction and introspection — classed integer codes with
+    /// level labels.
+    pub const FACTOR: u32 = 137;
+    pub const LEVELS: u32 = 138;
+    pub const LEVELS_ASSIGN: u32 = 139;
+    pub const UNCLASS: u32 = 140;
+    pub const TEMPDIR: u32 = 141;
     /// Matrix construction and dimension introspection.
     pub const MATRIX: u32 = 100;
     pub const DIM: u32 = 101;
@@ -172,7 +179,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -427,6 +434,17 @@ pub(crate) fn call_primitive(
         FILE_PATH => file_path_primitive(heap, interner, args, caller_env),
         DATA_FRAME => data_frame_primitive(heap, interner, args, caller_env),
         AGGREGATE => aggregate_primitive(heap, interner, args, caller_env),
+        FACTOR => factor_primitive(heap, interner, args, caller_env),
+        LEVELS => attrib_getter(heap, interner, args, caller_env, "levels"),
+        LEVELS_ASSIGN => attrib_replacement(heap, interner, args, caller_env, "levels"),
+        UNCLASS => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            copy_with_attrib(heap, interner, operands[0], "class", ValueId::NIL).map_err(RSignal::from)
+        }
+        TEMPDIR => {
+            let text = interner.intern_string(&std::env::temp_dir().to_string_lossy());
+            Ok(heap.alloc(RObject::String(vec![text])))
+        }
         DIMNAMES => attrib_getter(heap, interner, args, caller_env, "dimnames"),
         DIMNAMES_ASSIGN => attrib_replacement(heap, interner, args, caller_env, "dimnames"),
         CLASS => class_getter(heap, interner, args, caller_env),
@@ -1043,7 +1061,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -1155,6 +1173,11 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "file.path" => Some(FILE_PATH),
         "data.frame" => Some(DATA_FRAME),
         "aggregate" => Some(AGGREGATE),
+        "factor" => Some(FACTOR),
+        "levels" => Some(LEVELS),
+        "levels<-" => Some(LEVELS_ASSIGN),
+        "unclass" => Some(UNCLASS),
+        "tempdir" => Some(TEMPDIR),
         "dimnames" => Some(DIMNAMES),
         "dimnames<-" => Some(DIMNAMES_ASSIGN),
         "class" => Some(CLASS),
@@ -4879,4 +4902,43 @@ fn apply_fun_to(
         }
         _ => Err(EvalError::NotCallable.into()),
     }
+}
+
+/// `factor(x)`: character input recodes to integer positions into the
+/// sorted unique levels — GNU's integer-codes-plus-labels object shape with
+/// class and levels attributes exactly.
+fn factor_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    let texts = string_vec(heap, interner, operands[0]);
+    let mut levels: Vec<String> = texts
+        .iter()
+        .filter(|s| *s != "\0NA")
+        .cloned()
+        .collect();
+    levels.sort();
+    levels.dedup();
+    let codes: Vec<i32> = texts
+        .iter()
+        .map(|s| {
+            if s == "\0NA" {
+                crate::value::object::NA_INTEGER
+            } else {
+                levels.iter().position(|l| l == s).map(|p| p as i32 + 1).unwrap_or(crate::value::object::NA_INTEGER)
+            }
+        })
+        .collect();
+    let obj = heap.alloc(RObject::Integer(codes));
+    let interned: Vec<super::intern::InternedStr> = levels
+        .iter()
+        .map(|l| interner.intern_string(l))
+        .collect();
+    let levels_obj = heap.alloc(RObject::String(interned));
+    let obj = copy_with_attrib(heap, interner, obj, "levels", levels_obj).map_err(RSignal::from)?;
+    let class_obj = heap.alloc(RObject::String(vec![interner.intern_string("factor")]));
+    copy_with_attrib(heap, interner, obj, "class", class_obj).map_err(RSignal::from)
 }

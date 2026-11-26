@@ -95,6 +95,11 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         Some(o) => o,
         None => return "NULL".to_string(),
     };
+    // factor printing: classed integer codes display as their level labels
+    /// unquoted, with the Levels line trailing exactly as print.factor.
+    if matches!(object, RObject::Integer(_)) && is_factor(heap, interner, value) {
+        return format_factor(heap, interner, value);
+    }
     // data.frame printing: classed lists lay out as tables — column names
     /// right-justified over per-column widths, row names on the left,
     /// character cells unquoted exactly as print.data.frame.
@@ -429,6 +434,63 @@ fn format_data_frame(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> 
             out.push_str(&" ".repeat(widths[j] - cell.len()));
             out.push_str(&cell);
         }
+    }
+    out
+}
+
+fn is_factor(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
+    match super::primitives::get_attrib(heap, interner, value, "class") {
+        Some(id) => match heap.object(id) {
+            Some(RObject::String(values)) => values
+                .iter()
+                .any(|v| interner.string_text(*v) == "factor"),
+            _ => false,
+        },
+        None => false,
+    }
+}
+
+/// `[1] b a b c` over unquoted labels, then `Levels: a b c` — NA codes
+/// print as NA without a label exactly as GNU.
+fn format_factor(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String {
+    let codes = match heap.object(value) {
+        Some(RObject::Integer(values)) => values.clone(),
+        _ => return "<factor>".to_string(),
+    };
+    let levels: Vec<String> = match super::primitives::get_attrib(heap, interner, value, "levels") {
+        Some(id) => match heap.object(id) {
+            Some(RObject::String(values)) => values
+                .iter()
+                .map(|v| interner.string_text(*v).to_string())
+                .collect(),
+            _ => Vec::new(),
+        },
+        None => Vec::new(),
+    };
+    let labels: Vec<String> = codes
+        .iter()
+        .map(|c| {
+            if *c == crate::value::object::NA_INTEGER {
+                "NA".to_string()
+            } else {
+                levels
+                    .get((*c - 1) as usize)
+                    .cloned()
+                    .unwrap_or_else(|| "NA".to_string())
+            }
+        })
+        .collect();
+    let width = labels.iter().map(|l| l.len()).max().unwrap_or(0);
+    let mut out = String::from("[1]");
+    for label in &labels {
+        out.push(' ');
+        out.push_str(&" ".repeat(width - label.len()));
+        out.push_str(label);
+    }
+    out.push_str("\nLevels:");
+    for level in &levels {
+        out.push(' ');
+        out.push_str(level);
     }
     out
 }
