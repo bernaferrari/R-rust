@@ -1808,6 +1808,8 @@ mod tests {
             "{ x <- 1:4; x[-2] <- c(7, 8, 9); x }",
             "{ x <- 1:3; x[2] <- 1.5; x }",
             "{ total <- numeric(0); total[1] <- 5; total }",
+            "{ x <- c(5, 2, 8, 1, 9, 3); n <- length(x); for (i in 1:(n-1)) { for (j in 1:(n-i)) { if (x[j] > x[j+1]) { tmp <- x[j]; x[j] <- x[j+1]; x[j+1] <- tmp } } }; x }",
+            "{ x <- c(2, 4, 4, 4, 5, 5, 7, 9); n <- length(x); m <- sum(x) / n; v <- sum((x - m)^2) / (n - 1); c(m, sqrt(v)) }",
         ];
         // One session, one parse pass: expression objects stay valid for the
         // session's lifetime, so batching avoids per-program bootstrap cost.
