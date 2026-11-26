@@ -311,15 +311,40 @@ fn call_primitive_inner(
             // GNU: the environment argument is optional and defaults to the
             /// calling environment; all.names=TRUE includes dot-prefixed
             /// hidden bindings.
-            let raw = raw_args(heap, args);
-            let env = match raw.first() {
-                Some(expr) => {
-                    let v = eval(heap, interner, *expr, caller_env)?;
-                    force_if_promise(heap, interner, v)?
+            let mut env = caller_env;
+            let mut all_names = false;
+            let mut positional = 0usize;
+            let mut cursor = args;
+            loop {
+                let (car, cdr, tag) = match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+                    _ => break,
+                };
+                positional += 1;
+                let tag_name = match heap.object(tag) {
+                    Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+                    _ => None,
+                };
+                let evaluated = eval(heap, interner, car, caller_env)?;
+                let v = force_if_promise(heap, interner, evaluated)?;
+                match tag_name.as_deref() {
+                    Some("all.names") => {
+                        if let Some(RObject::Logical(vals)) = heap.object(v) {
+                            all_names = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
+                        }
+                    }
+                    _ => {
+                        if positional == 1 {
+                            env = v;
+                        }
+                    }
                 }
-                None => caller_env,
-            };
-            ls_primitive(heap, interner, env)
+                if cdr == ValueId::NIL {
+                    break;
+                }
+                cursor = cdr;
+            }
+            ls_primitive(heap, interner, env, all_names)
         }
         DOLLAR_ASSIGN => dollar_assign_primitive(heap, interner, args, caller_env),
         CAT => {
@@ -799,7 +824,8 @@ fn arithmetic(
                 _ => x.wrapping_mul(y),
             })
             .map_err(RSignal::from)?;
-            Ok(heap.alloc(RObject::Integer(folded)))
+            let result = heap.alloc(RObject::Integer(folded));
+            Ok(propagate_attributes(heap, operands[0], operands[1], result))
         }
         (a, b) => {
             let left_reals = as_reals(a);
@@ -834,9 +860,32 @@ fn arithmetic(
                 }
             })
             .map_err(RSignal::from)?;
-            Ok(heap.alloc(RObject::Real(folded)))
+            let result = heap.alloc(RObject::Real(folded));
+            Ok(propagate_attributes(heap, operands[0], operands[1], result))
         }
     }
+}
+
+/// GNU attribute discipline for elementwise arithmetic: the result carries
+/// the attribute chain of the longer operand (ties favor the left), so
+/// names survive vector arithmetic and dim/dimnames survive matrix
+/// arithmetic exactly.
+fn propagate_attributes(
+    heap: &mut Heap,
+    left: ValueId,
+    right: ValueId,
+    result: ValueId,
+) -> ValueId {
+    let left_len = vector_length(heap, left).unwrap_or(0);
+    let right_len = vector_length(heap, right).unwrap_or(0);
+    let source = if left_len >= right_len { left } else { right };
+    let chain = heap.get(source).map(|slot| slot.attrib).unwrap_or(ValueId::NIL);
+    if chain != ValueId::NIL {
+        if let Some(slot) = heap.get_mut(result) {
+            slot.attrib = chain;
+        }
+    }
+    result
 }
 
 /// Evaluate and force the leading `expected` arguments of a call.
@@ -2274,20 +2323,7 @@ fn strings_of_value(
     value: ValueId,
 ) -> Result<Vec<super::intern::InternedStr>, EvalError> {
     match heap.object(value) {
-        Some(RObject::String(values)) => {
-            // GNU paste coercion renders NA_character_ as the text "NA" —
-            /// the sentinel never survives into concatenation.
-            Ok(values
-                .iter()
-                .map(|v| {
-                    if interner.string_text(*v) == "\0NA" {
-                        interner.intern_string("NA")
-                    } else {
-                        *v
-                    }
-                })
-                .collect())
-        }
+        Some(RObject::String(values)) => Ok(values.clone()),
         Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => {
             let logical = matches!(heap.object(value), Some(RObject::Logical(_)));
             Ok(values
@@ -2376,6 +2412,16 @@ fn paste_primitive(
     let mut columns = Vec::new();
     for operand in operands {
         columns.push(strings_of_value(heap, interner, operand).map_err(RSignal::from)?);
+    }
+    // GNU paste coercion renders NA_character_ as the text "NA" — the
+    /// conversion lives here, not in shared string coercion, so nchar and
+    /// friends still see genuine missingness.
+    for column in columns.iter_mut() {
+        for element in column.iter_mut() {
+            if interner.string_text(*element) == "\0NA" {
+                *element = interner.intern_string("NA");
+            }
+        }
     }
     let width = columns.iter().map(Vec::len).max().unwrap_or(0);
     if columns.iter().any(|c| c.is_empty()) || width == 0 {
@@ -3713,6 +3759,7 @@ fn ls_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     env: ValueId,
+    all_names: bool,
 ) -> EvalResult {
     let mut names: Vec<String> = Vec::new();
     if let Some(RObject::Environment { frame, .. }) = heap.object(env) {
@@ -3722,9 +3769,10 @@ fn ls_primitive(
             }
         }
     }
-    // GNU hides dot-prefixed bindings unless all.names=TRUE — the slice's
-    /// default exactly.
-    names.retain(|n| !n.starts_with('.'));
+    // GNU hides dot-prefixed bindings unless all.names=TRUE.
+    if !all_names {
+        names.retain(|n| !n.starts_with('.'));
+    }
     names.sort();
     let interned: Vec<super::intern::InternedStr> = names
         .iter()
@@ -4719,7 +4767,9 @@ fn file_path_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    let mut components: Vec<String> = Vec::new();
+    // GNU: file.path is elementwise over vector inputs with recycling —
+    /// each component vector contributes its i-th element to the i-th path.
+    let mut columns: Vec<Vec<String>> = Vec::new();
     let mut cursor = args;
     loop {
         let (car, cdr) = match heap.object(cursor) {
@@ -4728,15 +4778,22 @@ fn file_path_primitive(
         };
         let evaluated = eval(heap, interner, car, caller_env)?;
         let value = force_if_promise(heap, interner, evaluated)?;
-        components.extend(string_vec(heap, interner, value));
+        columns.push(string_vec(heap, interner, value));
         if cdr == ValueId::NIL {
             break;
         }
         cursor = cdr;
     }
-    let joined = components.join("/");
-    let interned = interner.intern_string(&joined);
-    Ok(heap.alloc(RObject::String(vec![interned])))
+    let width = columns.iter().map(Vec::len).max().unwrap_or(0);
+    let mut paths: Vec<super::intern::InternedStr> = Vec::with_capacity(width);
+    for i in 0..width {
+        let pieces: Vec<String> = columns
+            .iter()
+            .map(|col| col[i % col.len().max(1)].clone())
+            .collect();
+        paths.push(interner.intern_string(&pieces.join("/")));
+    }
+    Ok(heap.alloc(RObject::String(paths)))
 }
 
 /// `data.frame(...)`: tagged arguments become named columns exactly as
