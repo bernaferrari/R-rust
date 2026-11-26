@@ -4753,6 +4753,11 @@ fn ifelse_primitive(
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 3)?;
     let tests = logicals_of_value(heap, operands[0]).map_err(RSignal::from)?;
+    // GNU: a zero-length test selects nothing, and the result is logical
+    /// empty regardless of the branch types.
+    if tests.is_empty() {
+        return Ok(heap.alloc(RObject::Logical(vec![])));
+    }
     let na_int = crate::value::object::NA_INTEGER;
     let yes_is_str = matches!(heap.object(operands[1]), Some(RObject::String(_)));
     let no_is_str = matches!(heap.object(operands[2]), Some(RObject::String(_)));
@@ -4778,6 +4783,17 @@ fn ifelse_primitive(
         }
         return Ok(heap.alloc(RObject::String(out)));
     }
+    // GNU's type lattice: the result takes the common type of the branches
+    /// — logical+logical stays logical, integer mixtures stay integer, any
+    /// real input widens to double exactly as the coercion hierarchy.
+    let rank = |v: ValueId| -> u32 {
+        match heap.object(v) {
+            Some(RObject::Logical(_)) => 0,
+            Some(RObject::Integer(_)) => 1,
+            _ => 2,
+        }
+    };
+    let result_rank = rank(operands[1]).max(rank(operands[2]));
     let yes = numerics_of(heap, operands[1]).map_err(RSignal::from)?;
     let no = numerics_of(heap, operands[2]).map_err(RSignal::from)?;
     let na_real = f64::from_bits(crate::value::object::NA_REAL_BITS);
@@ -4791,7 +4807,31 @@ fn ifelse_primitive(
             out.push(if no.is_empty() { na_real } else { no[i % no.len()] });
         }
     }
-    Ok(heap.alloc(RObject::Real(out)))
+    match result_rank {
+        0 => Ok(heap.alloc(RObject::Logical(
+            out.iter()
+                .map(|&v| {
+                    if v.is_nan() {
+                        crate::value::object::NA_INTEGER
+                    } else {
+                        v as i32
+                    }
+                })
+                .collect(),
+        ))),
+        1 => Ok(heap.alloc(RObject::Integer(
+            out.iter()
+                .map(|&v| {
+                    if v.is_nan() {
+                        crate::value::object::NA_INTEGER
+                    } else {
+                        v as i32
+                    }
+                })
+                .collect(),
+        ))),
+        _ => Ok(heap.alloc(RObject::Real(out))),
+    }
 }
 
 /// `%in%` — elementwise membership: logical vector marking each left
