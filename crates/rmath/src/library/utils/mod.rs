@@ -7,7 +7,6 @@ mod io;
 #[cfg(test)]
 pub(crate) use self::io::writetable;
 mod size;
-mod sock;
 mod stubs;
 
 pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
