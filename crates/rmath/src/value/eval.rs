@@ -101,10 +101,15 @@ pub fn eval(
         | RObject::Primitive(_)
         | RObject::Bytecode(_)
         | RObject::External(_)
-        | RObject::S4Object => Ok(expr),
+        | RObject::S4Object => {
+            // Self-evaluating atoms are always visible — GNU's rule.
+            heap.visible = true;
+            Ok(expr)
+        }
         RObject::Symbol { name, .. } => {
             let sym = *name;
             let label = interner.symbol_name(sym).to_string();
+            heap.visible = true;
             let (_, binding) = env::lookup(heap, env_id, sym)
                 .ok_or(EvalError::UnboundVariable(label)).map_err(RSignal::from)?;
             force_if_promise(heap, interner, binding.value)

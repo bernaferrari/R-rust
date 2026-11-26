@@ -29,6 +29,13 @@ pub struct Heap {
     pub(crate) next_gc_threshold: usize,
     allocations_since_gc: usize,
     pub interner: SymbolInterner,
+    /// The visibility flag — GNU's R_Visible exactly. Evaluation sets it
+    /// true; invisible-returning forms (assignment, loops, print/cat,
+    /// invisible()) clear it after their inner evaluations complete, so the
+    /// flag left standing after any evaluation is that evaluation's
+    /// visibility. Closure application inherits the body's final visibility
+    /// with no machinery — exactly as GNU.
+    pub visible: bool,
     /// Output capture — print/cat append GNU-formatted text here. Session
     /// output state lives with the runtime state for the migration slice;
     /// the console/connection subsystem migration owns the final shape.
@@ -39,6 +46,7 @@ impl Heap {
     pub fn new() -> Heap {
         Heap {
             next_gc_threshold: 1024,
+            visible: true,
             ..Heap::default()
         }
     }

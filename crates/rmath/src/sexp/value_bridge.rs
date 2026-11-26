@@ -2040,16 +2040,7 @@ mod tests {
         for expr in &imported {
             match crate::value::eval::eval(&mut heap, &mut interner, *expr, env_id) {
                 Ok(value) => {
-                    let invisible = match heap.object(*expr) {
-                        Some(RObject::Language { car, .. }) => match heap.object(*car) {
-                            Some(RObject::Symbol { name, .. }) => {
-                                returns_invisibly(interner.symbol_name(*name))
-                            }
-                            _ => false,
-                        },
-                        _ => false,
-                    };
-                    if !invisible {
+                    if heap.visible {
                         let text = crate::value::print::format_value(&heap, &interner, value);
                         heap.output.push_str(&text);
                         heap.output.push('\n');
@@ -2157,18 +2148,7 @@ mod tests {
                         /// every visible expression result exactly as the
                         /// REPL does. Assignments and output/visibility
                         /// primitives return invisibly; NULL never prints.
-                        let invisible = match heap.object(*expr) {
-                            Some(RObject::Language { car, .. }) => {
-                                match heap.object(*car) {
-                                    Some(RObject::Symbol { name, .. }) => {
-                                        returns_invisibly(interner.symbol_name(*name))
-                                    }
-                                    _ => false,
-                                }
-                            }
-                            _ => false,
-                        };
-                        if !invisible {
+                        if heap.visible {
                             let text = crate::value::print::format_value(&heap, &interner, value);
                             heap.output.push_str(&text);
                             heap.output.push('\n');
