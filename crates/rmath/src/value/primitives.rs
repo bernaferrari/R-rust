@@ -71,6 +71,10 @@ pub mod primitive_ids {
     pub const PASTE0: u32 = 64;
     /// Subscript replacement — `[<-` returns the modified copy.
     pub const SUBSET_ASSIGN: u32 = 65;
+    /// Attribute access — names getter and replacement, dollar extraction.
+    pub const NAMES: u32 = 69;
+    pub const NAMES_ASSIGN: u32 = 70;
+    pub const DOLLAR: u32 = 71;
     /// Vector constructors — numeric/integer/logical of length n.
     pub const NUMERIC: u32 = 66;
     pub const INTEGER_CTOR: u32 = 67;
@@ -83,7 +87,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -126,6 +130,9 @@ pub(crate) fn call_primitive(
         NUMERIC | INTEGER_CTOR | LOGICAL_CTOR => {
             vector_constructor(heap, interner, id.0, args, caller_env)
         }
+        NAMES => names_primitive(heap, interner, args, caller_env),
+        NAMES_ASSIGN => names_assign_primitive(heap, interner, args, caller_env),
+        DOLLAR => dollar_primitive(heap, interner, args, caller_env),
         PASTE => paste_primitive(heap, interner, args, caller_env, " "),
         PASTE0 => paste_primitive(heap, interner, args, caller_env, ""),
         NCHAR => nchar_primitive(heap, interner, args, caller_env),
@@ -136,22 +143,41 @@ pub(crate) fn call_primitive(
             Ok(operands[0])
         }
         LIST => {
-            // Variadic: every evaluated operand becomes one list element.
+            // Variadic: every evaluated operand becomes one list element;
+            // tags attach as the names attribute exactly as GNU.
             let mut items = Vec::new();
+            let mut tags: Vec<Option<String>> = Vec::new();
             let mut cursor = args;
             loop {
-                let (car, cdr) = match heap.object(cursor) {
-                    Some(RObject::Pairlist { car, cdr, .. }) => (*car, *cdr),
+                let (car, cdr, tag) = match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
                     _ => break,
+                };
+                let tag_name = match heap.object(tag) {
+                    Some(RObject::Symbol { name, .. }) => {
+                        Some(interner.symbol_name(*name).to_string())
+                    }
+                    _ => None,
                 };
                 let evaluated = eval(heap, interner, car, caller_env)?;
                 items.push(force_if_promise(heap, interner, evaluated)?);
+                tags.push(tag_name);
                 if cdr == ValueId::NIL {
                     break;
                 }
                 cursor = cdr;
             }
-            Ok(heap.alloc(RObject::List(items)))
+            let value = heap.alloc(RObject::List(items));
+            if tags.iter().any(|t| t.is_some()) {
+                let names: Vec<super::intern::InternedStr> = tags
+                    .iter()
+                    .map(|t| interner.intern_string(t.as_deref().unwrap_or("")))
+                    .collect();
+                let names_vec = heap.alloc(RObject::String(names));
+                return copy_with_attrib(heap, interner, value, "names", names_vec)
+                    .map_err(RSignal::from);
+            }
+            Ok(value)
         }
         SQRT | EXP | LOG | ABS => math_unary(heap, interner, id.0, args, caller_env),
         _ => Err(EvalError::UnsupportedForm("unregistered primitive").into()),
@@ -606,7 +632,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical",
+        "numeric", "integer", "logical", "names", "names<-", "$",
     ]
 }
 
@@ -664,6 +690,9 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "numeric" => Some(NUMERIC),
         "integer" => Some(INTEGER_CTOR),
         "logical" => Some(LOGICAL_CTOR),
+        "names" => Some(NAMES),
+        "names<-" => Some(NAMES_ASSIGN),
+        "$" => Some(DOLLAR),
         _ => None,
     }
 }
@@ -695,16 +724,24 @@ fn concat_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    // Variadic: evaluate and force every operand in the call.
+    // Variadic: evaluate and force every operand in the call, keeping each
+    // operand's tag — tagged concatenation expands names across element
+    // counts exactly as GNU.
     let mut operands = Vec::new();
+    let mut tags: Vec<Option<String>> = Vec::new();
     let mut cursor = args;
     loop {
-        let (car, cdr) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, .. }) => (*car, *cdr),
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
             _ => break,
+        };
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
         };
         let evaluated = eval(heap, interner, car, caller_env)?;
         operands.push(force_if_promise(heap, interner, evaluated)?);
+        tags.push(tag_name);
         if cdr == ValueId::NIL {
             break;
         }
@@ -718,24 +755,29 @@ fn concat_primitive(
         String(Vec<super::intern::InternedStr>),
     }
     let mut flattened = Vec::new();
+    let mut operand_lengths = Vec::new();
     let mut rank = 0u8;
     for operand in operands {
         let flat = match heap.object(operand) {
             Some(RObject::Nil) => continue,
             Some(RObject::Logical(values)) => {
                 rank = rank.max(1);
+                operand_lengths.push(values.len());
                 Flat::Logical(values.clone())
             }
             Some(RObject::Integer(values)) => {
                 rank = rank.max(2);
+                operand_lengths.push(values.len());
                 Flat::Integer(values.clone())
             }
             Some(RObject::Real(values)) => {
                 rank = rank.max(3);
+                operand_lengths.push(values.len());
                 Flat::Real(values.clone())
             }
             Some(RObject::String(values)) => {
                 rank = rank.max(4);
+                operand_lengths.push(values.len());
                 Flat::String(values.clone())
             }
             _ => {
@@ -747,6 +789,28 @@ fn concat_primitive(
     if flattened.is_empty() {
         return Ok(ValueId::NIL);
     }
+
+    // GNU names expansion: each operand's tag repeats across its element
+    // count; untagged operands contribute empty strings. Any tag at all
+    // turns the names attribute on.
+    let attach_names = |heap: &mut Heap, interner: &mut SymbolInterner, value: ValueId| -> Result<ValueId, RSignal> {
+        // NIL operands dropped above shift the tag alignment; the slice
+        // accepts the common all-present shape and drops names otherwise.
+        if tags.iter().all(|t| t.is_none()) {
+            return Ok(value);
+        }
+        if tags.len() != operand_lengths.len() {
+            return Ok(value);
+        }
+        let mut names = Vec::new();
+        for (tag, count) in tags.iter().zip(operand_lengths.iter()) {
+            for _ in 0..*count {
+                names.push(interner.intern_string(tag.as_deref().unwrap_or("")));
+            }
+        }
+        let names_vec = heap.alloc(RObject::String(names));
+        copy_with_attrib(heap, interner, value, "names", names_vec).map_err(RSignal::from)
+    };
 
     fn logicals_of(flat: &Flat) -> Vec<i32> {
         match flat {
@@ -783,21 +847,24 @@ fn concat_primitive(
             for flat in &flattened {
                 out.extend(logicals_of(flat));
             }
-            Ok(heap.alloc(RObject::Logical(out)))
+            let value = heap.alloc(RObject::Logical(out));
+            attach_names(heap, interner, value)
         }
         2 => {
             let mut out = Vec::new();
             for flat in &flattened {
                 out.extend(integers_of(flat));
             }
-            Ok(heap.alloc(RObject::Integer(out)))
+            let value = heap.alloc(RObject::Integer(out));
+            attach_names(heap, interner, value)
         }
         3 => {
             let mut out = Vec::new();
             for flat in &flattened {
                 out.extend(reals_of(flat));
             }
-            Ok(heap.alloc(RObject::Real(out)))
+            let value = heap.alloc(RObject::Real(out));
+            attach_names(heap, interner, value)
         }
         _ => {
             // Character coercion: every operand renders through its ASCII
@@ -843,7 +910,8 @@ fn concat_primitive(
                     }
                 }
             }
-            Ok(heap.alloc(RObject::String(out)))
+            let value = heap.alloc(RObject::String(out));
+            attach_names(heap, interner, value)
         }
     }
 }
@@ -1523,30 +1591,50 @@ fn assign_replacement(
         Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
         _ => return Err(EvalError::TypeError("unsupported assignment target").into()),
     };
-    if head_name != "[" {
-        return Err(EvalError::TypeError("unsupported replacement target").into());
-    }
     let call_args = raw_args(heap, args);
-    if call_args.len() != 2 {
+    if call_args.is_empty() {
         return Err(EvalError::UnsupportedForm("replacement arity").into());
     }
     let sym = match heap.object(call_args[0]) {
         Some(RObject::Symbol { name, .. }) => *name,
         _ => return Err(EvalError::TypeError("replacement object must be a symbol").into()),
     };
-    // The object is the symbol's current binding, exactly GNU.
-    let object = eval(heap, interner, call_args[0], caller_env)?;
-    let object = force_if_promise(heap, interner, object)?;
-    let index = eval(heap, interner, call_args[1], caller_env)?;
-    let index = force_if_promise(heap, interner, index)?;
-    let value = eval(heap, interner, rhs, caller_env)?;
-    let value = force_if_promise(heap, interner, value)?;
-    let replaced = subset_replace(heap, object, index, value).map_err(RSignal::from)?;
-    crate::value::env::define(heap, caller_env, sym, replaced)
-        .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("replacement define")))?;
-    // Replacement assignments evaluate to the assigned value in GNU — the
-    // right-hand value, not the whole modified object.
-    Ok(value)
+    if head_name == "[" {
+        if call_args.len() != 2 {
+            return Err(EvalError::UnsupportedForm("replacement arity").into());
+        }
+        // The object is the symbol's current binding, exactly GNU.
+        let object = eval(heap, interner, call_args[0], caller_env)?;
+        let object = force_if_promise(heap, interner, object)?;
+        let index = eval(heap, interner, call_args[1], caller_env)?;
+        let index = force_if_promise(heap, interner, index)?;
+        let value = eval(heap, interner, rhs, caller_env)?;
+        let value = force_if_promise(heap, interner, value)?;
+        let replaced = subset_replace(heap, object, index, value).map_err(RSignal::from)?;
+        crate::value::env::define(heap, caller_env, sym, replaced)
+            .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("replacement define")))?;
+        // Replacement assignments evaluate to the assigned value in GNU — the
+        // right-hand value, not the whole modified object.
+        return Ok(value);
+    }
+    // Generic replacement functions: `F(x, ...) <- v` desugars to
+    // `x <- `F<-`(x, ..., v)` — the object is the first target argument,
+    // the value the last replacement argument, exactly GNU's rewrite.
+    let replacement_name = format!("{head_name}<-");
+    if replacement_name == "names<-" {
+        if call_args.len() != 1 {
+            return Err(EvalError::UnsupportedForm("names replacement arity").into());
+        }
+        let object = eval(heap, interner, call_args[0], caller_env)?;
+        let object = force_if_promise(heap, interner, object)?;
+        let value = eval(heap, interner, rhs, caller_env)?;
+        let value = force_if_promise(heap, interner, value)?;
+        let replaced = names_assign_core(heap, interner, object, value).map_err(RSignal::from)?;
+        crate::value::env::define(heap, caller_env, sym, replaced)
+            .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("replacement define")))?;
+        return Ok(value);
+    }
+    Err(EvalError::TypeError("unsupported replacement target").into())
 }
 
 /// `[<-` as a primitive: positional arguments object, index, value.
@@ -1692,4 +1780,186 @@ fn vector_constructor(
         _ => RObject::Logical(vec![0; length]),
     };
     Ok(heap.alloc(body))
+}
+
+/// Read one named attribute off an object's slot attribute chain — the
+/// pairlist walk every attribute access shares. Attribute chains are
+/// pairlist nodes whose tags are the attribute name symbols.
+fn get_attrib(
+    heap: &Heap,
+    interner: &SymbolInterner,
+    obj: ValueId,
+    attr_name: &str,
+) -> Option<ValueId> {
+    let mut cursor = heap.get(obj)?.attrib;
+    for _ in 0..100_000 {
+        if cursor == ValueId::NIL {
+            return None;
+        }
+        match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => {
+                if let Some(RObject::Symbol { name, .. }) = heap.object(*tag) {
+                    if interner.symbol_name(*name) == attr_name {
+                        return Some(*car);
+                    }
+                }
+                cursor = *cdr;
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
+/// Copy an object with one attribute replaced (or prepended when absent).
+/// R's copy-on-write discipline: the original object is never mutated —
+/// assignment binds the fresh copy, so aliases keep the old attributes.
+/// The attribute chain itself is rebuilt node-by-node for the same reason.
+fn copy_with_attrib(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    obj: ValueId,
+    attr_name: &str,
+    attr_value: ValueId,
+) -> Result<ValueId, EvalError> {
+    let body = heap
+        .object(obj)
+        .cloned()
+        .ok_or(EvalError::TypeError("attribute target missing"))?;
+    let attr_sym = interner.intern_symbol(attr_name);
+    let sym_obj = heap.alloc(RObject::Symbol {
+        name: attr_sym,
+        value: ValueId::UNBOUND,
+        internal: ValueId::UNBOUND,
+    });
+    // Walk the original chain, rebuilding nodes; substitute the matching tag.
+    let original_chain = heap.get(obj).map(|slot| slot.attrib).unwrap_or(ValueId::NIL);
+    let mut entries: Vec<(ValueId, ValueId)> = Vec::new();
+    let mut found = false;
+    let mut cursor = original_chain;
+    for _ in 0..100_000 {
+        if cursor == ValueId::NIL {
+            break;
+        }
+        match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => {
+                let matches = match heap.object(*tag) {
+                    Some(RObject::Symbol { name, .. }) => {
+                        interner.symbol_name(*name) == attr_name
+                    }
+                    _ => false,
+                };
+                if matches {
+                    entries.push((sym_obj, attr_value));
+                    found = true;
+                } else {
+                    entries.push((*tag, *car));
+                }
+                cursor = *cdr;
+            }
+            _ => break,
+        }
+    }
+    if !found {
+        entries.insert(0, (sym_obj, attr_value));
+    }
+    // Rebuild the chain tail-to-head.
+    let mut chain = ValueId::NIL;
+    for (tag, car) in entries.into_iter().rev() {
+        chain = heap.alloc(RObject::Pairlist {
+            car,
+            cdr: chain,
+            tag,
+        });
+    }
+    let copy = heap.alloc(body);
+    if let Some(slot) = heap.get_mut(copy) {
+        slot.attrib = chain;
+    }
+    Ok(copy)
+}
+
+/// `names(x)` — the names attribute as a character vector, or NIL when the
+/// object has none, exactly GNU.
+fn names_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    match get_attrib(heap, interner, operands[0], "names") {
+        Some(names) => Ok(names),
+        None => Ok(ValueId::NIL),
+    }
+}
+
+/// The names<- core, shared between the replacement primitive and the
+/// assignment desugar: a copy of the object carrying the new names.
+fn names_assign_core(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    obj: ValueId,
+    value: ValueId,
+) -> Result<ValueId, EvalError> {
+    copy_with_attrib(heap, interner, obj, "names", value)
+}
+
+/// `` `names<-` `` as a primitive: positional object and value.
+fn names_assign_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    names_assign_core(heap, interner, operands[0], operands[1]).map_err(RSignal::from)
+}
+
+/// `x$name` — exact-match extraction by name. The second operand is a
+/// literal symbol, never evaluated — GNU's argument discipline for `$`.
+/// The slice implements exact matching only; GNU's partial matching is
+/// documented as future work. Atomic vectors extract a length-one vector
+/// of the same type; list elements unbox exactly as `[[`.
+fn dollar_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let parts = raw_args(heap, args);
+    if parts.len() != 2 {
+        return Err(EvalError::UnsupportedForm("$ arity").into());
+    }
+    let object = eval(heap, interner, parts[0], caller_env)?;
+    let object = force_if_promise(heap, interner, object)?;
+    let wanted = match heap.object(parts[1]) {
+        Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+        _ => return Err(EvalError::TypeError("$ name must be a symbol").into()),
+    };
+    let names = get_attrib(heap, interner, object, "names")
+        .ok_or(EvalError::TypeError("object has no names attribute"))
+        .map_err(RSignal::from)?;
+    let position = match heap.object(names) {
+        Some(RObject::String(values)) => values
+            .iter()
+            .position(|s| interner.string_text(*s) == wanted),
+        _ => None,
+    };
+    // GNU discipline: `$` is invalid for atomic vectors — only recursive
+    /// objects (lists) extract by dollar. Atomic named access goes through
+    /// `[` with character indices, a separate slice.
+    match heap.object(object) {
+        Some(RObject::List(items)) => {
+            let position = match position {
+                Some(p) => p,
+                None => return Ok(ValueId::NIL),
+            };
+            if position >= items.len() {
+                return Ok(ValueId::NIL);
+            }
+            Ok(items[position])
+        }
+        _ => Err(EvalError::TypeError("$ operator is invalid for atomic vectors").into()),
+    }
 }

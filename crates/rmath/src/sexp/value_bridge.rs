@@ -842,7 +842,7 @@ impl ExportBridge {
         self.reverse.insert(value, environment);
         if let crate::value::object::EnvFrame::List(bindings) = frame {
             for (name, binding) in bindings {
-                let symbol = crate::sexp::symbol::install_str(interner.symbol_name(*name));
+                let symbol = crate::sexp::symbol::install_str(interner.symbol_name(name));
                 let exported = self.export(heap, interner, binding.value)?;
                 crate::sexp::envir::defineVar(symbol, exported, environment);
             }
@@ -1810,6 +1810,10 @@ mod tests {
             "{ total <- numeric(0); total[1] <- 5; total }",
             "{ x <- c(5, 2, 8, 1, 9, 3); n <- length(x); for (i in 1:(n-1)) { for (j in 1:(n-i)) { if (x[j] > x[j+1]) { tmp <- x[j]; x[j] <- x[j+1]; x[j+1] <- tmp } } }; x }",
             "{ x <- c(2, 4, 4, 4, 5, 5, 7, 9); n <- length(x); m <- sum(x) / n; v <- sum((x - m)^2) / (n - 1); c(m, sqrt(v)) }",
+            "{ x <- list(a=1, b=2); x$a + x$b }",
+            "{ x <- list(10, 20); names(x) <- c('p', 'q'); x$q }",
+            "{ x <- list(a=5); y <- x; names(x) <- c('z'); x$z }",
+            "{ x <- list(1, 2); names(x) <- c('a', 'b'); names(x) }",
         ];
         // One session, one parse pass: expression objects stay valid for the
         // session's lifetime, so batching avoids per-program bootstrap cost.

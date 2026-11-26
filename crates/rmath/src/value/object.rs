@@ -22,6 +22,59 @@ pub struct RComplex {
     pub i: f64,
 }
 
+impl Clone for RObject {
+    /// Object duplication for copy-on-write attribute discipline. Altrep
+    /// providers are trait objects that cannot duplicate; the migration
+    /// slice never produces them in this heap, so the panic is unreachable
+    /// in practice and documents the invariant at the boundary.
+    fn clone(&self) -> RObject {
+        match self {
+            RObject::Nil => RObject::Nil,
+            RObject::Symbol { name, value, internal } => RObject::Symbol {
+                name: *name,
+                value: *value,
+                internal: *internal,
+            },
+            RObject::Pairlist { car, cdr, tag } => RObject::Pairlist {
+                car: *car,
+                cdr: *cdr,
+                tag: *tag,
+            },
+            RObject::Language { car, cdr, tag } => RObject::Language {
+                car: *car,
+                cdr: *cdr,
+                tag: *tag,
+            },
+            RObject::Closure { formals, body, env } => RObject::Closure {
+                formals: *formals,
+                body: *body,
+                env: *env,
+            },
+            RObject::Environment { frame, enclos } => RObject::Environment {
+                frame: frame.clone(),
+                enclos: *enclos,
+            },
+            RObject::Promise { expr, env, value } => RObject::Promise {
+                expr: *expr,
+                env: *env,
+                value: *value,
+            },
+            RObject::Primitive(id) => RObject::Primitive(*id),
+            RObject::Logical(v) => RObject::Logical(v.clone()),
+            RObject::Integer(v) => RObject::Integer(v.clone()),
+            RObject::Real(v) => RObject::Real(v.clone()),
+            RObject::Complex(v) => RObject::Complex(v.clone()),
+            RObject::String(v) => RObject::String(v.clone()),
+            RObject::Raw(v) => RObject::Raw(v.clone()),
+            RObject::List(v) => RObject::List(v.clone()),
+            RObject::Expression(v) => RObject::Expression(v.clone()),
+            RObject::Bytecode(chunk) => RObject::Bytecode(chunk.clone()),
+            RObject::Altrep(_) => unreachable!("altrep objects cannot duplicate"),
+            _ => unreachable!("variant duplication arrives with its migration slice"),
+        }
+    }
+}
+
 /// Primitive/builtin identifier — an index into the builtin dispatch table.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct BuiltinId(pub u32);
@@ -58,7 +111,7 @@ impl Binding {
 
 /// Environment frame storage: small frames stay in association-list order,
 /// large frames hash. Both are safe container types.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub enum EnvFrame {
     #[default]
     Empty,
