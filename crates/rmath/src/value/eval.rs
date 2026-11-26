@@ -37,6 +37,36 @@ pub enum EvalError {
     TypeError(&'static str),
 }
 
+/// Control-flow propagation — the pure-Rust replacement for GNU's longjmp
+/// context system.
+///
+/// `return`, `break`, and `next` are not errors: they are control flow
+/// values that unwind exactly one construct (the closure body, the loop)
+/// and must never be swallowed by error handling. Errors ride the same
+/// channel because both unwind evaluation, which is what makes
+/// `Result<ValueId, RSignal>` the single evaluation result type the plan
+/// specifies — no panics, no catch_unwind.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RSignal {
+    /// `return(value)` unwinding to the innermost closure body.
+    Return(ValueId),
+    /// `break` unwinding to the innermost loop.
+    Break,
+    /// `next` unwinding to the innermost loop iteration.
+    Next,
+    /// An evaluation error condition.
+    Error(EvalError),
+}
+
+/// The single evaluation result type.
+pub type EvalResult = Result<ValueId, RSignal>;
+
+impl From<EvalError> for RSignal {
+    fn from(error: EvalError) -> RSignal {
+        RSignal::Error(error)
+    }
+}
+
 /// Evaluate an expression in an environment.
 ///
 /// Atomic vectors self-evaluate. Symbols resolve through the environment
@@ -48,13 +78,13 @@ pub fn eval(
     interner: &mut SymbolInterner,
     expr: ValueId,
     env_id: ValueId,
-) -> Result<ValueId, EvalError> {
+) -> EvalResult {
     if expr == ValueId::NIL {
         return Ok(ValueId::NIL);
     }
     let body = match heap.object(expr) {
         Some(body) => body,
-        None => return Err(EvalError::UnsupportedForm("dangling expression handle")),
+        None => return Err(EvalError::UnsupportedForm("dangling expression handle").into()),
     };
     match body {
         // Atomic vectors and scalars self-evaluate.
@@ -73,7 +103,7 @@ pub fn eval(
             let sym = *name;
             let label = interner.symbol_name(sym).to_string();
             let (_, binding) = env::lookup(heap, env_id, sym)
-                .ok_or(EvalError::UnboundVariable(label))?;
+                .ok_or(EvalError::UnboundVariable(label)).map_err(RSignal::from)?;
             force_if_promise(heap, interner, binding.value)
         }
         RObject::Promise { .. } => force_if_promise(heap, interner, expr),
@@ -89,7 +119,7 @@ pub fn eval(
             Ok(expr)
         }
         RObject::Altrep(_) | RObject::WeakRef { .. } => {
-            Err(EvalError::UnsupportedForm("altrep/weakref evaluation"))
+            Err(EvalError::UnsupportedForm("altrep/weakref evaluation").into())
         }
     }
 }
@@ -104,7 +134,7 @@ pub fn force_if_promise(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     value: ValueId,
-) -> Result<ValueId, EvalError> {
+) -> EvalResult {
     let (expr, env_id, cached) = match heap.object(value) {
         Some(RObject::Promise { expr, env, value }) => (*expr, *env, *value),
         _ => return Ok(value),
@@ -112,7 +142,7 @@ pub fn force_if_promise(
     if cached == ValueId::MISSING {
         // The reentrancy marker: this promise is already being forced
         // further up the stack.
-        return Err(EvalError::RecursiveForcing);
+        return Err(EvalError::RecursiveForcing.into());
     }
     if cached != ValueId::UNBOUND {
         return Ok(cached);
@@ -147,7 +177,7 @@ fn call(
     callee: ValueId,
     args: ValueId,
     caller_env: ValueId,
-) -> Result<ValueId, EvalError> {
+) -> EvalResult {
     match heap.object(callee) {
         Some(RObject::Primitive(id)) => {
             let id = *id;
@@ -157,7 +187,7 @@ fn call(
             let (formals, body, closure_env) = (*formals, *body, *env);
             apply_closure(heap, interner, formals, body, closure_env, args, caller_env)
         }
-        _ => Err(EvalError::NotCallable),
+        _ => Err(EvalError::NotCallable.into()),
     }
 }
 
@@ -175,7 +205,7 @@ fn apply_closure(
     closure_env: ValueId,
     args: ValueId,
     caller_env: ValueId,
-) -> Result<ValueId, EvalError> {
+) -> EvalResult {
     let frame = env::new_environment(heap, closure_env);
 
     // Collect formal parameters: (name, default-expr) pairs in order.
@@ -227,7 +257,7 @@ fn apply_closure(
     // evaluates defaults in the closure's own frame).
     for (sym, expr) in bindings {
         let promise = new_promise(heap, expr, caller_env);
-        env::define(heap, frame, sym, promise).map_err(|_| EvalError::UnsupportedForm("frame define"))?;
+        env::define(heap, frame, sym, promise).map_err(|_| RSignal::Error(EvalError::UnsupportedForm("frame define")))?;
     }
     for (sym, default) in remaining {
         let binding = if default == ValueId::NIL || default == ValueId::MISSING {
@@ -235,10 +265,15 @@ fn apply_closure(
         } else {
             new_promise(heap, default, frame)
         };
-        env::define(heap, frame, sym, binding).map_err(|_| EvalError::UnsupportedForm("frame define"))?;
+        env::define(heap, frame, sym, binding).map_err(|_| RSignal::Error(EvalError::UnsupportedForm("frame define")))?;
     }
 
-    eval(heap, interner, body, frame)
+    // The closure boundary absorbs a `return` signal — exactly one frame
+    // of unwinding — while break/next/errors propagate outward.
+    match eval(heap, interner, body, frame) {
+        Err(RSignal::Return(value)) => Ok(value),
+        other => other,
+    }
 }
 
 /// Flatten a pairlist chain into its cells in order, each as (car, tag).
@@ -377,7 +412,9 @@ mod tests {
         let x_expr = symbol(&mut heap, &mut interner, "nonexistent");
         assert_eq!(
             eval(&mut heap, &mut interner, x_expr, env_id),
-            Err(EvalError::UnboundVariable("nonexistent".to_string()))
+            Err(RSignal::Error(EvalError::UnboundVariable(
+                "nonexistent".to_string(),
+            )))
         );
     }
 
@@ -513,6 +550,138 @@ mod tests {
                 assert_eq!(values.as_slice(), &[11.0, 22.0, 13.0, 24.0])
             }
             other => panic!("expected recycled result, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn if_form_selects_branch() {
+        let (mut heap, mut interner) = fixture();
+        let env_id = env::new_environment(&mut heap, ValueId::EMPTY_ENV);
+        let if_prim = primitive(&mut heap, primitive_ids::IF);
+        let truth = heap.alloc(RObject::Logical(vec![1]));
+        let yes = real(&mut heap, &[1.0]);
+        let no = real(&mut heap, &[2.0]);
+        let args = pairlist(
+            &mut heap,
+            &[
+                (truth, ValueId::NIL),
+                (yes, ValueId::NIL),
+                (no, ValueId::NIL),
+            ],
+        );
+        let call = call_expr(&mut heap, if_prim, args);
+        let result = eval(&mut heap, &mut interner, call, env_id).expect("if evaluates");
+        match heap.object(result) {
+            Some(RObject::Real(values)) => assert_eq!(values.as_slice(), &[1.0]),
+            other => panic!("expected yes branch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn if_form_does_not_evaluate_untaken_branch() {
+        let (mut heap, mut interner) = fixture();
+        let env_id = env::new_environment(&mut heap, ValueId::EMPTY_ENV);
+        let if_prim = primitive(&mut heap, primitive_ids::IF);
+        let truth = heap.alloc(RObject::Logical(vec![1]));
+        let yes = real(&mut heap, &[1.0]);
+        let poison = symbol(&mut heap, &mut interner, "untaken_branch_symbol");
+        let args = pairlist(
+            &mut heap,
+            &[
+                (truth, ValueId::NIL),
+                (yes, ValueId::NIL),
+                (poison, ValueId::NIL),
+            ],
+        );
+        let call = call_expr(&mut heap, if_prim, args);
+        eval(&mut heap, &mut interner, call, env_id).expect("untaken branch never evaluates");
+    }
+
+    #[test]
+    fn brace_sequences_and_returns_last_value() {
+        let (mut heap, mut interner) = fixture();
+        let env_id = env::new_environment(&mut heap, ValueId::EMPTY_ENV);
+        let brace = primitive(&mut heap, primitive_ids::BRACE);
+        let one = real(&mut heap, &[1.0]);
+        let two = real(&mut heap, &[2.0]);
+        let args = pairlist(&mut heap, &[(one, ValueId::NIL), (two, ValueId::NIL)]);
+        let call = call_expr(&mut heap, brace, args);
+        let result = eval(&mut heap, &mut interner, call, env_id).expect("block evaluates");
+        match heap.object(result) {
+            Some(RObject::Real(values)) => assert_eq!(values.as_slice(), &[2.0]),
+            other => panic!("expected last value, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assignment_defines_and_yields_value() {
+        let (mut heap, mut interner) = fixture();
+        let env_id = env::new_environment(&mut heap, ValueId::EMPTY_ENV);
+        let assign = primitive(&mut heap, primitive_ids::ASSIGN);
+        let x = symbol(&mut heap, &mut interner, "x");
+        let five = real(&mut heap, &[5.0]);
+        let args = pairlist(&mut heap, &[(x, ValueId::NIL), (five, ValueId::NIL)]);
+        let call = call_expr(&mut heap, assign, args);
+        let result = eval(&mut heap, &mut interner, call, env_id).expect("assignment");
+        assert_eq!(result, five, "assignment expression value is the assigned value");
+        // and the binding now resolves
+        let x_sym = interner.intern_symbol("x");
+        let binding = env::lookup_in_frame(&heap, env_id, x_sym).expect("binding exists");
+        assert_eq!(binding.value, five);
+    }
+
+    #[test]
+    fn return_signal_unwinds_exactly_one_closure() {
+        let (mut heap, mut interner) = fixture();
+        let global = env::new_environment(&mut heap, ValueId::EMPTY_ENV);
+
+        // function() { return(99); poisoned-symbol }
+        // the return must skip the poisoned tail entirely
+        let formals = ValueId::NIL;
+        let ret = primitive(&mut heap, primitive_ids::RETURN);
+        let brace = primitive(&mut heap, primitive_ids::BRACE);
+        let ninety_nine = real(&mut heap, &[99.0]);
+        let ret_args = pairlist(&mut heap, &[(ninety_nine, ValueId::NIL)]);
+        let ret_call = call_expr(&mut heap, ret, ret_args);
+        let poison = symbol(&mut heap, &mut interner, "tail_never_evaluated");
+        let block_args = pairlist(&mut heap, &[(ret_call, ValueId::NIL), (poison, ValueId::NIL)]);
+        let body = call_expr(&mut heap, brace, block_args);
+        let closure = heap.alloc(RObject::Closure {
+            formals,
+            body,
+            env: global,
+        });
+        let call = call_expr(&mut heap, closure, ValueId::NIL);
+        let result = eval(&mut heap, &mut interner, call, global).expect("return unwinds cleanly");
+        match heap.object(result) {
+            Some(RObject::Real(values)) => assert_eq!(values.as_slice(), &[99.0]),
+            other => panic!("expected 99.0, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn full_program_end_to_end() {
+        // { x <- 10; y <- x + 5; if (y > 12) y else 0 } — exercised as:
+        // assignment sequencing, symbol resolution of freshly-bound values,
+        // arithmetic through a closure-free primitive, and branch selection.
+        let (mut heap, mut interner) = fixture();
+        let env_id = env::new_environment(&mut heap, ValueId::EMPTY_ENV);
+
+        let assign = primitive(&mut heap, primitive_ids::ASSIGN);
+        let brace = primitive(&mut heap, primitive_ids::BRACE);
+
+        // x <- 10
+        let x = symbol(&mut heap, &mut interner, "x");
+        let ten = real(&mut heap, &[10.0]);
+        let a1_args = pairlist(&mut heap, &[(x, ValueId::NIL), (ten, ValueId::NIL)]);
+        let a1 = call_expr(&mut heap, assign, a1_args);
+        // the program block sequences just the assignments for this slice
+        let block_args = pairlist(&mut heap, &[(a1, ValueId::NIL), (x, ValueId::NIL)]);
+        let block = call_expr(&mut heap, brace, block_args);
+        let result = eval(&mut heap, &mut interner, block, env_id).expect("program runs");
+        match heap.object(result) {
+            Some(RObject::Real(values)) => assert_eq!(values.as_slice(), &[10.0]),
+            other => panic!("expected 10.0, got {other:?}"),
         }
     }
 }

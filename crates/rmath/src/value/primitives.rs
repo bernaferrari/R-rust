@@ -7,7 +7,7 @@
 //! the canonical registry arrives with the builtin migration and replaces
 //! this module's table.
 
-use super::eval::{eval, force_if_promise, EvalError};
+use super::eval::{eval, force_if_promise, EvalError, EvalResult, RSignal};
 use super::heap::Heap;
 use super::id::ValueId;
 use super::intern::SymbolInterner;
@@ -20,10 +20,16 @@ pub mod primitive_ids {
     pub const SUB: u32 = 2;
     pub const MUL: u32 = 3;
     pub const DIV: u32 = 4;
+    /// Special forms — unevaluated operands, exactly as GNU treats them.
+    pub const IF: u32 = 10;
+    pub const BRACE: u32 = 11;
+    pub const ASSIGN: u32 = 12;
+    pub const SUPERASSIGN: u32 = 13;
+    pub const RETURN: u32 = 14;
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ADD, DIV, MUL, SUB};
+use primitive_ids::{ADD, ASSIGN, BRACE, DIV, IF, MUL, RETURN, SUB, SUPERASSIGN};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -33,11 +39,144 @@ pub(crate) fn call_primitive(
     id: BuiltinId,
     args: ValueId,
     caller_env: ValueId,
-) -> Result<ValueId, EvalError> {
+) -> EvalResult {
     match id.0 {
         ADD | SUB | MUL | DIV => arithmetic(heap, interner, id.0, args, caller_env),
-        _ => Err(EvalError::UnsupportedForm("unregistered primitive")),
+        IF => if_form(heap, interner, args, caller_env),
+        BRACE => brace_form(heap, interner, args, caller_env),
+        ASSIGN => assign_form(heap, interner, args, caller_env, false),
+        SUPERASSIGN => assign_form(heap, interner, args, caller_env, true),
+        RETURN => return_form(heap, interner, args, caller_env),
+        _ => Err(EvalError::UnsupportedForm("unregistered primitive").into()),
     }
+}
+
+/// Collect the raw argument expressions of a call without evaluating them —
+/// what special forms operate on.
+fn raw_args(heap: &Heap, mut args: ValueId) -> Vec<ValueId> {
+    let mut out = Vec::new();
+    for _ in 0..100_000 {
+        match heap.object(args) {
+            Some(RObject::Pairlist { car, cdr, .. }) => {
+                out.push(*car);
+                if *cdr == ValueId::NIL {
+                    break;
+                }
+                args = *cdr;
+            }
+            _ => break,
+        }
+    }
+    out
+}
+
+/// `if (test) yes else no` — the test is forced to a single logical;
+/// a missing else branch yields NIL, exactly GNU's invisible NULL.
+fn if_form(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let parts = raw_args(heap, args);
+    if parts.len() < 2 || parts.len() > 3 {
+        return Err(EvalError::UnsupportedForm("if arity").into());
+    }
+    let test = eval(heap, interner, parts[0], caller_env)?;
+    let test = force_if_promise(heap, interner, test)?;
+    let truth = match heap.object(test) {
+        Some(RObject::Logical(values)) if !values.is_empty() => values[0] != 0,
+        Some(RObject::Integer(values)) if !values.is_empty() => values[0] != 0,
+        Some(RObject::Real(values)) if !values.is_empty() => values[0] != 0.0,
+        _ => {
+            return Err(EvalError::TypeError("if condition must be logical").into());
+        }
+    };
+    if truth {
+        eval(heap, interner, parts[1], caller_env)
+    } else if parts.len() == 3 {
+        eval(heap, interner, parts[2], caller_env)
+    } else {
+        Ok(ValueId::NIL)
+    }
+}
+
+/// `{ ... }` — sequence evaluation in the same environment, value of the
+/// last expression; empty blocks yield NIL.
+fn brace_form(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let mut result = ValueId::NIL;
+    for expr in raw_args(heap, args) {
+        result = eval(heap, interner, expr, caller_env)?;
+    }
+    Ok(result)
+}
+
+/// `<-` / `=` and `<<-` — assignment special forms. The left operand is an
+/// unevaluated symbol; the right evaluates in the caller's environment and
+/// is itself the value of the assignment expression, exactly GNU.
+fn assign_form(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+    super_assign: bool,
+) -> EvalResult {
+    let parts = raw_args(heap, args);
+    if parts.len() != 2 {
+        return Err(EvalError::UnsupportedForm("assignment arity").into());
+    }
+    let sym = match heap.object(parts[0]) {
+        Some(RObject::Symbol { name, .. }) => *name,
+        _ => {
+            return Err(EvalError::TypeError("assignment target must be a symbol").into());
+        }
+    };
+    let value = eval(heap, interner, parts[1], caller_env)?;
+    let value = force_if_promise(heap, interner, value)?;
+    if super_assign {
+        match crate::value::env::assign(heap, caller_env, sym, value) {
+            Ok(crate::value::env::AssignOutcome::Assigned)
+            | Ok(crate::value::env::AssignOutcome::ReplacedActiveBinding) => {}
+            Ok(crate::value::env::AssignOutcome::NoExistingBinding) => {
+                // GNU: <<- with no existing binding defines in the global
+                // environment. Sentinel resolution is pending; defining in
+                // the current frame is the documented slice approximation.
+                crate::value::env::define(heap, caller_env, sym, value)
+                    .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("superassign define")))?;
+            }
+            Err(_) => {
+                return Err(EvalError::TypeError("cannot change value of locked binding").into());
+            }
+        }
+    } else {
+        crate::value::env::define(heap, caller_env, sym, value)
+            .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("assign define")))?;
+    }
+    Ok(value)
+}
+
+/// `return(value)` — evaluate the operand and signal the unwinding.
+fn return_form(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let parts = raw_args(heap, args);
+    let value = match parts.len() {
+        0 => ValueId::NIL,
+        1 => {
+            let value = eval(heap, interner, parts[0], caller_env)?;
+            force_if_promise(heap, interner, value)?
+        }
+        _ => return Err(EvalError::UnsupportedForm("return arity").into()),
+    };
+    Err(RSignal::Return(value))
 }
 
 /// Binary arithmetic with GNU coercion and recycling semantics.
@@ -52,17 +191,18 @@ fn arithmetic(
     op: u32,
     args: ValueId,
     caller_env: ValueId,
-) -> Result<ValueId, EvalError> {
+) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 2)?;
-    let left = numeric_operands(heap, operands[0])?;
-    let right = numeric_operands(heap, operands[1])?;
+    let left = numeric_operands(heap, operands[0]).map_err(RSignal::from)?;
+    let right = numeric_operands(heap, operands[1]).map_err(RSignal::from)?;
     match (left, right) {
         (Numeric::Integer(a), Numeric::Integer(b)) if op != DIV => {
             let folded = fold_numeric(a, b, op, |x, y| match op {
                 ADD => x.wrapping_add(y),
                 SUB => x.wrapping_sub(y),
                 _ => x.wrapping_mul(y),
-            })?;
+            })
+            .map_err(RSignal::from)?;
             Ok(heap.alloc(RObject::Integer(folded)))
         }
         (a, b) => {
@@ -73,7 +213,8 @@ fn arithmetic(
                 SUB => x - y,
                 MUL => x * y,
                 _ => x / y,
-            })?;
+            })
+            .map_err(RSignal::from)?;
             Ok(heap.alloc(RObject::Real(folded)))
         }
     }
@@ -86,7 +227,7 @@ fn eval_args(
     args: ValueId,
     caller_env: ValueId,
     expected: usize,
-) -> Result<Vec<ValueId>, EvalError> {
+) -> Result<Vec<ValueId>, RSignal> {
     let mut operands = Vec::new();
     let mut cursor = args;
     while operands.len() < expected {
@@ -102,7 +243,7 @@ fn eval_args(
         cursor = cdr;
     }
     if operands.len() != expected {
-        return Err(EvalError::UnsupportedForm("wrong argument count"));
+        return Err(EvalError::UnsupportedForm("wrong argument count").into());
     }
     Ok(operands)
 }
