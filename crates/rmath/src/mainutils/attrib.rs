@@ -341,6 +341,10 @@ pub fn dimgets(vec: SEXP, val: SEXP) -> SEXP {
 
 #[cfg(test)]
 mod tests {
+    use crate::mainutils::essentials::do_attr;
+    use crate::mainutils::essentials::do_comment;
+    use crate::mainutils::essentials::do_tsp;
+    use crate::mainutils::objects::do_isobject;
     use std::ptr;
 
     use super::*;

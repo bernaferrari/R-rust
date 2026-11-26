@@ -5,6 +5,7 @@
 use super::*;
 use crate::sexp::session::RSession;
 use std::ptr;
+use crate::mainutils::essentials::do_dump;
 
 #[test]
 fn test_constants() {

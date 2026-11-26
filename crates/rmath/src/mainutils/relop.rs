@@ -1408,6 +1408,7 @@ pub fn do_bitwShiftR(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 #[cfg(test)]
 mod tests {
+    use crate::eval::arithmetic::do_relop;
     use crate::sexp::accessors::*;
     use crate::sexp::constructors::Rf_cons;
     use crate::sexp::ffi::Rcomplex;

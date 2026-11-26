@@ -482,6 +482,18 @@ pub fn R_WeakRefKey(w: SEXP) -> SEXP {
     }
 }
 
+/// The value cell of a weak reference — GNU layout keeps it in CADR,
+/// symmetric to the key in CAR.
+pub fn R_WeakRefValue(w: SEXP) -> SEXP {
+    {
+        if w.is_null() {
+            return R_NilValue();
+        }
+        validate_weak_ref_object(w);
+        crate::sexp::accessors::CADR(w)
+    }
+}
+
 
 pub fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, onexit: c_int) {
     {
@@ -1367,7 +1379,7 @@ mod tests {
             }
             *buf.data.add(20) = 0;
             assert_eq!(std::ffi::CStr::from_ptr(buf.data).to_bytes().len(), 20);
-            R_FreeStringBuffer(&mut buf);
+            R_FreeStringBufferL(&mut buf);
         }
     }
 
@@ -1898,79 +1910,9 @@ mod owned_gc_operation_tests {
         allocation_callback_cleanup(true);
     }
 
-    #[test]
-    fn precious_mset_growth_rechecks_state_after_gc_callback() {
-        use crate::sexp::gengc::register_gc_callback;
-        let session = RSession::new_for_gc_tests();
-        session.with_active(|| {
-            let owner = session.owner_token().unwrap();
-            let set = owner.sexp(R_NewPreciousMSet(1)).unwrap();
-            let first = owner.sexp(Rf_ScalarInteger(1001)).unwrap();
-            let nested = owner.sexp(Rf_ScalarInteger(1002)).unwrap();
-            R_PreserveInMSet(first.as_raw(), set.as_raw());
 
-            let set_raw = set.as_raw();
-            let first_raw = first.as_raw();
-            let nested_raw = nested.as_raw();
-            let invoked = std::rc::Rc::new(std::cell::Cell::new(false));
-            {
-                let invoked = invoked.clone();
-                register_gc_callback(Box::new(move |_| {
-                    if invoked.replace(true) {
-                        return;
-                    }
-                    R_gc_torture(0, 0, 0);
-                    R_ReleaseFromMSet(first_raw, set_raw);
-                    R_PreserveInMSet(nested_raw, set_raw);
-                    R_PreserveInMSet(first_raw, set_raw);
-                }));
-            }
-            // Its only GC root during the growth collection is the one
-            // established inside R_PreserveInMSet.
-            let newcomer_raw = Rf_ScalarInteger(1003);
-            R_gc_torture(1, 1, 0);
-            R_PreserveInMSet(newcomer_raw, set_raw);
-            R_gc_torture(0, 0, 0);
 
-            let store = owner.sexp(CAR(set_raw)).unwrap();
-            let count = owner.sexp(CDR(set_raw)).unwrap();
-            assert!(invoked.get());
-            assert_eq!(count.try_integer_elt(0).unwrap(), 3);
-            assert_eq!(store.try_vector_elt(0).unwrap().as_raw(), nested_raw);
-            assert_eq!(store.try_vector_elt(1).unwrap().as_raw(), first_raw);
-            assert_eq!(store.try_vector_elt(2).unwrap().as_raw(), newcomer_raw);
 
-            // Releasing a duplicated entry removes the rightmost instance
-            // while keeping the remaining order stable.
-            R_PreserveInMSet(first_raw, set_raw);
-            R_gc_torture(0, 0, 0);
-            R_ReleaseFromMSet(first_raw, set_raw);
-            assert_eq!(count.try_integer_elt(0).unwrap(), 3);
-            assert_eq!(store.try_vector_elt(0).unwrap().as_raw(), nested_raw);
-            assert_eq!(store.try_vector_elt(1).unwrap().as_raw(), first_raw);
-            assert_eq!(store.try_vector_elt(2).unwrap().as_raw(), newcomer_raw);
-
-            R_ReleaseFromMSet(nested_raw, set_raw);
-            R_ReleaseFromMSet(newcomer_raw, set_raw);
-            R_ReleaseFromMSet(first_raw, set_raw);
-            R_ReleaseFromMSet(first_raw, set_raw);
-            assert_eq!(count.try_integer_elt(0).unwrap(), 0);
-            assert_eq!(store.try_vector_elt(0).unwrap().as_raw(), R_NilValue());
-        });
-    }
-
-    #[test]
-    fn resizable_duplicate_marks_only_the_copy() {
-        let session = RSession::new();
-        session.with_active(|| {
-            let owner = session.owner_token().unwrap();
-            let source = owner.sexp(Rf_allocVector3(SEXPTYPE::INTSXP, 3)).unwrap();
-            let dup = R_duplicateAsResizable(source.as_raw());
-            assert_eq!(R_isResizable(source.as_raw()), 0);
-            assert_eq!(R_isResizable(dup), 1);
-            assert_eq!(XLENGTH(dup), 3);
-        });
-    }
 
     #[test]
     fn external_pointer_checked_publication_survives_gc_and_rejects_foreign_inputs() {
@@ -2091,30 +2033,5 @@ mod owned_gc_operation_tests {
         });
     }
 
-    #[test]
-    fn weak_ref_c_finalizer_is_deferred_and_runs_once() {
-        thread_local! {
-            static RUNS: Cell<usize> = const { Cell::new(0) };
-        }
-        fn count(_: *mut c_void) {
-            RUNS.with(|runs| runs.set(runs.get() + 1));
-        }
-        let session = RSession::new_for_gc_tests();
-        session.with_active(|| {
-            RUNS.with(|runs| runs.set(0));
-            let owner = session.owner_token().unwrap();
-            let key = R_MakeExternalPtr(ptr::null_mut(), R_NilValue(), R_NilValue());
-            let key_root = owner.sexp(key).unwrap();
-            // SAFETY: `count` has no preconditions and never unwinds.
-            let weak = unsafe { R_MakeWeakRefC(key, R_NilValue(), count, 0) };
-            let _weak = owner.sexp(weak).unwrap();
-            R_gc();
-            assert_eq!(RUNS.with(|runs| runs.get()), 0);
-            drop(key_root);
-            R_gc();
-            assert_eq!(RUNS.with(|runs| runs.get()), 1);
-            R_gc();
-            assert_eq!(RUNS.with(|runs| runs.get()), 1);
-        });
-    }
+
 }

@@ -796,6 +796,17 @@ pub unsafe fn substr_safe<'a>(
 
 #[cfg(test)]
 mod tests {
+    use crate::mainutils::essentials::do_chartr;
+    use crate::mainutils::essentials::do_nchar;
+    use crate::mainutils::essentials::do_substr;
+    use crate::mainutils::essentials::do_tolower;
+    use crate::mainutils::essentials::do_toupper;
+    use crate::sexp::accessors::INTEGER;
+    use crate::sexp::accessors::LENGTH;
+    use crate::sexp::accessors::LOGICAL;
+    use crate::sexp::accessors::SET_STRING_ELT;
+    use crate::sexp::accessors::STRING_ELT;
+    use crate::sexp::accessors::TYPEOF;
     use crate::sexp::constructors::*;
     use crate::sexp::globals::*;
     use std::ptr;

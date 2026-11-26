@@ -7,6 +7,7 @@ use crate::sexp::{
     session::RSession,
 };
 use workspace_file::SaveOptions;
+use crate::sexp::accessors::INTEGER;
 
 fn browser_session() -> RSession {
     let mut session = RSession::new_for_gc_tests();

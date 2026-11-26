@@ -821,6 +821,9 @@ mod tests {
 
 #[cfg(test)]
 mod typed_native_handler_tests {
+    use crate::mainutils::rstrptime::NA_INTEGER;
+    use crate::sexp::R_xlen_t;
+    use crate::sexp::accessors::SETCDR;
     use super::*;
     use crate::{
         mainutils::native_routines::NativeInterface,

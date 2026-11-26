@@ -24,6 +24,9 @@ use super::matrix::*;
 use super::runtime::*;
 
 use super::shared::*;
+use crate::mainutils::memory_main::do_gcinfo;
+use crate::mainutils::options::do_getOption;
+use crate::mainutils::options::do_options;
 
 fn test_pairlist(values: &[SEXP]) -> SEXP {
     unsafe {

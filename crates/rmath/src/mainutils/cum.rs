@@ -166,6 +166,8 @@ fn accumulate_complex(
 
 #[cfg(test)]
 mod tests {
+    use crate::mainutils::essentials::do_cumprod;
+    use crate::mainutils::essentials::do_cumsum;
     use super::*;
     use crate::sexp::altrep::{
         AltrepBuilder, AltrepClass, AltrepContext, AltrepElement, is_materialized,

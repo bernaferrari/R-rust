@@ -1452,6 +1452,7 @@ pub fn integer_radixsort(data: &[i32], decreasing: bool, na_last: Option<bool>) 
 
 #[cfg(test)]
 mod tests {
+    use crate::mainutils::arithmetic::NA_REAL;
     use super::*;
 
     #[test]

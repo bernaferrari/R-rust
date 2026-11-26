@@ -1,6 +1,10 @@
 use super::*;
 use crate::sexp::protect::{R_ProtectCount, protect_n};
 use crate::sexp::session::RSession;
+use crate::mainutils::essentials::do_c;
+use crate::mainutils::essentials::do_cbind;
+use crate::mainutils::essentials::do_rbind;
+use crate::mainutils::essentials::do_unlist;
 
 fn reset_protect_stack() {
     let n = R_ProtectCount();

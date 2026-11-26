@@ -2123,6 +2123,8 @@ pub fn R_WriteProfile(_out: c_int) {
 
 #[cfg(test)]
 mod tests {
+    use crate::eval::profiling::do_Rprof;
+    use crate::eval::profiling::do_Rprofmem;
     use super::*;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -2535,7 +2537,7 @@ mod tests {
                 r_string("elapsed"),
             ]);
 
-            crate::mainutils::essentials::do_Rprof(
+            crate::eval::profiling::do_Rprof(
                 ptr::null_mut(),
                 ptr::null_mut(),
                 args,
@@ -2549,7 +2551,7 @@ mod tests {
             });
 
             let stop_args = pairlist(&[r_string("")]);
-            crate::mainutils::essentials::do_Rprof(
+            crate::eval::profiling::do_Rprof(
                 ptr::null_mut(),
                 ptr::null_mut(),
                 stop_args,
@@ -2575,7 +2577,7 @@ mod tests {
             let args =  pairlist(&[r_string(&path), Rf_ScalarLogical(FALSE)]) ;
 
             
-                crate::mainutils::essentials::do_Rprofmem(
+                crate::eval::profiling::do_Rprofmem(
                     ptr::null_mut(),
                     ptr::null_mut(),
                     args,
@@ -2596,7 +2598,7 @@ mod tests {
 
             
                 let stop_args = pairlist(&[r_string("")]);
-                crate::mainutils::essentials::do_Rprofmem(
+                crate::eval::profiling::do_Rprofmem(
                     ptr::null_mut(),
                     ptr::null_mut(),
                     stop_args,

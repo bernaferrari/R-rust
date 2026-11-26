@@ -781,6 +781,10 @@ fn all_safe(args: Sexp<'_>) -> Result<SEXP, String> {
 
 #[cfg(test)]
 mod tests {
+    use crate::mainutils::essentials::do_all;
+    use crate::mainutils::essentials::do_any;
+    use crate::mainutils::essentials::do_duplicated;
+    use crate::mainutils::essentials::do_unique;
     use super::*;
 
     #[test]

@@ -14,6 +14,9 @@ use super::*;
 
 #[cfg(test)]
 mod tests {
+    use crate::mainutils::essentials::do_isS4;
+    use crate::mainutils::essentials::do_oldClass;
+    use crate::mainutils::essentials::do_setClass;
     use super::*;
 
     #[test]

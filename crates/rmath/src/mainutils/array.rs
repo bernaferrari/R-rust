@@ -1701,6 +1701,7 @@ fn as_integer(x: SEXP) -> i32 {
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::constructors::Rf_ScalarInteger;
     use std::ptr;
 
     use super::*;

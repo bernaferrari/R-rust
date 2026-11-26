@@ -471,6 +471,7 @@ pub fn R_GetNoRenviron() -> c_int {
 
 #[cfg(test)]
 mod tests {
+    use crate::mainutils::objects::ptr;
     use super::*;
     use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
     use crate::sexp::session::RSession;
