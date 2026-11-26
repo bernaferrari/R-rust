@@ -191,10 +191,7 @@ pub(crate) fn call_primitive(
             Ok(heap.alloc(RObject::Integer(out)))
         }
         SEQ => seq_primitive(heap, interner, args, caller_env),
-        REP => {
-            let operands = eval_args(heap, interner, args, caller_env, 2)?;
-            rep_primitive(heap, operands[0], operands[1])
-        }
+        REP => rep_dispatch(heap, interner, args, caller_env),
         MEAN | VAR | SD | MEDIAN => stat_primitive(heap, interner, id.0, args, caller_env),
         IS_NA => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
@@ -1352,13 +1349,27 @@ fn subset_impl(
             }
         }
         Some(RObject::Real(values)) => {
-            let truncs: Vec<i32> = values.iter().map(|v| *v as i32).collect();
+            // Truncation must preserve NA — Rust's `as` saturates NaN to 0,
+            /// which would silently drop positions GNU keeps as NA.
+            let truncs: Vec<i32> = values
+                .iter()
+                .map(|v| {
+                    if v.is_nan() {
+                        crate::value::object::NA_INTEGER
+                    } else {
+                        *v as i32
+                    }
+                })
+                .collect();
             let truncated = heap.alloc(RObject::Integer(truncs));
             return subset_impl(heap, interner, source, truncated);
         }
         Some(RObject::Logical(values)) => {
+            // GNU: a logical index longer than the vector extends the
+            /// selection — out-of-range TRUE positions yield NA elements.
             let mut positions = Vec::new();
-            for i in 0..source_length {
+            let extent = source_length.max(values.len());
+            for i in 0..extent {
                 let flag = values[i % values.len().max(1)];
                 if flag == crate::value::object::NA_INTEGER {
                     positions.push(usize::MAX);
@@ -1677,15 +1688,92 @@ fn reduction(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    // GNU's variadic shape: every unlabeled argument concatenates into the
+    /// reduction input; the tagged na.rm strips NA positions instead of
+    /// poisoning.
+    let mut inputs: Vec<ValueId> = Vec::new();
+    let mut na_rm = false;
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let value = force_if_promise(heap, interner, evaluated)?;
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
+        };
+        if tag_name.as_deref() == Some("na.rm") {
+            na_rm = matches!(
+                heap.object(value),
+                Some(RObject::Logical(v)) if !v.is_empty() && v[0] != 0 && v[0] != crate::value::object::NA_INTEGER
+            );
+        } else {
+            inputs.push(value);
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    if inputs.is_empty() {
+        return Err(EvalError::TypeError("reduction requires input").into());
+    }
+    let combined = concat_vectors(heap, &inputs).map_err(RSignal::from)?;
+    reduction_fold(heap, op, &[combined], na_rm)
+}
+
+
+/// Concatenate vectors exactly as `c()` — same-type fast path, numeric
+/// promotion otherwise. Shared by the variadic reduction reshape.
+fn concat_vectors(heap: &mut Heap, inputs: &[ValueId]) -> Result<ValueId, EvalError> {
+    if inputs.len() == 1 {
+        return Ok(inputs[0]);
+    }
+    let all_int = inputs.iter().all(|v| {
+        matches!(
+            heap.object(*v),
+            Some(RObject::Integer(_)) | Some(RObject::Logical(_))
+        )
+    });
+    if all_int {
+        let mut out = Vec::new();
+        for input in inputs {
+            match heap.object(*input) {
+                Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => {
+                    out.extend(values.iter().copied());
+                }
+                _ => {}
+            }
+        }
+        return Ok(heap.alloc(RObject::Integer(out)));
+    }
+    let mut out = Vec::new();
+    for input in inputs {
+        out.extend(reals_of_value(heap, *input)?);
+    }
+    Ok(heap.alloc(RObject::Real(out)))
+}
+
+fn reduction_fold(
+    heap: &mut Heap,
+    op: u32,
+    operands: &[ValueId],
+    na_rm: bool,
+) -> EvalResult {
     // GNU type fidelity: integer/logical inputs fold in integer arithmetic
     // for sum/prod and preserve type for min/max; real inputs fold in real.
     if let Some(RObject::Integer(values)) | Some(RObject::Logical(values)) =
         heap.object(operands[0])
     {
-        let values = values.clone();
+        let mut values = values.clone();
         if values.iter().any(|v| *v == crate::value::object::NA_INTEGER) {
-            return Ok(heap.alloc(RObject::Integer(vec![crate::value::object::NA_INTEGER])));
+            if !na_rm {
+                return Ok(heap.alloc(RObject::Integer(vec![crate::value::object::NA_INTEGER])));
+            }
+            values.retain(|v| *v != crate::value::object::NA_INTEGER);
         }
         let result: i32 = match op {
             SUM => values.iter().copied().fold(0i32, |a, b| a.wrapping_add(b)),
@@ -1695,11 +1783,14 @@ fn reduction(
         };
         return Ok(heap.alloc(RObject::Integer(vec![result])));
     }
-    let values = reals_of_value(heap, operands[0]).map_err(RSignal::from)?;
+    let mut values = reals_of_value(heap, operands[0]).map_err(RSignal::from)?;
     if values.iter().any(|v| v.is_nan()) {
-        return Ok(heap.alloc(RObject::Real(vec![f64::from_bits(
-            crate::value::object::NA_REAL_BITS,
-        )])));
+        if !na_rm {
+            return Ok(heap.alloc(RObject::Real(vec![f64::from_bits(
+                crate::value::object::NA_REAL_BITS,
+            )])));
+        }
+        values.retain(|v| !v.is_nan());
     }
     let result = match op {
         SUM => values.iter().sum(),
@@ -1935,7 +2026,16 @@ fn nchar_primitive(
     let strings = strings_of_value(heap, interner, operands[0]).map_err(RSignal::from)?;
     let counts: Vec<i32> = strings
         .iter()
-        .map(|s| interner.string_text(*s).chars().count() as i32)
+        .map(|s| {
+            let text = interner.string_text(*s);
+            // GNU: nchar of NA is NA — the sentinel text marks the missing
+            /// string exactly as the bridge round-trips it.
+            if text == "\0NA" {
+                crate::value::object::NA_INTEGER
+            } else {
+                text.chars().count() as i32
+            }
+        })
         .collect();
     Ok(heap.alloc(RObject::Integer(counts)))
 }
@@ -2095,7 +2195,16 @@ fn subset_replace(
             }
         }
         Some(RObject::Real(values)) => {
-            let truncs: Vec<i32> = values.iter().map(|v| *v as i32).collect();
+            let truncs: Vec<i32> = values
+                .iter()
+                .map(|v| {
+                    if v.is_nan() {
+                        crate::value::object::NA_INTEGER
+                    } else {
+                        *v as i32
+                    }
+                })
+                .collect();
             let truncated = heap.alloc(RObject::Integer(truncs));
             return subset_replace(heap, object, truncated, value);
         }
@@ -2835,6 +2944,18 @@ fn ordering_primitive(
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 1)?;
     let value = operands[0];
+    // GNU's tagged decreasing argument — positional second or tagged.
+    let decreasing = match raw_args(heap, args).get(1).copied() {
+        Some(expr) => {
+            let evaluated = eval(heap, interner, expr, caller_env)?;
+            let evaluated = force_if_promise(heap, interner, evaluated)?;
+            matches!(
+                heap.object(evaluated),
+                Some(RObject::Logical(v)) if !v.is_empty() && v[0] != 0 && v[0] != crate::value::object::NA_INTEGER
+            )
+        }
+        None => false,
+    };
     macro_rules! per_type {
         ($variant:ident, $ord:expr) => {
             match heap.object(value) {
@@ -2844,6 +2965,9 @@ fn ordering_primitive(
                         SORT => {
                             out.retain(|v| !$ord(*v));
                             out.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                            if decreasing {
+                                out.reverse();
+                            }
                         }
                         REV => out.reverse(),
                         _ => {
@@ -3209,4 +3333,131 @@ fn matrix_primitive(
     };
     let dims = heap.alloc(RObject::Integer(vec![nrow as i32, ncol as i32]));
     copy_with_attrib(heap, interner, result, "dim", dims).map_err(RSignal::from)
+}
+
+/// `rep` argument resolution: GNU's forms are rep(x, times), rep(x, each),
+/// and per-element times vectors — all composable. Tagged arguments resolve
+/// before positional exactly as GNU's formals ordering.
+fn rep_dispatch(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let mut positional: Vec<ValueId> = Vec::new();
+    let mut named: Vec<(String, ValueId)> = Vec::new();
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let value = force_if_promise(heap, interner, evaluated)?;
+        match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => {
+                named.push((interner.symbol_name(*name).to_string(), value));
+            }
+            _ => positional.push(value),
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    let lookup = |name: &str, position: usize| -> Option<ValueId> {
+        named
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| *v)
+            .or_else(|| positional.get(position).copied())
+    };
+    let source = match lookup("x", 0) {
+        Some(v) => v,
+        None => return Err(EvalError::TypeError("rep requires input").into()),
+    };
+    let each = match lookup("each", 2) {
+        Some(v) => first_real(heap, v).map_err(RSignal::from)? as usize,
+        None => 1,
+    };
+    let times_value = lookup("times", 1);
+    // Per-element times vector: replicate element i exactly times[i] times.
+    if let Some(tv) = times_value {
+        let per_element: Option<Vec<usize>> = match heap.object(tv) {
+            Some(RObject::Integer(values)) if values.len() > 1 => {
+                Some(values.iter().map(|v| (*v).max(0) as usize).collect())
+            }
+            Some(RObject::Real(values)) if values.len() > 1 => {
+                Some(values.iter().map(|v| (*v as i32).max(0) as usize).collect())
+            }
+            _ => None,
+        };
+        if let Some(schedule) = per_element {
+            return rep_per_element(heap, source, &schedule, each);
+        }
+    }
+    let times = match times_value {
+        Some(tv) => first_real(heap, tv).map_err(RSignal::from)? as usize,
+        None => 1,
+    };
+    if each > 1 {
+        return rep_each(heap, source, times, each);
+    }
+    let times_scalar = heap.alloc(RObject::Real(vec![times as f64]));
+    rep_primitive(heap, source, times_scalar)
+}
+
+/// Elementwise repetition: element i appears times[i] times, each repeated
+/// contiguously — GNU's rep(x, times=vector) shape.
+fn rep_per_element(heap: &mut Heap, source: ValueId, schedule: &[usize], each: usize) -> EvalResult {
+    macro_rules! per_type {
+        ($variant:ident) => {
+            match heap.object(source) {
+                Some(RObject::$variant(values)) => {
+                    let mut out = Vec::new();
+                    for (i, value) in values.iter().enumerate() {
+                        let count = schedule.get(i).copied().unwrap_or(0) * each;
+                        for _ in 0..count {
+                            out.push(*value);
+                        }
+                    }
+                    return Ok(heap.alloc(RObject::$variant(out)));
+                }
+                _ => {}
+            }
+        };
+    }
+    per_type!(Integer);
+    per_type!(Real);
+    per_type!(Logical);
+    per_type!(String);
+    Err(EvalError::TypeError("rep requires an atomic vector").into())
+}
+
+/// `rep(x, each=k)` — every element repeats k times contiguously before
+/// the next, then the whole pattern repeats times over.
+fn rep_each(heap: &mut Heap, source: ValueId, times: usize, each: usize) -> EvalResult {
+    macro_rules! per_type {
+        ($variant:ident) => {
+            match heap.object(source) {
+                Some(RObject::$variant(values)) => {
+                    let mut out = Vec::new();
+                    for _ in 0..times {
+                        for value in values.iter() {
+                            for _ in 0..each {
+                                out.push(*value);
+                            }
+                        }
+                    }
+                    return Ok(heap.alloc(RObject::$variant(out)));
+                }
+                _ => {}
+            }
+        };
+    }
+    per_type!(Integer);
+    per_type!(Real);
+    per_type!(Logical);
+    per_type!(String);
+    Err(EvalError::TypeError("rep requires an atomic vector").into())
 }

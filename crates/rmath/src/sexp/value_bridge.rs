@@ -1873,6 +1873,15 @@ mod tests {
             "{ m <- matrix(1:4, 2); nrow(m) }",
             "{ m <- matrix(1:4, 2); ncol(m) }",
             "dim(matrix(1:6, 2, 3))",
+            "min(5, 3, 8)",
+            "max(5, 3, 8)",
+            "sum(1, 2, 3)",
+            "sum(c(1, NA, 3), na.rm=TRUE)",
+            "min(c(1, NA, 3), na.rm=TRUE)",
+            "sort(c(3, 1, 2), decreasing=TRUE)",
+            "rep(c(1, 2), times=c(2, 3))",
+            "(1:3)[c(TRUE, FALSE, TRUE, TRUE)]",
+            "(1:3)[c(1, 0, NA, 4)]",
         ];
         // One session, one parse pass: expression objects stay valid for the
         // session's lifetime, so batching avoids per-program bootstrap cost.
