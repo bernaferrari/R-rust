@@ -212,8 +212,8 @@ mod tests {
         let mut heap = Heap::new();
         let rooted = heap.alloc(RObject::Real(vec![1.0]));
         let garbage = heap.alloc(RObject::Real(vec![2.0]));
-        let (mut stack, table, extra) = fixture(&heap);
-        let mut frame = stack.frame();
+        let (stack, table, extra) = fixture(&heap);
+        let frame = stack.frame();
         frame.protect(rooted);
         let outcome = collect(&mut heap, &RootSet {
             stack: &stack,
@@ -292,8 +292,8 @@ mod tests {
         if let Some(RObject::Pairlist { cdr, .. }) = heap.object_mut(b) {
             *cdr = a;
         }
-        let (mut stack, table, extra) = fixture(&heap);
-        let mut frame = stack.frame();
+        let (stack, table, extra) = fixture(&heap);
+        let frame = stack.frame();
         frame.protect(a);
         let outcome = collect(&mut heap, &RootSet {
             stack: &stack,
