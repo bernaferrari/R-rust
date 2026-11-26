@@ -1005,7 +1005,7 @@ mod tests {
         let env_id = env::new_environment(heap, crate::value::id::ValueId::EMPTY_ENV);
         for name in [
             "+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!=", "if", "{", "<-", "<<-",
-            "return", "while", "repeat", "for", "break", "next",
+            "return", "while", "repeat", "for", "break", "next", "function",
         ] {
             let sym = interner.intern_symbol(name);
             let prim = primitive_id_for_name(name).expect("mapped primitive");
@@ -1070,6 +1070,33 @@ mod tests {
         match heap.object(result) {
             Some(RObject::Real(values)) => assert_eq!(values.as_slice(), &[15.0]),
             other => panic!("expected 15.0, got {other:?}"),
+        }
+    }
+    #[test]
+    fn convergence_user_closure_definition_and_call() {
+        let mut session = crate::sexp::session::RSession::new();
+        let mut heap = Heap::new();
+        let mut interner = SymbolInterner::new();
+        let mut bridge = ValueBridge::new();
+
+        // { f <- function(x) x * 2; f(21) } — defines and applies a closure
+        // entirely in the new world: closure construction, lazy argument
+        // promises, body evaluation in the application frame.
+        let expressions = session.with_active(|| {
+            crate::eval::parser::parse_active_expressions("{ f <- function(x) x * 2; f(21) }")
+                .expect("source parses")
+        });
+        let imported = bridge
+            .import(&mut heap, &mut interner, &expressions[0])
+            .expect("program imports");
+        let env_id = bootstrap_env(&mut heap, &mut interner);
+        let result = crate::value::eval::eval(&mut heap, &mut interner, imported, env_id);
+        match result {
+            Ok(value) => match heap.object(value) {
+                Some(RObject::Real(values)) => assert_eq!(values.as_slice(), &[42.0]),
+                other => panic!("expected 42.0, got {other:?}"),
+            },
+            Err(error) => panic!("closure program should run in the new world: {error:?}"),
         }
     }
 }

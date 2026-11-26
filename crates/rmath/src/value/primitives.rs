@@ -38,10 +38,12 @@ pub mod primitive_ids {
     pub const GE: u32 = 23;
     pub const EQ: u32 = 24;
     pub const NE: u32 = 25;
+    /// Closure construction — captures formals, body, and defining env.
+    pub const FUNCTION: u32 = 26;
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ADD, ASSIGN, BRACE, BREAK, DIV, EQ, FOR, GE, GT, IF, LE, LT, MUL, NE, NEXT, REPEAT, RETURN, SUB, SUPERASSIGN, WHILE};
+use primitive_ids::{ADD, ASSIGN, BRACE, BREAK, DIV, EQ, FOR, FUNCTION, GE, GT, IF, LE, LT, MUL, NE, NEXT, REPEAT, RETURN, SUB, SUPERASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -65,6 +67,7 @@ pub(crate) fn call_primitive(
         BREAK => Err(RSignal::Break),
         NEXT => Err(RSignal::Next),
         LT | GT | LE | GE | EQ | NE => comparison(heap, interner, id.0, args, caller_env),
+        FUNCTION => function_form(heap, args, caller_env),
         _ => Err(EvalError::UnsupportedForm("unregistered primitive").into()),
     }
 }
@@ -495,6 +498,24 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         ">=" => Some(GE),
         "==" => Some(EQ),
         "!=" => Some(NE),
+        "function" => Some(FUNCTION),
         _ => None,
     }
+}
+
+/// `function (formals) body` — closure construction. Neither operand
+/// evaluates: the formals pairlist and body expression capture verbatim
+/// alongside the defining environment, exactly GNU's `mkClosure`.
+fn function_form(heap: &mut Heap, args: ValueId, caller_env: ValueId) -> EvalResult {
+    let parts = raw_args(heap, args);
+    // The parser emits an optional third environment operand (NIL when
+    // absent); explicit environments are outside the migration slice.
+    if parts.len() < 2 || parts.len() > 3 {
+        return Err(EvalError::UnsupportedForm("function arity").into());
+    }
+    Ok(heap.alloc(RObject::Closure {
+        formals: parts[0],
+        body: parts[1],
+        env: caller_env,
+    }))
 }
