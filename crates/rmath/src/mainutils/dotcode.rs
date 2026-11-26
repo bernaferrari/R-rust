@@ -24,7 +24,7 @@ use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector, Rf_length, Rf_
 use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, Rcomplex, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance;
-use crate::sexp::memory_ext::{R_alloc, vmaxget, vmaxset};
+
 use crate::mainutils::rdynload::DL_FUNC;
 
 // ---------------------------------------------------------------------------

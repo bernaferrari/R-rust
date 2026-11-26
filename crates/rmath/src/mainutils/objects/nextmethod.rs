@@ -454,7 +454,6 @@ pub fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         }
 
         // Find matching signature in .Class
-        let _vmax = crate::sexp::memory_ext::vmaxget();
         let sb = translateChar(STRING_ELT(basename, 0));
         let mut found_sig: c_int = FALSE;
         let nclass = length(klass);
@@ -519,7 +518,6 @@ pub fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     nextfun = Rf_eval(nextfun, env);
                 }
                 if isFunction(nextfun) == FALSE {
-                    crate::sexp::memory_ext::vmaxset(_vmax);
                     std::panic::panic_any(crate::sexp::context::RError {
                         message: "no method to invoke".to_string(),
                     });
@@ -531,7 +529,6 @@ pub fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     } else {
                         nextfun = getPrimitive(t);
                         if nextfun == R_NilValue() {
-                            crate::sexp::memory_ext::vmaxset(_vmax);
                             std::panic::panic_any(crate::sexp::context::RError {
                                 message: "no method to invoke".to_string(),
                             });
@@ -577,8 +574,6 @@ pub fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         }
 
         let ans = applyMethod(newcall, nextfun, matchedarg, env, newvars);
-
-        crate::sexp::memory_ext::vmaxset(_vmax);
         ans
     }
 }

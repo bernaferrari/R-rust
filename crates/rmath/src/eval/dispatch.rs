@@ -24,7 +24,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::envir::{R_findVar, R_findVarInFrame, forcePromise};
 use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
-use crate::sexp::memory_ext::{CONS_NR, NewEnvironment, vmaxget, vmaxset};
+use crate::sexp::memory_ext::{CONS_NR, NewEnvironment};
 use crate::sexp::object::{PairlistBuilder, SessionNodeFactory, Sexp};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::R_DotsSymbol;
@@ -976,7 +976,6 @@ unsafe fn findmethod(
         }
 
         let len = LENGTH(class);
-        let _vmax = vmaxget();
         let mut whichclass: c_int = 0;
 
         // Interleave: for each class, try generic then group
@@ -1021,8 +1020,6 @@ unsafe fn findmethod(
                 break;
             }
         }
-
-        vmaxset(_vmax);
         *which = whichclass;
     }
 }
@@ -1256,8 +1253,6 @@ pub unsafe fn DispatchGroup(
 
         // Build the method vector for each argument
         let dispatch_class_name = translateChar(STRING_ELT(lclass, lwhich as R_xlen_t));
-        let _vmax = vmaxget();
-
         let m = Rf_allocVector(SEXPTYPE::STRSXP, nargs);
         guards.push(protect(m));
 
@@ -1274,8 +1269,6 @@ pub unsafe fn DispatchGroup(
             }
             s = CDR(s);
         }
-        vmaxset(_vmax);
-
         // Create the S3 dispatch variables
         let generic_str = R_mkString(generic.as_ptr() as *const c_char);
         guards.push(protect(generic_str));

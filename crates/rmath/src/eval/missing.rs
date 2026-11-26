@@ -38,7 +38,7 @@ use crate::sexp::envir::{R_findVarInFrame, defineVar};
 
 use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
-use crate::sexp::memory_ext::{NewEnvironment, allocLang, vmaxget, vmaxset};
+use crate::sexp::memory_ext::{NewEnvironment, allocLang};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::{R_DotsSymbol, Rf_install};
 
@@ -238,8 +238,6 @@ pub fn VectorToPairListNamed(x: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-
-        let _vmax = vmaxget();
         let _x_guard = protect(x);
 
         let xnames = getAttrib(x, R_NamesSymbol());
@@ -286,8 +284,6 @@ pub fn VectorToPairListNamed(x: SEXP) -> SEXP {
         } else {
             Rf_allocList(0)
         };
-
-        vmaxset(_vmax);
         xnew
     }
 }
