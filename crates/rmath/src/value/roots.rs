@@ -5,12 +5,15 @@ use super::id::ValueId;
 
 /// A scoped stack of root frames for evaluator temporaries.
 ///
-/// Frames are pushed/popped in strict LIFO order through RAII guards; every
-/// handle inside a live frame is traced as a GC root. This replaces the
-/// manual `PROTECT`/`UNPROTECT` protocol with compile-time enforced scoping.
+/// Frames close in strict LIFO order through RAII guards; every handle
+/// inside a live frame is traced as a GC root. Interior mutability lets the
+/// collector read the root set while frames are open — which is exactly when
+/// collection happens — while frame guards enforce scoping: dropping a
+/// frame that is not innermost panics, because that is always an evaluator
+/// bug. This replaces the manual `PROTECT`/`UNPROTECT` protocol.
 #[derive(Debug, Default)]
 pub struct RootStack {
-    frames: Vec<Vec<ValueId>>,
+    frames: std::cell::RefCell<Vec<Vec<ValueId>>>,
 }
 
 impl RootStack {
@@ -19,31 +22,50 @@ impl RootStack {
     }
 
     /// Open a new root frame. The frame closes when the returned guard drops.
-    pub fn frame(&mut self) -> RootFrame<'_> {
-        self.frames.push(Vec::new());
-        RootFrame { stack: self }
+    pub fn frame(&self) -> RootFrame<'_> {
+        let mut frames = self.frames.borrow_mut();
+        frames.push(Vec::new());
+        RootFrame {
+            stack: self,
+            depth: frames.len(),
+        }
     }
 
     /// Rooted handles across all live frames, innermost-last ordering.
     pub(crate) fn roots(&self) -> impl Iterator<Item = ValueId> + '_ {
-        self.frames.iter().flat_map(|frame| frame.iter().copied())
+        // Collect eagerly: the iterator cannot borrow the RefCell across
+        // collection-time mutation points without risking a borrow panic
+        // if a finalizer evaluation roots new temporaries mid-trace.
+        let snapshot: Vec<ValueId> = self
+            .frames
+            .borrow()
+            .iter()
+            .flat_map(|frame| frame.iter().copied())
+            .collect();
+        snapshot.into_iter()
     }
 
     pub fn frame_depth(&self) -> usize {
-        self.frames.len()
+        self.frames.borrow().len()
     }
 }
 
 /// RAII guard for one root frame. Root additional handles with [`protect`].
+///
+/// [`protect`]: RootFrame::protect
 pub struct RootFrame<'a> {
-    stack: &'a mut RootStack,
+    stack: &'a RootStack,
+    /// The frame count including this frame at creation — the guard is
+    /// innermost exactly while the stack depth matches.
+    depth: usize,
 }
 
 impl RootFrame<'_> {
     /// Add a handle to this frame, keeping it live until the frame closes.
-    pub fn protect(&mut self, id: ValueId) -> ValueId {
+    pub fn protect(&self, id: ValueId) -> ValueId {
         self.stack
             .frames
+            .borrow_mut()
             .last_mut()
             .expect("frame guard outlives its frame")
             .push(id);
@@ -53,8 +75,12 @@ impl RootFrame<'_> {
 
 impl Drop for RootFrame<'_> {
     fn drop(&mut self) {
-        let frame = self.stack.frames.pop();
-        debug_assert!(frame.is_some(), "root frames must close in LIFO order");
+        let mut frames = self.stack.frames.borrow_mut();
+        assert!(
+            frames.len() == self.depth,
+            "root frame closed out of LIFO order — evaluator protocol violation"
+        );
+        frames.pop();
     }
 }
 
@@ -160,23 +186,35 @@ mod tests {
 
     #[test]
     fn frames_nest_and_release_in_order() {
-        let mut stack = RootStack::new();
+        let stack = RootStack::new();
         let id = ValueId::new(7, 1);
         {
-            let mut outer = stack.frame();
+            let outer = stack.frame();
             outer.protect(id);
             assert_eq!(stack.frame_depth(), 1);
             {
-                let mut inner = stack.frame();
+                let inner = stack.frame();
                 inner.protect(id);
                 assert_eq!(stack.frame_depth(), 2);
                 assert_eq!(stack.roots().count(), 2);
             }
             assert_eq!(stack.frame_depth(), 1);
+            assert_eq!(outer.stack.frame_depth(), 1);
         }
         assert_eq!(stack.frame_depth(), 0);
         assert_eq!(stack.roots().count(), 0);
     }
+
+    #[test]
+    #[should_panic(expected = "LIFO")]
+    fn out_of_order_frame_close_panics() {
+        let stack = RootStack::new();
+        let outer = stack.frame();
+        let _inner = stack.frame();
+        // Dropping the outer first violates LIFO and must panic.
+        drop(outer);
+    }
+
 
     #[test]
     fn table_tokens_validate_and_invalidate() {
