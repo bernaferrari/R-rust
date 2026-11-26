@@ -29,12 +29,14 @@ pub fn La_rs(x: SEXP, only_values: SEXP) -> SEXP {
         let rx: *mut f64;
         let mut x = x;
         let mut guards = Vec::new();
+        let mut rx_ws: Vec<f64> = Vec::new();
         if TYPEOF(x) != 14 {
             x = coerceVector(x, REALSXP_C);
             guards.push(protect(x));
             rx = REAL(x);
         } else {
-            rx = R_alloc((n as usize) * (n as usize), std::mem::size_of::<f64>()) as *mut f64;
+            rx_ws = vec![0.0f64; (n as usize) * (n as usize)];
+            rx = rx_ws.as_mut_ptr();
             ptr::copy_nonoverlapping(REAL(x), rx, (n as usize) * (n as usize));
         }
         guards.push(protect(x));
@@ -51,7 +53,8 @@ pub fn La_rs(x: SEXP, only_values: SEXP) -> SEXP {
             rz = REAL(z);
         }
 
-        let isuppz = R_alloc(2 * n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
+        let mut isuppz_ws = vec![0i32; 2 * n as usize];
+        let isuppz = isuppz_ws.as_mut_ptr() as *mut c_int;
 
         // Query optimal work sizes
         let mut tmp: f64 = 0.0;
@@ -73,8 +76,10 @@ pub fn La_rs(x: SEXP, only_values: SEXP) -> SEXP {
         lwork = tmp as c_int;
         liwork = itmp;
 
-        let work = R_alloc(lwork as usize, std::mem::size_of::<f64>()) as *mut f64;
-        let iwork = R_alloc(liwork as usize, std::mem::size_of::<c_int>()) as *mut c_int;
+        let mut work_ws = vec![0.0f64; lwork as usize];
+        let mut iwork_ws = vec![0i32; liwork as usize];
+        let work = work_ws.as_mut_ptr();
+        let iwork = iwork_ws.as_mut_ptr() as *mut c_int;
 
         super::backend::dsyevr_(
             &jobv, &range, &uplo, &n, rx, &n, &0.0f64, &0.0f64, &0, &0, &0.0f64, &mut m, rvalues,
@@ -135,21 +140,27 @@ pub fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
         // Work on a copy of x
         let xvals: *mut f64;
         let mut x = x;
+        let mut xvals_ws: Vec<f64> = Vec::new();
         if TYPEOF(x) != 14 {
             x = coerceVector(x, REALSXP_C);
             xvals = REAL(x);
         } else {
-            xvals = R_alloc((n as usize) * (n as usize), std::mem::size_of::<f64>()) as *mut f64;
+            xvals_ws = vec![0.0f64; (n as usize) * (n as usize)];
+            xvals = xvals_ws.as_mut_ptr();
             ptr::copy_nonoverlapping(REAL(x), xvals, (n as usize) * (n as usize));
         }
         let _x_guard = protect(x);
 
-        let wR = R_alloc(n as usize, std::mem::size_of::<f64>()) as *mut f64;
-        let wI = R_alloc(n as usize, std::mem::size_of::<f64>()) as *mut f64;
+        let mut wR_ws = vec![0.0f64; n as usize];
+        let mut wI_ws = vec![0.0f64; n as usize];
+        let wR = wR_ws.as_mut_ptr();
+        let wI = wI_ws.as_mut_ptr();
 
+        let mut right_ws: Vec<f64> = Vec::new();
         let mut right: *mut f64 = ptr::null_mut();
         if ov == 0 {
-            right = R_alloc((n as usize) * (n as usize), std::mem::size_of::<f64>()) as *mut f64;
+            right_ws = vec![0.0f64; (n as usize) * (n as usize)];
+            right = right_ws.as_mut_ptr();
         }
 
         // Query optimal work size
@@ -179,7 +190,8 @@ pub fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
         }
 
         lwork = tmp as c_int;
-        let work = R_alloc(lwork as usize, std::mem::size_of::<f64>()) as *mut f64;
+        let mut work_ws = vec![0.0f64; lwork as usize];
+        let work = work_ws.as_mut_ptr();
 
         super::backend::dgeev_(
             &jobvl,
@@ -368,7 +380,8 @@ pub fn La_rs_cmplx(xin: SEXP, only_values: SEXP) -> SEXP {
         }
 
         lwork = tmp.r as c_int;
-        let work = R_alloc(lwork as usize, std::mem::size_of::<LapRcomplex>()) as *mut LapRcomplex;
+        let mut work_ws = vec![LapRcomplex::default(); lwork as usize];
+        let work = work_ws.as_mut_ptr();
 
         super::backend::zheev_(
             &jobv,
@@ -485,9 +498,11 @@ pub fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
         let values = Rf_allocVector(CPLXSXP_C, n as c_int);
         let _values_guard = protect(values);
 
+        let mut vr_ws: Vec<LapRcomplex> = Vec::new();
         let mut vr: *mut LapRcomplex = ptr::null_mut();
         if ov == 0 {
-            vr = R_alloc(len, std::mem::size_of::<LapRcomplex>()) as *mut LapRcomplex;
+            vr_ws = vec![LapRcomplex::default(); len];
+            vr = vr_ws.as_mut_ptr();
         }
 
         // Query optimal work size
@@ -518,7 +533,8 @@ pub fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
         }
 
         lwork = tmp.r as c_int;
-        let work = R_alloc(lwork as usize, std::mem::size_of::<LapRcomplex>()) as *mut LapRcomplex;
+        let mut work_ws = vec![LapRcomplex::default(); lwork as usize];
+        let work = work_ws.as_mut_ptr();
 
         super::backend::zgeev_(
             &jobvl,
