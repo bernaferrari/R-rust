@@ -197,6 +197,9 @@ pub mod primitive_ids {
     pub const R_VERSION_FN: u32 = 181;
     pub const GET_RVERSION: u32 = 182;
     pub const IS_LIST: u32 = 183;
+    /// N-dimensional array construction.
+    pub const ARRAY: u32 = 184;
+    pub const IS_ARRAY: u32 = 185;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -227,7 +230,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -1051,6 +1054,12 @@ fn call_primitive_inner(
             let component = heap.alloc(RObject::Integer(vec![4, 4, 0]));
             Ok(heap.alloc(RObject::List(vec![component])))
         }
+        ARRAY => array_primitive(heap, interner, args, caller_env),
+        IS_ARRAY => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let is = get_attrib(heap, interner, operands[0], "dim").is_some();
+            Ok(heap.alloc(RObject::Logical(vec![if is { 1 } else { 0 }])))
+        }
         IS_LIST => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             let is = matches!(heap.object(operands[0]), Some(RObject::List(_)));
@@ -1738,7 +1747,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -1887,6 +1896,8 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "R.Version" => Some(R_VERSION_FN),
         "getRversion" => Some(GET_RVERSION),
         "is.list" => Some(IS_LIST),
+        "array" => Some(ARRAY),
+        "is.array" => Some(IS_ARRAY),
         "tsp" => Some(TSP),
         "tsp<-" => Some(TSP_ASSIGN),
         "printDeferredWarnings" => Some(PRINT_DEFERRED_WARNINGS),
@@ -6877,6 +6888,102 @@ pub(crate) fn remove_attrib(
     let mut result = stripped;
     for (attr_name, attr_value) in kept.into_iter().rev() {
         result = copy_with_attrib(heap, interner, result, &attr_name, attr_value)?;
+    }
+    Ok(result)
+}
+
+/// `array(data, dim, dimnames)` — GNU's n-dimensional constructor: the
+/// data recycles to the dim product exactly as matrix() does, an absent
+/// data argument yields a logical NA, and dim attaches as the integer
+/// extent vector.
+fn array_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let raw = raw_args(heap, args);
+    if raw.is_empty() {
+        // array() with no arguments is one logical NA of dimension 1.
+        let value = heap.alloc(RObject::Logical(vec![crate::value::object::NA_INTEGER]));
+        let dim_obj = heap.alloc(RObject::Integer(vec![1]));
+        return copy_with_attrib(heap, interner, value, "dim", dim_obj).map_err(RSignal::from);
+    }
+    let mut data_arg = ValueId::NIL;
+    let mut dim_arg = ValueId::NIL;
+    let mut dimnames_arg = ValueId::NIL;
+    let mut positional = 0usize;
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        positional += 1;
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let v = force_if_promise(heap, interner, evaluated)?;
+        match tag_name.as_deref() {
+            Some("dim") => dim_arg = v,
+            Some("dimnames") => dimnames_arg = v,
+            _ => {
+                if positional == 1 {
+                    data_arg = v;
+                } else if positional == 2 {
+                    dim_arg = v;
+                }
+            }
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    let dims: Vec<i32> = match heap.object(dim_arg) {
+        Some(RObject::Integer(vals)) => vals.clone(),
+        Some(RObject::Real(vals)) => vals.iter().map(|&v| v as i32).collect(),
+        _ => vec![1],
+    };
+    let total: usize = dims.iter().map(|&d| d.max(0) as usize).product();
+    // Recycle the data to the dim product exactly as matrix() does.
+    let value = match heap.object(data_arg).cloned() {
+        Some(RObject::Integer(vals)) => {
+            let mut out = Vec::with_capacity(total);
+            for i in 0..total {
+                out.push(if vals.is_empty() { crate::value::object::NA_INTEGER } else { vals[i % vals.len()] });
+            }
+            heap.alloc(RObject::Integer(out))
+        }
+        Some(RObject::Real(vals)) => {
+            let mut out = Vec::with_capacity(total);
+            for i in 0..total {
+                out.push(if vals.is_empty() { f64::from_bits(crate::value::object::NA_REAL_BITS) } else { vals[i % vals.len()] });
+            }
+            heap.alloc(RObject::Real(out))
+        }
+        Some(RObject::Logical(vals)) => {
+            let mut out = Vec::with_capacity(total);
+            for i in 0..total {
+                out.push(if vals.is_empty() { crate::value::object::NA_INTEGER } else { vals[i % vals.len()] });
+            }
+            heap.alloc(RObject::Logical(out))
+        }
+        Some(RObject::String(vals)) => {
+            let mut out = Vec::with_capacity(total);
+            for i in 0..total {
+                out.push(if vals.is_empty() { interner.intern_string("\0NA") } else { vals[i % vals.len()] });
+            }
+            heap.alloc(RObject::String(out))
+        }
+        _ => heap.alloc(RObject::Logical(vec![crate::value::object::NA_INTEGER])),
+    };
+    let dim_obj = heap.alloc(RObject::Integer(dims));
+    let mut result = copy_with_attrib(heap, interner, value, "dim", dim_obj).map_err(RSignal::from)?;
+    if dimnames_arg != ValueId::NIL && !matches!(heap.object(dimnames_arg), Some(RObject::Nil)) {
+        result = copy_with_attrib(heap, interner, result, "dimnames", dimnames_arg).map_err(RSignal::from)?;
     }
     Ok(result)
 }

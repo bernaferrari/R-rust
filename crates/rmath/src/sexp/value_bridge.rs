@@ -2178,6 +2178,31 @@ print(typeof(x))"#;
         }
     }
 
+
+    #[test]
+    #[ignore]
+    fn trace_array_debug() {
+        let source = "print(array(integer(0), c(2, 2)))
+print(array(1:4, c(2, 2), dimnames = list(c(\"r1\", \"r2\"), c(\"c1\", \"c2\"))))";
+        let mut session = crate::sexp::session::RSession::new();
+        let expressions: Vec<_> = session.with_active(|| {
+            crate::eval::parser::parse_active_expressions(source).unwrap_or_default()
+        });
+        let mut heap = Heap::new();
+        let mut interner = SymbolInterner::new();
+        let mut bridge = ValueBridge::new();
+        let env_id = bootstrap_env(&mut heap, &mut interner);
+        for (i, expr) in expressions.iter().enumerate() {
+            match bridge.import(&mut heap, &mut interner, expr) {
+                Ok(imported) => match crate::value::eval::eval(&mut heap, &mut interner, imported, env_id) {
+                    Ok(_) => println!("expr {i}: ok out={:?}", heap.output),
+                    Err(e) => println!("expr {i}: EVAL ERR {e:?}"),
+                },
+                Err(e) => println!("expr {i}: IMPORT ERR {e:?}"),
+            }
+        }
+    }
+
     #[test]
     #[ignore]
     fn sweep_case_diff_probe() {
