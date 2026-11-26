@@ -1719,6 +1719,23 @@ mod tests {
         out
     }
 
+    /// Extract a string vector's elements from the legacy world.
+    fn legacy_as_strings(sexp: &Sexp<'_>) -> Option<Vec<String>> {
+        if sexp.typeof_() != SEXPTYPE::STRSXP {
+            return None;
+        }
+        let n = sexp.len();
+        let mut out = Vec::new();
+        for i in 0..n {
+            out.push(
+                sexp.try_string_value_elt(i)
+                    .expect("string element")
+                    .unwrap_or_else(|| "<NA>".to_string()),
+            );
+        }
+        Some(out)
+    }
+
     /// Extract a numeric vector's elements from the new world as doubles.
     fn new_world_as_doubles(heap: &Heap, result: crate::value::eval::EvalResult) -> Vec<f64> {
         match result {
@@ -1777,6 +1794,13 @@ mod tests {
             "{ x <- 1:5; x[[3]] + x[[4]] }",
             "{ x <- list(10, 20); x[[1]] + x[[2]] }",
             "{ x <- list(1:3, c(4, 5)); sum(x[[1]]) + sum(x[[2]]) }",
+            "paste(\"a\", \"b\")",
+            "paste(\"x\", 1:3)",
+            "paste0(\"x\", 1:3)",
+            "paste(c(\"a\", \"b\"), collapse=\"-\")",
+            "paste(\"a\", \"b\", sep=\"/\")",
+            "nchar(c(\"ab\", \"c\"))",
+            "{ x <- paste(\"v\", 1:5); nchar(x) }",
         ];
         // One session, one parse pass: expression objects stay valid for the
         // session's lifetime, so batching avoids per-program bootstrap cost.
@@ -1802,9 +1826,24 @@ mod tests {
                 .expect("program imports");
             let env_id = bootstrap_env(&mut heap, &mut interner);
             let result = crate::value::eval::eval(&mut heap, &mut interner, imported, env_id);
-            let new_world = new_world_as_doubles(&heap, result);
             let (legacy, _output, _visible) = session.eval_code_with_output_capture(source);
             let legacy = legacy.expect("legacy evaluation succeeds");
+            // String results compare as text; everything else as doubles.
+            if let Some(legacy_strings) = legacy_as_strings(&legacy) {
+                let new_strings = match result {
+                    Ok(value) => match heap.object(value) {
+                        Some(RObject::String(values)) => values
+                            .iter()
+                            .map(|s| interner.string_text(*s).to_string())
+                            .collect::<Vec<_>>(),
+                        other => panic!("`{source}`: legacy is character but new world is {other:?}"),
+                    },
+                    Err(error) => panic!("`{source}` new-world evaluation failed: {error:?}"),
+                };
+                assert_eq!(new_strings, legacy_strings, "string mismatch for `{source}`");
+                continue;
+            }
+            let new_world = new_world_as_doubles(&heap, result);
             let legacy_world = legacy_as_doubles(&legacy);
             assert_eq!(
                 new_world.len(),

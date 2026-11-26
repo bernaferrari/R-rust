@@ -66,13 +66,18 @@ pub mod primitive_ids {
     pub const EXTRACT: u32 = 59;
     /// List construction — variadic heterogeneous collection.
     pub const LIST: u32 = 60;
+    /// String operations.
+    pub const PASTE: u32 = 61;
+    pub const PASTE0: u32 = 64;
+    pub const NCHAR: u32 = 62;
+    pub const PRINT: u32 = 63;
     pub const EXP: u32 = 55;
     pub const LOG: u32 = 56;
     pub const ABS: u32 = 57;
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, NE, NEXT, NOT, OR, PAREN, POW, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUM, SUPERASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUM, SUPERASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -111,6 +116,15 @@ pub(crate) fn call_primitive(
         SHORT_AND | SHORT_OR => logic_short_circuit(heap, interner, id.0, args, caller_env),
         SUM | PROD | MIN | MAX => reduction(heap, interner, id.0, args, caller_env),
         EXTRACT => extract_primitive(heap, interner, args, caller_env),
+        PASTE => paste_primitive(heap, interner, args, caller_env, " "),
+        PASTE0 => paste_primitive(heap, interner, args, caller_env, ""),
+        NCHAR => nchar_primitive(heap, interner, args, caller_env),
+        PRINT => {
+            // The slice returns the value; output routing arrives with the
+            // console subsystem migration.
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            Ok(operands[0])
+        }
         LIST => {
             // Variadic: every evaluated operand becomes one list element.
             let mut items = Vec::new();
@@ -575,7 +589,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!=", "if", "{", "<-", "=",
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
-        "exp", "log", "abs", "^", "[[", "list",
+        "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print",
     ]
 }
 
@@ -625,6 +639,10 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "^" => Some(POW),
         "[[" => Some(EXTRACT),
         "list" => Some(LIST),
+        "paste" => Some(PASTE),
+        "paste0" => Some(PASTE0),
+        "nchar" => Some(NCHAR),
+        "print" => Some(PRINT),
         _ => None,
     }
 }
@@ -1320,4 +1338,147 @@ fn extract_primitive(
         }
         _ => Err(EvalError::TypeError("extraction requires a vector").into()),
     }
+}
+
+/// Coerce a value to its character representation with GNU formatting for
+/// the atomic types in the migration slice.
+fn strings_of_value(
+    heap: &Heap,
+    interner: &mut SymbolInterner,
+    value: ValueId,
+) -> Result<Vec<super::intern::InternedStr>, EvalError> {
+    match heap.object(value) {
+        Some(RObject::String(values)) => Ok(values.clone()),
+        Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => {
+            let logical = matches!(heap.object(value), Some(RObject::Logical(_)));
+            Ok(values
+                .iter()
+                .map(|v| {
+                    let text = if *v == crate::value::object::NA_INTEGER {
+                        "NA".to_string()
+                    } else if logical {
+                        if *v != 0 { "TRUE".to_string() } else { "FALSE".to_string() }.to_string()
+                    } else {
+                        v.to_string()
+                    };
+                    interner.intern_string(&text)
+                })
+                .collect())
+        }
+        Some(RObject::Real(values)) => Ok(values
+            .iter()
+            .map(|v| {
+                let text = if v.is_nan() {
+                    "NA".to_string()
+                } else if v.fract() == 0.0 && v.abs() < 1e15 {
+                    format!("{}", *v as i64)
+                } else {
+                    format!("{v}")
+                };
+                interner.intern_string(&text)
+            })
+            .collect()),
+        _ => Err(EvalError::TypeError("cannot coerce to character")),
+    }
+}
+
+/// `paste(...)` — elementwise string concatenation with recycling. Tagged
+/// `sep` and `collapse` arguments control joining; untagged arguments are
+/// the vector operands in order. `paste0` maps here with an empty default
+/// separator — resolved by call name at the import boundary, so the slice
+/// reads the separator argument identically for both spellings.
+fn paste_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+    default_sep: &str,
+) -> EvalResult {
+    // Walk the pairlist manually: tags decide the argument's role.
+    let mut operands = Vec::new();
+    let mut sep = default_sep.to_string();
+    let mut collapse: Option<String> = None;
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let forced = force_if_promise(heap, interner, evaluated)?;
+        match tag_name.as_deref() {
+            Some("sep") => {
+                let strings = strings_of_value(heap, interner, forced).map_err(RSignal::from)?;
+                if let Some(first) = strings.first() {
+                    sep = interner.string_text(*first).to_string();
+                }
+            }
+            Some("collapse") => {
+                let strings = strings_of_value(heap, interner, forced).map_err(RSignal::from)?;
+                if let Some(first) = strings.first() {
+                    collapse = Some(interner.string_text(*first).to_string());
+                }
+            }
+            _ => operands.push(forced),
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    if operands.is_empty() {
+        return Err(EvalError::TypeError("paste requires vector operands").into());
+    }
+    // Coerce and recycle elementwise.
+    let mut columns = Vec::new();
+    for operand in operands {
+        columns.push(strings_of_value(heap, interner, operand).map_err(RSignal::from)?);
+    }
+    let width = columns.iter().map(Vec::len).max().unwrap_or(0);
+    if columns.iter().any(|c| c.is_empty()) || width == 0 {
+        let empty = interner.intern_string("");
+        return Ok(heap.alloc(RObject::String(vec![empty; 0])));
+    }
+    for column in &columns {
+        if width % column.len() != 0 {
+            return Err(EvalError::TypeError("arguments cannot be recycled").into());
+        }
+    }
+    let mut out = Vec::new();
+    for i in 0..width {
+        let mut pieces = Vec::new();
+        for column in &columns {
+            pieces.push(interner.string_text(column[i % column.len()]).to_string());
+        }
+        out.push(interner.intern_string(&pieces.join(&sep)));
+    }
+    if let Some(collapse_sep) = collapse {
+        let joined = out
+            .iter()
+            .map(|s| interner.string_text(*s).to_string())
+            .collect::<Vec<_>>()
+            .join(&collapse_sep);
+        out = vec![interner.intern_string(&joined)];
+    }
+    Ok(heap.alloc(RObject::String(out)))
+}
+
+/// `nchar(x)` — character counts per element, integer output exactly GNU.
+fn nchar_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    let strings = strings_of_value(heap, interner, operands[0]).map_err(RSignal::from)?;
+    let counts: Vec<i32> = strings
+        .iter()
+        .map(|s| interner.string_text(*s).chars().count() as i32)
+        .collect();
+    Ok(heap.alloc(RObject::Integer(counts)))
 }
