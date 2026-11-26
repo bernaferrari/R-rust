@@ -126,6 +126,64 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     if matches!(object, RObject::Integer(_)) && is_factor(heap, interner, value) {
         return format_factor(heap, interner, value);
     }
+    // POSIXct printing: classed epoch seconds display as quoted datetimes
+    /// carrying the tzone suffix exactly as print.POSIXct.
+    if matches!(object, RObject::Real(_) | RObject::Integer(_))
+        && super::primitives::is_posixct_classed(heap, interner, value)
+    {
+        let secs: Vec<f64> = match object {
+            RObject::Real(vals) => vals.clone(),
+            RObject::Integer(vals) => vals
+                .iter()
+                .map(|&v| {
+                    if v == crate::value::object::NA_INTEGER {
+                        f64::from_bits(crate::value::object::NA_REAL_BITS)
+                    } else {
+                        v as f64
+                    }
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        if secs.is_empty() {
+            return "POSIXct of length 0".to_string();
+        }
+        let tz = super::primitives::get_attrib(heap, interner, value, "tzone")
+            .and_then(|id| match heap.object(id) {
+                Some(RObject::String(vals)) if !vals.is_empty() => {
+                    Some(interner.string_text(vals[0]).to_string())
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| "UTC".to_string());
+        let elements: Vec<String> = secs
+            .iter()
+            .map(|&s| {
+                if s.is_nan() {
+                    "NA".to_string()
+                } else {
+                    // GNU drops the midnight time component — a datetime at
+                    /// exactly 00:00:00 prints as the bare date exactly as
+                    /// format.POSIXct's time omission.
+                    let full = super::civil::format_iso_datetime(s as i64);
+                    let rendered = if full.ends_with(" 00:00:00") {
+                        full[..10].to_string()
+                    } else {
+                        full
+                    };
+                    format!("\"{} {}\"", rendered, tz)
+                }
+            })
+            .collect();
+        let width = elements.iter().map(|e| e.len()).max().unwrap_or(0);
+        let mut out = String::from("[1]");
+        for element in &elements {
+            out.push(' ');
+            out.push_str(&" ".repeat(width.saturating_sub(element.len())));
+            out.push_str(element);
+        }
+        return out;
+    }
     // Date printing: classed day counts display as quoted ISO strings
     /// exactly as print.Date — a character-vector rendering of the civil
     /// dates.

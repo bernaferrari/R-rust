@@ -213,6 +213,7 @@ pub mod primitive_ids {
     pub const ROW_NAMES_SET: u32 = 195;
     pub const TAPPLY: u32 = 196;
     pub const VAPPLY: u32 = 197;
+    pub const AS_POSIXCT: u32 = 198;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -243,7 +244,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -1098,13 +1099,43 @@ fn call_primitive_inner(
                     .collect(),
                 _ => Vec::new(),
             };
+            // POSIXct input carries seconds — as.Date floors into days
+            /// exactly as GNU, euclidean division keeping pre-epoch
+            /// instants on their civil date.
+            let out: Vec<f64> = if is_posixct_classed(heap, interner, operands[0]) {
+                out.iter()
+                    .map(|&s| {
+                        if s.is_nan() {
+                            s
+                        } else {
+                            (s as i64).div_euclid(86400) as f64
+                        }
+                    })
+                    .collect()
+            } else {
+                out
+            };
             let value = heap.alloc(RObject::Real(out));
             let class = heap.alloc(RObject::String(vec![interner.intern_string("Date")]));
             copy_with_attrib(heap, interner, value, "class", class).map_err(RSignal::from)
         }
         WEEKDAYS | MONTHS | QUARTERS => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
-            let days = numeric_vector(heap, operands[0]);
+            let mut days = numeric_vector(heap, operands[0]);
+            // POSIXct input carries seconds — the calendar labels floor
+            /// into days exactly as the Date conversion does.
+            if is_posixct_classed(heap, interner, operands[0]) {
+                days = days
+                    .iter()
+                    .map(|&s| {
+                        if s.is_nan() {
+                            s
+                        } else {
+                            (s as i64).div_euclid(86400) as f64
+                        }
+                    })
+                    .collect();
+            }
             let out: Vec<super::intern::InternedStr> = days
                 .iter()
                 .map(|&d| {
@@ -1406,10 +1437,97 @@ fn call_primitive_inner(
                 Ok(combined)
             }
         }
+        AS_POSIXCT => {
+            // Parse ISO datetimes into seconds since epoch, stamping the
+            /// two-element POSIXct/POSIXt class and the tzone attribute
+            /// exactly as GNU. The tz argument arrives tagged.
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let mut tz = "UTC".to_string();
+            let mut cursor = args;
+            loop {
+                let (car, cdr, tag) = match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+                    _ => break,
+                };
+                let tag_name = match heap.object(tag) {
+                    Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+                    _ => None,
+                };
+                if tag_name.as_deref() == Some("tz") {
+                    let v = eval(heap, interner, car, caller_env)?;
+                    if let Some(s) = string_operand(heap, interner, v) {
+                        tz = s;
+                    }
+                }
+                if cdr == ValueId::NIL {
+                    break;
+                }
+                cursor = cdr;
+            }
+            let out: Vec<f64> = match heap.object(operands[0]) {
+                Some(RObject::String(values)) => values
+                    .iter()
+                    .map(|v| {
+                        let text = interner.string_text(*v);
+                        if text == "\0NA" {
+                            f64::from_bits(crate::value::object::NA_REAL_BITS)
+                        } else {
+                            match super::civil::parse_iso_datetime(text) {
+                                Some(secs) => secs as f64,
+                                None => f64::from_bits(crate::value::object::NA_REAL_BITS),
+                            }
+                        }
+                    })
+                    .collect(),
+                Some(RObject::Real(values)) => values.clone(),
+                Some(RObject::Integer(values)) => values
+                    .iter()
+                    .map(|&v| {
+                        if v == crate::value::object::NA_INTEGER {
+                            f64::from_bits(crate::value::object::NA_REAL_BITS)
+                        } else {
+                            v as f64
+                        }
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            };
+            // Date-classed input carries days — as.POSIXct scales into
+            /// seconds at midnight exactly as GNU.
+            let out: Vec<f64> = if is_date_classed(heap, interner, operands[0]) {
+                out.iter()
+                    .map(|&d| if d.is_nan() { d } else { d * 86400.0 })
+                    .collect()
+            } else {
+                out
+            };
+            let value = heap.alloc(RObject::Real(out));
+            let class = heap.alloc(RObject::String(vec![
+                interner.intern_string("POSIXct"),
+                interner.intern_string("POSIXt"),
+            ]));
+            let tzone = heap.alloc(RObject::String(vec![interner.intern_string(&tz)]));
+            let with_class = copy_with_attrib(heap, interner, value, "class", class).map_err(RSignal::from)?;
+            copy_with_attrib(heap, interner, with_class, "tzone", tzone).map_err(RSignal::from)
+        }
         FORMAT => {
             // format() on Date-classed input renders ISO exactly as the
             /// print path; other input coerces to character.
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            if is_posixct_classed(heap, interner, operands[0]) {
+                let secs = numeric_vector(heap, operands[0]);
+                let out: Vec<super::intern::InternedStr> = secs
+                    .iter()
+                    .map(|&s| {
+                        if s.is_nan() {
+                            interner.intern_string("\0NA")
+                        } else {
+                            interner.intern_string(&super::civil::format_iso_datetime(s as i64))
+                        }
+                    })
+                    .collect();
+                return Ok(heap.alloc(RObject::String(out)));
+            }
             if is_date_classed(heap, interner, operands[0]) {
                 let days = numeric_vector(heap, operands[0]);
                 let out: Vec<super::intern::InternedStr> = days
@@ -2231,7 +2349,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -2394,6 +2512,7 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "row.names<-" => Some(ROW_NAMES_SET),
         "tapply" => Some(TAPPLY),
         "vapply" => Some(VAPPLY),
+        "as.POSIXct" => Some(AS_POSIXCT),
         "tsp" => Some(TSP),
         "tsp<-" => Some(TSP_ASSIGN),
         "printDeferredWarnings" => Some(PRINT_DEFERRED_WARNINGS),
@@ -7329,6 +7448,22 @@ fn coerce_character(
     interner: &mut SymbolInterner,
     value: ValueId,
 ) -> EvalResult {
+    // POSIXct-classed input renders the datetime exactly as
+    /// as.character.POSIXct — no timezone suffix.
+    if is_posixct_classed(heap, interner, value) {
+        let secs = numeric_vector(heap, value);
+        let out: Vec<super::intern::InternedStr> = secs
+            .iter()
+            .map(|&s| {
+                if s.is_nan() {
+                    interner.intern_string("\0NA")
+                } else {
+                    interner.intern_string(&super::civil::format_iso_datetime(s as i64))
+                }
+            })
+            .collect();
+        return Ok(heap.alloc(RObject::String(out)));
+    }
     // Date-classed input renders ISO exactly as as.character.Date.
     if is_date_classed(heap, interner, value) {
         let days = numeric_vector(heap, value);
@@ -7634,4 +7769,15 @@ fn numeric_vector(heap: &Heap, value: ValueId) -> Vec<f64> {
             .collect(),
         _ => Vec::new(),
     }
+}
+
+/// Whether the object carries the POSIXct class (first of the two-element
+/// POSIXct/POSIXt class vector exactly as GNU).
+pub(crate) fn is_posixct_classed(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
+    get_attrib(heap, interner, value, "class")
+        .and_then(|id| match heap.object(id) {
+            Some(RObject::String(vals)) => Some(vals.iter().any(|v| interner.string_text(*v) == "POSIXct")),
+            _ => None,
+        })
+        .unwrap_or(false)
 }

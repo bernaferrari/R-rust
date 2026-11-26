@@ -79,3 +79,31 @@ mod tests {
         assert_eq!(weekday_of(18295), 1); // Monday
     }
 }
+
+/// Parse "YYYY-MM-DD HH:MM:SS" or "YYYY-MM-DD" into seconds since the
+/// epoch (UTC exactly — the slice's timezone discipline). Returns None for
+/// malformed input.
+pub fn parse_iso_datetime(text: &str) -> Option<i64> {
+    let text = text.trim();
+    if text.len() >= 19 {
+        let days = parse_iso(&text[..10])?;
+        let hour: i64 = text[11..13].parse().ok()?;
+        let min: i64 = text[14..16].parse().ok()?;
+        let sec: i64 = text[17..19].parse().ok()?;
+        Some(days * 86400 + hour * 3600 + min * 60 + sec)
+    } else {
+        parse_iso(text).map(|d| d * 86400)
+    }
+}
+
+/// Format seconds since epoch as "YYYY-MM-DD HH:MM:SS" exactly as GNU's
+/// UTC datetime rendering.
+pub fn format_iso_datetime(seconds: i64) -> String {
+    let days = seconds.div_euclid(86400);
+    let rem = seconds.rem_euclid(86400);
+    let (y, m, d) = civil_from_days(days);
+    let hour = rem / 3600;
+    let min = (rem % 3600) / 60;
+    let sec = rem % 60;
+    format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", y, m, d, hour, min, sec)
+}
