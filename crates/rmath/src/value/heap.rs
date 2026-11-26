@@ -29,6 +29,12 @@ pub struct Heap {
     pub(crate) next_gc_threshold: usize,
     allocations_since_gc: usize,
     pub interner: SymbolInterner,
+    /// The last error message — GNU's geterrmessage/seterrmessage state.
+    pub err_message: String,
+    /// Interrupt suspension flag — GNU's interruptsSuspended state.
+    pub interrupts_suspended: bool,
+    /// bindtextdomain registry — domain to translation directory.
+    pub text_domains: std::collections::HashMap<String, String>,
     /// Session environment overrides — the pure-safe answer to Sys.setenv
     /// being process-global unsafe mutation in modern Rust. Writes land in
     /// this map; reads check it first and fall back to the genuine process

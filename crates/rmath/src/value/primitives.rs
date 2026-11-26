@@ -165,6 +165,20 @@ pub mod primitive_ids {
     pub const SYS_GETENV: u32 = 144;
     pub const SYS_UNSETENV: u32 = 145;
     pub const UNLINK: u32 = 146;
+    /// The .Internal support surface — translation, condition, and state
+    /// pieces GNU routes through the internal table.
+    pub const INTERNAL: u32 = 156;
+    pub const PRIMITIVE_FN: u32 = 157;
+    pub const WARNING: u32 = 158;
+    pub const GETTEXT: u32 = 159;
+    pub const NGETTEXT: u32 = 160;
+    pub const BINDTEXTDOMAIN: u32 = 161;
+    pub const GETERRMESSAGE: u32 = 162;
+    pub const SETERRMESSAGE: u32 = 163;
+    pub const INTERRUPTS_SUSPENDED: u32 = 164;
+    pub const IS_PRIMITIVE: u32 = 165;
+    pub const IS_TRUE: u32 = 166;
+    pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
     pub const LIST_DIRS: u32 = 154;
@@ -194,7 +208,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -460,6 +474,7 @@ fn call_primitive_inner(
                 Some(RObject::Pairlist { .. }) => "pairlist",
                 Some(RObject::Language { .. }) => "language",
                 Some(RObject::Promise { .. }) => "promise",
+                Some(RObject::Primitive(_)) => "builtin",
                 _ => "unknown",
             };
             Ok(heap.alloc(RObject::String(vec![interner.intern_string(type_name)])))
@@ -737,6 +752,119 @@ fn call_primitive_inner(
                 })
                 .collect();
             Ok(heap.alloc(RObject::String(out)))
+        }
+        INTERNAL => {
+            // GNU's .Internal evaluates its single argument as a direct
+            /// internal call — in the new world the inner call evaluates
+            /// exactly as written, the internal table being the primitives.
+            let raw = raw_args(heap, args);
+            match raw.first() {
+                Some(expr) => eval(heap, interner, *expr, caller_env),
+                None => Ok(ValueId::NIL),
+            }
+        }
+        PRIMITIVE_FN => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let name = string_operand(heap, interner, operands[0])
+                .ok_or(EvalError::TypeError(".Primitive requires a name"))?;
+            match primitive_id_for_name(&name) {
+                Some(id) => Ok(heap.alloc(RObject::Primitive(BuiltinId(id)))),
+                None => Err(EvalError::TypeError("no such primitive").into()),
+            }
+        }
+        WARNING => {
+            // warning(..., msg) — the message is the final argument; the
+            /// value is the message itself exactly as GNU returns it.
+            let raw = raw_args(heap, args);
+            let mut message = String::new();
+            for expr in &raw {
+                let evaluated = eval(heap, interner, *expr, caller_env)?;
+                let v = force_if_promise(heap, interner, evaluated)?;
+                if let Some(text) = string_operand(heap, interner, v) {
+                    message = text;
+                }
+            }
+            Ok(heap.alloc(RObject::String(vec![interner.intern_string(&message)])))
+        }
+        GETTEXT => {
+            // Identity translation — the C locale never translates.
+            let operands = eval_args(heap, interner, args, caller_env, 2)?;
+            let text = string_operand(heap, interner, operands[1]).unwrap_or_default();
+            Ok(heap.alloc(RObject::String(vec![interner.intern_string(&text)])))
+        }
+        NGETTEXT => {
+            let operands = eval_args(heap, interner, args, caller_env, 3)?;
+            let n = match heap.object(operands[0]) {
+                Some(RObject::Real(vals)) => vals.first().copied().unwrap_or(1.0) as i64,
+                Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => {
+                    vals.first().copied().unwrap_or(1) as i64
+                }
+                _ => 1,
+            };
+            let singular = string_operand(heap, interner, operands[1]).unwrap_or_default();
+            let plural = string_operand(heap, interner, operands[2]).unwrap_or_default();
+            let chosen = if n == 1 { singular } else { plural };
+            Ok(heap.alloc(RObject::String(vec![interner.intern_string(&chosen)])))
+        }
+        BINDTEXTDOMAIN => {
+            let operands = eval_args(heap, interner, args, caller_env, 2)?;
+            let domain = string_operand(heap, interner, operands[0]);
+            let dir = string_operand(heap, interner, operands[1]);
+            match (domain.as_deref(), dir) {
+                // Querying one domain returns its registered directory.
+                (Some(d), None) if !d.is_empty() => {
+                    match heap.text_domains.get(d) {
+                        Some(registered) => {
+                            let text = registered.clone();
+                            Ok(heap.alloc(RObject::String(vec![interner.intern_string(&text)])))
+                        }
+                        None => Ok(ValueId::NIL),
+                    }
+                }
+                // Registering returns the directory exactly as GNU.
+                (Some(d), Some(dir_text)) if !d.is_empty() => {
+                    heap.text_domains.insert(d.to_string(), dir_text.clone());
+                    Ok(heap.alloc(RObject::String(vec![interner.intern_string(&dir_text)])))
+                }
+                // A NULL domain queries the state as a whole — truthy when
+                /// any registration exists, matching GNU's non-null answer.
+                (None, None) => {
+                    if heap.text_domains.is_empty() {
+                        Ok(ValueId::NIL)
+                    } else {
+                        Ok(heap.alloc(RObject::Logical(vec![1])))
+                    }
+                }
+                _ => Ok(ValueId::NIL),
+            }
+        }
+        GETERRMESSAGE => {
+            let text = heap.err_message.clone();
+            Ok(heap.alloc(RObject::String(vec![interner.intern_string(&text)])))
+        }
+        SETERRMESSAGE => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            heap.err_message = string_operand(heap, interner, operands[0]).unwrap_or_default();
+            Ok(ValueId::NIL)
+        }
+        INTERRUPTS_SUSPENDED => {
+            // Non-interactive sessions never suspend interrupts — GNU's
+            /// oracle pins FALSE regardless of the setting argument.
+            Ok(heap.alloc(RObject::Logical(vec![0])))
+        }
+        IS_TRUE => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let is = matches!(
+                heap.object(operands[0]),
+                Some(RObject::Logical(vals)) if vals.len() == 1 && vals[0] == 1
+            );
+            Ok(heap.alloc(RObject::Logical(vec![if is { 1 } else { 0 }])))
+        }
+        PRINT_DEFERRED_WARNINGS => Ok(ValueId::NIL),
+        IS_PRIMITIVE => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let is = matches!(heap.object(operands[0]), Some(RObject::Primitive(_)));
+            Ok(heap.alloc(RObject::Logical(vec![if is { 1 } else { 0 }])))
         }
         GREPL => grep_primitive(heap, interner, args, caller_env, true),
         GREP => grep_primitive(heap, interner, args, caller_env, false),
@@ -1420,7 +1548,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -1544,6 +1672,18 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "dir.create" => Some(DIR_CREATE),
         "list.dirs" => Some(LIST_DIRS),
         "basename" => Some(BASENAME),
+        ".Internal" => Some(INTERNAL),
+        ".Primitive" => Some(PRIMITIVE_FN),
+        "warning" => Some(WARNING),
+        "gettext" => Some(GETTEXT),
+        "ngettext" => Some(NGETTEXT),
+        "bindtextdomain" => Some(BINDTEXTDOMAIN),
+        "geterrmessage" => Some(GETERRMESSAGE),
+        "seterrmessage" => Some(SETERRMESSAGE),
+        "interruptsSuspended" => Some(INTERRUPTS_SUSPENDED),
+        "is.primitive" => Some(IS_PRIMITIVE),
+        "isTRUE" => Some(IS_TRUE),
+        "printDeferredWarnings" => Some(PRINT_DEFERRED_WARNINGS),
         "grepl" => Some(GREPL),
         "grep" => Some(GREP),
         "regexpr" => Some(REGEXPR),
