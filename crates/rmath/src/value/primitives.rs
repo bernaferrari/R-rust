@@ -106,6 +106,14 @@ pub mod primitive_ids {
     pub const LS: u32 = 96;
     /// Dollar replacement — `$<-` assigns by name.
     pub const DOLLAR_ASSIGN: u32 = 97;
+    /// Output and visibility.
+    pub const CAT: u32 = 98;
+    pub const INVISIBLE: u32 = 99;
+    /// Matrix construction and dimension introspection.
+    pub const MATRIX: u32 = 100;
+    pub const DIM: u32 = 101;
+    pub const NROW: u32 = 102;
+    pub const NCOL: u32 = 103;
     /// Attribute access — names getter and replacement, dollar extraction.
     pub const NAMES: u32 = 69;
     pub const NAMES_ASSIGN: u32 = 70;
@@ -122,7 +130,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -235,6 +243,60 @@ pub(crate) fn call_primitive(
             ls_primitive(heap, interner, operands[0])
         }
         DOLLAR_ASSIGN => dollar_assign_primitive(heap, interner, args, caller_env),
+        CAT => {
+            // Variadic output primitive: every operand coerces to character
+            /// and prints; output routing arrives with the console subsystem.
+            /// The evaluation itself is the conformance-visible part — cat
+            /// returns invisible NULL exactly as GNU.
+            let mut cursor = args;
+            loop {
+                let (car, cdr) = match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, cdr, .. }) => (*car, *cdr),
+                    _ => break,
+                };
+                let evaluated = eval(heap, interner, car, caller_env)?;
+                force_if_promise(heap, interner, evaluated)?;
+                if cdr == ValueId::NIL {
+                    break;
+                }
+                cursor = cdr;
+            }
+            Ok(ValueId::NIL)
+        }
+        INVISIBLE => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            // Visibility metadata is a print-system concern outside the slice;
+            /// the value passes through exactly as GNU's return shape.
+            Ok(operands[0])
+        }
+        MATRIX => matrix_primitive(heap, interner, args, caller_env),
+        DIM => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            match get_attrib(heap, interner, operands[0], "dim") {
+                Some(dim) => Ok(dim),
+                None => Ok(ValueId::NIL),
+            }
+        }
+        NROW | NCOL => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let which = if id.0 == NROW { 0 } else { 1 };
+            let extent = match get_attrib(heap, interner, operands[0], "dim") {
+                Some(dim) => match heap.object(dim) {
+                    Some(RObject::Integer(dims)) => dims.get(which).copied().unwrap_or(crate::value::object::NA_INTEGER),
+                    _ => crate::value::object::NA_INTEGER,
+                },
+                // Vector nrow is the length; ncol of a vector is NULL in GNU
+                /// but the slice reports the vector extent for nrow only.
+                None => {
+                    if id.0 == NROW {
+                        vector_length(heap, operands[0]).unwrap_or(0) as i32
+                    } else {
+                        return Ok(ValueId::NIL);
+                    }
+                }
+            };
+            Ok(heap.alloc(RObject::Integer(vec![extent])))
+        }
         PASTE => paste_primitive(heap, interner, args, caller_env, " "),
         PASTE0 => paste_primitive(heap, interner, args, caller_env, ""),
         NCHAR => nchar_primitive(heap, interner, args, caller_env),
@@ -750,7 +812,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -837,6 +899,12 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "exists" => Some(EXISTS),
         "ls" => Some(LS),
         "$<-" => Some(DOLLAR_ASSIGN),
+        "cat" => Some(CAT),
+        "invisible" => Some(INVISIBLE),
+        "matrix" => Some(MATRIX),
+        "dim" => Some(DIM),
+        "nrow" => Some(NROW),
+        "ncol" => Some(NCOL),
         _ => None,
     }
 }
@@ -1139,8 +1207,104 @@ fn subset_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
+    // GNU's dispatch on argument count: two operands is vector-style
+    /// subsetting; three or more with a dim attribute is matrix indexing —
+    /// `x[i, j]` with the missing-argument sentinel standing for whole
+    /// extents.
+    let raw = raw_args(heap, args);
+    if raw.len() >= 3 {
+        return matrix_subset(heap, interner, raw, caller_env);
+    }
     let operands = eval_args(heap, interner, args, caller_env, 2)?;
     subset_impl(heap, interner, operands[0], operands[1])
+}
+
+/// Matrix two-index subsetting: `x[i, j]` where either index may be the
+/// missing sentinel meaning the whole extent. Column-major linearization —
+/// element (r, c) lives at c*nrow + r zero-based, GNU exactly. Result keeps
+/// matrix shape when both extents exceed one; otherwise drops to a vector,
+/// GNU's default drop semantics shape.
+fn matrix_subset(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    raw: Vec<ValueId>,
+    caller_env: ValueId,
+) -> EvalResult {
+    let object = eval(heap, interner, raw[0], caller_env)?;
+    let object = force_if_promise(heap, interner, object)?;
+    let dims = match get_attrib(heap, interner, object, "dim") {
+        Some(dim) => match heap.object(dim) {
+            Some(RObject::Integer(dims)) if dims.len() >= 2 => (dims[0] as usize, dims[1] as usize),
+            _ => return Err(EvalError::TypeError("matrix subscript requires dim").into()),
+        },
+        None => return Err(EvalError::TypeError("matrix subscript requires dim").into()),
+    };
+    let (nrow, ncol) = dims;
+    let mut resolve_index = |raw_index: ValueId, extent: usize| -> Result<Vec<usize>, RSignal> {
+        if raw_index == ValueId::MISSING {
+            return Ok((0..extent).collect());
+        }
+        let evaluated = eval(heap, interner, raw_index, caller_env)?;
+        let evaluated = force_if_promise(heap, interner, evaluated)?;
+        match heap.object(evaluated) {
+            Some(RObject::Integer(values)) => Ok(values
+                .iter()
+                .map(|v| {
+                    if *v == crate::value::object::NA_INTEGER {
+                        usize::MAX
+                    } else {
+                        (*v - 1) as usize
+                    }
+                })
+                .collect()),
+            Some(RObject::Real(values)) => Ok(values
+                .iter()
+                .map(|v| {
+                    if v.is_nan() {
+                        usize::MAX
+                    } else {
+                        (*v as i32 - 1) as usize
+                    }
+                })
+                .collect()),
+            Some(RObject::Logical(values)) => {
+                let mut positions = Vec::new();
+                for i in 0..extent {
+                    let flag = values[i % values.len().max(1)];
+                    if flag == crate::value::object::NA_INTEGER {
+                        positions.push(usize::MAX);
+                    } else if flag != 0 {
+                        positions.push(i);
+                    }
+                }
+                Ok(positions)
+            }
+            _ => Err(EvalError::TypeError("unsupported matrix index").into()),
+        }
+    };
+    let rows = resolve_index(raw[1], nrow)?;
+    let cols = resolve_index(raw[2], ncol)?;
+    // Linear positions column-major: iterate columns outermost so the
+    // result fills column-by-column exactly as GNU's storage order.
+    let na = usize::MAX;
+    let mut positions = Vec::with_capacity(rows.len() * cols.len());
+    for col in &cols {
+        for row in &rows {
+            if *row == na || *col == na || *row >= nrow || *col >= ncol {
+                positions.push(na);
+            } else {
+                positions.push(col * nrow + row);
+            }
+        }
+    }
+    let extracted = extract_elements(heap, object, &positions).map_err(RSignal::from)?;
+    // Shape discipline: both extents multi-length keeps a dim attribute of
+    /// the selected shape; single-length margins drop to a vector.
+    if rows.len() > 1 && cols.len() > 1 {
+        let dims_vec = heap.alloc(RObject::Integer(vec![rows.len() as i32, cols.len() as i32]));
+        return copy_with_attrib(heap, interner, extracted, "dim", dims_vec).map_err(RSignal::from);
+    }
+    Ok(extracted)
 }
 
 /// Subsetting core operating on already-evaluated operands — shared by the
@@ -2958,4 +3122,91 @@ fn dollar_assign_primitive(
         }
         _ => Err(EvalError::TypeError("$<- requires environment or list").into()),
     }
+}
+
+/// `matrix(data, nrow, ncol)` — GNU's column-major construction: data
+/// recycles to nrow*ncol, and because columns fill contiguously the linear
+/// storage IS the data vector — the constructor is recycling plus the dim
+/// attribute, nothing more.
+fn matrix_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let mut positional: Vec<ValueId> = Vec::new();
+    let mut named: Vec<(String, ValueId)> = Vec::new();
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let value = force_if_promise(heap, interner, evaluated)?;
+        match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => {
+                named.push((interner.symbol_name(*name).to_string(), value));
+            }
+            _ => positional.push(value),
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    let lookup = |name: &str, position: usize| -> Option<ValueId> {
+        named
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| *v)
+            .or_else(|| positional.get(position).copied())
+    };
+    let data = lookup("data", 0).ok_or(EvalError::TypeError("matrix requires data"))?;
+    let data_len = vector_length(heap, data)
+        .ok_or(EvalError::TypeError("matrix data must be a vector"))
+        .map_err(RSignal::from)?;
+    let nrow = match lookup("nrow", 1) {
+        Some(v) => first_real(heap, v).map_err(RSignal::from)? as usize,
+        None => data_len,
+    };
+    let ncol = match lookup("ncol", 2) {
+        Some(v) => first_real(heap, v).map_err(RSignal::from)? as usize,
+        None => (data_len + nrow - 1) / nrow.max(1),
+    };
+    let total = nrow * ncol;
+    // Recycle the data vector to the matrix extent — same-type copying.
+    let result = match heap.object(data) {
+        Some(RObject::Real(values)) => {
+            let mut out = Vec::with_capacity(total);
+            for i in 0..total {
+                out.push(values[i % values.len().max(1)]);
+            }
+            heap.alloc(RObject::Real(out))
+        }
+        Some(RObject::Integer(values)) => {
+            let mut out = Vec::with_capacity(total);
+            for i in 0..total {
+                out.push(values[i % values.len().max(1)]);
+            }
+            heap.alloc(RObject::Integer(out))
+        }
+        Some(RObject::Logical(values)) => {
+            let mut out = Vec::with_capacity(total);
+            for i in 0..total {
+                out.push(values[i % values.len().max(1)]);
+            }
+            heap.alloc(RObject::Logical(out))
+        }
+        Some(RObject::String(values)) => {
+            let mut out = Vec::with_capacity(total);
+            for i in 0..total {
+                out.push(values[i % values.len().max(1)]);
+            }
+            heap.alloc(RObject::String(out))
+        }
+        _ => return Err(EvalError::TypeError("matrix data must be atomic").into()),
+    };
+    let dims = heap.alloc(RObject::Integer(vec![nrow as i32, ncol as i32]));
+    copy_with_attrib(heap, interner, result, "dim", dims).map_err(RSignal::from)
 }

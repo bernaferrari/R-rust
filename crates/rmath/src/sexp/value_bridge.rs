@@ -1864,6 +1864,15 @@ mod tests {
             "{ e <- new.env(); e$a <- 7; e$a }",
             "{ x <- list(a=1); x$b <- 20; x$a + x$b }",
             "{ x <- list(a=1); x$a <- 99; x$a }",
+            "{ m <- matrix(1:6, 2, 3); m[1, 2] }",
+            "{ m <- matrix(1:6, 2, 3); m[2, 3] }",
+            "{ m <- matrix(1:6, 2, 3); m[1,] }",
+            "{ m <- matrix(1:6, 2, 3); m[,2] }",
+            "{ m <- matrix(1:6, 2, 3); sum(m[,1]) + sum(m[,3]) }",
+            "{ m <- matrix(c(1.5, 2.5), 2, 2); m[2, 1] }",
+            "{ m <- matrix(1:4, 2); nrow(m) }",
+            "{ m <- matrix(1:4, 2); ncol(m) }",
+            "dim(matrix(1:6, 2, 3))",
         ];
         // One session, one parse pass: expression objects stay valid for the
         // session's lifetime, so batching avoids per-program bootstrap cost.
@@ -1974,6 +1983,9 @@ mod tests {
         let mut value_mismatch = 0usize;
         let mut uncomparable = 0usize;
         let mut legacy_skip = 0usize;
+        let mut mismatch_cases: Vec<String> = Vec::new();
+        let mut case_counter = 0usize;
+        let mut uncomparable_cases: Vec<String> = Vec::new();
         let mut failure_reasons: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
         for path in &files {
@@ -1986,6 +1998,11 @@ mod tests {
             println!("case: {name}");
             use std::io::Write;
             let _ = std::io::stdout().flush();
+            case_counter += 1;
+            if case_counter % 100 == 0 {
+                println!("tally@{case_counter}: pass={pass} mismatch={value_mismatch} uncmp={uncomparable} fails={}", failure_reasons.values().map(|v| v.len()).sum::<usize>());
+                let _ = std::io::stdout().flush();
+            }
             let source = match std::fs::read_to_string(path) {
                 Ok(s) => s,
                 Err(_) => continue,
@@ -2069,6 +2086,7 @@ mod tests {
                 Some(v) => v,
                 None => {
                     uncomparable += 1;
+                    uncomparable_cases.push(name.clone());
                     continue;
                 }
             };
@@ -2090,6 +2108,7 @@ mod tests {
                     pass += 1;
                 } else {
                     value_mismatch += 1;
+                    mismatch_cases.push(format!("{name} (string)"));
                 }
                 continue;
             }
@@ -2099,6 +2118,7 @@ mod tests {
             );
             if !numeric {
                 uncomparable += 1;
+                uncomparable_cases.push(name.clone());
                 continue;
             }
             let new_world = new_world_as_doubles(&heap, Ok(new_value));
@@ -2112,12 +2132,7 @@ mod tests {
                 pass += 1;
             } else {
                 value_mismatch += 1;
-            }
-            let processed = pass + value_mismatch + uncomparable
-                + failure_reasons.values().map(|v| v.len()).sum::<usize>();
-            if processed % 100 == 0 {
-                println!("tally@{processed}: pass={pass} mismatch={value_mismatch} uncomparable={uncomparable}");
-                let _ = std::io::stdout().flush();
+                mismatch_cases.push(name.clone());
             }
         }
 
@@ -2130,7 +2145,8 @@ mod tests {
             let examples: Vec<_> = cases.iter().take(3).cloned().collect();
             println!("  {:>4} {}  e.g. {}", cases.len(), reason, examples.join(", "));
         }
-        println!("cases without failure-reason categorization pass or mismatch");
+        println!("mismatch cases: {}", mismatch_cases.join(", "));
+        println!("uncomparable cases: {}", uncomparable_cases.join(", "));
     }
 
     #[test]
