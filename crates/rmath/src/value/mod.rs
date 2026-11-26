@@ -15,6 +15,7 @@ pub mod id;
 pub mod intern;
 pub mod object;
 pub mod primitives;
+pub mod print;
 pub mod roots;
 
 pub use heap::Heap;

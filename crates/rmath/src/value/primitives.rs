@@ -244,23 +244,51 @@ pub(crate) fn call_primitive(
         }
         DOLLAR_ASSIGN => dollar_assign_primitive(heap, interner, args, caller_env),
         CAT => {
-            // Variadic output primitive: every operand coerces to character
-            /// and prints; output routing arrives with the console subsystem.
-            /// The evaluation itself is the conformance-visible part — cat
-            /// returns invisible NULL exactly as GNU.
+            // Variadic output: operands coerce elementwise and concatenate
+            /// with the separator — tagged sep exactly as GNU, default one
+            /// space. Output lands in the session capture buffer.
+            let mut pieces: Vec<String> = Vec::new();
+            let mut sep = " ".to_string();
             let mut cursor = args;
             loop {
-                let (car, cdr) = match heap.object(cursor) {
-                    Some(RObject::Pairlist { car, cdr, .. }) => (*car, *cdr),
+                let (car, cdr, tag) = match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
                     _ => break,
                 };
+                let tag_name = match heap.object(tag) {
+                    Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+                    _ => None,
+                };
                 let evaluated = eval(heap, interner, car, caller_env)?;
-                force_if_promise(heap, interner, evaluated)?;
+                let value = force_if_promise(heap, interner, evaluated)?;
+                if tag_name.as_deref() == Some("sep") {
+                    if let Some(RObject::String(values)) = heap.object(value) {
+                        if !values.is_empty() {
+                            sep = interner.string_text(values[0]).to_string();
+                        }
+                    }
+                } else {
+                    // Every element of the operand contributes, vector or scalar.
+                    let length = vector_length(heap, value).unwrap_or(0);
+                    if let Some(object) = heap.object(value) {
+                        match object {
+                            RObject::Real(_) | RObject::Integer(_) | RObject::Logical(_) | RObject::String(_) => {
+                                for i in 0..length {
+                                    pieces.push(super::print::format_cat_element(heap, interner, object, i));
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
                 if cdr == ValueId::NIL {
                     break;
                 }
                 cursor = cdr;
             }
+            // GNU cat: separator BETWEEN pieces only, no trailing newline.
+            let joined = pieces.join(&sep);
+            heap.output.push_str(&joined);
             Ok(ValueId::NIL)
         }
         INVISIBLE => {
@@ -323,9 +351,11 @@ pub(crate) fn call_primitive(
         PASTE0 => paste_primitive(heap, interner, args, caller_env, ""),
         NCHAR => nchar_primitive(heap, interner, args, caller_env),
         PRINT => {
-            // The slice returns the value; output routing arrives with the
-            // console subsystem migration.
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let text = super::print::format_value(heap, interner, operands[0]);
+            heap.output.push_str(&text);
+            heap.output.push('\n');
+            // GNU: print returns its argument invisibly.
             Ok(operands[0])
         }
         LIST => {

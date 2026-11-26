@@ -29,6 +29,10 @@ pub struct Heap {
     pub(crate) next_gc_threshold: usize,
     allocations_since_gc: usize,
     pub interner: SymbolInterner,
+    /// Output capture — print/cat append GNU-formatted text here. Session
+    /// output state lives with the runtime state for the migration slice;
+    /// the console/connection subsystem migration owns the final shape.
+    pub output: String,
 }
 
 impl Heap {

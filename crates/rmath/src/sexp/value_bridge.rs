@@ -1944,20 +1944,54 @@ mod tests {
         }
     }
 
-    /// Cross-world conformance sweep: every case in tests/conformance/cases
-    /// evaluated in both worlds, final values compared exactly as the oracle
-    /// programs. This is the `.11` burn-down measurement — the failure-reason
-    /// distribution IS the remaining implementation backlog, prioritized by
-    /// frequency. Ignored by default: it is informational, not a gate, while
-    /// coverage is incomplete. Run with:
+    #[test]
+    #[ignore]
+    fn probe_output_comparison() {
+        let mut session = crate::sexp::session::RSession::new();
+        let source = "1 + 2";
+        let expressions: Vec<_> = session.with_active(|| {
+            crate::eval::parser::parse_active_expressions(source).unwrap_or_default()
+        });
+        let mut heap = Heap::new();
+        let mut interner = SymbolInterner::new();
+        let mut bridge = ValueBridge::new();
+        let imported: Vec<ValueId> = expressions
+            .iter()
+            .filter_map(|expr| bridge.import(&mut heap, &mut interner, expr).ok())
+            .collect();
+        let env_id = bootstrap_env(&mut heap, &mut interner);
+        for expr in &imported {
+            let result = crate::value::eval::eval(&mut heap, &mut interner, *expr, env_id);
+            println!("new-world eval result: {result:?}");
+            if let Ok(value) = result {
+                let text = crate::value::print::format_value(&heap, &interner, value);
+                heap.output.push_str(&text);
+                heap.output.push('\n');
+            }
+        }
+        let (legacy, legacy_output, _visible) = session.eval_code_with_output_capture(source);
+        println!("legacy value ok: {}", legacy.is_ok());
+        println!("legacy stdout: {:?}", legacy_output.stdout);
+        println!("new output: {:?}", heap.output);
+    }
+
+    /// Golden conformance sweep: every case in tests/conformance/cases
+    /// evaluated in the new world with top-level auto-print, output compared
+    /// against the pinned GNU golden files — the strict conformance measure
+    /// `.11` acceptance names. Failure reasons group by missing primitive so
+    /// the distribution IS the remaining implementation backlog. Ignored by
+    /// default — informational while coverage is incomplete. Run with:
     /// `cargo test -p rmath conformance_sweep_cross_world -- --ignored`
-    /// RPORT_SWEEP_LIMIT=n caps the case count for quick iteration.
+    /// RPORT_SWEEP_LIMIT=n caps cases, RPORT_SWEEP_TO=999 raises the series
+    /// ceiling, RPORT_SWEEP_FULL=1 disables series filtering.
     #[test]
     #[ignore]
     fn conformance_sweep_cross_world() {
         use std::collections::BTreeMap;
         let cases_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../tests/conformance/cases");
+        let golden_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/conformance/golden");
         let mut files: Vec<_> = std::fs::read_dir(&cases_dir)
             .expect("conformance cases directory")
             .filter_map(|entry| entry.ok())
@@ -1965,15 +1999,8 @@ mod tests {
             .filter(|path| path.extension().map(|e| e == "R").unwrap_or(false))
             .collect();
         files.sort();
-        // The 1000+ series exercises stats-package builtins (arima ML and
-        /// friends) — heavy iterative estimation in the legacy world, and a
-        /// later migration stage than the core evaluator. The core burn-down
-        /// measures 1-999 unless RPORT_SWEEP_FULL is set.
-        // Series split: 001-499 is the semantic core the `.11` migration is
-        /// measured against; 500-999 is legacy regression stress (gc chains,
-        /// on.exit rooting — heavy or non-terminating under cross-world
-        /// evaluation); 1000+ is stats-package builtins. RPORT_SWEEP_TO
-        /// overrides the upper bound; RPORT_SWEEP_FULL disables filtering.
+        // Series split: 001-499 semantic core; 500-999 legacy regression
+        /// stress; 1000+ stats builtins. RPORT_SWEEP_TO overrides the ceiling.
         if std::env::var("RPORT_SWEEP_FULL").is_err() {
             let upper: u32 = std::env::var("RPORT_SWEEP_TO")
                 .ok()
@@ -1992,51 +2019,41 @@ mod tests {
 
         let mut session = crate::sexp::session::RSession::new();
         let mut pass = 0usize;
-        let mut value_mismatch = 0usize;
-        let mut uncomparable = 0usize;
-        let mut legacy_skip = 0usize;
+        let mut output_mismatch = 0usize;
+        let mut no_golden = 0usize;
+        let mut parse_skip = 0usize;
         let mut mismatch_cases: Vec<String> = Vec::new();
-        let mut case_counter = 0usize;
-        let mut uncomparable_cases: Vec<String> = Vec::new();
+        let mut pass_cases: Vec<String> = Vec::new();
         let mut failure_reasons: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let mut case_counter = 0usize;
 
         for path in &files {
             let name = path
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
-            // Progress heartbeat: when a case hangs the evaluator (no fuel
-            /// mechanism yet), the last printed name is the culprit.
-            println!("case: {name}");
-            use std::io::Write;
-            let _ = std::io::stdout().flush();
-            // Hermetic legacy state: top-level bindings from earlier cases
-            /// must not leak into this one — the new world starts a fresh
-            /// heap per case, so the legacy world resets symmetrically.
-            /// Resetting before evaluation is immune to the loop's many
-            /// early-continue paths.
-            let _ = session.eval_code_with_output_capture("rm(list = ls())");
             case_counter += 1;
-            if case_counter % 100 == 0 {
-                println!("tally@{case_counter}: pass={pass} mismatch={value_mismatch} uncmp={uncomparable} fails={}", failure_reasons.values().map(|v| v.len()).sum::<usize>());
-                let _ = std::io::stdout().flush();
-            }
+            let stem = name.trim_end_matches(".R").to_string();
+            let golden_path = golden_dir.join(format!("{stem}.out"));
+            let golden = match std::fs::read_to_string(&golden_path) {
+                Ok(g) => g,
+                Err(_) => {
+                    no_golden += 1;
+                    continue;
+                }
+            };
             let source = match std::fs::read_to_string(path) {
                 Ok(s) => s,
                 Err(_) => continue,
             };
-            // Parse the case once; both worlds evaluate the same expressions.
             let expressions: Vec<_> = session.with_active(|| {
-                crate::eval::parser::parse_active_expressions(&source)
-                    .unwrap_or_default()
+                crate::eval::parser::parse_active_expressions(&source).unwrap_or_default()
             });
             if expressions.is_empty() {
-                legacy_skip += 1;
+                parse_skip += 1;
                 continue;
             }
 
-            // New world: import every expression up front, evaluate in
-            // sequence against one bootstrap environment.
             let mut heap = Heap::new();
             let mut interner = SymbolInterner::new();
             let mut bridge = ValueBridge::new();
@@ -2052,11 +2069,34 @@ mod tests {
                 continue;
             }
             let env_id = bootstrap_env(&mut heap, &mut interner);
-            let mut new_result = None;
             let mut new_error = None;
             for expr in &imported {
                 match crate::value::eval::eval(&mut heap, &mut interner, *expr, env_id) {
-                    Ok(value) => new_result = Some(value),
+                    Ok(value) => {
+                        // Top-level auto-print: the golden contract prints
+                        /// every visible expression result exactly as the
+                        /// REPL does. Assignments and output/visibility
+                        /// primitives return invisibly; NULL never prints.
+                        let invisible = match heap.object(*expr) {
+                            Some(RObject::Language { car, .. }) => {
+                                match heap.object(*car) {
+                                    Some(RObject::Symbol { name, .. }) => {
+                                        matches!(
+                                            interner.symbol_name(*name),
+                                            "<-" | "=" | "<<-" | "print" | "cat" | "invisible"
+                                        )
+                                    }
+                                    _ => false,
+                                }
+                            }
+                            _ => false,
+                        };
+                        if !invisible && value != ValueId::NIL {
+                            let text = crate::value::print::format_value(&heap, &interner, value);
+                            heap.output.push_str(&text);
+                            heap.output.push('\n');
+                        }
+                    }
                     Err(error) => {
                         new_error = Some(format!("{error:?}"));
                         break;
@@ -2064,28 +2104,7 @@ mod tests {
                 }
             }
 
-            // Legacy world: evaluate the same source, take the final value.
-            /// Top-level assignments in earlier cases pollute the session's
-            /// global environment — cases that probe absence (exists("x"))
-            /// diverge as harness artifacts, not semantics. Clearing user
-            /// bindings after every case keeps each case hermetic exactly
-            /// as the fresh new-world heap is.
-            let (legacy, _output, _visible) = session.eval_code_with_output_capture(&source);
-            let legacy = match legacy {
-                Ok(value) => value,
-                Err(_) => {
-                    legacy_skip += 1;
-                    continue;
-                }
-            };
-
             if let Some(error) = new_error {
-                // Normalize the reason: first token of the error debug is
-                // the variant — the frequency distribution groups by it.
-                // Unwrap the RSignal::Error(...) envelope, then normalize
-                /// to the inner variant name with the first argument text —
-                /// UnboundVariable("factor") groups as UnboundVariable:factor
-                /// so the backlog names exact missing primitives.
                 let inner = error
                     .strip_prefix("Error(")
                     .unwrap_or(&error)
@@ -2105,71 +2124,32 @@ mod tests {
                 failure_reasons.entry(reason).or_default().push(name.clone());
                 continue;
             }
-            let new_value = match new_result {
-                Some(v) => v,
-                None => {
-                    uncomparable += 1;
-                    uncomparable_cases.push(name.clone());
-                    continue;
-                }
-            };
 
-            // Compare exactly as the oracle does: strings as text, everything
-            // else as doubles — but non-numeric shapes categorize rather than
-            // panic.
-            let new_strings = match heap.object(new_value) {
-                Some(RObject::String(values)) => Some(
-                    values
-                        .iter()
-                        .map(|s| interner.string_text(*s).to_string())
-                        .collect::<Vec<_>>(),
-                ),
-                _ => None,
-            };
-            if let (Some(ns), Some(ls)) = (new_strings, legacy_as_strings(&legacy)) {
-                if ns == ls {
-                    pass += 1;
-                } else {
-                    value_mismatch += 1;
-                    mismatch_cases.push(format!("{name} (string)"));
-                }
-                continue;
-            }
-            let numeric = matches!(
-                heap.object(new_value),
-                Some(RObject::Real(_)) | Some(RObject::Integer(_)) | Some(RObject::Logical(_))
-            );
-            if !numeric {
-                uncomparable += 1;
-                uncomparable_cases.push(name.clone());
-                continue;
-            }
-            let new_world = new_world_as_doubles(&heap, Ok(new_value));
-            let legacy_world = legacy_as_doubles(&legacy);
-            let matches = new_world.len() == legacy_world.len()
-                && new_world
-                    .iter()
-                    .zip(legacy_world.iter())
-                    .all(|(a, b)| (a.is_nan() && b.is_nan()) || a == b);
-            if matches {
+            if heap.output.trim_end() == golden.trim_end() {
                 pass += 1;
+                pass_cases.push(name.clone());
             } else {
-                value_mismatch += 1;
+                output_mismatch += 1;
                 mismatch_cases.push(name.clone());
+            }
+            if case_counter % 100 == 0 {
+                println!("tally@{case_counter}: pass={pass} mismatch={output_mismatch} fails={}", failure_reasons.values().map(|v| v.len()).sum::<usize>());
+                use std::io::Write;
+                let _ = std::io::stdout().flush();
             }
         }
 
-        println!("=== conformance sweep ===");
-        println!("pass: {pass}  value-mismatch: {value_mismatch}  uncomparable: {uncomparable}  legacy-skip: {legacy_skip}");
+        println!("=== conformance sweep (golden comparison) ===");
+        println!("pass: {pass}  output-mismatch: {output_mismatch}  no-golden: {no_golden}  parse-skip: {parse_skip}");
         println!("failure reasons by frequency:");
         let mut reasons: Vec<_> = failure_reasons.iter().collect();
         reasons.sort_by_key(|(_, cases)| std::cmp::Reverse(cases.len()));
-        for (reason, cases) in reasons.iter().take(15) {
+        for (reason, cases) in reasons.iter().take(18) {
             let examples: Vec<_> = cases.iter().take(3).cloned().collect();
             println!("  {:>4} {}  e.g. {}", cases.len(), reason, examples.join(", "));
         }
-        println!("mismatch cases: {}", mismatch_cases.join(", "));
-        println!("uncomparable cases: {}", uncomparable_cases.join(", "));
+        println!("pass cases: {}", pass_cases.iter().take(40).cloned().collect::<Vec<_>>().join(", "));
+        println!("mismatch cases: {}", mismatch_cases.iter().take(40).cloned().collect::<Vec<_>>().join(", "));
     }
 
     #[test]
