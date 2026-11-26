@@ -28,6 +28,13 @@ esac
 export VECLIB_MAXIMUM_THREADS="${VECLIB_MAXIMUM_THREADS:-1}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 export RAYON_NUM_THREADS="${RAYON_NUM_THREADS:-2}"
+# rport's tree-walking evaluator nests several large Rust frames per R
+# evaluation level, and legitimate package machinery (methods cacheMetaData
+# walking S4 metadata over lazy-load reference cascades) recurses dozens of
+# R levels deep. The 2 MiB libtest default thread cannot hold that even
+# though GNU R handles the same recursion on a normal 8 MiB main thread.
+# Give test threads a stack sized for real evaluation depth.
+export RUST_MIN_STACK="${RUST_MIN_STACK:-33554432}"
 
 cargo "$@"
 result=$?
