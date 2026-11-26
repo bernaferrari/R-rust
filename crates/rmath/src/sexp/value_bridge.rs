@@ -1848,6 +1848,10 @@ mod tests {
             "ifelse(c(TRUE, FALSE), 1, 0)",
             "{ x <- 1:6; ifelse(x %% 2 == 0, x, -x) }",
             "{ x <- c(5, 3, 8); sum(sort(x)[1:2]) }",
+            "c(1, 5, 3) %in% c(1, 2, 3)",
+            "match(c(3, 1), c(1, 2, 3))",
+            "{ x <- 1:10; x[x %% 3 == 0] }",
+            "{ x <- c(2, 7, 1, 8); x[x %in% c(1, 8)] }",
         ];
         // One session, one parse pass: expression objects stay valid for the
         // session's lifetime, so batching avoids per-program bootstrap cost.

@@ -35,6 +35,9 @@ pub enum EvalError {
     /// Operand types do not support the primitive — GNU: "non-numeric
     /// argument to binary operator" and friends.
     TypeError(&'static str),
+    /// A user-raised condition through `stop()` — GNU's error objects
+    /// carry messages; the migration slice carries the text.
+    Condition(String),
 }
 
 /// Control-flow propagation — the pure-Rust replacement for GNU's longjmp

@@ -96,6 +96,10 @@ pub mod primitive_ids {
     pub const ANY: u32 = 87;
     pub const ALL: u32 = 88;
     pub const IFELSE: u32 = 89;
+    /// Error control and membership.
+    pub const STOP: u32 = 91;
+    pub const IN: u32 = 92;
+    pub const MATCH: u32 = 93;
     /// Attribute access — names getter and replacement, dollar extraction.
     pub const NAMES: u32 = 69;
     pub const NAMES_ASSIGN: u32 = 70;
@@ -112,7 +116,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -192,6 +196,27 @@ pub(crate) fn call_primitive(
             quantifier_primitive(heap, id.0, operands[0])
         }
         IFELSE => ifelse_primitive(heap, interner, args, caller_env),
+        STOP => {
+            // GNU's stop raises the error condition with the message —
+            /// evaluation aborts through the signal channel exactly as a
+            /// type error would.
+            let operands = eval_args(heap, interner, args, caller_env, 1).unwrap_or_default();
+            let message = match operands.first().and_then(|v| heap.object(*v)) {
+                Some(RObject::String(values)) if !values.is_empty() => {
+                    interner.string_text(values[0]).to_string()
+                }
+                _ => "stop called".to_string(),
+            };
+            Err(EvalError::Condition(message).into())
+        }
+        IN => {
+            let operands = eval_args(heap, interner, args, caller_env, 2)?;
+            membership_primitive(heap, operands[0], operands[1])
+        }
+        MATCH => {
+            let operands = eval_args(heap, interner, args, caller_env, 2)?;
+            match_primitive(heap, operands[0], operands[1])
+        }
         PASTE => paste_primitive(heap, interner, args, caller_env, " "),
         PASTE0 => paste_primitive(heap, interner, args, caller_env, ""),
         NCHAR => nchar_primitive(heap, interner, args, caller_env),
@@ -707,7 +732,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match",
     ]
 }
 
@@ -787,6 +812,9 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "any" => Some(ANY),
         "all" => Some(ALL),
         "ifelse" => Some(IFELSE),
+        "stop" => Some(STOP),
+        "%in%" => Some(IN),
+        "match" => Some(MATCH),
         _ => None,
     }
 }
@@ -2688,4 +2716,44 @@ fn ifelse_primitive(
         }
     }
     Ok(heap.alloc(RObject::Real(out)))
+}
+
+/// `%in%` — elementwise membership: logical vector marking each left
+/// element found in the right table. Numeric slice; NA never matches,
+/// exactly as GNU.
+fn membership_primitive(heap: &mut Heap, left: ValueId, right: ValueId) -> EvalResult {
+    let lhs = numerics_of(heap, left).map_err(RSignal::from)?;
+    let table = numerics_of(heap, right).map_err(RSignal::from)?;
+    let out: Vec<i32> = lhs
+        .iter()
+        .map(|v| {
+            if v.is_nan() {
+                0
+            } else {
+                table.iter().any(|t| !t.is_nan() && t == v) as i32
+            }
+        })
+        .collect();
+    Ok(heap.alloc(RObject::Logical(out)))
+}
+
+/// `match(x, table)` — 1-based first-match positions, NA for no match,
+/// GNU exactly. Numeric slice.
+fn match_primitive(heap: &mut Heap, left: ValueId, right: ValueId) -> EvalResult {
+    let lhs = numerics_of(heap, left).map_err(RSignal::from)?;
+    let table = numerics_of(heap, right).map_err(RSignal::from)?;
+    let na = crate::value::object::NA_INTEGER;
+    let out: Vec<i32> = lhs
+        .iter()
+        .map(|v| {
+            if v.is_nan() {
+                return na;
+            }
+            match table.iter().position(|t| !t.is_nan() && t == v) {
+                Some(position) => (position + 1) as i32,
+                None => na,
+            }
+        })
+        .collect();
+    Ok(heap.alloc(RObject::Integer(out)))
 }
