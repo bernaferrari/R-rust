@@ -1041,11 +1041,65 @@ fn call_primitive_inner(
             let raw = raw_args(heap, args);
             match raw.first() {
                 Some(expr) => {
-                    if let Some(RObject::Language { car, .. }) = heap.object(*expr) {
+                    if let Some(RObject::Language { car, cdr, .. }) = heap.object(*expr) {
+                        let inner_args = *cdr;
                         if let Some(RObject::Symbol { name, .. }) = heap.object(*car) {
                             let head = interner.symbol_name(*name).to_string();
+                            match head.as_str() {
+                                "isdebugged" => {
+                                    let ops = eval_args(heap, interner, inner_args, caller_env, 1)?;
+                                    let marked = heap.debugged.contains(&ops[0]);
+                                    return Ok(heap.alloc(RObject::Logical(vec![marked as i32])));
+                                }
+                                "debug" | "debugonce" | "undebug" => {
+                                    let ops = eval_args(heap, interner, inner_args, caller_env, 1)?;
+                                    if head == "undebug" {
+                                        heap.debugged.remove(&ops[0]);
+                                    } else {
+                                        heap.debugged.insert(ops[0]);
+                                    }
+                                    return Ok(ValueId::NIL);
+                                }
+                                "file.show" => {
+                                    // file.show(files, ...): contents stream
+                                    // to output with a trailing blank line,
+                                    // NULL invisibly; empty filenames raise
+                                    // the invalid-specification error.
+                                    let ops = eval_args(heap, interner, inner_args, caller_env, 1)?;
+                                    let files = string_vec(heap, interner, ops[0]);
+                                    if files.is_empty() {
+                                        return Err(EvalError::Condition(
+                                            "invalid filename specification".to_string(),
+                                        )
+                                        .into());
+                                    }
+                                    for path in &files {
+                                        if let Ok(content) = std::fs::read_to_string(path) {
+                                            heap.output.push_str(&content);
+                                            if !content.ends_with('\n') {
+                                                heap.output.push('\n');
+                                            }
+                                            heap.output.push('\n');
+                                        }
+                                    }
+                                    heap.visible = false;
+                                    return Ok(ValueId::NIL);
+                                }
+                                ".dfltWarn" => {
+                                    // The default warning handler — buffer
+                                    // the message exactly as warning() does.
+                                    let ops = eval_args(heap, interner, inner_args, caller_env, 1)?;
+                                    let text = string_operand(heap, interner, ops[0]).unwrap_or_default();
+                                    if !heap.warn_suppressed {
+                                        heap.pending_warnings.push(text);
+                                    }
+                                    heap.visible = false;
+                                    return Ok(ValueId::NIL);
+                                }
+                                _ => {}
+                            }
                             if primitive_id_for_name(&head).is_none()
-                                && !matches!(head.as_str(), "builtins" | "eval" | "substitute" | "sys.calls" | "sys.frames" | "sys.function" | "sys.parent" | "browser" | "traceback" | "gc")
+                                && !matches!(head.as_str(), "builtins" | "eval" | "substitute" | "sys.calls" | "sys.frames" | "sys.function" | "sys.parent" | "browser" | "traceback" | "gc" | "printDeferredWarnings")
                             {
                                 return Err(EvalError::Condition(format!(
                                     "there is no .Internal function '{head}'"

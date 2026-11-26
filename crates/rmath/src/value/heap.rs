@@ -42,6 +42,8 @@ pub struct Heap {
     /// S4 class registry — name → (ordered slots with types, contains
     /// parent) exactly as GNU's class table.
     pub s4_classes: std::collections::HashMap<String, (Vec<(String, String)>, Option<String>)>,
+    /// Debug-marked closures — the .Internal debug machinery's state.
+    pub debugged: std::collections::HashSet<crate::value::id::ValueId>,
     /// Interrupt suspension flag — GNU's interruptsSuspended state.
     pub interrupts_suspended: bool,
     /// bindtextdomain registry — domain to translation directory.
