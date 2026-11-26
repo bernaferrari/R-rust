@@ -176,6 +176,69 @@ impl ValueBridge {
                 self.attach_attributes(heap, interner, sexp, id)?;
                 Ok(id)
             }
+            SEXPTYPE::ENVSXP => {
+                // Environments pre-register empty: enclosure chains and
+                // binding values reference their own environment constantly
+                // in real object graphs, and the memoized identity is what
+                // makes those cycles terminate.
+                let id = heap.alloc(RObject::Environment {
+                    frame: crate::value::object::EnvFrame::Empty,
+                    enclos: ValueId::NIL,
+                });
+                self.forward.insert(key, id);
+
+                // The legacy frame is a pairlist of binding cells: each
+                // cell's tag is the binding symbol, its car the bound value.
+                let mut entries = Vec::new();
+                if let Ok(frame) = sexp.try_frame() {
+                    let mut cursor = Some(frame);
+                    while let Some(cell) = cursor {
+                        if cell.typeof_() != SEXPTYPE::LISTSXP {
+                            break;
+                        }
+                        let sym_id = cell
+                            .try_tag()
+                            .ok()
+                            .filter(|tag| tag.typeof_() == SEXPTYPE::SYMSXP)
+                            .and_then(|tag| tag.try_printname().ok())
+                            .and_then(|pname| pname.as_string())
+                            .map(|text| interner.intern_symbol(&text));
+                        let value = cell
+                            .try_car()
+                            .ok()
+                            .map(|car| self.import(heap, interner, &car))
+                            .transpose()?
+                            .unwrap_or(ValueId::NIL);
+                        if let Some(sym_id) = sym_id {
+                            entries.push((sym_id, value));
+                        }
+                        cursor = cell.try_cdr().ok().filter(|rest| {
+                            rest.typeof_() == SEXPTYPE::LISTSXP
+                        });
+                    }
+                }
+
+                let enclos = match sexp.enclos() {
+                    Some(parent) if parent.typeof_() != SEXPTYPE::NILSXP => {
+                        self.import(heap, interner, &parent)?
+                    }
+                    _ => ValueId::NIL,
+                };
+
+                let frame = if entries.is_empty() {
+                    crate::value::object::EnvFrame::Empty
+                } else {
+                    crate::value::object::EnvFrame::List(entries)
+                };
+                match heap.object_mut(id) {
+                    Some(slot @ RObject::Environment { .. }) => {
+                        *slot = RObject::Environment { frame, enclos };
+                    }
+                    _ => return Err(ImportError::TruncatedPayload),
+                }
+                self.attach_attributes(heap, interner, sexp, id)?;
+                Ok(id)
+            }
             SEXPTYPE::SYMSXP => {
                 // Symbols pre-register like pairlists: an unbound symbol's
                 // value edge can be the symbol itself, and the memoized
@@ -692,6 +755,102 @@ mod tests {
                 other => panic!("expected list vector, got {other:?}"),
             }
             drop(element);
+        });
+    }
+    #[test]
+    fn import_environment_preserves_bindings_and_enclosure() {
+        let session = crate::sexp::session::RSession::new();
+        session.with_active(|| {
+            let mut heap = Heap::new();
+            let mut interner = SymbolInterner::new();
+            let mut bridge = ValueBridge::new();
+
+            // parent env (empty) <- child env with binding x = 3.5, all in
+            // the instance heap where cross-references are natural.
+            let parent = unsafe {
+                crate::sexp::memory_ext::NewEnvironment(
+                    std::ptr::null_mut(),
+                    crate::sexp::globals::R_NilValue(),
+                    std::ptr::null_mut(),
+                )
+            };
+            let child = unsafe {
+                crate::sexp::memory_ext::NewEnvironment(
+                    std::ptr::null_mut(),
+                    parent,
+                    std::ptr::null_mut(),
+                )
+            };
+            assert!(!parent.is_null() && !child.is_null());
+
+            let sym = crate::sexp::symbol::install_str("x");
+            let value = crate::sexp::constructors::Rf_ScalarReal(3.5);
+            unsafe { crate::sexp::envir::defineVar(sym, value, child) };
+
+            crate::sexp::object::Sexp::with_registered_raw(child, |child| {
+                let id = bridge
+                    .import(&mut heap, &mut interner, child)
+                    .expect("environments import");
+                match heap.object(id) {
+                    Some(RObject::Environment { frame, enclos }) => {
+                        let sym_id = interner.intern_symbol("x");
+                        let bound = frame.get(sym_id).expect("binding x survives");
+                        match heap.object(bound) {
+                            Some(RObject::Real(values)) => {
+                                assert_eq!(values.as_slice(), &[3.5])
+                            }
+                            other => panic!("expected real binding, got {other:?}"),
+                        }
+                        assert!(
+                            matches!(
+                                heap.object(*enclos),
+                                Some(RObject::Environment { .. })
+                            ),
+                            "enclosure imports as an environment"
+                        );
+                    }
+                    other => panic!("expected environment, got {other:?}"),
+                }
+            })
+            .expect("registered env");
+        });
+    }
+
+    #[test]
+    fn import_environment_cycle_through_enclosure_terminates() {
+        let session = crate::sexp::session::RSession::new();
+        session.with_active(|| {
+            let mut heap = Heap::new();
+            let mut interner = SymbolInterner::new();
+            let mut bridge = ValueBridge::new();
+
+            // env that is its own enclosure — degenerate but legal, and the
+            // memoized pre-registration is the only thing that terminates it.
+            let env = unsafe {
+                crate::sexp::memory_ext::NewEnvironment(
+                    std::ptr::null_mut(),
+                    crate::sexp::globals::R_NilValue(),
+                    std::ptr::null_mut(),
+                )
+            };
+            assert!(!env.is_null());
+            unsafe { crate::sexp::accessors::SET_ENCLOS(env, env) };
+
+            crate::sexp::object::Sexp::with_registered_raw(env, |env_sexp| {
+                let id = bridge
+                    .import(&mut heap, &mut interner, env_sexp)
+                    .expect("self-enclosing environments import");
+                match heap.object(id) {
+                    Some(RObject::Environment { enclos, .. }) => {
+                        assert_eq!(
+                            *enclos, id,
+                            "the enclosure cycle must resolve to the env's own identity"
+                        );
+                    }
+                    other => panic!("expected environment, got {other:?}"),
+                }
+            })
+            .expect("registered env");
         });
     }
 }
