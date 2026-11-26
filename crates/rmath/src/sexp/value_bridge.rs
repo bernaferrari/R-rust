@@ -2092,6 +2092,8 @@ print(typeof(x))"#;
         println!("output={:?}", heap.output);
     }
 
+    #[test]
+    #[ignore]
     fn sweep_case_diff_probe() {
         let name = std::env::var("RPORT_SWEEP_CASE").expect("RPORT_SWEEP_CASE");
         let stem = name.trim_end_matches(".R").to_string();

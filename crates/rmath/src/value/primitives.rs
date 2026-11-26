@@ -210,6 +210,7 @@ pub(crate) fn call_primitive(
             id.0,
             ASSIGN | SUPERASSIGN | PRINT | CAT | INVISIBLE | WHILE | REPEAT | FOR
                 | WRITELINES | ASSIGN_FN | FILE_REMOVE | FILE_COPY | FILE_RENAME
+                | SYS_SETENV | SYS_UNSETENV | UNLINK
         );
     }
     result
@@ -5679,6 +5680,7 @@ fn grep_primitive(
     let mut x_arg = ValueId::NIL;
     let mut value_mode = false;
     let mut invert = false;
+    let mut ignore_case = false;
     let mut positional = 0usize;
     let mut cursor = args;
     loop {
@@ -5704,6 +5706,11 @@ fn grep_primitive(
                     invert = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
                 }
             }
+            Some("ignore.case") => {
+                if let Some(RObject::Logical(vals)) = heap.object(v) {
+                    ignore_case = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
+                }
+            }
             _ => {
                 if positional == 1 {
                     pattern_arg = v;
@@ -5717,33 +5724,25 @@ fn grep_primitive(
         }
         cursor = cdr;
     }
-    let pattern = string_operand(heap, interner, pattern_arg)
+    let pattern_raw = string_operand(heap, interner, pattern_arg)
         .ok_or(EvalError::TypeError("grep pattern must be character"))?;
+    let pattern = if ignore_case { pattern_raw.to_lowercase() } else { pattern_raw };
     let texts = string_vec(heap, interner, x_arg);
     let matches: Vec<bool> = texts
         .iter()
         .map(|text| {
+            // GNU: NA strings are simply non-matching — invert then selects
+            // them exactly as any non-match.
             if text == "\0NA" {
-                false
+                invert
             } else {
-                super::regex::regex_search(&pattern, text).is_some() != invert
+                let haystack = if ignore_case { text.to_lowercase() } else { text.clone() };
+                super::regex::regex_search(&pattern, &haystack).is_some() != invert
             }
         })
         .collect();
     if logical {
-        let out: Vec<i32> = texts
-            .iter()
-            .enumerate()
-            .map(|(i, _)| {
-                if texts[i] == "\0NA" {
-                    crate::value::object::NA_INTEGER
-                } else if matches[i] {
-                    1
-                } else {
-                    0
-                }
-            })
-            .collect();
+        let out: Vec<i32> = matches.iter().map(|m| if *m { 1 } else { 0 }).collect();
         return Ok(heap.alloc(RObject::Logical(out)));
     }
     if value_mode {
