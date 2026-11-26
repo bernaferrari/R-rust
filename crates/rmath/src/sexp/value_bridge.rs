@@ -1885,6 +1885,11 @@ mod tests {
             "tryCatch(1 + 2, error=function(e) 99)",
             "tryCatch(stop('boom'), error=function(e) 99)",
             "{ x <- tryCatch(stop('boom'), error=function(e) 42); x + 1 }",
+            "sort(c('b', 'a', 'c'))",
+            "unique(c('x', 'y', 'x'))",
+            "{ assign('zz', 42); zz }",
+            "{ assign('zz', 42); get('zz') }",
+            "{ e <- new.env(); assign('q', 9, e); get('q', e) }",
         ];
         // One session, one parse pass: expression objects stay valid for the
         // session's lifetime, so batching avoids per-program bootstrap cost.

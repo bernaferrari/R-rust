@@ -112,6 +112,12 @@ pub mod primitive_ids {
     /// Condition handling — tryCatch and condition introspection.
     pub const TRYCATCH: u32 = 104;
     pub const CONDITION_MESSAGE: u32 = 105;
+    /// Type introspection, structure manipulation, environment access.
+    pub const TYPEOF: u32 = 106;
+    pub const STRUCTURE: u32 = 107;
+    pub const ASSIGN_FN: u32 = 108;
+    pub const GET: u32 = 109;
+    pub const CHARACTER_CTOR: u32 = 110;
     /// Matrix construction and dimension introspection.
     pub const MATRIX: u32 = 100;
     pub const DIM: u32 = 101;
@@ -133,7 +139,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -298,6 +304,39 @@ pub(crate) fn call_primitive(
             Ok(operands[0])
         }
         TRYCATCH => trycatch_primitive(heap, interner, args, caller_env),
+        TYPEOF => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let type_name = match heap.object(operands[0]) {
+                Some(RObject::Nil) | None => "NULL",
+                Some(RObject::Logical(_)) => "logical",
+                Some(RObject::Integer(_)) => "integer",
+                Some(RObject::Real(_)) => "double",
+                Some(RObject::String(_)) => "character",
+                Some(RObject::Raw(_)) => "raw",
+                Some(RObject::List(_)) => "list",
+                Some(RObject::Closure { .. }) => "closure",
+                Some(RObject::Environment { .. }) => "environment",
+                Some(RObject::Symbol { .. }) => "symbol",
+                Some(RObject::Pairlist { .. }) => "pairlist",
+                Some(RObject::Language { .. }) => "language",
+                Some(RObject::Promise { .. }) => "promise",
+                _ => "unknown",
+            };
+            Ok(heap.alloc(RObject::String(vec![interner.intern_string(type_name)])))
+        }
+        STRUCTURE => structure_primitive(heap, interner, args, caller_env),
+        ASSIGN_FN => assign_primitive(heap, interner, args, caller_env),
+        GET => get_primitive(heap, interner, args, caller_env),
+        CHARACTER_CTOR => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let length = match heap.object(operands[0]) {
+                Some(RObject::Real(v)) if !v.is_empty() => v[0] as usize,
+                Some(RObject::Integer(v)) if !v.is_empty() => v[0] as usize,
+                _ => return Err(EvalError::TypeError("length must be scalar numeric").into()),
+            };
+            let empty = interner.intern_string("");
+            Ok(heap.alloc(RObject::String(vec![empty; length])))
+        }
         CONDITION_MESSAGE => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             // The condition object is a list with a message element —
@@ -864,7 +903,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -953,6 +992,11 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "$<-" => Some(DOLLAR_ASSIGN),
         "cat" => Some(CAT),
         "invisible" => Some(INVISIBLE),
+        "typeof" => Some(TYPEOF),
+        "structure" => Some(STRUCTURE),
+        "assign" => Some(ASSIGN_FN),
+        "get" => Some(GET),
+        "character" => Some(CHARACTER_CTOR),
         "tryCatch" => Some(TRYCATCH),
         "conditionMessage" => Some(CONDITION_MESSAGE),
         "matrix" => Some(MATRIX),
@@ -3050,6 +3094,43 @@ fn ordering_primitive(
     per_type!(Integer, is_na_int);
     per_type!(Real, is_na_real);
     per_type!(Logical, is_na_int);
+    // Character vectors order lexicographically — GNU's C-locale byte order
+    /// for the slice; the NA sentinel text sorts out exactly as numeric NA.
+    match heap.object(value) {
+        Some(RObject::String(values)) => {
+            let mut out: Vec<String> = values
+                .iter()
+                .map(|v| interner.string_text(*v).to_string())
+                .collect();
+            match op {
+                SORT => {
+                    out.retain(|v| v != "\0NA");
+                    out.sort();
+                    if decreasing {
+                        out.reverse();
+                    }
+                }
+                REV => out.reverse(),
+                _ => {
+                    let mut seen: Vec<String> = Vec::new();
+                    out.retain(|v| {
+                        if seen.contains(v) {
+                            false
+                        } else {
+                            seen.push(v.clone());
+                            true
+                        }
+                    });
+                }
+            }
+            let interned: Vec<super::intern::InternedStr> = out
+                .iter()
+                .map(|s| interner.intern_string(s))
+                .collect();
+            return Ok(heap.alloc(RObject::String(interned)));
+        }
+        _ => {}
+    }
     Err(EvalError::TypeError("ordering requires a numeric vector").into())
 }
 
@@ -3593,5 +3674,102 @@ fn trycatch_primitive(
         }
         // Control flow is not a condition — break/next/return propagate.
         Err(signal) => Err(signal),
+    }
+}
+
+/// `structure(x, ...)`: every tagged argument attaches as the attribute of
+/// its name — GNU's attribute-attachment interface exactly. Copy-on-write
+/// discipline as with all attribute mutation.
+fn structure_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let mut positional: Vec<ValueId> = Vec::new();
+    let mut tagged: Vec<(String, ValueId)> = Vec::new();
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let value = force_if_promise(heap, interner, evaluated)?;
+        match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => {
+                tagged.push((interner.symbol_name(*name).to_string(), value));
+            }
+            _ => positional.push(value),
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    let mut object = match positional.first() {
+        Some(v) => *v,
+        None => return Err(EvalError::TypeError("structure requires input").into()),
+    };
+    for (name, value) in tagged {
+        object = copy_with_attrib(heap, interner, object, &name, value).map_err(RSignal::from)?;
+    }
+    Ok(object)
+}
+
+/// `assign(name, value, envir)` — GNU's programmatic define: the name is a
+/// character string, the target environment defaults to the caller.
+fn assign_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    let name = match heap.object(operands[0]) {
+        Some(RObject::String(values)) if !values.is_empty() => {
+            interner.string_text(values[0]).to_string()
+        }
+        _ => return Err(EvalError::TypeError("assign requires a character name").into()),
+    };
+    let env = match raw_args(heap, args).get(2).copied() {
+        Some(expr) => {
+            let evaluated = eval(heap, interner, expr, caller_env)?;
+            force_if_promise(heap, interner, evaluated)?
+        }
+        None => caller_env,
+    };
+    let sym = interner.intern_symbol(&name);
+    crate::value::env::define(heap, env, sym, operands[1])
+        .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("assign define")))?;
+    // GNU: assign returns the value invisibly.
+    Ok(operands[1])
+}
+
+/// `get(name, envir)` — chain lookup by character name, GNU exactly.
+fn get_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    let name = match heap.object(operands[0]) {
+        Some(RObject::String(values)) if !values.is_empty() => {
+            interner.string_text(values[0]).to_string()
+        }
+        _ => return Err(EvalError::TypeError("get requires a character name").into()),
+    };
+    let env = match raw_args(heap, args).get(1).copied() {
+        Some(expr) => {
+            let evaluated = eval(heap, interner, expr, caller_env)?;
+            force_if_promise(heap, interner, evaluated)?
+        }
+        None => caller_env,
+    };
+    let sym = interner.intern_symbol(&name);
+    match crate::value::env::lookup(heap, env, sym) {
+        Some((_, binding)) => Ok(binding.value),
+        None => Err(EvalError::UnboundVariable(name).into()),
     }
 }
