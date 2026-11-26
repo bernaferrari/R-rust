@@ -2,7 +2,7 @@
 
 use r_device_android_headless::AndroidHeadlessRenderer;
 use r_graphics_engine::Color;
-use rmath::android::{RArenaStats, RResourceLimits, RRuntimeInfo, RValue};
+use rmath::host::{RArenaStats, RResourceLimits, RRuntimeInfo, RValue};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -23,11 +23,11 @@ use crate::packages::{
 pub struct RSession {
     session_id: u64,
     active: bool,
-    inner: rmath::android::RSession,
+    inner: rmath::host::RSession,
     /// Interactive graphics are recorded into a session-owned scene so a
     /// later command (for example `lines()`) can draw on the prior plot.
     interactive_scene: Option<r_graphics_engine::Scene>,
-    interactive_scene_reservation: Option<rmath::android::RWorkspaceReservation>,
+    interactive_scene_reservation: Option<rmath::host::RWorkspaceReservation>,
 }
 
 /// Owned result of an evaluation.
@@ -49,14 +49,14 @@ struct TrackingDrawTarget<'a> {
     target: &'a mut dyn r_graphics_engine::DrawTarget,
     drew: bool,
     retained_bytes: usize,
-    reservation: &'a mut rmath::android::RWorkspaceReservation,
+    reservation: &'a mut rmath::host::RWorkspaceReservation,
     budget_exceeded: bool,
 }
 
 impl TrackingDrawTarget<'_> {
     fn new<'a>(
         target: &'a mut r_graphics_engine::Scene,
-        reservation: &'a mut rmath::android::RWorkspaceReservation,
+        reservation: &'a mut rmath::host::RWorkspaceReservation,
     ) -> TrackingDrawTarget<'a> {
         TrackingDrawTarget {
             retained_bytes: scene_retained_bytes(target),
@@ -299,18 +299,18 @@ impl RSession {
     /// Initializes an isolated rmath session with its own arena, protection
     /// stack, environments, RNG state, and output capture.
     pub fn new() -> Result<Self, RSessionError> {
-        Self::construct(rmath::android::RSession::new)
+        Self::construct(rmath::host::RSession::new)
     }
 
     /// Initialize with explicit paths, without discovering host R libraries.
     pub fn new_with_path_policy(
-        policy: rmath::android::RuntimePathPolicy,
+        policy: rmath::host::RuntimePathPolicy,
     ) -> Result<Self, RSessionError> {
-        Self::construct(|| rmath::android::RSession::new_with_path_policy(policy))
+        Self::construct(|| rmath::host::RSession::new_with_path_policy(policy))
     }
 
     fn construct(
-        constructor: impl FnOnce() -> rmath::android::RSession,
+        constructor: impl FnOnce() -> rmath::host::RSession,
     ) -> Result<Self, RSessionError> {
         // Preserve the pinned toolchain's checked fetch-update semantics
         // without the name deprecated by the newer Wasm toolchain.
@@ -364,7 +364,7 @@ impl RSession {
         Ok(self.browser_file_session()?.remove_file(path))
     }
 
-    fn browser_file_session(&mut self) -> Result<&mut rmath::android::RSession, RSessionError> {
+    fn browser_file_session(&mut self) -> Result<&mut rmath::host::RSession, RSessionError> {
         if !self.active {
             return Err(RSessionError::EvalError("Session closed".into()));
         }
@@ -500,14 +500,14 @@ impl RSession {
     }
 
     /// Return a snapshot of this session's arena allocator.
-    pub fn memory_usage(&mut self) -> Option<rmath::android::RMemoryUsage> {
+    pub fn memory_usage(&mut self) -> Option<rmath::host::RMemoryUsage> {
         self.inner.memory_usage()
     }
 
     pub fn reserve_workspace(
         &mut self,
         bytes: usize,
-    ) -> Result<rmath::android::RWorkspaceReservation, RSessionError> {
+    ) -> Result<rmath::host::RWorkspaceReservation, RSessionError> {
         self.inner
             .reserve_workspace(bytes)
             .map_err(RSessionError::EvalError)
@@ -894,7 +894,7 @@ impl Drop for RSession {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ValueHandle {
     session_id: u64,
-    value: rmath::android::RetainedValueId,
+    value: rmath::host::RetainedValueId,
 }
 
 impl ValueHandle {
@@ -953,7 +953,7 @@ impl ReadGuard<'_> {
 /// until [`RSession::remove_handle`] or session close.
 pub struct WriteGuard<'s> {
     session: &'s mut RSession,
-    value: rmath::android::RetainedValueId,
+    value: rmath::host::RetainedValueId,
 }
 
 impl std::fmt::Debug for WriteGuard<'_> {

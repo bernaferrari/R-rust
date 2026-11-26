@@ -176,7 +176,7 @@ pub mod tzone;
 pub mod tzone_strftime;
 pub mod xdr;
 
-pub mod android;
+pub mod host;
 #[allow(dead_code, non_camel_case_types)]
 pub(crate) mod eval;
 #[allow(dead_code, non_camel_case_types)]

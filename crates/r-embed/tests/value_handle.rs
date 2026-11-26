@@ -7,8 +7,8 @@
 
 use r_embed::RSession;
 
-fn real(x: &[f64]) -> rmath::android::RValue {
-    rmath::android::RValue::RealVector(x.iter().copied().map(Some).collect())
+fn real(x: &[f64]) -> rmath::host::RValue {
+    rmath::host::RValue::RealVector(x.iter().copied().map(Some).collect())
 }
 
 #[test]
@@ -61,7 +61,7 @@ fn write_guard_set_and_update() {
     }
     let guard = session.read_handle(&handle).expect("read after update");
     // R collapses the length-1 result to a scalar.
-    assert_eq!(*guard, rmath::android::RValue::Real(Some(218.0)));
+    assert_eq!(*guard, rmath::host::RValue::Real(Some(218.0)));
 }
 #[test]
 fn failed_set_keeps_previous_binding() {
@@ -72,7 +72,7 @@ fn failed_set_keeps_previous_binding() {
         assert!(writer.set("stop('boom')").is_err());
     }
     let guard = session.read_handle(&handle).expect("still readable");
-    assert_eq!(*guard, rmath::android::RValue::Real(Some(42.0)));
+    assert_eq!(*guard, rmath::host::RValue::Real(Some(42.0)));
 }
 
 #[test]
@@ -107,7 +107,7 @@ fn foreign_session_handle_is_rejected() {
     assert!(b.write_handle(&handle).is_err());
     // The handle still works on its own session.
     let guard = a.read_handle(&handle).expect("still valid on a");
-    assert_eq!(*guard, rmath::android::RValue::Real(Some(1.0)));
+    assert_eq!(*guard, rmath::host::RValue::Real(Some(1.0)));
 }
 
 #[test]
@@ -124,7 +124,7 @@ fn define_failure_yields_no_handle_slot() {
     );
     let handle = session.define_handle("11").expect("second define");
     let guard = session.read_handle(&handle).expect("read");
-    assert_eq!(*guard, rmath::android::RValue::Real(Some(11.0)));
+    assert_eq!(*guard, rmath::host::RValue::Real(Some(11.0)));
 }
 
 #[test]
@@ -134,12 +134,12 @@ fn multi_statement_define_and_null_values_roundtrip() {
         .define_handle("a <- 6; a * 7")
         .expect("multi-statement define");
     let guard = session.read_handle(&handle).expect("read");
-    assert_eq!(*guard, rmath::android::RValue::Real(Some(42.0)));
+    assert_eq!(*guard, rmath::host::RValue::Real(Some(42.0)));
     drop(guard);
 
     let null_handle = session.define_handle("NULL").expect("null define");
     let guard = session.read_handle(&null_handle).expect("null read");
-    assert_eq!(*guard, rmath::android::RValue::Null);
+    assert_eq!(*guard, rmath::host::RValue::Null);
 }
 
 #[test]
@@ -169,7 +169,7 @@ fn ordinary_reserved_name_binding_is_visible_and_cannot_redirect_handles() {
     );
     assert_eq!(
         *session.read_handle(&handle).expect("read"),
-        rmath::android::RValue::Real(Some(42.0))
+        rmath::host::RValue::Real(Some(42.0))
     );
     session
         .write_handle(&handle)
@@ -178,7 +178,7 @@ fn ordinary_reserved_name_binding_is_visible_and_cannot_redirect_handles() {
         .expect("update");
     assert_eq!(
         *session.read_handle(&handle).expect("updated"),
-        rmath::android::RValue::Real(Some(43.0))
+        rmath::host::RValue::Real(Some(43.0))
     );
 }
 
@@ -206,7 +206,7 @@ fn failed_update_preserves_shared_vector_and_private_dot_frame() {
     );
     assert_eq!(
         session.eval_result(".").expect("global dot").value,
-        rmath::android::RValue::Real(Some(90.0))
+        rmath::host::RValue::Real(Some(90.0))
     );
     session
         .write_handle(&handle)

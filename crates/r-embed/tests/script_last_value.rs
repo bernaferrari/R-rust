@@ -1,4 +1,4 @@
-use rmath::android::{RSession, RuntimePathPolicy, TopLevelEvaluationMode};
+use rmath::host::{RSession, RuntimePathPolicy, TopLevelEvaluationMode};
 
 #[test]
 fn batch_scripts_preserve_user_last_value_and_console_publication_under_both_policies() {

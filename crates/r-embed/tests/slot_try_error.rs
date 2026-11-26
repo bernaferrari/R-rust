@@ -82,12 +82,12 @@ fn explicit_error_call_survives_try_and_handler_callbacks() {
 fn uncaught_top_level_stop_matches_original_gnu_error_cases() {
     for portable in [false, true] {
         let mut session = if portable {
-            rmath::android::RSession::new_with_path_policy(rmath::android::RuntimePathPolicy::new(
+            rmath::host::RSession::new_with_path_policy(rmath::host::RuntimePathPolicy::new(
                 Vec::new(),
                 std::env::temp_dir(),
             ))
         } else {
-            rmath::android::RSession::new()
+            rmath::host::RSession::new()
         };
         for (source, expected) in [
             (
@@ -104,7 +104,7 @@ fn uncaught_top_level_stop_matches_original_gnu_error_cases() {
             ),
         ] {
             let result = session.eval_script(source);
-            assert!(matches!(result.typed, rmath::android::RValue::Error(_)));
+            assert!(matches!(result.typed, rmath::host::RValue::Error(_)));
             assert_eq!(result.output, expected, "portable={portable}");
         }
         assert_eq!(session.eval_script("1 + 1").output, "[1] 2\n");

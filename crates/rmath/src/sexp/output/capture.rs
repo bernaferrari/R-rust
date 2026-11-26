@@ -676,7 +676,7 @@ pub(crate) fn result_admission_error(x: Sexp<'_>) -> Option<String> {
         unsafe { (*inst).output_capture.borrow().max_bytes }
     })
     .flatten()?;
-    crate::android::result_budget::admit(x, limit)
+    crate::host::result_budget::admit(x, limit)
         .err()
         .map(|message| format!("[{message}]"))
 }

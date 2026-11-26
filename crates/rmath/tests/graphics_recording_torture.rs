@@ -6,9 +6,9 @@
 #![cfg(feature = "renderplot-device")]
 
 use r_graphics_engine::{DrawTarget, Scene};
-use rmath::android::{RSession, RValue};
+use rmath::host::{RSession, RValue};
 
-fn assert_ok(result: &rmath::android::RResult) {
+fn assert_ok(result: &rmath::host::RResult) {
     assert!(
         !matches!(result.typed, RValue::Error(_)),
         "{}",

@@ -16,7 +16,7 @@ pub fn run_tests() -> Result<(), String> {
     // --- R level: dispatch wiring (nc > 200 -> walker, else plain path) ---
     // Values must match stock R exactly (see doc comment); n = 200/201 is
     // the dispatch boundary in random.c do_sample.
-    let mut session = rmath::android::RSession::new();
+    let mut session = rmath::host::RSession::new();
     session.enable_host_process_capabilities();
     let cases: &[(&str, &str)] = &[
         (
@@ -57,7 +57,7 @@ pub fn run_tests() -> Result<(), String> {
     ];
     for (code, want) in cases {
         let result = session.eval(code);
-        if matches!(result.typed, rmath::android::RValue::Error(_)) {
+        if matches!(result.typed, rmath::host::RValue::Error(_)) {
             return Err(format!("eval failed: {code} => {}", result.output));
         }
         let out = result.output.trim();

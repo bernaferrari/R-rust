@@ -1996,8 +1996,8 @@ mod tests {
 
     #[test]
     fn par_updates_are_session_local() {
-        let mut left = crate::android::RSession::new();
-        let mut right = crate::android::RSession::new();
+        let mut left = crate::host::RSession::new();
+        let mut right = crate::host::RSession::new();
 
         let left_result =
             left.eval("par(mar = c(1, 2, 3, 4)); cat(paste(par('mar'), collapse=','))");
@@ -2009,7 +2009,7 @@ mod tests {
 
     #[test]
     fn par_reports_full_and_writable_parameter_sets() {
-        let mut session = crate::android::RSession::new();
+        let mut session = crate::host::RSession::new();
         let result = session.eval("cat(length(par()), length(par(no.readonly = TRUE)))");
         assert_eq!(result.output.trim(), "72 66");
     }
@@ -2071,7 +2071,7 @@ mod tests {
 
     #[test]
     fn layout_updates_session_local_par_state() {
-        let mut session = crate::android::RSession::new();
+        let mut session = crate::host::RSession::new();
         let result = session.eval(
             "layout(matrix(1:4, 2, 2)); cat(layout(matrix(1:9, 3, 3)), paste(par('mfg'), collapse=','), par('cex'), par('mex'))",
         );

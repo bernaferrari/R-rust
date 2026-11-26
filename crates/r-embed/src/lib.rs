@@ -18,7 +18,7 @@
 mod packages;
 mod session;
 
-pub use rmath::android::{
+pub use rmath::host::{
     RArenaStats, RAttribute, RComplexValue, RMemoryUsage, RMetadata, RResourceLimits, RRuntimeInfo,
     RValue, RWorkspaceReservation, RuntimePathPolicy,
 };

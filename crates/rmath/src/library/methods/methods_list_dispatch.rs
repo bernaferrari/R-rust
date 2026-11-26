@@ -1764,7 +1764,7 @@ mod tests {
 
     #[test]
     fn probe_set_generic_set_method_dispatch_returns_42() {
-        let mut session = crate::android::RSession::new();
+        let mut session = crate::host::RSession::new();
 
         // setGeneric rebinds `show` to a generic closure carrying the
         let a = session.eval("setGeneric(\"show\", function(object) standardGeneric(\"show\"))");
@@ -1781,7 +1781,7 @@ mod tests {
 
     #[test]
     fn extends_and_method_dispatch_integration_via_session_eval() {
-        let mut session = crate::android::RSession::new();
+        let mut session = crate::host::RSession::new();
 
         let extends = session.eval("extends(\"integer\", \"vector\")");
         assert_eq!(extends.output.trim_end(), "[1] TRUE");

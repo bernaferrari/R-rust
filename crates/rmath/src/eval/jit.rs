@@ -1586,7 +1586,7 @@ mod tests {
 
     #[test]
     fn exec_and_tailcall_special_forms_evaluate_target_calls() {
-        let mut session = crate::android::RSession::new();
+        let mut session = crate::host::RSession::new();
 
         let exec = session.eval("x <- 6\nExec(quote(identity(x)))");
         assert_eq!(exec.output, "[1] 6\n");
@@ -1597,7 +1597,7 @@ mod tests {
 
     #[test]
     fn tailcall_recursion_uses_exec_continuations_in_tail_position() {
-        let mut session = crate::android::RSession::new();
+        let mut session = crate::host::RSession::new();
         let result = session.eval(
             "countdown <- function(n) if (n <= 0) 0 else Tailcall(countdown, n - 1)\ncountdown(5)",
         );
@@ -1606,7 +1606,7 @@ mod tests {
 
     #[test]
     fn exec_and_tailcall_are_registered_as_primitives() {
-        let mut session = crate::android::RSession::new();
+        let mut session = crate::host::RSession::new();
 
         let exec = session.eval("is.primitive(Exec)");
         assert_eq!(exec.output, "[1] TRUE\n");
@@ -1617,7 +1617,7 @@ mod tests {
 
     #[test]
     fn tailcall_at_top_level_evaluates_in_place() {
-        let mut session = crate::android::RSession::new();
+        let mut session = crate::host::RSession::new();
         let result = session.eval(
             "x <- structure(pi, class = \"testit\")\n\
              top <- Tailcall(identity, 1)\n\
@@ -1626,7 +1626,7 @@ mod tests {
              c(top, via, inherits(caught, \"try-error\"))",
         );
         assert!(
-            !matches!(result.typed, crate::android::RValue::Error(_)),
+            !matches!(result.typed, crate::host::RValue::Error(_)),
             "stdout={} stderr={}",
             result.stdout,
             result.stderr

@@ -1,6 +1,6 @@
 #![cfg(feature = "memory-profiling")]
 //! Real closure and native tryCatch frames compose into GNU's trace chain.
-use rmath::android::{RSession, RValue};
+use rmath::host::{RSession, RValue};
 
 #[test]
 fn native_trycatch_trace_keeps_gnu_frames_around_the_real_try_closure() {
