@@ -69,6 +69,12 @@ pub mod primitive_ids {
     /// String operations.
     pub const PASTE: u32 = 61;
     pub const PASTE0: u32 = 64;
+    /// Subscript replacement — `[<-` returns the modified copy.
+    pub const SUBSET_ASSIGN: u32 = 65;
+    /// Vector constructors — numeric/integer/logical of length n.
+    pub const NUMERIC: u32 = 66;
+    pub const INTEGER_CTOR: u32 = 67;
+    pub const LOGICAL_CTOR: u32 = 68;
     pub const NCHAR: u32 = 62;
     pub const PRINT: u32 = 63;
     pub const EXP: u32 = 55;
@@ -77,7 +83,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUM, SUPERASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -116,6 +122,10 @@ pub(crate) fn call_primitive(
         SHORT_AND | SHORT_OR => logic_short_circuit(heap, interner, id.0, args, caller_env),
         SUM | PROD | MIN | MAX => reduction(heap, interner, id.0, args, caller_env),
         EXTRACT => extract_primitive(heap, interner, args, caller_env),
+        SUBSET_ASSIGN => subset_assign_primitive(heap, interner, args, caller_env),
+        NUMERIC | INTEGER_CTOR | LOGICAL_CTOR => {
+            vector_constructor(heap, interner, id.0, args, caller_env)
+        }
         PASTE => paste_primitive(heap, interner, args, caller_env, " "),
         PASTE0 => paste_primitive(heap, interner, args, caller_env, ""),
         NCHAR => nchar_primitive(heap, interner, args, caller_env),
@@ -229,6 +239,12 @@ fn assign_form(
     }
     let sym = match heap.object(parts[0]) {
         Some(RObject::Symbol { name, .. }) => *name,
+        Some(RObject::Language { .. }) => {
+            // Replacement desugar: `x[i] <- v` is the replacement call
+            // `x <- `[<-`(x, i, v)` — the evaluator recognizes the target's
+            // call shape exactly as GNU's eval does.
+            return assign_replacement(heap, interner, parts[0], parts[1], caller_env);
+        }
         _ => {
             return Err(EvalError::TypeError("assignment target must be a symbol").into());
         }
@@ -589,7 +605,8 @@ pub fn primitive_names() -> &'static [&'static str] {
         "+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!=", "if", "{", "<-", "=",
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
-        "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print",
+        "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
+        "numeric", "integer", "logical",
     ]
 }
 
@@ -643,6 +660,10 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "paste0" => Some(PASTE0),
         "nchar" => Some(NCHAR),
         "print" => Some(PRINT),
+        "[<-" => Some(SUBSET_ASSIGN),
+        "numeric" => Some(NUMERIC),
+        "integer" => Some(INTEGER_CTOR),
+        "logical" => Some(LOGICAL_CTOR),
         _ => None,
     }
 }
@@ -1481,4 +1502,194 @@ fn nchar_primitive(
         .map(|s| interner.string_text(*s).chars().count() as i32)
         .collect();
     Ok(heap.alloc(RObject::Integer(counts)))
+}
+
+/// The replacement-assignment desugar: `x[i] <- v` where the target is a
+/// `[` call. The slice requires the subscripted object be a plain symbol —
+/// nested replacement chains are deep GNU territory beyond the migration
+/// scaffolding.
+fn assign_replacement(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    target: ValueId,
+    rhs: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let (head, args) = match heap.object(target) {
+        Some(RObject::Language { car, cdr, .. }) => (*car, *cdr),
+        _ => return Err(EvalError::TypeError("unsupported assignment target").into()),
+    };
+    let head_name = match heap.object(head) {
+        Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+        _ => return Err(EvalError::TypeError("unsupported assignment target").into()),
+    };
+    if head_name != "[" {
+        return Err(EvalError::TypeError("unsupported replacement target").into());
+    }
+    let call_args = raw_args(heap, args);
+    if call_args.len() != 2 {
+        return Err(EvalError::UnsupportedForm("replacement arity").into());
+    }
+    let sym = match heap.object(call_args[0]) {
+        Some(RObject::Symbol { name, .. }) => *name,
+        _ => return Err(EvalError::TypeError("replacement object must be a symbol").into()),
+    };
+    // The object is the symbol's current binding, exactly GNU.
+    let object = eval(heap, interner, call_args[0], caller_env)?;
+    let object = force_if_promise(heap, interner, object)?;
+    let index = eval(heap, interner, call_args[1], caller_env)?;
+    let index = force_if_promise(heap, interner, index)?;
+    let value = eval(heap, interner, rhs, caller_env)?;
+    let value = force_if_promise(heap, interner, value)?;
+    let replaced = subset_replace(heap, object, index, value).map_err(RSignal::from)?;
+    crate::value::env::define(heap, caller_env, sym, replaced)
+        .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("replacement define")))?;
+    // Replacement assignments evaluate to the assigned value in GNU — the
+    // right-hand value, not the whole modified object.
+    Ok(value)
+}
+
+/// `[<-` as a primitive: positional arguments object, index, value.
+fn subset_assign_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 3)?;
+    subset_replace(heap, operands[0], operands[1], operands[2]).map_err(RSignal::from)
+}
+
+/// The replacement core: copy the object with positions replaced by the
+/// recycled value. Positive out-of-range indices extend the vector with NA
+/// padding exactly as GNU. Negative indices replace everything but the
+/// excluded positions. Logical indices select replacement positions. The
+/// slice requires the value's type match the object's — type promotion in
+/// replacement is documented as future work.
+fn subset_replace(
+    heap: &mut Heap,
+    object: ValueId,
+    index: ValueId,
+    value: ValueId,
+) -> Result<ValueId, EvalError> {
+    // Resolve positions exactly as subsetting does, but out-of-range
+    // positive indices extend rather than pad-NA-read.
+    let length = vector_length(heap, object)
+        .ok_or(EvalError::TypeError("replacement requires a vector"))?;
+    enum Positions {
+        Replace(Vec<usize>),
+    }
+    let positions = match heap.object(index) {
+        Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => {
+            let values = values.clone();
+            let is_logical = matches!(heap.object(index), Some(RObject::Logical(_)));
+            if is_logical {
+                let mut out = Vec::new();
+                for i in 0..length.max(values.len()) {
+                    let flag = values[i % values.len().max(1)];
+                    if flag != 0 && flag != crate::value::object::NA_INTEGER {
+                        out.push(i);
+                    }
+                }
+                Positions::Replace(out)
+            } else if values.iter().any(|v| *v < 0 && *v != crate::value::object::NA_INTEGER) {
+                let excluded: Vec<usize> = values
+                    .iter()
+                    .filter(|v| **v < 0 && **v != crate::value::object::NA_INTEGER)
+                    .map(|v| (-*v - 1) as usize)
+                    .collect();
+                Positions::Replace((0..length).filter(|i| !excluded.contains(i)).collect())
+            } else {
+                Positions::Replace(
+                    values
+                        .iter()
+                        .filter(|v| **v > 0)
+                        .map(|v| (*v - 1) as usize)
+                        .collect(),
+                )
+            }
+        }
+        Some(RObject::Real(values)) => {
+            let truncs: Vec<i32> = values.iter().map(|v| *v as i32).collect();
+            let truncated = heap.alloc(RObject::Integer(truncs));
+            return subset_replace(heap, object, truncated, value);
+        }
+        _ => return Err(EvalError::TypeError("unsupported replacement index")),
+    };
+    let Positions::Replace(positions) = positions;
+    if positions.is_empty() {
+        return Ok(object);
+    }
+
+    macro_rules! replace_typed {
+        ($variant:ident, $na:expr) => {
+            match (heap.object(object), heap.object(value)) {
+                (Some(RObject::$variant(target)), Some(RObject::$variant(replacements))) => {
+                    let mut out = target.clone();
+                    let replacements = replacements.clone();
+                    let required = positions.iter().max().map(|m| m + 1).unwrap_or(0);
+                    while out.len() < required {
+                        out.push($na);
+                    }
+                    for (n, pos) in positions.iter().enumerate() {
+                        out[*pos] = replacements[n % replacements.len()];
+                    }
+                    return Ok(heap.alloc(RObject::$variant(out)));
+                }
+                _ => {}
+            }
+        };
+    }
+    replace_typed!(Logical, crate::value::object::NA_INTEGER);
+    replace_typed!(Integer, crate::value::object::NA_INTEGER);
+    replace_typed!(Real, f64::from_bits(crate::value::object::NA_REAL_BITS));
+    replace_typed!(Raw, 0u8);
+    // Integer object with real value: GNU widens the whole vector to real.
+    if let (Some(RObject::Integer(target)), Some(RObject::Real(replacements))) =
+        (heap.object(object), heap.object(value))
+    {
+        let mut out: Vec<f64> = target
+            .iter()
+            .map(|v| {
+                if *v == crate::value::object::NA_INTEGER {
+                    f64::from_bits(crate::value::object::NA_REAL_BITS)
+                } else {
+                    *v as f64
+                }
+            })
+            .collect();
+        let replacements = replacements.clone();
+        let required = positions.iter().max().map(|m| m + 1).unwrap_or(0);
+        while out.len() < required {
+            out.push(f64::from_bits(crate::value::object::NA_REAL_BITS));
+        }
+        for (n, pos) in positions.iter().enumerate() {
+            out[*pos] = replacements[n % replacements.len()];
+        }
+        return Ok(heap.alloc(RObject::Real(out)));
+    }
+    Err(EvalError::TypeError("replacement type mismatch"))
+}
+
+/// `numeric(n)`/`integer(n)`/`logical(n)` — zero/FALSE-filled vectors of
+/// the requested length, GNU's constructor defaults exactly.
+fn vector_constructor(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    op: u32,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    let length = match heap.object(operands[0]) {
+        Some(RObject::Real(v)) if !v.is_empty() => v[0] as usize,
+        Some(RObject::Integer(v)) if !v.is_empty() => v[0] as usize,
+        _ => return Err(EvalError::TypeError("length must be scalar numeric").into()),
+    };
+    let body = match op {
+        NUMERIC => RObject::Real(vec![0.0; length]),
+        INTEGER_CTOR => RObject::Integer(vec![0; length]),
+        _ => RObject::Logical(vec![0; length]),
+    };
+    Ok(heap.alloc(body))
 }

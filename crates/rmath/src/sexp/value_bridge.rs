@@ -1801,6 +1801,13 @@ mod tests {
             "paste(\"a\", \"b\", sep=\"/\")",
             "nchar(c(\"ab\", \"c\"))",
             "{ x <- paste(\"v\", 1:5); nchar(x) }",
+            "{ x <- 1:5; x[2] <- 99; x }",
+            "{ x <- 1:3; x[5] <- 9; x }",
+            "{ x <- c(1, 2, 3); x[c(1, 3)] <- c(10, 30); x }",
+            "{ x <- 1:5; x[c(TRUE, FALSE)] <- 0; x }",
+            "{ x <- 1:4; x[-2] <- c(7, 8, 9); x }",
+            "{ x <- 1:3; x[2] <- 1.5; x }",
+            "{ total <- numeric(0); total[1] <- 5; total }",
         ];
         // One session, one parse pass: expression objects stay valid for the
         // session's lifetime, so batching avoids per-program bootstrap cost.
