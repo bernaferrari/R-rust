@@ -72,6 +72,10 @@ pub fn do_subset3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let _ans_guard = protect(ans);
         if !isNull(ans) && !isNull(CAR(ans)) && !isNull(CADR(fixed_args)) {
             ans = R_subset3_dflt(CAR(ans), STRING_ELT(CADR(fixed_args), 0), call);
+        } else {
+            // Extraction from NULL is NULL: the undispatched answer cell is
+            // still the argument pairlist, never the extracted value.
+            ans = R_NilValue();
         }
         ans
     }

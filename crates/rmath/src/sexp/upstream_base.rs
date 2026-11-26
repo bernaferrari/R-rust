@@ -1192,6 +1192,16 @@ pub(crate) fn load_upstream_base_sources(base_env: SEXP) {
     load_fortran_symbol_bindings(base_env);
     load_profile_common_bindings(base_env);
     load_lazy_native_symbol_info(base_env, namespace);
+    // Oracle-recovered closures and sourced files can leave a captured
+    // `.GlobalEnv` binding in the staging environment that encloses every
+    // upstream closure; it shadows the live workspace (the capture even
+    // contains build-time leftovers), corrupting `save.image()` and any
+    // package code that mentions `.GlobalEnv`. Restore the session binding.
+    crate::sexp::envir::defineVar(
+        Rf_install_in_current(".GlobalEnv"),
+        crate::sexp::globals::R_GlobalEnv(),
+        staging,
+    );
 }
 
 /// GNU registers the `appl` Fortran routines as `.F_*` symbols in the base

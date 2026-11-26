@@ -12,6 +12,14 @@ pub(super) fn base() -> SexpResult<Sexp<'static>> {
         .into_owned()
 }
 
+pub(super) fn global_env() -> SexpResult<Sexp<'static>> {
+    // SAFETY: invoked only by the translated package/session entry while active.
+
+    OwnerToken::current()?
+        .sexp(crate::sexp::globals::R_GlobalEnv())?
+        .into_owned()
+}
+
 pub(super) fn base_namespace(access: &RuntimeAccess) -> SexpResult<Sexp<'static>> {
     access.with_native(|owner| {
         owner

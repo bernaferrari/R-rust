@@ -492,6 +492,17 @@ fn namespace_in(
             &domain.nil(),
         )?;
     }
+    // GNU binds `.GlobalEnv` in the base namespace at runtime; the captured
+    // image instead carries the oracle build-time workspace snapshot (which
+    // even contains leftover objects), shadowing the session workspace for
+    // every closure enclosed by this namespace. Rebind it to the live global
+    // environment so `save.image()` and any `.GlobalEnv` reference inside
+    // package code resolve the real session workspace.
+    let captured_global = super::bridge::lookup(access, &namespace, ".GlobalEnv")?;
+    if captured_global != domain.unbound() {
+        let live_global = super::bridge::global_env()?;
+        super::bridge::bind(access, &namespace, ".GlobalEnv", &live_global)?;
+    }
     // The complete original lazy bindings and metadata exist before publication.
     // Namespace references/onLoad legitimately resolve the in-flight identity.
     let publication = super::bridge::Publication::begin(access, image, &namespace)?;

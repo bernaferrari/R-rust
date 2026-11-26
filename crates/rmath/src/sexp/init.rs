@@ -115,6 +115,18 @@ pub(crate) unsafe fn initialize_base_bindings_in(inst: *mut RInstance, base_env:
             require_initialization_live(&pin);
             initialize_base_functions(base_env);
             require_initialization_live(&pin);
+            // Sourcing the upstream base package rebinds `.GlobalEnv` to the
+            // loader's evaluation frame in some package-build captures;
+            // restore the live workspace binding afterwards so closures
+            // enclosed by the base namespace resolve the real session
+            // workspace (GNU keeps this binding correct for the whole
+            // session lifetime).
+            defineVar(
+                Rf_install_in_current(".GlobalEnv"),
+                super::globals::R_GlobalEnv(),
+                base_env,
+            );
+            require_initialization_live(&pin);
             initialize_primitive_metadata_in(base_env);
             require_initialization_live(&pin);
             crate::library::stats::init::R_init_stats(std::ptr::null_mut());
