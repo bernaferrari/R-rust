@@ -2462,6 +2462,16 @@ fn call_primitive_inner(
                     })
                     .collect(),
                 Some(RObject::Raw(vals)) => vals.clone(),
+                Some(RObject::Complex(vals)) => vals
+                    .iter()
+                    .map(|z| {
+                        if z.r.is_nan() || z.r < 0.0 || z.r > 255.0 {
+                            0u8
+                        } else {
+                            z.r as u8
+                        }
+                    })
+                    .collect(),
                 _ => Vec::new(),
             };
             Ok(heap.alloc(RObject::Raw(out)))
@@ -5628,6 +5638,10 @@ fn strings_of_value(
                 interner.intern_string(&text)
             })
             .collect()),
+        Some(RObject::Raw(values)) => Ok(values
+            .iter()
+            .map(|v| interner.intern_string(&format!("{v:02x}")))
+            .collect()),
         _ => Err(EvalError::TypeError("cannot coerce to character")),
     }
 }
@@ -8509,6 +8523,19 @@ fn coerce_logical(
                 _ => crate::value::object::NA_INTEGER,
             })
             .collect(),
+        Some(RObject::Raw(values)) => values.iter().map(|v| if *v == 0 { 0 } else { 1 }).collect(),
+        Some(RObject::Complex(values)) => values
+            .iter()
+            .map(|z| {
+                if z.r.is_nan() || z.i.is_nan() {
+                    crate::value::object::NA_INTEGER
+                } else if z.r != 0.0 || z.i != 0.0 {
+                    1
+                } else {
+                    0
+                }
+            })
+            .collect(),
         _ => return Err(EvalError::TypeError("cannot coerce to logical").into()),
     };
     Ok(heap.alloc(RObject::Logical(out)))
@@ -10090,6 +10117,11 @@ fn coerce_character(
                 }
             })
             .collect(),
+        // Raw renders as hex pairs exactly as GNU's as.character.raw.
+        Some(RObject::Raw(values)) => values
+            .iter()
+            .map(|&v| interner.intern_string(&format!("{v:02x}")))
+            .collect(),
         _ => Vec::new(),
     };
     Ok(heap.alloc(RObject::String(out)))
@@ -10685,6 +10717,7 @@ fn as_complex_vec(heap: &Heap, value: ValueId) -> Result<Vec<crate::value::objec
                 }
             })
             .collect()),
+        Some(RObject::Raw(vals)) => Ok(vals.iter().map(|&v| RComplex { r: v as f64, i: 0.0 }).collect()),
         _ => Err(EvalError::TypeError("non-numeric argument to binary operator")),
     }
 }
@@ -11123,6 +11156,18 @@ fn coerce_integer(
                 }
             })
             .collect(),
+        Some(RObject::Raw(values)) => values.iter().map(|v| *v as i32).collect(),
+        // Complex drops the imaginary part exactly as GNU's coercion.
+        Some(RObject::Complex(values)) => values
+            .iter()
+            .map(|z| {
+                if z.r.is_nan() || z.r.is_infinite() || z.r > i32::MAX as f64 || z.r < i32::MIN as f64 {
+                    crate::value::object::NA_INTEGER
+                } else {
+                    z.r.trunc() as i32
+                }
+            })
+            .collect(),
         _ => Vec::new(),
     };
     Ok(heap.alloc(RObject::Integer(out)))
@@ -11151,6 +11196,11 @@ fn coerce_real(
                     text.trim().parse::<f64>().unwrap_or(f64::NAN)
                 }
             })
+            .collect(),
+        Some(RObject::Raw(values)) => values.iter().map(|v| *v as f64).collect(),
+        Some(RObject::Complex(values)) => values
+            .iter()
+            .map(|z| if z.r.is_nan() { f64::NAN } else { z.r })
             .collect(),
         _ => Vec::new(),
     };
