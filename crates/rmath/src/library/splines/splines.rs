@@ -14,7 +14,6 @@ use crate::main::util_main::R_NaN;
 use crate::sexp::accessors::{INTEGER, LENGTH, REAL};
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{NA_INTEGER, SEXP, SEXPTYPE};
-use crate::sexp::memory_ext::R_alloc;
 use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------

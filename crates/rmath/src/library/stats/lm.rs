@@ -54,7 +54,6 @@ fn allocMatrix(sexptype: SEXPTYPE, nrow: c_int, ncol: c_int) -> SEXP {
     ans
 }
 
-use crate::sexp::memory_ext::R_alloc;
 
 /// Pure-Rust replacement for LINPACK dqrls (QR least squares).
 ///
