@@ -165,6 +165,10 @@ pub mod primitive_ids {
     pub const SYS_GETENV: u32 = 144;
     pub const SYS_UNSETENV: u32 = 145;
     pub const UNLINK: u32 = 146;
+    /// Directory construction and listing.
+    pub const DIR_CREATE: u32 = 153;
+    pub const LIST_DIRS: u32 = 154;
+    pub const BASENAME: u32 = 155;
     /// Pattern matching — the pure-Rust regex surface.
     pub const GREPL: u32 = 147;
     pub const GREP: u32 = 148;
@@ -190,7 +194,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -210,7 +214,7 @@ pub(crate) fn call_primitive(
             id.0,
             ASSIGN | SUPERASSIGN | PRINT | CAT | INVISIBLE | WHILE | REPEAT | FOR
                 | WRITELINES | ASSIGN_FN | FILE_REMOVE | FILE_COPY | FILE_RENAME
-                | SYS_SETENV | SYS_UNSETENV | UNLINK
+                | SYS_SETENV | SYS_UNSETENV | UNLINK | DIR_CREATE
         );
     }
     result
@@ -594,6 +598,145 @@ fn call_primitive_inner(
                 }
             }
             Ok(heap.alloc(RObject::Integer(vec![0])))
+        }
+        DIR_CREATE => {
+            let mut recursive = false;
+            let mut path_arg = ValueId::NIL;
+            let mut cursor = args;
+            let mut positional = 0usize;
+            loop {
+                let (car, cdr, tag) = match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+                    _ => break,
+                };
+                positional += 1;
+                let tag_name = match heap.object(tag) {
+                    Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+                    _ => None,
+                };
+                let evaluated = eval(heap, interner, car, caller_env)?;
+                let v = force_if_promise(heap, interner, evaluated)?;
+                if tag_name.as_deref() == Some("recursive") {
+                    if let Some(RObject::Logical(vals)) = heap.object(v) {
+                        recursive = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
+                    }
+                } else if positional == 1 {
+                    path_arg = v;
+                }
+                if cdr == ValueId::NIL {
+                    break;
+                }
+                cursor = cdr;
+            }
+            let mut created = true;
+            for path in string_vec(heap, interner, path_arg) {
+                let result = if recursive {
+                    std::fs::create_dir_all(&path)
+                } else {
+                    std::fs::create_dir(&path)
+                };
+                if result.is_err() {
+                    created = false;
+                }
+            }
+            Ok(heap.alloc(RObject::Logical(vec![if created { 1 } else { 0 }])))
+        }
+        LIST_DIRS => {
+            let mut full_names = true;
+            let mut recursive = true;
+            let mut path_arg = ValueId::NIL;
+            let mut cursor = args;
+            let mut positional = 0usize;
+            loop {
+                let (car, cdr, tag) = match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+                    _ => break,
+                };
+                positional += 1;
+                let tag_name = match heap.object(tag) {
+                    Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+                    _ => None,
+                };
+                let evaluated = eval(heap, interner, car, caller_env)?;
+                let v = force_if_promise(heap, interner, evaluated)?;
+                match tag_name.as_deref() {
+                    Some("full.names") => {
+                        if let Some(RObject::Logical(vals)) = heap.object(v) {
+                            full_names = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
+                        }
+                    }
+                    Some("recursive") => {
+                        if let Some(RObject::Logical(vals)) = heap.object(v) {
+                            recursive = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
+                        }
+                    }
+                    _ => {
+                        if positional == 1 {
+                            path_arg = v;
+                        }
+                    }
+                }
+                if cdr == ValueId::NIL {
+                    break;
+                }
+                cursor = cdr;
+            }
+            let roots = string_vec(heap, interner, path_arg);
+            let mut out: Vec<super::intern::InternedStr> = Vec::new();
+            for root in &roots {
+                // GNU's recursive listing leads with the root itself —
+                /// empty text under full.names=FALSE exactly as "." resolves.
+                if recursive {
+                    let text = if full_names { root.clone() } else { String::new() };
+                    out.push(interner.intern_string(&text));
+                }
+                let mut collected: Vec<String> = Vec::new();
+                let mut stack: Vec<(String, String)> = vec![(root.clone(), String::new())];
+                while let Some((dir, rel)) = stack.pop() {
+                    if let Ok(entries) = std::fs::read_dir(&dir) {
+                        let mut names: Vec<String> = entries
+                            .flatten()
+                            .filter(|e| e.path().is_dir())
+                            .map(|e| e.file_name().to_string_lossy().to_string())
+                            .collect();
+                        names.sort();
+                        for name in names {
+                            let child_rel = if rel.is_empty() {
+                                name.clone()
+                            } else {
+                                format!("{rel}/{name}")
+                            };
+                            collected.push(child_rel.clone());
+                            if recursive {
+                                stack.push((format!("{dir}/{name}"), child_rel));
+                            }
+                        }
+                    }
+                }
+                // GNU sorts the full relative listing byte-wise.
+                collected.sort();
+                for rel in collected {
+                    let text = if full_names {
+                        format!("{root}/{rel}")
+                    } else {
+                        rel
+                    };
+                    out.push(interner.intern_string(&text));
+                }
+            }
+            Ok(heap.alloc(RObject::String(out)))
+        }
+        BASENAME => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let out: Vec<super::intern::InternedStr> = string_vec(heap, interner, operands[0])
+                .iter()
+                .map(|path| {
+                    let trimmed = path.trim_end_matches('/');
+                    let base = trimmed.rsplit('/').next().unwrap_or(trimmed);
+                    interner.intern_string(base)
+                })
+                .collect();
+            Ok(heap.alloc(RObject::String(out)))
         }
         GREPL => grep_primitive(heap, interner, args, caller_env, true),
         GREP => grep_primitive(heap, interner, args, caller_env, false),
@@ -1277,7 +1420,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -1398,6 +1541,9 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "Sys.getenv" => Some(SYS_GETENV),
         "Sys.unsetenv" => Some(SYS_UNSETENV),
         "unlink" => Some(UNLINK),
+        "dir.create" => Some(DIR_CREATE),
+        "list.dirs" => Some(LIST_DIRS),
+        "basename" => Some(BASENAME),
         "grepl" => Some(GREPL),
         "grep" => Some(GREP),
         "regexpr" => Some(REGEXPR),
