@@ -684,4 +684,117 @@ mod tests {
             other => panic!("expected 10.0, got {other:?}"),
         }
     }
+
+    /// Build `for (i in seq) body` as an expression.
+    fn for_expr(
+        heap: &mut Heap,
+        interner: &mut SymbolInterner,
+        var: &str,
+        seq: ValueId,
+        body: ValueId,
+    ) -> ValueId {
+        let for_prim = primitive(heap, primitive_ids::FOR);
+        let var_sym = symbol(heap, interner, var);
+        let args = pairlist(
+            heap,
+            &[
+                (var_sym, ValueId::NIL),
+                (seq, ValueId::NIL),
+                (body, ValueId::NIL),
+            ],
+        );
+        call_expr(heap, for_prim, args)
+    }
+
+    #[test]
+    fn for_loop_iterates_and_binds_elements() {
+        let (mut heap, mut interner) = fixture();
+        let env_id = env::new_environment(&mut heap, ValueId::EMPTY_ENV);
+
+        // for (i in c(1,2,3)) x-sequence — body evaluates the loop var; the
+        // final iteration leaves i bound to 3 afterwards, GNU semantics.
+        let seq = real(&mut heap, &[1.0, 2.0, 3.0]);
+        let i_ref = symbol(&mut heap, &mut interner, "i");
+        let loop_expr = for_expr(&mut heap, &mut interner, "i", seq, i_ref);
+        let result = eval(&mut heap, &mut interner, loop_expr, env_id).expect("loop runs");
+        assert_eq!(result, ValueId::NIL, "loops yield NIL");
+        // loop variable persists with the final value
+        let i_sym = interner.intern_symbol("i");
+        let binding = env::lookup_in_frame(&heap, env_id, i_sym).expect("i persists");
+        match heap.object(binding.value) {
+            Some(RObject::Real(values)) => assert_eq!(values.as_slice(), &[3.0]),
+            other => panic!("expected final element 3.0, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn while_loop_with_break_exits() {
+        let (mut heap, mut interner) = fixture();
+        let env_id = env::new_environment(&mut heap, ValueId::EMPTY_ENV);
+        let x = interner.intern_symbol("x");
+        let zero = real(&mut heap, &[0.0]);
+        env::define(&mut heap, env_id, x, zero).expect("seed x");
+
+        // while (TRUE) { x <- x + 1; if (x >= 3) break }
+        let while_prim = primitive(&mut heap, primitive_ids::WHILE);
+        let brace = primitive(&mut heap, primitive_ids::BRACE);
+        let assign = primitive(&mut heap, primitive_ids::ASSIGN);
+        let add = primitive(&mut heap, primitive_ids::ADD);
+        let if_prim = primitive(&mut heap, primitive_ids::IF);
+        let ge = primitive(&mut heap, primitive_ids::GE);
+        let break_prim = primitive(&mut heap, primitive_ids::BREAK);
+
+        let truth = heap.alloc(RObject::Logical(vec![1]));
+        // x <- x + 1
+        let x_ref1 = symbol(&mut heap, &mut interner, "x");
+        let x_ref2 = symbol(&mut heap, &mut interner, "x");
+        let one = real(&mut heap, &[1.0]);
+        let add_args = pairlist(&mut heap, &[(x_ref2, ValueId::NIL), (one, ValueId::NIL)]);
+        let add_call = call_expr(&mut heap, add, add_args);
+        let assign_args = pairlist(&mut heap, &[(x_ref1, ValueId::NIL), (add_call, ValueId::NIL)]);
+        let assign_call = call_expr(&mut heap, assign, assign_args);
+        // if (x >= 3) break
+        let x_ref3 = symbol(&mut heap, &mut interner, "x");
+        let three = real(&mut heap, &[3.0]);
+        let ge_args = pairlist(&mut heap, &[(x_ref3, ValueId::NIL), (three, ValueId::NIL)]);
+        let ge_call = call_expr(&mut heap, ge, ge_args);
+        let break_call = call_expr(&mut heap, break_prim, ValueId::NIL);
+        let if_args = pairlist(
+            &mut heap,
+            &[(ge_call, ValueId::NIL), (break_call, ValueId::NIL)],
+        );
+        let if_call = call_expr(&mut heap, if_prim, if_args);
+        // { x <- x+1; if (x >= 3) break }
+        let body_args = pairlist(
+            &mut heap,
+            &[(assign_call, ValueId::NIL), (if_call, ValueId::NIL)],
+        );
+        let body = call_expr(&mut heap, brace, body_args);
+        // while (TRUE) body
+        let while_args = pairlist(&mut heap, &[(truth, ValueId::NIL), (body, ValueId::NIL)]);
+        let while_call = call_expr(&mut heap, while_prim, while_args);
+
+        eval(&mut heap, &mut interner, while_call, env_id).expect("loop with break");
+        let binding = env::lookup_in_frame(&heap, env_id, x).expect("x binding");
+        match heap.object(binding.value) {
+            Some(RObject::Real(values)) => assert_eq!(values.as_slice(), &[3.0], "x incremented exactly to 3"),
+            other => panic!("expected x=3, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn comparison_produces_logical() {
+        let (mut heap, mut interner) = fixture();
+        let env_id = env::new_environment(&mut heap, ValueId::EMPTY_ENV);
+        let lt = primitive(&mut heap, primitive_ids::LT);
+        let one = real(&mut heap, &[1.0]);
+        let two = real(&mut heap, &[2.0]);
+        let args = pairlist(&mut heap, &[(one, ValueId::NIL), (two, ValueId::NIL)]);
+        let call = call_expr(&mut heap, lt, args);
+        let result = eval(&mut heap, &mut interner, call, env_id).expect("comparison");
+        match heap.object(result) {
+            Some(RObject::Logical(values)) => assert_eq!(values.as_slice(), &[1]),
+            other => panic!("expected TRUE, got {other:?}"),
+        }
+    }
 }

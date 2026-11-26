@@ -26,10 +26,22 @@ pub mod primitive_ids {
     pub const ASSIGN: u32 = 12;
     pub const SUPERASSIGN: u32 = 13;
     pub const RETURN: u32 = 14;
+    pub const WHILE: u32 = 15;
+    pub const REPEAT: u32 = 16;
+    pub const FOR: u32 = 17;
+    pub const BREAK: u32 = 18;
+    pub const NEXT: u32 = 19;
+    /// Comparisons — eager operands, logical results.
+    pub const LT: u32 = 20;
+    pub const GT: u32 = 21;
+    pub const LE: u32 = 22;
+    pub const GE: u32 = 23;
+    pub const EQ: u32 = 24;
+    pub const NE: u32 = 25;
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ADD, ASSIGN, BRACE, DIV, IF, MUL, RETURN, SUB, SUPERASSIGN};
+use primitive_ids::{ADD, ASSIGN, BRACE, BREAK, DIV, EQ, FOR, GE, GT, IF, LE, LT, MUL, NE, NEXT, REPEAT, RETURN, SUB, SUPERASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -47,6 +59,12 @@ pub(crate) fn call_primitive(
         ASSIGN => assign_form(heap, interner, args, caller_env, false),
         SUPERASSIGN => assign_form(heap, interner, args, caller_env, true),
         RETURN => return_form(heap, interner, args, caller_env),
+        WHILE => while_form(heap, interner, args, caller_env),
+        REPEAT => repeat_form(heap, interner, args, caller_env),
+        FOR => for_form(heap, interner, args, caller_env),
+        BREAK => Err(RSignal::Break),
+        NEXT => Err(RSignal::Next),
+        LT | GT | LE | GE | EQ | NE => comparison(heap, interner, id.0, args, caller_env),
         _ => Err(EvalError::UnsupportedForm("unregistered primitive").into()),
     }
 }
@@ -297,4 +315,158 @@ fn fold_numeric<T: Copy>(
         .enumerate()
         .map(|(i, x)| f(*x, shorter[i % shorter.len()]))
         .collect())
+}
+
+/// `while (test) body` — loops until the test forces false. `break`
+/// unwinds out of the loop entirely; `next` skips to the next iteration.
+/// The loop value is always NIL in GNU.
+fn while_form(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let parts = raw_args(heap, args);
+    if parts.len() != 2 {
+        return Err(EvalError::UnsupportedForm("while arity").into());
+    }
+    loop {
+        let test = eval(heap, interner, parts[0], caller_env)?;
+        let test = force_if_promise(heap, interner, test)?;
+        if !truthy(heap, test)? {
+            return Ok(ValueId::NIL);
+        }
+        match eval(heap, interner, parts[1], caller_env) {
+            Err(RSignal::Break) => return Ok(ValueId::NIL),
+            Err(RSignal::Next) => continue,
+            other => {
+                let _ = other?;
+            }
+        }
+    }
+}
+
+/// `repeat body` — an unconditional loop; only `break` exits.
+fn repeat_form(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let parts = raw_args(heap, args);
+    if parts.len() != 1 {
+        return Err(EvalError::UnsupportedForm("repeat arity").into());
+    }
+    loop {
+        match eval(heap, interner, parts[0], caller_env) {
+            Err(RSignal::Break) => return Ok(ValueId::NIL),
+            Err(RSignal::Next) => continue,
+            other => {
+                let _ = other?;
+            }
+        }
+    }
+}
+
+/// `for (var in seq) body` — binds each sequence element in turn. Loop
+/// variables in R persist after the loop and take the last element's
+/// value; elements are boxed as length-one vectors, matching GNU.
+fn for_form(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let parts = raw_args(heap, args);
+    if parts.len() != 3 {
+        return Err(EvalError::UnsupportedForm("for arity").into());
+    }
+    let sym = match heap.object(parts[0]) {
+        Some(RObject::Symbol { name, .. }) => *name,
+        _ => return Err(EvalError::TypeError("for variable must be a symbol").into()),
+    };
+    let seq = eval(heap, interner, parts[1], caller_env)?;
+    let seq = force_if_promise(heap, interner, seq)?;
+    let elements = sequence_elements(heap, seq)?;
+    for element in elements {
+        crate::value::env::define(heap, caller_env, sym, element)
+            .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("for define")))?;
+        match eval(heap, interner, parts[2], caller_env) {
+            Err(RSignal::Break) => break,
+            Err(RSignal::Next) => continue,
+            other => {
+                let _ = other?;
+            }
+        }
+    }
+    Ok(ValueId::NIL)
+}
+
+/// Force a value to a single truth value, GNU's condition coercion.
+fn truthy(heap: &Heap, value: ValueId) -> Result<bool, RSignal> {
+    match heap.object(value) {
+        Some(RObject::Logical(values)) if !values.is_empty() => Ok(values[0] != 0),
+        Some(RObject::Integer(values)) if !values.is_empty() => Ok(values[0] != 0),
+        Some(RObject::Real(values)) if !values.is_empty() => Ok(values[0] != 0.0),
+        _ => Err(EvalError::TypeError("condition must be logical").into()),
+    }
+}
+
+/// Explode a vector into per-element length-one vectors — what for-loop
+/// iteration binds. List elements pass through unboxed, exactly GNU.
+fn sequence_elements(heap: &mut Heap, seq: ValueId) -> Result<Vec<ValueId>, RSignal> {
+    let elements: Vec<RObject> = match heap.object(seq) {
+        Some(RObject::Real(values)) => values
+            .iter()
+            .map(|v| RObject::Real(vec![*v]))
+            .collect(),
+        Some(RObject::Integer(values)) => values
+            .iter()
+            .map(|v| RObject::Integer(vec![*v]))
+            .collect(),
+        Some(RObject::Logical(values)) => values
+            .iter()
+            .map(|v| RObject::Logical(vec![*v]))
+            .collect(),
+        Some(RObject::List(elements)) => return Ok(elements.clone()),
+        _ => {
+            return Err(EvalError::TypeError("for sequence must be a vector").into());
+        }
+    };
+    Ok(elements.into_iter().map(|body| heap.alloc(body)).collect())
+}
+
+/// Binary comparisons with GNU elementwise semantics: numeric coercion,
+/// recycling, logical results.
+fn comparison(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    op: u32,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    let left = numeric_operands(heap, operands[0]).map_err(RSignal::from)?;
+    let right = numeric_operands(heap, operands[1]).map_err(RSignal::from)?;
+    let a = as_reals(left);
+    let b = as_reals(right);
+    let folded = fold_numeric(a, b, op, |x, y| {
+        let result = match op {
+            LT => x < y,
+            GT => x > y,
+            LE => x <= y,
+            GE => x >= y,
+            EQ => x == y,
+            _ => x != y,
+        };
+        if result {
+            1.0
+        } else {
+            0.0
+        }
+    })
+    .map_err(RSignal::from)?;
+    Ok(heap.alloc(RObject::Logical(
+        folded.into_iter().map(|v| v as i32).collect(),
+    )))
 }
