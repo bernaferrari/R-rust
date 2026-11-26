@@ -50,7 +50,7 @@ fn errorcall(_call: SEXP, msg: &str) -> ! {
 fn native_dynamic_loading_policy_error(entrypoint: &str) -> ! {
     {
         error(&format!(
-            "{entrypoint} loads native extension code, which is disabled in this pure-R Android runtime; use bundled pure-R packages or define a host-owned native-library policy"
+            "{entrypoint} loads foreign native code, which cannot exist in the pure-Rust runtime; use bundled pure-R packages"
         ))
     }
 }

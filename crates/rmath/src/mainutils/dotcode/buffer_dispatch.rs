@@ -442,47 +442,13 @@ pub(super) unsafe fn invoke(
                     "native routine has a different registered interface",
                 ));
             }
-            // The pure-R Android policy error belongs only to sessions
-            // running the Android app runtime policy; ordinary sessions
-            // with extensions disabled keep the bundled-registry error,
-            // and enabled sessions fall through to host libraries.
-            let android_pure_r_policy =
-                crate::sexp::instance::with_current_instance(|inst| unsafe {
-                    (*inst).path_policy.is_android_runtime()
-                })
-                .unwrap_or(false);
-            if android_pure_r_policy {
-                return Err(failure(format!(
-                    "{interface} calls native extension code, which is disabled in this pure-R Android runtime; package authors should use Rust-ported internals or a host-owned native-library policy"
-                )));
-            }
-            if super::native_extension_policy_enabled() {
-                return Err(failure(format!(
-                    "{interface} native routine is not implemented by the bundled Rust registry"
-                )));
-            }
-            let list = operands.foreign_list(&allocator, &domain)?;
-            let operator = match operator_identity {
-                Some((name, kind)) => access.with_native(|owner| {
-                    let pointer =
-                        unsafe { crate::eval::primitive::make_primitive_binding(name, kind) };
-                    owner.sexp(pointer)?.into_owned()
-                })?,
-                None => return Err(failure("invalid foreign-call operator")),
-            };
-            access.require_active()?;
-            // Host libraries must establish their actual ABI independently;
-            // this branch cannot reinterpret any bundled Rust kernel pointer.
-            let raw = unsafe {
-                super::do_foreign_dotcode(
-                    call.as_raw(),
-                    operator.as_raw(),
-                    list.as_raw(),
-                    environment.as_raw(),
-                )
-            };
-            access.require_active()?;
-            return domain.wrap(raw)?.into_owned();
+            // Foreign native code can never exist in the pure-Rust runtime:
+            // unregistered routines are unconditionally rejected. Bundled
+            // Rust routines never reach this branch — they are registered
+            // in the typed registry and admitted above.
+            return Err(failure(format!(
+                "{interface} native routine is not implemented by the bundled Rust registry"
+            )));
         };
         routine
             .validate_request(interface, operands.payload.len())
