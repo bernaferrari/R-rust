@@ -1003,10 +1003,7 @@ mod tests {
         use crate::value::object::BuiltinId;
         use crate::value::primitives::primitive_id_for_name;
         let env_id = env::new_environment(heap, crate::value::id::ValueId::EMPTY_ENV);
-        for name in [
-            "+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!=", "if", "{", "<-", "<<-",
-            "return", "while", "repeat", "for", "break", "next", "function",
-        ] {
+        for &name in crate::value::primitives::primitive_names() {
             let sym = interner.intern_symbol(name);
             let prim = primitive_id_for_name(name).expect("mapped primitive");
             let object = heap.alloc(RObject::Primitive(BuiltinId(prim)));
@@ -1098,5 +1095,135 @@ mod tests {
             },
             Err(error) => panic!("closure program should run in the new world: {error:?}"),
         }
+    }
+
+    #[test]
+    fn convergence_recursive_closure() {
+        let mut session = crate::sexp::session::RSession::new();
+        let mut heap = Heap::new();
+        let mut interner = SymbolInterner::new();
+        let mut bridge = ValueBridge::new();
+
+        // fib <- function(n) if (n < 2) n else fib(n-1) + fib(n-2); fib(10)
+        // — recursion through the application frame's own environment: the
+        // closure looks itself up by name in its definition environment.
+        let expressions = session.with_active(|| {
+            crate::eval::parser::parse_active_expressions(
+                "{ fib <- function(n) if (n < 2) n else fib(n-1) + fib(n-2); fib(10) }",
+            )
+            .expect("source parses")
+        });
+        let imported = bridge
+            .import(&mut heap, &mut interner, &expressions[0])
+            .expect("program imports");
+        let env_id = bootstrap_env(&mut heap, &mut interner);
+        let result = crate::value::eval::eval(&mut heap, &mut interner, imported, env_id);
+        match result {
+            Ok(value) => match heap.object(value) {
+                Some(RObject::Real(values)) => assert_eq!(values.as_slice(), &[55.0]),
+                other => panic!("expected 55.0, got {other:?}"),
+            },
+            Err(error) => panic!("recursive program should run in the new world: {error:?}"),
+        }
+    }
+
+    /// Shared harness: parse, import, evaluate in the new world.
+    fn eval_in_new_world(source: &str) -> (Heap, SymbolInterner, crate::value::eval::EvalResult) {
+        let mut session = crate::sexp::session::RSession::new();
+        let mut heap = Heap::new();
+        let mut interner = SymbolInterner::new();
+        let mut bridge = ValueBridge::new();
+        let expressions = session.with_active(|| {
+            crate::eval::parser::parse_active_expressions(source).expect("source parses")
+        });
+        let imported = bridge
+            .import(&mut heap, &mut interner, &expressions[0])
+            .expect("program imports");
+        let env_id = bootstrap_env(&mut heap, &mut interner);
+        let result = crate::value::eval::eval(&mut heap, &mut interner, imported, env_id);
+        (heap, interner, result)
+    }
+
+    fn expect_reals(heap: &Heap, result: crate::value::eval::EvalResult, expected: &[f64]) {
+        match result {
+            Ok(value) => match heap.object(value) {
+                Some(RObject::Real(values)) => assert_eq!(values.as_slice(), expected),
+                Some(RObject::Integer(values)) => assert_eq!(
+                    values.iter().map(|v| *v as f64).collect::<Vec<_>>().as_slice(),
+                    expected
+                ),
+                other => panic!("expected {expected:?}, got {other:?}"),
+            },
+            Err(error) => panic!("program should run in the new world: {error:?}"),
+        }
+    }
+
+    fn expect_integers(heap: &Heap, result: crate::value::eval::EvalResult, expected: &[i32]) {
+        match result {
+            Ok(value) => match heap.object(value) {
+                Some(RObject::Integer(values)) => assert_eq!(values.as_slice(), expected),
+                other => panic!("expected {expected:?}, got {other:?}"),
+            },
+            Err(error) => panic!("program should run in the new world: {error:?}"),
+        }
+    }
+
+    #[test]
+    fn convergence_concat_and_subset() {
+        // c() concatenation, real-literal indexing with truncation.
+        let (heap, _interner, result) = eval_in_new_world("{ x <- c(1, 2, 3); x[2] }");
+        expect_reals(&heap, result, &[2.0]);
+    }
+
+    #[test]
+    fn convergence_colon_sequence_and_length() {
+        // 1:10 yields an integer sequence; length reports element count.
+        let (heap, _interner, result) = eval_in_new_world("{ x <- 1:10; length(x) }");
+        expect_integers(&heap, result, &[10]);
+    }
+
+    #[test]
+    fn convergence_colon_elements_indexed() {
+        // Integer sequence indexed by integer-valued real: GNU truncation.
+        let (heap, _interner, result) = eval_in_new_world("{ x <- 1:10; x[3] + x[7] }");
+        expect_integers(&heap, result, &[10]);
+    }
+
+    #[test]
+    fn convergence_logical_recycling_subset() {
+        // Logical indices recycle across the vector: positions 1, 3, 5.
+        let (heap, _interner, result) = eval_in_new_world("{ x <- 1:5; x[c(TRUE, FALSE)] }");
+        expect_integers(&heap, result, &[1, 3, 5]);
+    }
+
+    #[test]
+    fn convergence_negative_exclusion_subset() {
+        // Negative indices exclude: position 2 drops out.
+        let (heap, _interner, result) = eval_in_new_world("{ x <- 1:5; x[-2] }");
+        expect_integers(&heap, result, &[1, 3, 4, 5]);
+    }
+
+    #[test]
+    fn convergence_out_of_range_yields_na() {
+        // Positive out-of-range indexing yields the NA element, GNU exactly.
+        let (heap, _interner, result) = eval_in_new_world("{ x <- 1:3; x[5] }");
+        expect_integers(&heap, result, &[crate::value::object::NA_INTEGER]);
+    }
+
+    #[test]
+    fn convergence_concat_coercion_to_real() {
+        // Mixed integer/logical operands coerce upward through c().
+        let (heap, _interner, result) = eval_in_new_world("{ x <- c(1:2, 3.5); x[3] }");
+        expect_reals(&heap, result, &[3.5]);
+    }
+
+    #[test]
+    fn convergence_loop_with_indexing() {
+        // The data primitives compose with control flow: sum 1:100 by loop.
+        let (heap, _interner, result) = eval_in_new_world(
+            "{ total <- 0; x <- 1:100; for (i in 1:100) total <- total + x[i]; total }",
+        );
+        // `total <- 0` binds a real literal, so GNU accumulates in real.
+        expect_reals(&heap, result, &[5050.0]);
     }
 }

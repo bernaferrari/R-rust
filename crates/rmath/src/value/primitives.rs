@@ -40,10 +40,15 @@ pub mod primitive_ids {
     pub const NE: u32 = 25;
     /// Closure construction — captures formals, body, and defining env.
     pub const FUNCTION: u32 = 26;
+    /// Data construction and access.
+    pub const CONCAT: u32 = 30;
+    pub const SUBSET: u32 = 31;
+    pub const LENGTH: u32 = 32;
+    pub const COLON: u32 = 33;
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ADD, ASSIGN, BRACE, BREAK, DIV, EQ, FOR, FUNCTION, GE, GT, IF, LE, LT, MUL, NE, NEXT, REPEAT, RETURN, SUB, SUPERASSIGN, WHILE};
+use primitive_ids::{ADD, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LT, MUL, NE, NEXT, REPEAT, RETURN, SUB, SUBSET, SUPERASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -68,6 +73,10 @@ pub(crate) fn call_primitive(
         NEXT => Err(RSignal::Next),
         LT | GT | LE | GE | EQ | NE => comparison(heap, interner, id.0, args, caller_env),
         FUNCTION => function_form(heap, args, caller_env),
+        CONCAT => concat_primitive(heap, interner, args, caller_env),
+        SUBSET => subset_primitive(heap, interner, args, caller_env),
+        LENGTH => length_primitive(heap, interner, args, caller_env),
+        COLON => colon_primitive(heap, interner, args, caller_env),
         _ => Err(EvalError::UnsupportedForm("unregistered primitive").into()),
     }
 }
@@ -213,6 +222,37 @@ fn arithmetic(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
+    // Unary forms: `+x` is the identity, `-x` negates — GNU folds both into
+    // the same primitive as the binary operators. Arity is decided by the
+    // call's actual operand count, not by successful prefix extraction.
+    let arity = raw_args(heap, args).len();
+    if matches!(op, ADD | SUB) && arity == 1 {
+        if let Ok(unary) = eval_args(heap, interner, args, caller_env, 1) {
+            let operand = numeric_operands(heap, unary[0]).map_err(RSignal::from)?;
+            return match operand {
+                Numeric::Integer(values) => {
+                    let folded = values
+                        .into_iter()
+                        .map(|v| {
+                            if v == crate::value::object::NA_INTEGER || op == ADD {
+                                v
+                            } else {
+                                v.wrapping_neg()
+                            }
+                        })
+                        .collect();
+                    Ok(heap.alloc(RObject::Integer(folded)))
+                }
+                Numeric::Real(values) => {
+                    let folded = values
+                        .into_iter()
+                        .map(|v| if op == ADD { v } else { -v })
+                        .collect();
+                    Ok(heap.alloc(RObject::Real(folded)))
+                }
+            };
+        }
+    }
     let operands = eval_args(heap, interner, args, caller_env, 2)?;
     let left = numeric_operands(heap, operands[0]).map_err(RSignal::from)?;
     let right = numeric_operands(heap, operands[1]).map_err(RSignal::from)?;
@@ -474,6 +514,16 @@ fn comparison(
     )))
 }
 
+/// Every primitive print name registered in the scaffolding table — the
+/// canonical list bootstrap environments iterate so the two never drift.
+pub fn primitive_names() -> &'static [&'static str] {
+    &[
+        "+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!=", "if", "{", "<-", "=",
+        "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
+        "length", ":",
+    ]
+}
+
 /// Resolve a primitive's print name to a scaffolding id — the interop
 /// mapping the import bridge uses until the canonical registry lands.
 pub fn primitive_id_for_name(name: &str) -> Option<u32> {
@@ -499,6 +549,10 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "==" => Some(EQ),
         "!=" => Some(NE),
         "function" => Some(FUNCTION),
+        "c" => Some(CONCAT),
+        "[" => Some(SUBSET),
+        "length" => Some(LENGTH),
+        ":" => Some(COLON),
         _ => None,
     }
 }
@@ -518,4 +572,394 @@ fn function_form(heap: &mut Heap, args: ValueId, caller_env: ValueId) -> EvalRes
         body: parts[1],
         env: caller_env,
     }))
+}
+
+/// `c(...)` — concatenation with GNU coercion. Arguments evaluate eagerly;
+/// NULL operands drop out. All operands coerce to the highest type present
+/// in the logical < integer < real < character hierarchy. Names are outside
+/// the migration slice.
+fn concat_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    // Variadic: evaluate and force every operand in the call.
+    let mut operands = Vec::new();
+    let mut cursor = args;
+    loop {
+        let (car, cdr) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, .. }) => (*car, *cdr),
+            _ => break,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        operands.push(force_if_promise(heap, interner, evaluated)?);
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+
+    enum Flat {
+        Logical(Vec<i32>),
+        Integer(Vec<i32>),
+        Real(Vec<f64>),
+        String(Vec<super::intern::InternedStr>),
+    }
+    let mut flattened = Vec::new();
+    let mut rank = 0u8;
+    for operand in operands {
+        let flat = match heap.object(operand) {
+            Some(RObject::Nil) => continue,
+            Some(RObject::Logical(values)) => {
+                rank = rank.max(1);
+                Flat::Logical(values.clone())
+            }
+            Some(RObject::Integer(values)) => {
+                rank = rank.max(2);
+                Flat::Integer(values.clone())
+            }
+            Some(RObject::Real(values)) => {
+                rank = rank.max(3);
+                Flat::Real(values.clone())
+            }
+            Some(RObject::String(values)) => {
+                rank = rank.max(4);
+                Flat::String(values.clone())
+            }
+            _ => {
+                return Err(EvalError::TypeError("c() operands must be atomic vectors").into());
+            }
+        };
+        flattened.push(flat);
+    }
+    if flattened.is_empty() {
+        return Ok(ValueId::NIL);
+    }
+
+    fn logicals_of(flat: &Flat) -> Vec<i32> {
+        match flat {
+            Flat::Logical(v) => v.clone(),
+            _ => unreachable!("lower ranks coerce upward before extraction"),
+        }
+    }
+    fn integers_of(flat: &Flat) -> Vec<i32> {
+        match flat {
+            Flat::Logical(v) | Flat::Integer(v) => v.clone(),
+            _ => unreachable!("lower ranks coerce upward before extraction"),
+        }
+    }
+    fn reals_of(flat: &Flat) -> Vec<f64> {
+        match flat {
+            Flat::Logical(v) | Flat::Integer(v) => v
+                .iter()
+                .map(|x| {
+                    if *x == crate::value::object::NA_INTEGER {
+                        f64::from_bits(crate::value::object::NA_REAL_BITS)
+                    } else {
+                        *x as f64
+                    }
+                })
+                .collect(),
+            Flat::Real(v) => v.clone(),
+            Flat::String(_) => unreachable!("lower ranks coerce upward before extraction"),
+        }
+    }
+
+    match rank {
+        1 => {
+            let mut out = Vec::new();
+            for flat in &flattened {
+                out.extend(logicals_of(flat));
+            }
+            Ok(heap.alloc(RObject::Logical(out)))
+        }
+        2 => {
+            let mut out = Vec::new();
+            for flat in &flattened {
+                out.extend(integers_of(flat));
+            }
+            Ok(heap.alloc(RObject::Integer(out)))
+        }
+        3 => {
+            let mut out = Vec::new();
+            for flat in &flattened {
+                out.extend(reals_of(flat));
+            }
+            Ok(heap.alloc(RObject::Real(out)))
+        }
+        _ => {
+            // Character coercion: every operand renders through its ASCII
+            // element text, matching GNU's paste-style coercion for the
+            // atomic numeric types in the migration slice.
+            let mut out = Vec::new();
+            for flat in flattened {
+                match flat {
+                    Flat::String(values) => out.extend(values),
+                    Flat::Logical(values) => {
+                        for v in values {
+                            let text = if v == crate::value::object::NA_INTEGER {
+                                "NA".to_string()
+                            } else if v != 0 {
+                                "TRUE".to_string()
+                            } else {
+                                "FALSE".to_string()
+                            };
+                            out.push(interner.intern_string(&text));
+                        }
+                    }
+                    Flat::Integer(values) => {
+                        for v in values {
+                            let text = if v == crate::value::object::NA_INTEGER {
+                                "NA".to_string()
+                            } else {
+                                v.to_string()
+                            };
+                            out.push(interner.intern_string(&text));
+                        }
+                    }
+                    Flat::Real(values) => {
+                        for v in values {
+                            let text = if v.to_bits() == crate::value::object::NA_REAL_BITS {
+                                "NA".to_string()
+                            } else if v.fract() == 0.0 && v.abs() < 1e15 {
+                                format!("{}", v as i64)
+                            } else {
+                                format!("{v}")
+                            };
+                            out.push(interner.intern_string(&text));
+                        }
+                    }
+                }
+            }
+            Ok(heap.alloc(RObject::String(out)))
+        }
+    }
+}
+
+/// `length(x)` — element count as a length-one integer, GNU exactly for
+/// atomic and list vectors.
+fn length_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    let length = match heap.object(operands[0]) {
+        Some(RObject::Logical(v)) => v.len(),
+        Some(RObject::Integer(v)) => v.len(),
+        Some(RObject::Real(v)) => v.len(),
+        Some(RObject::Complex(v)) => v.len(),
+        Some(RObject::String(v)) => v.len(),
+        Some(RObject::Raw(v)) => v.len(),
+        Some(RObject::List(v)) => v.len(),
+        Some(RObject::Nil) => 0,
+        _ => return Err(EvalError::TypeError("length requires a vector").into()),
+    };
+    Ok(heap.alloc(RObject::Integer(vec![length as i32])))
+}
+
+/// `from:to` — unit-step sequence, ascending or descending, inclusive of
+/// `to` when it lands exactly. Integer when both operands are integer,
+/// real otherwise — GNU's documented behaviour for the slice.
+fn colon_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    let numeric = |value: ValueId| -> Result<(f64, bool), RSignal> {
+        match heap.object(value) {
+            Some(RObject::Integer(v)) if !v.is_empty() => Ok((v[0] as f64, true)),
+            Some(RObject::Real(v)) if !v.is_empty() => Ok((v[0], false)),
+            Some(RObject::Logical(v)) if !v.is_empty() => Ok((v[0] as f64, true)),
+            _ => Err(EvalError::TypeError("NA/NaN argument").into()),
+        }
+    };
+    let (from, _from_type) = numeric(operands[0])?;
+    let (to, _to_type) = numeric(operands[1])?;
+    // GNU's ncolon: integer result when both operands are integer-valued
+    // and in int range — literal storage type (double) is irrelevant.
+    let from_int = from.fract() == 0.0 && from.abs() <= i32::MAX as f64;
+    let to_int = to.fract() == 0.0 && to.abs() <= i32::MAX as f64;
+    let mut out = Vec::new();
+    if from <= to {
+        let mut x = from;
+        while x <= to {
+            out.push(x);
+            x += 1.0;
+        }
+    } else {
+        let mut x = from;
+        while x >= to {
+            out.push(x);
+            x -= 1.0;
+        }
+    }
+    if from_int && to_int {
+        Ok(heap.alloc(RObject::Integer(out.into_iter().map(|x| x as i32).collect())))
+    } else {
+        Ok(heap.alloc(RObject::Real(out)))
+    }
+}
+
+/// `x[i]` — subsetting with GNU indexing semantics for the atomic vector
+/// types in the migration slice. Positive integer indices are 1-based;
+/// out-of-range positive indices and NA indices yield NA elements.
+/// Negative indices exclude. Logical indices recycle across the vector.
+/// Zero indices drop out. Real indices truncate toward zero, exactly GNU.
+fn subset_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    subset_impl(heap, operands[0], operands[1])
+}
+
+/// Subsetting core operating on already-evaluated operands — shared by the
+/// primitive and by the real-index truncation recursion.
+fn subset_impl(heap: &mut Heap, source: ValueId, index: ValueId) -> EvalResult {
+    enum Selection {
+        /// Explicit 0-based positions; usize::MAX encodes an NA element.
+        Positions(Vec<usize>),
+        /// Positions to exclude (0-based, no duplicates required).
+        Excluding(Vec<usize>),
+    }
+    let source_length = vector_length(heap, source)
+        .ok_or(EvalError::TypeError("subscript requires a vector"))
+        .map_err(RSignal::from)?;
+    let selection = match heap.object(index) {
+        Some(RObject::Integer(values)) => {
+            if values.iter().any(|v| *v < 0 && *v != crate::value::object::NA_INTEGER) {
+                Selection::Excluding(
+                    values
+                        .iter()
+                        .filter(|v| **v < 0 && **v != crate::value::object::NA_INTEGER)
+                        .map(|v| (-*v - 1) as usize)
+                        .collect(),
+                )
+            } else {
+                Selection::Positions(
+                    values
+                        .iter()
+                        .map(|v| {
+                            if *v == crate::value::object::NA_INTEGER {
+                                usize::MAX
+                            } else if *v == 0 {
+                                usize::MAX - 1 // drop marker, filtered below
+                            } else {
+                                (*v - 1) as usize
+                            }
+                        })
+                        .collect(),
+                )
+            }
+        }
+        Some(RObject::Real(values)) => {
+            let truncs: Vec<i32> = values.iter().map(|v| *v as i32).collect();
+            let truncated = heap.alloc(RObject::Integer(truncs));
+            return subset_impl(heap, source, truncated);
+        }
+        Some(RObject::Logical(values)) => {
+            let mut positions = Vec::new();
+            for i in 0..source_length {
+                let flag = values[i % values.len().max(1)];
+                if flag == crate::value::object::NA_INTEGER {
+                    positions.push(usize::MAX);
+                } else if flag != 0 {
+                    positions.push(i);
+                }
+            }
+            Selection::Positions(positions)
+        }
+        _ => return Err(EvalError::TypeError("unsupported subscript type").into()),
+    };
+
+    // Materialize the final 0-based position list.
+    let positions: Vec<usize> = match selection {
+        Selection::Positions(list) => list
+            .into_iter()
+            .filter(|p| *p != usize::MAX - 1) // drop zero-index markers
+            .collect(),
+        Selection::Excluding(excluded) => (0..source_length)
+            .filter(|i| !excluded.contains(i))
+            .collect(),
+    };
+
+    extract_elements(heap, source, &positions).map_err(RSignal::from)
+}
+
+fn vector_length(heap: &Heap, value: ValueId) -> Option<usize> {
+    match heap.object(value) {
+        Some(RObject::Logical(v)) => Some(v.len()),
+        Some(RObject::Integer(v)) => Some(v.len()),
+        Some(RObject::Real(v)) => Some(v.len()),
+        Some(RObject::String(v)) => Some(v.len()),
+        Some(RObject::Raw(v)) => Some(v.len()),
+        Some(RObject::List(v)) => Some(v.len()),
+        _ => None,
+    }
+}
+
+/// Extract positions from an atomic vector into a fresh vector of the same
+/// type; usize::MAX positions yield the type's NA element.
+fn extract_elements(
+    heap: &mut Heap,
+    source: ValueId,
+    positions: &[usize],
+) -> Result<ValueId, EvalError> {
+    macro_rules! extract {
+        ($variant:ident, $na:expr) => {
+            match heap.object(source) {
+                Some(RObject::$variant(values)) => {
+                    let out: Vec<_> = positions
+                        .iter()
+                        .map(|p| {
+                            if *p == usize::MAX || *p >= values.len() {
+                                $na
+                            } else {
+                                values[*p]
+                            }
+                        })
+                        .collect();
+                    return Ok(heap.alloc(RObject::$variant(out)));
+                }
+                _ => {}
+            }
+        };
+    }
+    extract!(Logical, crate::value::object::NA_INTEGER);
+    extract!(Integer, crate::value::object::NA_INTEGER);
+    extract!(Real, f64::from_bits(crate::value::object::NA_REAL_BITS));
+    extract!(Raw, 0u8);
+    match heap.object(source) {
+        Some(RObject::String(values)) => {
+            let na_text = values.first().copied();
+            let out: Vec<_> = positions
+                .iter()
+                .map(|p| {
+                    if *p == usize::MAX || *p >= values.len() {
+                        na_text.unwrap_or(super::intern::InternedStr(0))
+                    } else {
+                        values[*p]
+                    }
+                })
+                .collect();
+            Ok(heap.alloc(RObject::String(out)))
+        }
+        Some(RObject::List(values)) => {
+            // List out-of-range positions are NULL elements in GNU's [[;
+            // the migration slice rejects them rather than fabricate.
+            if positions.iter().any(|p| *p == usize::MAX || *p >= values.len()) {
+                return Err(EvalError::TypeError("list subscript out of bounds"));
+            }
+            let out: Vec<_> = positions.iter().map(|p| values[*p]).collect();
+            Ok(heap.alloc(RObject::List(out)))
+        }
+        _ => Err(EvalError::TypeError("subscript requires a vector")),
+    }
 }
