@@ -71,6 +71,11 @@ pub mod primitive_ids {
     pub const PASTE0: u32 = 64;
     /// Subscript replacement — `[<-` returns the modified copy.
     pub const SUBSET_ASSIGN: u32 = 65;
+    /// Apply family — lapply/sapply iteration over closures.
+    pub const LAPPLY: u32 = 72;
+    pub const SAPPLY: u32 = 73;
+    /// List flattening.
+    pub const UNLIST: u32 = 74;
     /// Attribute access — names getter and replacement, dollar extraction.
     pub const NAMES: u32 = 69;
     pub const NAMES_ASSIGN: u32 = 70;
@@ -87,7 +92,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -133,6 +138,11 @@ pub(crate) fn call_primitive(
         NAMES => names_primitive(heap, interner, args, caller_env),
         NAMES_ASSIGN => names_assign_primitive(heap, interner, args, caller_env),
         DOLLAR => dollar_primitive(heap, interner, args, caller_env),
+        LAPPLY | SAPPLY => apply_family(heap, interner, id.0, args, caller_env),
+        UNLIST => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            unlist_primitive(heap, operands[0])
+        }
         PASTE => paste_primitive(heap, interner, args, caller_env, " "),
         PASTE0 => paste_primitive(heap, interner, args, caller_env, ""),
         NCHAR => nchar_primitive(heap, interner, args, caller_env),
@@ -632,7 +642,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist",
     ]
 }
 
@@ -693,6 +703,9 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "names" => Some(NAMES),
         "names<-" => Some(NAMES_ASSIGN),
         "$" => Some(DOLLAR),
+        "lapply" => Some(LAPPLY),
+        "sapply" => Some(SAPPLY),
+        "unlist" => Some(UNLIST),
         _ => None,
     }
 }
@@ -1961,5 +1974,180 @@ fn dollar_primitive(
             Ok(items[position])
         }
         _ => Err(EvalError::TypeError("$ operator is invalid for atomic vectors").into()),
+    }
+}
+
+/// `lapply(x, f)` / `sapply(x, f)` — apply a closure to each element.
+/// Atomic vectors box elements as length-one vectors (GNU exactly); list
+/// elements pass through unboxed. Application reuses the closure machinery
+/// through a synthetic argument pairlist — the element is already a value,
+/// and vector values self-evaluate when the argument promise forces.
+/// sapply simplifies homogeneous length-one results into a vector, GNU's
+/// canonical simplification shape.
+fn apply_family(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    op: u32,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    let elements = sequence_elements(heap, operands[0])?;
+    let fun = operands[1];
+    let (formals, body, closure_env) = match heap.object(fun) {
+        Some(RObject::Closure { formals, body, env }) => (*formals, *body, *env),
+        _ => return Err(EvalError::TypeError("apply requires a closure").into()),
+    };
+    let mut results = Vec::new();
+    for element in elements {
+        // Synthetic argument pairlist: one node carrying the element. The
+        // element is a value; self-evaluation makes the promise correct.
+        let arg_node = heap.alloc(RObject::Pairlist {
+            car: element,
+            cdr: ValueId::NIL,
+            tag: ValueId::NIL,
+        });
+        let applied = super::eval::apply_closure_public(
+            heap, interner, formals, body, closure_env, arg_node, caller_env,
+        )?;
+        let applied = force_if_promise(heap, interner, applied)?;
+        results.push(applied);
+    }
+    if op == LAPPLY {
+        return Ok(heap.alloc(RObject::List(results)));
+    }
+    // sapply simplification: homogeneous length-one atomic results unbox
+    // into a single vector of the common type; anything else stays a list.
+    simplify_sapply(heap, results)
+}
+
+/// GNU's simplification rule shape: every result a length-one atomic vector
+/// of one type unboxes elementwise; otherwise the list stands.
+fn simplify_sapply(heap: &mut Heap, results: Vec<ValueId>) -> EvalResult {
+    if results.is_empty() {
+        return Ok(heap.alloc(RObject::List(results)));
+    }
+    enum Kind {
+        Logical,
+        Integer,
+        Real,
+    }
+    let mut kind: Option<Kind> = None;
+    for result in &results {
+        let this = match heap.object(*result) {
+            Some(RObject::Logical(v)) if v.len() == 1 => Kind::Logical,
+            Some(RObject::Integer(v)) if v.len() == 1 => Kind::Integer,
+            Some(RObject::Real(v)) if v.len() == 1 => Kind::Real,
+            _ => return Ok(heap.alloc(RObject::List(results))),
+        };
+        match (&kind, &this) {
+            (None, _) => kind = Some(this),
+            (Some(Kind::Logical), Kind::Logical) => {}
+            (Some(Kind::Integer), Kind::Integer) => {}
+            (Some(Kind::Real), Kind::Real) => {}
+            // Mixed numeric kinds simplify upward to real in GNU's exact
+            // shape; logical/integer mixtures stay integer. The slice
+            // simplifies any numeric mixture to real, documented.
+            _ => kind = Some(Kind::Real),
+        }
+    }
+    match kind {
+        Some(Kind::Logical) => {
+            let mut out = Vec::new();
+            for result in results {
+                match heap.object(result) {
+                    Some(RObject::Logical(v)) => out.push(v[0]),
+                    _ => return Err(EvalError::TypeError("simplify kind drift").into()),
+                }
+            }
+            Ok(heap.alloc(RObject::Logical(out)))
+        }
+        Some(Kind::Integer) => {
+            let mut out = Vec::new();
+            for result in results {
+                match heap.object(result) {
+                    Some(RObject::Integer(v)) => out.push(v[0]),
+                    _ => return Err(EvalError::TypeError("simplify kind drift").into()),
+                }
+            }
+            Ok(heap.alloc(RObject::Integer(out)))
+        }
+        _ => {
+            let mut out = Vec::new();
+            for result in results {
+                match heap.object(result) {
+                    Some(RObject::Real(v)) => out.push(v[0]),
+                    Some(RObject::Integer(v)) => {
+                        if v[0] == crate::value::object::NA_INTEGER {
+                            out.push(f64::from_bits(crate::value::object::NA_REAL_BITS));
+                        } else {
+                            out.push(v[0] as f64);
+                        }
+                    }
+                    Some(RObject::Logical(v)) => out.push(v[0] as f64),
+                    _ => return Err(EvalError::TypeError("simplify kind drift").into()),
+                }
+            }
+            Ok(heap.alloc(RObject::Real(out)))
+        }
+    }
+}
+
+/// `unlist(x)` — recursive flattening to the common atomic type, GNU's
+/// type-hierarchy shape: any real promotes to real, integer/logical
+/// mixtures promote to integer. The slice covers numeric flattening;
+/// string mixtures are future work.
+fn unlist_primitive(heap: &mut Heap, value: ValueId) -> EvalResult {
+    fn flatten(heap: &Heap, value: ValueId, ints: &mut Vec<i32>, reals: &mut Vec<f64>) {
+        match heap.object(value) {
+            Some(RObject::Logical(values)) => {
+                for v in values {
+                    ints.push(*v as i32);
+                    reals.push(*v as f64);
+                }
+            }
+            Some(RObject::Integer(values)) => {
+                for v in values {
+                    ints.push(*v);
+                    if *v == crate::value::object::NA_INTEGER {
+                        reals.push(f64::from_bits(crate::value::object::NA_REAL_BITS));
+                    } else {
+                        reals.push(*v as f64);
+                    }
+                }
+            }
+            Some(RObject::Real(values)) => {
+                for v in values {
+                    ints.push(0);
+                    reals.push(*v);
+                }
+            }
+            Some(RObject::List(items)) => {
+                for item in items {
+                    flatten(heap, *item, ints, reals);
+                }
+            }
+            _ => {}
+        }
+    }
+    fn any_real(heap: &Heap, value: ValueId) -> bool {
+        match heap.object(value) {
+            Some(RObject::Real(_)) => true,
+            Some(RObject::List(items)) => items.iter().any(|i| any_real(heap, *i)),
+            _ => false,
+        }
+    }
+    match heap.object(value) {
+        Some(RObject::List(_)) => {}
+        // Atomic inputs pass through unchanged, GNU exactly.
+        _ => return Ok(value),
+    }
+    let mut ints = Vec::new();
+    let mut reals = Vec::new();
+    flatten(heap, value, &mut ints, &mut reals);
+    if any_real(heap, value) {
+        Ok(heap.alloc(RObject::Real(reals)))
+    } else {
+        Ok(heap.alloc(RObject::Integer(ints)))
     }
 }

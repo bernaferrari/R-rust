@@ -197,6 +197,20 @@ fn call(
 /// Argument matching implements GNU's order — exact names first, then
 /// positional — with lazy promise construction. Formals without defaults
 /// and without supplied arguments bind the missing-argument sentinel.
+/// Cross-module access for the apply family — primitives need closure
+/// application with synthetic argument pairlists.
+pub(crate) fn apply_closure_public(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    formals: ValueId,
+    body: ValueId,
+    closure_env: ValueId,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    apply_closure(heap, interner, formals, body, closure_env, args, caller_env)
+}
+
 fn apply_closure(
     heap: &mut Heap,
     interner: &mut SymbolInterner,

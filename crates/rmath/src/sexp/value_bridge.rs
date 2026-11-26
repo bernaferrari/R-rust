@@ -1814,6 +1814,9 @@ mod tests {
             "{ x <- list(10, 20); names(x) <- c('p', 'q'); x$q }",
             "{ x <- list(a=5); y <- x; names(x) <- c('z'); x$z }",
             "{ x <- list(1, 2); names(x) <- c('a', 'b'); names(x) }",
+            "sapply(1:4, function(x) x * x)",
+            "{ f <- function(x) x + 10; sapply(c(1, 2, 3), f) }",
+            "unlist(lapply(1:3, function(x) x * 2))",
         ];
         // One session, one parse pass: expression objects stay valid for the
         // session's lifetime, so batching avoids per-program bootstrap cost.
