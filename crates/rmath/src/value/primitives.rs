@@ -1379,19 +1379,65 @@ fn call_primitive_inner(
         STORAGE_MODE_ASSIGN => {
             let operands = eval_args(heap, interner, args, caller_env, 2)?;
             let target_type = string_operand(heap, interner, operands[1]).unwrap_or_default();
-            // storage.mode<- coerces the object to the named type exactly
-            // as GNU's storage-mode mutation — dispatching through the
-            // shared coercion lattice.
-            match target_type.as_str() {
-                "double" | "numeric" => coerce_real(heap, interner, operands[0]),
-                "integer" => coerce_integer(heap, interner, operands[0]),
-                "logical" => coerce_logical(heap, interner, operands[0]),
+            // storage.mode<- coerces the payload while the attribute chain
+            // survives untouched exactly as GNU's in-place mode mutation —
+            // dim, names, and custom attributes all ride through.
+            // Factors reject mode changes outright; defunct and unknown
+            // modes raise GNU's exact errors.
+            if is_factor(heap, interner, operands[0]) {
+                return Err(EvalError::Condition("invalid to change the storage mode of a factor".to_string()).into());
+            }
+            if target_type == "real" {
+                return Err(EvalError::Condition("use of 'real' is defunct: use 'double' instead".to_string()).into());
+            }
+            let coerced = match target_type.as_str() {
+                "double" | "numeric" => coerce_real(heap, interner, operands[0])?,
+                "integer" => coerce_integer(heap, interner, operands[0])?,
+                "logical" => coerce_logical(heap, interner, operands[0])?,
                 "character" => {
                     let strings = strings_of_value(heap, interner, operands[0]).map_err(RSignal::from)?;
-                    Ok(heap.alloc(RObject::String(strings)))
+                    heap.alloc(RObject::String(strings))
                 }
-                _ => Ok(operands[0]),
+                "raw" => {
+                    // Integer-valued byte truncation exactly as GNU.
+                    let bytes: Vec<u8> = match heap.object(operands[0]) {
+                        Some(RObject::Integer(vals)) => vals.iter().map(|v| (*v).clamp(0, 255) as u8).collect(),
+                        Some(RObject::Real(vals)) => vals.iter().map(|v| (*v as i32).clamp(0, 255) as u8).collect(),
+                        Some(RObject::Raw(vals)) => vals.clone(),
+                        _ => Vec::new(),
+                    };
+                    heap.alloc(RObject::Raw(bytes))
+                }
+                "list" => {
+                    // NULL and vectors convert to list-of-elements exactly
+                    // as GNU's mode mutation.
+                    if operands[0] == ValueId::NIL || matches!(heap.object(operands[0]), Some(RObject::Nil)) {
+                        heap.alloc(RObject::List(Vec::new()))
+                    } else {
+                        let len = vector_length(heap, operands[0]).unwrap_or(0);
+                        let mut items = Vec::new();
+                        for i in 0..len {
+                            let idx_obj = heap.alloc(RObject::Real(vec![(i + 1) as f64]));
+                            let inner = heap.alloc(RObject::Pairlist { car: idx_obj, cdr: ValueId::NIL, tag: ValueId::NIL });
+                            let call_args = heap.alloc(RObject::Pairlist { car: operands[0], cdr: inner, tag: ValueId::NIL });
+                            if let Ok(elem) = extract_primitive(heap, interner, call_args, caller_env) {
+                                items.push(elem);
+                            }
+                        }
+                        heap.alloc(RObject::List(items))
+                    }
+                }
+                _ => {
+                    return Err(EvalError::Condition("invalid value".to_string()).into());
+                }
+            };
+            // Reattach the source attribute chain exactly as GNU's
+            // in-place mutation leaves attributes untouched.
+            let source_attrib = heap.get(operands[0]).map(|slot| slot.attrib).unwrap_or(ValueId::NIL);
+            if let Some(slot) = heap.get_mut(coerced) {
+                slot.attrib = source_attrib;
             }
+            Ok(coerced)
         }
         USEMETHOD => usemethod_primitive(heap, interner, args, caller_env),
         NEXTMETHOD => nextmethod_primitive(heap, interner, caller_env),
