@@ -100,6 +100,14 @@ impl ValueBridge {
         if let Some(existing) = self.forward.get(&key) {
             return Ok(*existing);
         }
+        // Well-known singletons map to their reserved sentinels rather than
+        // heap objects. Besides matching the new object model, this is what
+        // keeps closure import tractable: a closure's environment edge ends
+        // at the global-environment sentinel instead of dragging the entire
+        // session object graph into the heap.
+        if let Some(sentinel) = singleton_sentinel(sexp) {
+            return Ok(sentinel);
+        }
         // NIL is a singleton sentinel in both worlds: it maps to the
         // reserved `ValueId::NIL` instead of allocating a heap object.
         if sexp.typeof_() == SEXPTYPE::NILSXP {
@@ -239,6 +247,45 @@ impl ValueBridge {
                 self.attach_attributes(heap, interner, sexp, id)?;
                 Ok(id)
             }
+            SEXPTYPE::CLOSXP => {
+                // Closures pre-register: a closure's environment edge nearly
+                // always references the environment the closure was defined
+                // in, which commonly contains the closure itself.
+                let id = heap.alloc(RObject::Closure {
+                    formals: ValueId::NIL,
+                    body: ValueId::NIL,
+                    env: ValueId::NIL,
+                });
+                self.forward.insert(key, id);
+
+                let formals = match sexp.formals() {
+                    Some(f) if f.typeof_() != SEXPTYPE::NILSXP => {
+                        self.import(heap, interner, &f)?
+                    }
+                    _ => ValueId::NIL,
+                };
+                let body = match sexp.body() {
+                    Some(b) if b.typeof_() != SEXPTYPE::NILSXP => {
+                        self.import(heap, interner, &b)?
+                    }
+                    _ => ValueId::NIL,
+                };
+                let env = match sexp.cloenv() {
+                    Some(e) if e.typeof_() != SEXPTYPE::NILSXP => {
+                        self.import(heap, interner, &e)?
+                    }
+                    _ => ValueId::NIL,
+                };
+
+                match heap.object_mut(id) {
+                    Some(slot @ RObject::Closure { .. }) => {
+                        *slot = RObject::Closure { formals, body, env };
+                    }
+                    _ => return Err(ImportError::TruncatedPayload),
+                }
+                self.attach_attributes(heap, interner, sexp, id)?;
+                Ok(id)
+            }
             SEXPTYPE::SYMSXP => {
                 // Symbols pre-register like pairlists: an unbound symbol's
                 // value edge can be the symbol itself, and the memoized
@@ -257,13 +304,10 @@ impl ValueBridge {
                     .ok_or(ImportError::TruncatedPayload)?;
                 let name = interner.intern_symbol(&name_text);
 
-                // Sentinel edges stay NIL: the unbound-value singleton has no
-                // meaningfully distinct identity in the new heap yet.
+                // Sentinel edges (unbound, missing) resolve through the
+                // singleton mapping inside the recursive import.
                 let value = match sexp.symvalue() {
-                    Some(target)
-                        if target.typeof_() != SEXPTYPE::NILSXP
-                            && target.as_raw() != crate::sexp::globals::R_UnboundValue() =>
-                    {
+                    Some(target) if target.typeof_() != SEXPTYPE::NILSXP => {
                         self.import(heap, interner, &target)?
                     }
                     _ => ValueId::NIL,
@@ -412,6 +456,31 @@ fn convert_atomic(
     }
 }
 
+/// Map the legacy singleton objects onto their reserved `ValueId`
+/// sentinels. Pointer identity is exact: these singletons are unique
+/// objects in the legacy world.
+fn singleton_sentinel(sexp: &Sexp<'_>) -> Option<ValueId> {
+    use crate::sexp::globals;
+    let raw = sexp.as_raw();
+    // Ordered by frequency in typical object graphs: nil first.
+    let pairs: [(crate::sexp::ffi::SEXP, ValueId); 5] = [
+        (globals::R_NilValue(), ValueId::NIL),
+        (globals::R_MissingArg(), ValueId::MISSING),
+        (globals::R_UnboundValue(), ValueId::UNBOUND),
+        (globals::R_GlobalEnv(), ValueId::GLOBAL_ENV),
+        (globals::R_BaseEnv(), ValueId::BASE_ENV),
+    ];
+    // R_EmptyEnv is not universally present in every harness; resolve it
+    // separately so a missing singleton never masks the others.
+    if raw == globals::R_EmptyEnv() {
+        return Some(ValueId::EMPTY_ENV);
+    }
+    pairs
+        .iter()
+        .find(|(singleton, _)| *singleton == raw)
+        .map(|(_, sentinel)| *sentinel)
+}
+
 /// Stable identity key for a legacy object: its pointer identity, which is
 /// what object identity means everywhere in the legacy world.
 fn sexp_key(sexp: &Sexp<'_>) -> usize {
@@ -525,11 +594,11 @@ mod tests {
             let mut bridge = ValueBridge::new();
             let mut arena = crate::sexp::memory::RArena::new();
 
-            let raw = arena.alloc_node(SEXPTYPE::CLOSXP);
-            let sexp = Sexp::from_arena_raw(raw, &arena).expect("live closure");
+            let raw = arena.alloc_node(SEXPTYPE::PROMSXP);
+            let sexp = Sexp::from_arena_raw(raw, &arena).expect("live promise");
             match bridge.import_atomic(&mut heap, &mut interner, &sexp) {
-                Err(ImportError::UnsupportedType(SEXPTYPE::CLOSXP)) => {}
-                other => panic!("closures must be rejected for now, got {other:?}"),
+                Err(ImportError::UnsupportedType(SEXPTYPE::PROMSXP)) => {}
+                other => panic!("promises must be rejected for now, got {other:?}"),
             }
         });
     }
@@ -852,5 +921,43 @@ mod tests {
             })
             .expect("registered env");
         });
+    }
+    #[test]
+    fn import_closure_preserves_formals_body_and_env() {
+        let mut session = crate::sexp::session::RSession::new();
+        let mut heap = Heap::new();
+        let mut interner = SymbolInterner::new();
+        let mut bridge = ValueBridge::new();
+
+        let (result, _output, _visible) =
+            session.eval_code_with_output_capture("function(x) x + 1");
+        let closure = result.expect("closure expression evaluates");
+        assert_eq!(closure.typeof_(), SEXPTYPE::CLOSXP);
+
+        let id = bridge
+            .import(&mut heap, &mut interner, &closure)
+            .expect("closures import");
+        match heap.object(id) {
+            Some(RObject::Closure { formals, body, env }) => {
+                assert_ne!(*formals, ValueId::NIL, "formals survive");
+                assert_ne!(*body, ValueId::NIL, "body survives");
+                // Top-level eval creates closures in the global environment,
+                // which imports as the reserved sentinel rather than dragging
+                // the whole session graph into the heap.
+                assert_eq!(
+                    *env,
+                    ValueId::GLOBAL_ENV,
+                    "the closure environment maps to the global-env sentinel"
+                );
+                // the formals pairlist should tag its single cell with x
+                match heap.object(*formals) {
+                    Some(RObject::Pairlist { tag, .. }) => {
+                        assert_ne!(*tag, ValueId::NIL, "formal parameters carry names");
+                    }
+                    other => panic!("expected formals pairlist, got {other:?}"),
+                }
+            }
+            other => panic!("expected closure, got {other:?}"),
+        }
     }
 }
