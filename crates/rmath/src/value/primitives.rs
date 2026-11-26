@@ -158,6 +158,8 @@ pub mod primitive_ids {
     pub const LEVELS_ASSIGN: u32 = 139;
     pub const UNCLASS: u32 = 140;
     pub const TEMPDIR: u32 = 141;
+    /// C-style string formatting.
+    pub const SPRINTF: u32 = 142;
     /// Matrix construction and dimension introspection.
     pub const MATRIX: u32 = 100;
     pub const DIM: u32 = 101;
@@ -179,7 +181,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -441,6 +443,7 @@ pub(crate) fn call_primitive(
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             copy_with_attrib(heap, interner, operands[0], "class", ValueId::NIL).map_err(RSignal::from)
         }
+        SPRINTF => sprintf_primitive(heap, interner, args, caller_env),
         TEMPDIR => {
             let text = interner.intern_string(&std::env::temp_dir().to_string_lossy());
             Ok(heap.alloc(RObject::String(vec![text])))
@@ -1061,7 +1064,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -1177,6 +1180,7 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "levels" => Some(LEVELS),
         "levels<-" => Some(LEVELS_ASSIGN),
         "unclass" => Some(UNCLASS),
+        "sprintf" => Some(SPRINTF),
         "tempdir" => Some(TEMPDIR),
         "dimnames" => Some(DIMNAMES),
         "dimnames<-" => Some(DIMNAMES_ASSIGN),
@@ -4941,4 +4945,224 @@ fn factor_primitive(
     let obj = copy_with_attrib(heap, interner, obj, "levels", levels_obj).map_err(RSignal::from)?;
     let class_obj = heap.alloc(RObject::String(vec![interner.intern_string("factor")]));
     copy_with_attrib(heap, interner, obj, "class", class_obj).map_err(RSignal::from)
+}
+
+/// One conversion spec parsed out of a sprintf format string.
+struct ConvSpec {
+    zero_pad: bool,
+    width: usize,
+    precision: Option<usize>,
+    conversion: char,
+}
+
+/// `sprintf(fmt, ...)`: C-style conversion specs vectorized over recycled
+/// inputs — the subset GNU's statistical printing actually exercises:
+/// %d/%i integers, %f fixed, %s strings, %g significant, %% literal.
+fn sprintf_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    // Variadic: every argument evaluates — the format first, conversion
+    /// inputs in order after.
+    let raw = raw_args(heap, args);
+    let mut operands: Vec<ValueId> = Vec::new();
+    for expr in &raw {
+        let v = eval(heap, interner, *expr, caller_env)?;
+        operands.push(force_if_promise(heap, interner, v)?);
+    }
+    if operands.is_empty() {
+        return Err(EvalError::TypeError("sprintf requires a format").into());
+    }
+    let fmt = string_operand(heap, interner, operands[0])
+        .ok_or(EvalError::TypeError("sprintf format must be character"))?;
+    // Parse the spec sequence and literal text interleaved.
+    let mut pieces: Vec<Result<String, ConvSpec>> = Vec::new();
+    let mut chars = fmt.chars().peekable();
+    let mut literal = String::new();
+    while let Some(c) = chars.next() {
+        if c != '%' {
+            literal.push(c);
+            continue;
+        }
+        if chars.peek() == Some(&'%') {
+            chars.next();
+            literal.push('%');
+            continue;
+        }
+        if !literal.is_empty() {
+            pieces.push(Ok(std::mem::take(&mut literal)));
+        }
+        let mut zero_pad = false;
+        let mut width = 0usize;
+        let mut precision = None;
+        // flags
+        while let Some(&f) = chars.peek() {
+            match f {
+                '0' => {
+                    zero_pad = true;
+                    chars.next();
+                }
+                '-' | '+' | ' ' => {
+                    chars.next();
+                }
+                _ => break,
+            }
+        }
+        while let Some(&d) = chars.peek() {
+            if d.is_ascii_digit() {
+                width = width * 10 + d.to_digit(10).unwrap() as usize;
+                chars.next();
+            } else {
+                break;
+            }
+        }
+        if chars.peek() == Some(&'.') {
+            chars.next();
+            let mut prec = 0usize;
+            while let Some(&d) = chars.peek() {
+                if d.is_ascii_digit() {
+                    prec = prec * 10 + d.to_digit(10).unwrap() as usize;
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            precision = Some(prec);
+        }
+        let conversion = chars.next().unwrap_or('s');
+        pieces.push(Err(ConvSpec {
+            zero_pad,
+            width,
+            precision,
+            conversion,
+        }));
+    }
+    if !literal.is_empty() {
+        pieces.push(Ok(literal));
+    }
+    // The conversion inputs follow the format operand in order.
+    let inputs: Vec<ValueId> = operands[1..].to_vec();
+    let nconv = pieces.iter().filter(|p| p.is_err()).count();
+    let out_len = inputs
+        .iter()
+        .take(nconv.max(1))
+        .map(|v| vector_length(heap, *v).unwrap_or(1))
+        .max()
+        .unwrap_or(1)
+        .max(1);
+    let mut results: Vec<String> = Vec::with_capacity(out_len);
+    for i in 0..out_len {
+        let mut text = String::new();
+        let mut input_index = 0usize;
+        for piece in &pieces {
+            match piece {
+                Ok(lit) => text.push_str(lit),
+                Err(spec) => {
+                    let input = inputs.get(input_index).copied().unwrap_or(ValueId::NIL);
+                    input_index += 1;
+                    text.push_str(&format_spec(heap, interner, spec, input, i));
+                }
+            }
+        }
+        results.push(text);
+    }
+    let interned: Vec<super::intern::InternedStr> = results
+        .iter()
+        .map(|s| interner.intern_string(s))
+        .collect();
+    Ok(heap.alloc(RObject::String(interned)))
+}
+
+/// Format one recycled element against one conversion spec.
+fn format_spec(
+    heap: &Heap,
+    interner: &SymbolInterner,
+    spec: &ConvSpec,
+    input: ValueId,
+    index: usize,
+) -> String {
+    let len = vector_length(heap, input).unwrap_or(1).max(1);
+    let i = index % len;
+    let body = match spec.conversion {
+        'd' | 'i' => {
+            let v = match heap.object(input) {
+                Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => {
+                    values.get(i).copied().unwrap_or(0) as i64
+                }
+                Some(RObject::Real(values)) => values.get(i).copied().unwrap_or(0.0) as i64,
+                _ => 0,
+            };
+            let digits = v.to_string();
+            let negative = digits.starts_with('-');
+            let bare = digits.trim_start_matches('-');
+            let padded = if spec.zero_pad && spec.width > bare.len() + negative as usize {
+                let zeros = spec.width - bare.len() - negative as usize;
+                format!("{}{}", "0".repeat(zeros), bare)
+            } else if spec.width > bare.len() {
+                format!("{}{}", " ".repeat(spec.width - bare.len()), bare)
+            } else {
+                bare.to_string()
+            };
+            if negative {
+                format!("-{padded}")
+            } else {
+                padded
+            }
+        }
+        'f' => {
+            let v = match heap.object(input) {
+                Some(RObject::Real(values)) => values.get(i).copied().unwrap_or(0.0),
+                Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => {
+                    values.get(i).copied().unwrap_or(0) as f64
+                }
+                _ => 0.0,
+            };
+            let decimals = spec.precision.unwrap_or(6);
+            let fixed = format!("{:.*}", decimals, v);
+            if spec.zero_pad && spec.width > fixed.len() {
+                let negative = fixed.starts_with('-');
+                let bare = fixed.trim_start_matches('-');
+                let zeros = spec.width - bare.len() - negative as usize;
+                if negative {
+                    format!("-{}{}", "0".repeat(zeros), bare)
+                } else {
+                    format!("{}{}", "0".repeat(zeros), bare)
+                }
+            } else if spec.width > fixed.len() {
+                format!("{}{}", " ".repeat(spec.width - fixed.len()), fixed)
+            } else {
+                fixed
+            }
+        }
+        'g' => {
+            let v = match heap.object(input) {
+                Some(RObject::Real(values)) => values.get(i).copied().unwrap_or(0.0),
+                Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => {
+                    values.get(i).copied().unwrap_or(0) as f64
+                }
+                _ => 0.0,
+            };
+            super::print::format_real(v)
+        }
+        _ => {
+            // %s — string coercion of the element.
+            match heap.object(input) {
+                Some(RObject::String(values)) => values
+                    .get(i)
+                    .map(|v| interner.string_text(*v).to_string())
+                    .unwrap_or_default(),
+                Some(RObject::Real(values)) => super::print::format_real(
+                    values.get(i).copied().unwrap_or(0.0),
+                ),
+                Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => values
+                    .get(i)
+                    .map(|v| v.to_string())
+                    .unwrap_or_default(),
+                _ => String::new(),
+            }
+        }
+    };
+    body
 }
