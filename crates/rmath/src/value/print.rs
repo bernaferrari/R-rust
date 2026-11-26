@@ -239,7 +239,12 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
             }
         })
         .collect();
-    let width = elements.iter().map(|e| e.len()).max().unwrap_or(0);
+    let width = if matches!(object, RObject::String(_)) {
+        // GNU does not column-align character vectors — quoting delimits.
+        0
+    } else {
+        elements.iter().map(|e| e.len()).max().unwrap_or(0)
+    };
     // GNU named-vector layout: the names print as a header row over the
     /// values, each column right-justified to the wider of name and value,
     /// with no [1] tags — the two-row reading is the tell.
@@ -281,7 +286,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
             out.push_str("[1]");
             for element in &elements {
                 out.push(' ');
-                out.push_str(&" ".repeat(width - element.len()));
+                out.push_str(&" ".repeat(width.saturating_sub(element.len())));
                 out.push_str(element);
             }
         }

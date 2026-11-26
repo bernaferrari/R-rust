@@ -279,7 +279,8 @@ fn call_primitive_inner(
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             is_na_primitive(heap, interner, operands[0])
         }
-        SORT | REV | UNIQUE => ordering_primitive(heap, interner, id.0, args, caller_env),
+        SORT | REV => ordering_primitive(heap, interner, id.0, args, caller_env),
+        UNIQUE => unique_primitive(heap, interner, args, caller_env),
         WHICH => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             which_primitive(heap, operands[0])
@@ -5326,6 +5327,9 @@ fn factor_primitive(
 /// One conversion spec parsed out of a sprintf format string.
 struct ConvSpec {
     zero_pad: bool,
+    plus: bool,
+    minus: bool,
+    space: bool,
     width: usize,
     precision: Option<usize>,
     conversion: char,
@@ -5371,6 +5375,9 @@ fn sprintf_primitive(
             pieces.push(Ok(std::mem::take(&mut literal)));
         }
         let mut zero_pad = false;
+        let mut plus = false;
+        let mut minus = false;
+        let mut space = false;
         let mut width = 0usize;
         let mut precision = None;
         // flags
@@ -5380,7 +5387,16 @@ fn sprintf_primitive(
                     zero_pad = true;
                     chars.next();
                 }
-                '-' | '+' | ' ' => {
+                '+' => {
+                    plus = true;
+                    chars.next();
+                }
+                '-' => {
+                    minus = true;
+                    chars.next();
+                }
+                ' ' => {
+                    space = true;
                     chars.next();
                 }
                 _ => break,
@@ -5410,6 +5426,9 @@ fn sprintf_primitive(
         let conversion = chars.next().unwrap_or('s');
         pieces.push(Err(ConvSpec {
             zero_pad,
+            plus,
+            minus,
+            space,
             width,
             precision,
             conversion,
@@ -5461,70 +5480,108 @@ fn format_spec(
 ) -> String {
     let len = vector_length(heap, input).unwrap_or(1).max(1);
     let i = index % len;
-    let body = match spec.conversion {
-        'd' | 'i' => {
-            let v = match heap.object(input) {
-                Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => {
-                    values.get(i).copied().unwrap_or(0) as i64
-                }
-                Some(RObject::Real(values)) => values.get(i).copied().unwrap_or(0.0) as i64,
-                _ => 0,
-            };
-            let digits = v.to_string();
-            let negative = digits.starts_with('-');
-            let bare = digits.trim_start_matches('-');
-            let padded = if spec.zero_pad && spec.width > bare.len() + negative as usize {
-                let zeros = spec.width - bare.len() - negative as usize;
-                format!("{}{}", "0".repeat(zeros), bare)
-            } else if spec.width > bare.len() {
-                format!("{}{}", " ".repeat(spec.width - bare.len()), bare)
-            } else {
-                bare.to_string()
-            };
-            if negative {
-                format!("-{padded}")
-            } else {
-                padded
+    let int_value = |heap: &Heap| -> i64 {
+        match heap.object(input) {
+            Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => {
+                values.get(i).copied().unwrap_or(0) as i64
             }
+            Some(RObject::Real(values)) => values.get(i).copied().unwrap_or(0.0) as i64,
+            _ => 0,
+        }
+    };
+    let real_value = |heap: &Heap| -> f64 {
+        match heap.object(input) {
+            Some(RObject::Real(values)) => values.get(i).copied().unwrap_or(0.0),
+            Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => {
+                values.get(i).copied().unwrap_or(0) as f64
+            }
+            _ => 0.0,
+        }
+    };
+    // GNU's uniform numeric discipline: the sign (+/-/space) leads, zero
+    /// padding follows the sign, and width justification pads with spaces —
+    /// left when the minus flag is present.
+    let finish = |digits: String, negative: bool, spec: &ConvSpec| -> String {
+        let sign = if negative {
+            "-"
+        } else if spec.plus {
+            "+"
+        } else if spec.space {
+            " "
+        } else {
+            ""
+        };
+        let core_len = sign.len() + digits.len();
+        if spec.zero_pad && !spec.minus && spec.width > core_len {
+            format!("{}{}{}", sign, "0".repeat(spec.width - core_len), digits)
+        } else if spec.width > core_len {
+            if spec.minus {
+                format!("{}{}{}", sign, digits, " ".repeat(spec.width - core_len))
+            } else {
+                format!("{}{}{}", " ".repeat(spec.width - core_len), sign, digits)
+            }
+        } else {
+            format!("{sign}{digits}")
+        }
+    };
+    match spec.conversion {
+        'd' | 'i' => {
+            let v = int_value(heap);
+            finish(v.unsigned_abs().to_string(), v < 0, spec)
+        }
+        'x' | 'X' | 'o' => {
+            let v = int_value(heap);
+            let digits = match spec.conversion {
+                'x' => format!("{:x}", v),
+                'X' => format!("{:X}", v),
+                _ => format!("{:o}", v),
+            };
+            finish(digits, false, spec)
         }
         'f' => {
-            let v = match heap.object(input) {
-                Some(RObject::Real(values)) => values.get(i).copied().unwrap_or(0.0),
-                Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => {
-                    values.get(i).copied().unwrap_or(0) as f64
-                }
-                _ => 0.0,
-            };
+            let v = real_value(heap);
             let decimals = spec.precision.unwrap_or(6);
-            let fixed = format!("{:.*}", decimals, v);
-            if spec.zero_pad && spec.width > fixed.len() {
-                let negative = fixed.starts_with('-');
-                let bare = fixed.trim_start_matches('-');
-                let zeros = spec.width - bare.len() - negative as usize;
-                if negative {
-                    format!("-{}{}", "0".repeat(zeros), bare)
-                } else {
-                    format!("{}{}", "0".repeat(zeros), bare)
-                }
-            } else if spec.width > fixed.len() {
-                format!("{}{}", " ".repeat(spec.width - fixed.len()), fixed)
-            } else {
-                fixed
-            }
+            let fixed = format!("{:.*}", decimals, v.abs());
+            finish(fixed, v < 0.0, spec)
         }
-        'g' => {
-            let v = match heap.object(input) {
-                Some(RObject::Real(values)) => values.get(i).copied().unwrap_or(0.0),
-                Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => {
-                    values.get(i).copied().unwrap_or(0) as f64
-                }
-                _ => 0.0,
+        'e' | 'E' => {
+            let v = real_value(heap);
+            let decimals = spec.precision.unwrap_or(6);
+            let raw = format!("{:.*e}", decimals, v.abs());
+            // Rust prints 1.23e3 — GNU wants 1.23e+03: signed, two digits.
+            let (mantissa, exp) = raw.split_once('e').unwrap_or((&raw, "0"));
+            let exp_value: i32 = exp.parse().unwrap_or(0);
+            let exp_text = format!("{}{:02}", if exp_value < 0 { "-" } else { "+" }, exp_value.abs());
+            let marker = if spec.conversion == 'E' { "E" } else { "e" };
+            finish(format!("{mantissa}{marker}{exp_text}"), v < 0.0, spec)
+        }
+        'g' | 'G' => {
+            let v = real_value(heap);
+            let prec = spec.precision.unwrap_or(6).max(1);
+            let abs = v.abs();
+            let exp = if abs == 0.0 { 0 } else { abs.log10().floor() as i32 };
+            let text = if exp < -4 || exp >= prec as i32 {
+                // scientific with prec-1 mantissa decimals, trailing zeros
+                /// stripped exactly as %g requires.
+                let raw = format!("{:.*e}", prec - 1, abs);
+                let (mantissa, exponent) = raw.split_once('e').unwrap_or((&raw, "0"));
+                let mantissa = mantissa
+                    .trim_end_matches('0')
+                    .trim_end_matches('.');
+                let exp_value: i32 = exponent.parse().unwrap_or(0);
+                let marker = if spec.conversion == 'G' { "E" } else { "e" };
+                format!("{}{}{}{:02}", mantissa, marker, if exp_value < 0 { "-" } else { "+" }, exp_value.abs())
+            } else {
+                let decimals = (prec as i32 - 1 - exp).max(0) as usize;
+                let fixed = format!("{:.*}", decimals, abs);
+                fixed.trim_end_matches('0').trim_end_matches('.').to_string()
             };
-            super::print::format_real(v)
+            finish(text, v < 0.0, spec)
         }
         _ => {
-            // %s — string coercion of the element.
-            match heap.object(input) {
+            // %s — string coercion of the element, width-justified without
+            /// sign discipline.
+            let text = match heap.object(input) {
                 Some(RObject::String(values)) => values
                     .get(i)
                     .map(|v| interner.string_text(*v).to_string())
@@ -5537,10 +5594,18 @@ fn format_spec(
                     .map(|v| v.to_string())
                     .unwrap_or_default(),
                 _ => String::new(),
+            };
+            if spec.width > text.len() {
+                if spec.minus {
+                    format!("{}{}", text, " ".repeat(spec.width - text.len()))
+                } else {
+                    format!("{}{}", " ".repeat(spec.width - text.len()), text)
+                }
+            } else {
+                text
             }
         }
-    };
-    body
+    }
 }
 
 /// `levels<-` — GNU's full remap discipline. Character vector form maps
@@ -5814,4 +5879,135 @@ fn regexpr_primitive(
     let result = copy_with_attrib(heap, interner, result, "index.type", index_type).map_err(RSignal::from)?;
     let length_obj = heap.alloc(RObject::Integer(lengths));
     copy_with_attrib(heap, interner, result, "match.length", length_obj).map_err(RSignal::from)
+}
+
+/// `unique(x, incomparables, fromLast)` — GNU's deduplication exactly:
+/// first occurrences in original order (last occurrences with fromLast,
+/// still in original order), NaN compared bitwise so NaN and NA_real_
+/// dedupe separately, the string sentinel dedupes as one NA, and values
+/// matching incomparables never compare at all — every occurrence stays.
+fn unique_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    let value = operands[0];
+    // Tagged walk: incomparables and fromLast.
+    let mut from_last = false;
+    let mut incomparables_na = false;
+    let mut cursor = args;
+    let mut positional_seen = 0usize;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        positional_seen += 1;
+        if positional_seen > 1 {
+            let tag_name = match heap.object(tag) {
+                Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+                _ => None,
+            };
+            let evaluated = eval(heap, interner, car, caller_env)?;
+            let v = force_if_promise(heap, interner, evaluated)?;
+            match tag_name.as_deref() {
+                Some("fromLast") => {
+                    if let Some(RObject::Logical(vals)) = heap.object(v) {
+                        from_last = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
+                    }
+                }
+                Some("incomparables") => {
+                    // NA in incomparables means NA values never compare.
+                    incomparables_na = match heap.object(v) {
+                        Some(RObject::Logical(vals)) => vals.iter().any(|x| *x == crate::value::object::NA_INTEGER),
+                        Some(RObject::Real(vals)) => vals.iter().any(|x| x.is_nan()),
+                        Some(RObject::String(vals)) => {
+                            vals.iter().any(|x| interner.string_text(*x) == "\0NA")
+                        }
+                        _ => v != ValueId::NIL,
+                    };
+                }
+                _ => {}
+            }
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+
+    // Generic dedup over an indexable equality relation — keeps the first
+    /// (or last, then re-ordered) occurrence per equivalence class.
+    macro_rules! dedup {
+        ($variant:ident, $values:expr, $is_na:expr, $eq:expr) => {{
+            let values: &Vec<_> = $values;
+            let is_na = $is_na;
+            let eq = $eq;
+            let n = values.len();
+            let mut keep = vec![false; n];
+            let order: Vec<usize> = if from_last {
+                (0..n).rev().collect()
+            } else {
+                (0..n).collect()
+            };
+            let mut representatives: Vec<usize> = Vec::new();
+            for &i in &order {
+                let vi = &values[i];
+                if is_na(vi) && incomparables_na {
+                    keep[i] = true;
+                    continue;
+                }
+                // Reverse iteration encounters last occurrences first, so
+                /// the plain keep-first-seen rule yields fromLast exactly —
+                /// output ordering restores original indices either way.
+                let duplicate = representatives.iter().any(|&r| eq(&values[r], vi));
+                if !duplicate {
+                    keep[i] = true;
+                    representatives.push(i);
+                }
+            }
+            let out: Vec<_> = (0..n)
+                .filter(|&i| keep[i])
+                .map(|i| values[i].clone())
+                .collect();
+            return Ok(heap.alloc(RObject::$variant(out)));
+        }};
+    }
+
+    match heap.object(value) {
+        Some(RObject::Real(values)) => {
+            dedup!(
+                Real,
+                values,
+                |v: &f64| v.is_nan(),
+                |a: &f64, b: &f64| {
+                    // Bitwise equality: NaN payloads compare by bits so
+                    /// canonical NaN and NA_real_ dedupe separately, and
+                    /// NaN equals itself exactly as GNU's dedup requires.
+                    if a.is_nan() && b.is_nan() {
+                        a.to_bits() == b.to_bits()
+                    } else {
+                        a == b
+                    }
+                }
+            );
+        }
+        Some(RObject::Integer(values)) => {
+            dedup!(Integer, values, |v: &i32| *v == crate::value::object::NA_INTEGER, |a: &i32, b: &i32| a == b);
+        }
+        Some(RObject::Logical(values)) => {
+            dedup!(Logical, values, |v: &i32| *v == crate::value::object::NA_INTEGER, |a: &i32, b: &i32| a == b);
+        }
+        Some(RObject::String(values)) => {
+            dedup!(
+                String,
+                values,
+                |v: &super::intern::InternedStr| interner.string_text(*v) == "\0NA",
+                |a: &super::intern::InternedStr, b: &super::intern::InternedStr| a == b
+            );
+        }
+        _ => Err(EvalError::TypeError("unique requires an atomic vector").into()),
+    }
 }
