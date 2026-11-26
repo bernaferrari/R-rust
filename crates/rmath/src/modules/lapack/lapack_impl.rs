@@ -23,7 +23,6 @@ use crate::sexp::ffi::*;
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::with_current_instance;
 use crate::sexp::memory::with_arena_in;
-use crate::sexp::memory_ext::R_alloc;
 use crate::sexp::protect::*;
 
 use super::backend;

@@ -268,99 +268,11 @@ pub fn allocLang(n: c_int) -> SEXP {
 // R_alloc / vmaxget / vmaxset — transient memory (C stack-like)
 // ---------------------------------------------------------------------------
 
-/// A transient buffer and its original owner's byte reservation are released
-/// together, including when an instance is destroyed during an unwind.
-pub(crate) struct TransientAllocation {
-    buffer: memory::OwnedBuffer,
-    _reservation: memory::TransientReservation,
-}
-
-fn with_vmax<F, R>(f: F) -> R
-where
-    F: FnOnce(&mut Vec<TransientAllocation>) -> R,
-{
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    super::instance::with_required_current_instance(|instance| unsafe { with_vmax_in(instance, f) })
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-unsafe fn with_vmax_in<F, R>(instance: *mut RInstance, f: F) -> R
-where
-    F: FnOnce(&mut Vec<TransientAllocation>) -> R,
-{
-    // P1: the `&mut` field lend is held only across strictly-local Vec
-    // operations (push/len/drain + dealloc) that never reenter the
-    // interpreter.
-    unsafe { f(&mut (*instance).vmax) }
-}
-
-/// Allocate transient memory (freed by vmaxset).
-///
-/// This is the equivalent of R's `R_alloc()` which allocates on the C stack.
-/// In Rust, the active session owns a transient allocation buffer that's freed
-/// on vmaxset().
-pub(crate) unsafe fn R_alloc(size: usize, nelem: usize) -> *mut c_void {
-    let ptr = super::instance::with_required_current_instance(|instance| unsafe {
-        R_alloc_in(instance, size, nelem)
-    });
-    // Ported callers rely on R_alloc returning usable storage or raising an
-    // R error. Returning null on a nonempty request invites unchecked writes.
-    if ptr.is_null() && size != 0 && nelem != 0 {
-        super::context::r_error(
-            "cannot allocate transient memory: size, memory budget or allocation failure",
-        );
-    }
-    ptr
-}
-
-pub(crate) unsafe fn R_alloc_in(
-    instance: *mut RInstance,
-    size: usize,
-    nelem: usize,
-) -> *mut c_void {
-    unsafe {
-        let Some(total) = size.checked_mul(nelem) else {
-            return ptr::null_mut();
-        };
-        if total == 0 {
-            return ptr::null_mut();
-        }
-        let Ok(layout) = Layout::from_size_align(total, std::mem::align_of::<u64>()) else {
-            return ptr::null_mut();
-        };
-        // Reserve the bookkeeping slot before allocating any raw storage.
-        if !with_vmax_in(instance, |vmax| vmax.try_reserve(1).is_ok()) {
-            return ptr::null_mut();
-        }
-        let Some(storage_bytes) = memory::OwnedBuffer::required_storage_bytes(layout) else {
-            return ptr::null_mut();
-        };
-        let Some(reservation) = memory::reserve_transient_in(instance, storage_bytes) else {
-            return ptr::null_mut();
-        };
-        let Some(buffer) = memory::OwnedBuffer::zeroed(layout) else {
-            return ptr::null_mut();
-        };
-        let ptr = buffer.as_ptr();
-        with_vmax_in(instance, |vmax| {
-            vmax.push(TransientAllocation {
-                buffer,
-                _reservation: reservation,
-            });
-        });
-        ptr.cast()
-    }
-}
-
 /// Mark-relative C-stack storage for one primitive application. Managed
 /// runtimes retain the original physical owner through cleanup, including
 /// revocation; explicitly borrowed fixtures retain their caller's lifetime.
 pub(crate) struct TransientScope<'session> {
     owner: super::owner::StoredOwner<'session>,
-    mark: usize,
     // Drop's body releases buffers before this operation pin is released.
     _pin: Option<super::owner::OwnerPin>,
 }
@@ -371,11 +283,8 @@ impl<'session> TransientScope<'session> {
     ) -> super::object::SexpResult<Self> {
         let pin = owner.managed().map(|owner| owner.pin()).transpose()?;
         owner.require_active()?;
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        let mark = unsafe { with_vmax_in(owner.identity_ptr(), |vmax| vmax.len()) };
         Ok(Self {
             owner,
-            mark,
             _pin: pin,
         })
     }
@@ -383,60 +292,12 @@ impl<'session> TransientScope<'session> {
 
 impl Drop for TransientScope<'_> {
     fn drop(&mut self) {
-        // SAFETY: the original managed allocation is physically pinned until
-        // after this cleanup. Borrowed native callers retain their proven
-        // lifetime. Releasing OwnedBuffer/ticket fields cannot invoke R.
-        // Never consult ambient activation or require logical liveness here:
-        // a primitive may have revoked/replaced the original interpreter.
-        unsafe {
-            vmaxset_in(
-                self.owner.identity_ptr(),
-                ptr::without_provenance_mut(self.mark),
-            )
-        };
+        // The owner pin is released after this scope's work completes; field
+        // ordering performs the release. No transient-arena teardown remains:
+        // the watermark arena was retired with R_alloc.
     }
 }
 
-/// Get the current transient allocation watermark.
-///
-/// Returns an opaque value to pass to vmaxset().
-pub fn vmaxget() -> *mut c_void {
-    // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
-    super::instance::with_required_current_instance(|inst| unsafe { vmaxget_in(inst) })
-}
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub(crate) unsafe fn vmaxget_in(instance: *mut RInstance) -> *mut c_void {
-    // This is an opaque index, never an address to dereference.
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    unsafe { with_vmax_in(instance, |vmax| ptr::without_provenance_mut(vmax.len())) }
-}
-
-/// Reset transient allocations to the given watermark.
-///
-/// Frees all transient allocations made since the corresponding vmaxget().
-pub fn vmaxset(value: *mut c_void) {
-    super::instance::with_required_current_instance(|instance| unsafe {
-        vmaxset_in(instance, value);
-    });
-}
-
-pub(crate) unsafe fn vmaxset_in(instance: *mut RInstance, value: *mut c_void) {
-    let mark = value.addr();
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    unsafe {
-        with_vmax_in(instance, |vmax| {
-            let drain_start = mark.min(vmax.len());
-            vmax.truncate(drain_start);
-        })
-    };
-}
-
-#[cfg(test)]
 fn raw_cons_len() -> usize {
     with_raw_cons(|rc| rc.len())
 }
@@ -452,37 +313,6 @@ unsafe fn raw_cons_len_in(instance: *mut RInstance) -> usize {
     unsafe { with_raw_cons_in(instance, |rc| rc.len()) }
 }
 
-#[cfg(test)]
-fn vmax_len() -> usize {
-    with_vmax(|vmax| vmax.len())
-}
-
-#[cfg(test)]
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn vmax_len_in(instance: *mut RInstance) -> usize {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    unsafe { with_vmax_in(instance, |vmax| vmax.len()) }
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-#[path = "transient_scope_tests.rs"]
-mod transient_scope_tests;
-
-#[cfg(test)]
-#[path = "memory_ext_tail_tests.rs"]
-mod tail_storage_tests;
-
-#[cfg(test)]
-#[path = "payload_adoption_projection_tests.rs"]
-mod cell_adoption_projection_controls;
 
 #[cfg(test)]
 mod tests {

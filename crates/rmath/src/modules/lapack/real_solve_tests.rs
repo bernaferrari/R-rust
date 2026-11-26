@@ -153,7 +153,6 @@ fn real_solve_reserves_caller_scratch_before_allocation_and_recovers() {
 fn real_solve_tolerance_workspace_denial_and_numerical_unwind_release() {
     use crate::sexp::instance::with_current_instance;
     use crate::sexp::memory::with_arena_in;
-    use crate::sexp::memory_ext::{vmaxget, vmaxset};
 
     let session = RSession::new_for_gc_tests();
     session.with_active(|| unsafe {
@@ -169,16 +168,12 @@ fn real_solve_tolerance_workspace_denial_and_numerical_unwind_release() {
         let _strict_tol = protect(strict_tol);
         // The lightweight fixture initializes symbols and formatted-error
         // caches lazily. Warm these paths before measuring caller workspace.
-        let initial_watermark = vmaxget();
         La_solve(a, b, tol);
-        vmaxset(initial_watermark);
         for (matrix, tolerance) in [(singular, tol), (a, strict_tol)] {
             let _ = error_message(catch_unwind(AssertUnwindSafe(|| {
                 La_solve(matrix, b, tolerance);
             })));
-            vmaxset(initial_watermark);
         }
-        let watermark = vmaxget();
         let (resident, held) = with_current_instance(|instance| {
             with_arena_in(instance, |arena| {
                 (arena.total_bytes_allocated(), arena.workspace_bytes())
@@ -202,7 +197,6 @@ fn real_solve_tolerance_workspace_denial_and_numerical_unwind_release() {
             message.contains("native solve workspace exceeds resource limit"),
             "{message}"
         );
-        assert_eq!(vmaxget(), watermark);
         with_current_instance(|instance| {
             with_arena_in(instance, |arena| {
                 assert_eq!(arena.workspace_bytes(), held);
@@ -225,13 +219,11 @@ fn real_solve_tolerance_workspace_denial_and_numerical_unwind_release() {
                     assert_eq!(arena.workspace_bytes(), held + 2 * size_of::<i32>());
                 })
             });
-            vmaxset(watermark);
         }
 
         let answer = La_solve(a, b, tol);
         let _answer = protect(answer);
         assert_eq!(std::slice::from_raw_parts(REAL(answer), 2), &[1.0, 2.0]);
-        vmaxset(watermark);
         with_current_instance(|instance| {
             with_arena_in(instance, |arena| assert_eq!(arena.workspace_bytes(), held))
         });

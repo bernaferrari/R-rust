@@ -14,7 +14,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
-use crate::sexp::memory_ext::{R_alloc, TransientScope};
+use crate::sexp::memory_ext::TransientScope;
 use crate::sexp::owner::StoredOwner;
 use crate::sexp::protect::*;
 

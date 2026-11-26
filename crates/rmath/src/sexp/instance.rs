@@ -607,8 +607,6 @@ pub struct RInstance {
         crate::library::methods::methods_list_dispatch::MethodsDispatchState,
     /// Per-instance raw cons cells allocated outside the arena.
     pub(crate) raw_cons: Vec<*mut SexprecCore>,
-    /// Per-instance transient allocations for R_alloc/vmaxget/vmaxset.
-    pub(crate) vmax: Vec<super::memory_ext::TransientAllocation>,
 }
 
 /// Configure a child process to inherit exactly the session-owned
@@ -815,7 +813,6 @@ impl RInstance {
             methods_dispatch_state:
                 crate::library::methods::methods_list_dispatch::MethodsDispatchState::default(),
             raw_cons: Vec::new(),
-            vmax: Vec::new(),
         }
     }
 
@@ -982,7 +979,6 @@ impl Drop for RInstance {
         drop(self.imported_bytecode_metadata.get_mut().take());
         // Persistent headers and character bytes are owned Rust fields; their
         // pages invalidate outstanding checked identities during normal Drop.
-        self.vmax.clear();
         if profiling.profile_outfile >= 0 {
             // Native only: on wasm32 the profiling stubs never open an
             // output file, so there is nothing to close.

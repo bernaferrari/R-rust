@@ -28,7 +28,6 @@ use crate::sexp::constructors::{Rf_lang2 as lang2, Rf_lang3 as lang3};
 use crate::sexp::envir::{R_findVar as findVar, defineVar, findFun};
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
-use crate::sexp::memory_ext::R_alloc;
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
