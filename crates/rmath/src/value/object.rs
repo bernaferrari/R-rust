@@ -8,6 +8,14 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 /// Complex number payload matching R's `Rcomplex`.
+/// The integer NA sentinel, matching GNU's `NA_INTEGER` exactly so both
+/// representations agree bit-for-bit during the migration.
+pub const NA_INTEGER: i32 = i32::MIN;
+
+/// The real NA bit pattern, matching GNU's `NA_real` exactly. NA is a
+/// specific quiet NaN payload, distinct from both NaN and Inf.
+pub const NA_REAL_BITS: u64 = 0x7FF00000000007A2;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct RComplex {
     pub r: f64,
