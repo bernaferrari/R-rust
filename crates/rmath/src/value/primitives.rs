@@ -53,10 +53,22 @@ pub mod primitive_ids {
     pub const NOT: u32 = 42;
     pub const SHORT_AND: u32 = 43;
     pub const SHORT_OR: u32 = 44;
+    /// Reductions — fold a vector to a scalar with NA propagation.
+    pub const SUM: u32 = 50;
+    pub const PROD: u32 = 51;
+    pub const MIN: u32 = 52;
+    pub const MAX: u32 = 53;
+    /// Power — always real-valued in GNU, even for integer operands.
+    pub const POW: u32 = 58;
+    /// Elementwise math — real-valued unary functions.
+    pub const SQRT: u32 = 54;
+    pub const EXP: u32 = 55;
+    pub const LOG: u32 = 56;
+    pub const ABS: u32 = 57;
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LT, MUL, NE, NEXT, NOT, OR, PAREN, REPEAT, RETURN, SHORT_AND, SHORT_OR, SUB, SUBSET, SUPERASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LOG, LT, MAX, MIN, MUL, NE, NEXT, NOT, OR, PAREN, POW, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUM, SUPERASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -68,7 +80,7 @@ pub(crate) fn call_primitive(
     caller_env: ValueId,
 ) -> EvalResult {
     match id.0 {
-        ADD | SUB | MUL | DIV => arithmetic(heap, interner, id.0, args, caller_env),
+        ADD | SUB | MUL | DIV | POW => arithmetic(heap, interner, id.0, args, caller_env),
         IF => if_form(heap, interner, args, caller_env),
         BRACE => brace_form(heap, interner, args, caller_env),
         ASSIGN => assign_form(heap, interner, args, caller_env, false),
@@ -93,6 +105,8 @@ pub(crate) fn call_primitive(
         AND | OR => logic_elementwise(heap, interner, id.0, args, caller_env),
         NOT => logic_not(heap, interner, args, caller_env),
         SHORT_AND | SHORT_OR => logic_short_circuit(heap, interner, id.0, args, caller_env),
+        SUM | PROD | MIN | MAX => reduction(heap, interner, id.0, args, caller_env),
+        SQRT | EXP | LOG | ABS => math_unary(heap, interner, id.0, args, caller_env),
         _ => Err(EvalError::UnsupportedForm("unregistered primitive").into()),
     }
 }
@@ -273,7 +287,7 @@ fn arithmetic(
     let left = numeric_operands(heap, operands[0]).map_err(RSignal::from)?;
     let right = numeric_operands(heap, operands[1]).map_err(RSignal::from)?;
     match (left, right) {
-        (Numeric::Integer(a), Numeric::Integer(b)) if op != DIV => {
+        (Numeric::Integer(a), Numeric::Integer(b)) if op != DIV && op != POW => {
             let folded = fold_numeric(a, b, op, |x, y| match op {
                 ADD => x.wrapping_add(y),
                 SUB => x.wrapping_sub(y),
@@ -289,6 +303,7 @@ fn arithmetic(
                 ADD => x + y,
                 SUB => x - y,
                 MUL => x * y,
+                POW => x.powf(y),
                 _ => x / y,
             })
             .map_err(RSignal::from)?;
@@ -536,7 +551,8 @@ pub fn primitive_names() -> &'static [&'static str] {
     &[
         "+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!=", "if", "{", "<-", "=",
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
-        "length", ":", "(", "&", "|", "!", "&&", "||",
+        "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
+        "exp", "log", "abs", "^",
     ]
 }
 
@@ -575,6 +591,15 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "!" => Some(NOT),
         "&&" => Some(SHORT_AND),
         "||" => Some(SHORT_OR),
+        "sum" => Some(SUM),
+        "prod" => Some(PROD),
+        "min" => Some(MIN),
+        "max" => Some(MAX),
+        "sqrt" => Some(SQRT),
+        "exp" => Some(EXP),
+        "log" => Some(LOG),
+        "abs" => Some(ABS),
+        "^" => Some(POW),
         _ => None,
     }
 }
@@ -1120,4 +1145,97 @@ fn logic_short_circuit(
         }
     };
     Ok(heap.alloc(RObject::Logical(vec![result])))
+}
+
+/// Numeric coercion for the reduction and math primitives: logical and
+/// integer vectors widen to reals with the NA bit pattern preserved.
+fn reals_of_value(heap: &Heap, value: ValueId) -> Result<Vec<f64>, EvalError> {
+    match heap.object(value) {
+        Some(RObject::Real(values)) => Ok(values.clone()),
+        Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => Ok(values
+            .iter()
+            .map(|v| {
+                if *v == crate::value::object::NA_INTEGER {
+                    f64::from_bits(crate::value::object::NA_REAL_BITS)
+                } else {
+                    *v as f64
+                }
+            })
+            .collect()),
+        _ => Err(EvalError::TypeError("numeric argument expected")),
+    }
+}
+
+/// `sum`/`prod`/`min`/`max` — scalar folds with GNU NA propagation: any NA
+/// element poisons the reduction (the slice has no na.rm yet). Integer and
+/// logical inputs fold in integer arithmetic exactly as GNU does; real
+/// inputs fold in real.
+fn reduction(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    op: u32,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    // GNU type fidelity: integer/logical inputs fold in integer arithmetic
+    // for sum/prod and preserve type for min/max; real inputs fold in real.
+    if let Some(RObject::Integer(values)) | Some(RObject::Logical(values)) =
+        heap.object(operands[0])
+    {
+        let values = values.clone();
+        if values.iter().any(|v| *v == crate::value::object::NA_INTEGER) {
+            return Ok(heap.alloc(RObject::Integer(vec![crate::value::object::NA_INTEGER])));
+        }
+        let result: i32 = match op {
+            SUM => values.iter().copied().fold(0i32, |a, b| a.wrapping_add(b)),
+            PROD => values.iter().copied().fold(1i32, |a, b| a.wrapping_mul(b)),
+            MIN => values.iter().copied().fold(i32::MAX, i32::min),
+            _ => values.iter().copied().fold(i32::MIN, i32::max),
+        };
+        return Ok(heap.alloc(RObject::Integer(vec![result])));
+    }
+    let values = reals_of_value(heap, operands[0]).map_err(RSignal::from)?;
+    if values.iter().any(|v| v.is_nan()) {
+        return Ok(heap.alloc(RObject::Real(vec![f64::from_bits(
+            crate::value::object::NA_REAL_BITS,
+        )])));
+    }
+    let result = match op {
+        SUM => values.iter().sum(),
+        PROD => values.iter().product(),
+        MIN => values.iter().copied().fold(f64::INFINITY, f64::min),
+        _ => values.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+    };
+    Ok(heap.alloc(RObject::Real(vec![result])))
+}
+
+/// Elementwise unary math — `sqrt`/`exp`/`log`/`abs` over real-coerced
+/// inputs. NA inputs yield NA outputs; domain behavior matches IEEE, which
+/// is what GNU inherits from libm.
+fn math_unary(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    op: u32,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    let values = reals_of_value(heap, operands[0]).map_err(RSignal::from)?;
+    let out: Vec<f64> = values
+        .iter()
+        .map(|v| {
+            if v.is_nan() {
+                f64::from_bits(crate::value::object::NA_REAL_BITS)
+            } else {
+                match op {
+                    SQRT => v.sqrt(),
+                    EXP => v.exp(),
+                    LOG => v.ln(),
+                    _ => v.abs(),
+                }
+            }
+        })
+        .collect();
+    Ok(heap.alloc(RObject::Real(out)))
 }

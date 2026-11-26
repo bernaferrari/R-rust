@@ -1762,6 +1762,17 @@ mod tests {
             "{ x <- 1; x > 3 || x < 10 }",
             "FALSE && stop(\"boom\")",
             "TRUE || stop(\"boom\")",
+            "sum(1:10)",
+            "sum(c(1.5, 2.5, 3.0))",
+            "prod(1:5)",
+            "min(c(3, 1, 4, 1, 5))",
+            "max(c(3, 1, 4, 1, 5))",
+            "sqrt(c(4, 9, 16))",
+            "abs(-(1:3))",
+            "exp(0)",
+            "log(exp(2))",
+            "{ x <- 1:100; sum(x) / length(x) }",
+            "{ x <- c(2, 4, 8); sqrt(sum(x^2)) }",
         ];
         // One session, one parse pass: expression objects stay valid for the
         // session's lifetime, so batching avoids per-program bootstrap cost.
