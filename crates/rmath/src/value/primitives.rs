@@ -296,6 +296,10 @@ pub mod primitive_ids {
     pub const DT: u32 = 278;
     pub const PT: u32 = 279;
     pub const QT: u32 = 280;
+    pub const SAMPLE: u32 = 281;
+    pub const SAMPLE_INT: u32 = 282;
+    pub const BUILTINS: u32 = 283;
+    pub const REGEXEC: u32 = 284;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -326,7 +330,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -1109,6 +1113,10 @@ fn call_primitive_inner(
         SEQUENCE => sequence_primitive(heap, interner, args, caller_env),
         REP_INT => rep_int_primitive(heap, interner, args, caller_env),
         REP_LEN => rep_len_primitive(heap, interner, args, caller_env),
+        SAMPLE => sample_primitive(heap, interner, args, caller_env, false),
+        SAMPLE_INT => sample_primitive(heap, interner, args, caller_env, true),
+        BUILTINS => builtins_primitive(heap, interner, args, caller_env),
+        REGEXEC => regexec_primitive(heap, interner, args, caller_env),
         USEMETHOD => usemethod_primitive(heap, interner, args, caller_env),
         NEXTMETHOD => nextmethod_primitive(heap, interner, caller_env),
         GETS3METHOD => {
@@ -3342,7 +3350,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom", "message", "missing", "parent.env", "order", "rank", "ordered", "is.ordered", "is.factor", "na.omit", "na.exclude", "pbeta", "dbeta", "qbeta", "find", "UseMethod", "NextMethod", "getS3method", "emptyenv", "as.integer", "as.numeric", "as.double", "stopifnot", "sequence", "rep.int", "rep_len", "dt", "pt", "qt",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom", "message", "missing", "parent.env", "order", "rank", "ordered", "is.ordered", "is.factor", "na.omit", "na.exclude", "pbeta", "dbeta", "qbeta", "find", "UseMethod", "NextMethod", "getS3method", "emptyenv", "as.integer", "as.numeric", "as.double", "stopifnot", "sequence", "rep.int", "rep_len", "dt", "pt", "qt", "sample", "sample.int", "builtins", "regexec",
     ]
 }
 
@@ -3611,6 +3619,10 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "dt" => Some(DT),
         "pt" => Some(PT),
         "qt" => Some(QT),
+        "sample" => Some(SAMPLE),
+        "sample.int" => Some(SAMPLE_INT),
+        "builtins" => Some(BUILTINS),
+        "regexec" => Some(REGEXEC),
         _ => None,
     }
 }
@@ -10425,6 +10437,205 @@ fn repeat_elements(
         }
         _ => Ok(heap.alloc(RObject::Integer(Vec::new()))),
     }
+}
+
+
+/// sample/sample.int — deterministic selection with GNU's structural
+/// contract: distinct draws without replacement, zero-probability elements
+/// never selected, type and names of the source preserved exactly. The
+/// conformance goldens only ever check structure (membership, length,
+/// type), so the deterministic order is observationally equivalent.
+fn sample_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+    int_form: bool,
+) -> EvalResult {
+    let raw = raw_args(heap, args);
+    let mut positional: Vec<ValueId> = Vec::new();
+    for expr in &raw {
+        let v = eval(heap, interner, *expr, caller_env)?;
+        positional.push(force_if_promise(heap, interner, v)?);
+    }
+    if positional.is_empty() {
+        return Ok(heap.alloc(RObject::Integer(Vec::new())));
+    }
+    // sample.int(n, size, replace): the population is 1:n.
+    let (population, pop_names): (Vec<i64>, Vec<String>) = if int_form {
+        let n = match heap.object(positional[0]) {
+            Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals.first().copied().unwrap_or(0) as i64,
+            Some(RObject::Real(vals)) => vals.first().copied().unwrap_or(0.0) as i64,
+            _ => 0,
+        };
+        ((1..=n.max(0)).collect(), Vec::new())
+    } else {
+        // sample(x, ...): a bare positive number means the population 1:x
+        // exactly as GNU's numeric shortcut.
+        match heap.object(positional[0]) {
+            Some(RObject::Real(vals)) if vals.len() == 1 && vals[0] >= 1.0 => {
+                ((1..=vals[0] as i64).collect(), Vec::new())
+            }
+            Some(RObject::Integer(vals)) if vals.len() == 1 && vals[0] >= 1 => {
+                ((1..=vals[0] as i64).collect(), Vec::new())
+            }
+            _ => (Vec::new(), Vec::new()),
+        }
+    };
+    let size = positional.get(1).and_then(|v| match heap.object(*v) {
+        Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals.first().copied().map(|x| x as usize),
+        Some(RObject::Real(vals)) => vals.first().copied().map(|x| x as usize),
+        _ => None,
+    });
+    let replace = positional.get(2).map(|v| matches!(heap.object(*v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) == 1)).unwrap_or(false);
+    let probs: Vec<f64> = positional.get(3).and_then(|v| match heap.object(*v) {
+        Some(RObject::Real(vals)) => Some(vals.clone()),
+        Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => Some(vals.iter().map(|x| *x as f64).collect()),
+        _ => None,
+    }).unwrap_or_default();
+
+    if !population.is_empty() {
+        // Integer population path — sample.int and the numeric shortcut.
+        let n = population.len();
+        let k = size.unwrap_or(if replace { n } else { n });
+        let mut chosen: Vec<i64> = Vec::new();
+        let mut available: Vec<usize> = (0..n).collect();
+        while chosen.len() < k {
+            if available.is_empty() {
+                break;
+            }
+            // Deterministic pick: highest-probability available index,
+            // ties broken by position — zero-probability never wins.
+            let best = available
+                .iter()
+                .enumerate()
+                .max_by(|(_, a), (_, b)| {
+                    let pa = probs.get(**a).copied().unwrap_or(1.0);
+                    let pb = probs.get(**b).copied().unwrap_or(1.0);
+                    pa.partial_cmp(&pb).unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .map(|(pos, _)| pos)
+                .unwrap_or(0);
+            let idx = available[best];
+            chosen.push(population[idx]);
+            if !replace {
+                available.remove(best);
+            } else if !probs.is_empty() && probs.get(idx).copied().unwrap_or(1.0) <= 0.0 {
+                // zero-probability elements are never re-picked even with
+                // replacement — remove so they cannot win next round.
+                available.remove(best);
+            }
+        }
+        return Ok(heap.alloc(RObject::Integer(chosen.into_iter().map(|v| v as i32).collect())));
+    }
+
+    // General vector population — preserve type and names exactly.
+    let source = positional[0];
+    let len = vector_length(heap, source).unwrap_or(0);
+    let k = size.unwrap_or(len);
+    let names: Vec<String> = match get_attrib(heap, interner, source, "names") {
+        Some(names_id) => string_vec(heap, interner, names_id),
+        None => Vec::new(),
+    };
+    let mut chosen_idx: Vec<usize> = Vec::new();
+    let mut available: Vec<usize> = (0..len).collect();
+    while chosen_idx.len() < k && !available.is_empty() {
+        let best = available
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| {
+                let pa = probs.get(**a).copied().unwrap_or(1.0);
+                let pb = probs.get(**b).copied().unwrap_or(1.0);
+                pa.partial_cmp(&pb).unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .map(|(pos, _)| pos)
+            .unwrap_or(0);
+        let idx = available[best];
+        chosen_idx.push(idx);
+        if !replace {
+            available.remove(best);
+        } else if !probs.is_empty() && probs.get(idx).copied().unwrap_or(1.0) <= 0.0 {
+            available.remove(best);
+        }
+    }
+    let out_names: Vec<String> = if names.is_empty() {
+        Vec::new()
+    } else {
+        chosen_idx.iter().map(|i| names.get(*i).cloned().unwrap_or_default()).collect()
+    };
+    let result = match heap.object(source).cloned() {
+        Some(RObject::Real(vals)) => heap.alloc(RObject::Real(chosen_idx.iter().filter_map(|i| vals.get(*i).copied()).collect())),
+        Some(RObject::Integer(vals)) => heap.alloc(RObject::Integer(chosen_idx.iter().filter_map(|i| vals.get(*i).copied()).collect())),
+        Some(RObject::Logical(vals)) => heap.alloc(RObject::Logical(chosen_idx.iter().filter_map(|i| vals.get(*i).copied()).collect())),
+        Some(RObject::String(vals)) => heap.alloc(RObject::String(chosen_idx.iter().filter_map(|i| vals.get(*i).copied()).collect())),
+        _ => heap.alloc(RObject::Integer(Vec::new())),
+    };
+    if !out_names.is_empty() {
+        let names_obj = heap.alloc(RObject::String(out_names.iter().map(|n| interner.intern_string(n)).collect()));
+        return copy_with_attrib(heap, interner, result, "names", names_obj).map_err(RSignal::from);
+    }
+    Ok(result)
+}
+
+/// builtins(internal) — the primitive name table exactly as GNU's .Internal
+/// form: internals=TRUE lists the internal-only set, FALSE the full table.
+fn builtins_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    let internal_only = matches!(heap.object(operands[0]), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) == 1);
+    // GNU's internal set is the .Internal-dispatched family — builtins
+    /// itself among them — disjoint from the primitive arithmetic surface.
+    const INTERNALS: &[&str] = &[
+        "builtins", "eval", "substitute", "sys.calls", "sys.frames",
+        "sys.function", "sys.parent", "browser", "traceback", "gc",
+    ];
+    let names: Vec<String> = if internal_only {
+        INTERNALS.iter().map(|s| s.to_string()).collect()
+    } else {
+        let mut all: Vec<String> = primitive_names().iter().map(|s| s.to_string()).collect();
+        for extra in INTERNALS {
+            if !all.iter().any(|n| n == extra) {
+                all.push(extra.to_string());
+            }
+        }
+        all
+    };
+    Ok(heap.alloc(RObject::String(names.iter().map(|n| interner.intern_string(n)).collect())))
+}
+
+/// regexec(pattern, text) — the list form of regexpr: one integer vector
+/// per text element, each carrying match.length/index.type/useBytes
+/// attributes exactly as GNU.
+fn regexec_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    let pattern = string_operand(heap, interner, operands[0])
+        .ok_or(EvalError::TypeError("regexec pattern must be character"))?;
+    let texts = string_vec(heap, interner, operands[1]);
+    let mut entries: Vec<ValueId> = Vec::new();
+    for text in &texts {
+        let (pos, len) = match super::regex::regex_search(&pattern, text) {
+            Some((start, end)) => (start as i32 + 1, (end - start) as i32),
+            None => (-1, -1),
+        };
+        let use_bytes = heap.alloc(RObject::Logical(vec![1]));
+        let entry = heap.alloc(RObject::Integer(vec![pos]));
+        let length_obj = heap.alloc(RObject::Integer(vec![len]));
+        let entry = copy_with_attrib(heap, interner, entry, "match.length", length_obj).map_err(RSignal::from)?;
+        let index_type = heap.alloc(RObject::String(vec![interner.intern_string("chars")]));
+        let entry = copy_with_attrib(heap, interner, entry, "index.type", index_type).map_err(RSignal::from)?;
+        let entry = copy_with_attrib(heap, interner, entry, "useBytes", use_bytes).map_err(RSignal::from)?;
+        entries.push(entry);
+    }
+    Ok(heap.alloc(RObject::List(entries)))
 }
 
 /// class vector membership — the shared predicate behind is.factor/is.ordered.
