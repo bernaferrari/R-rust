@@ -138,6 +138,14 @@ pub mod primitive_ids {
     pub const FILE_RENAME: u32 = 125;
     pub const SUPPRESS_WARNINGS: u32 = 126;
     pub const AS_LOGICAL: u32 = 127;
+    /// Attribute reflection and vector resizing.
+    pub const ATTR: u32 = 128;
+    pub const ATTR_ASSIGN: u32 = 129;
+    pub const ATTRIBUTES: u32 = 130;
+    pub const ATTRIBUTES_ASSIGN: u32 = 131;
+    pub const IS_NULL: u32 = 132;
+    pub const LENGTH_ASSIGN: u32 = 133;
+    pub const FILE_PATH: u32 = 134;
     /// Matrix construction and dimension introspection.
     pub const MATRIX: u32 = 100;
     pub const DIM: u32 = 101;
@@ -159,7 +167,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -401,6 +409,17 @@ pub(crate) fn call_primitive(
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             coerce_logical(heap, interner, operands[0])
         }
+        ATTR => attr_primitive(heap, interner, args, caller_env),
+        ATTR_ASSIGN => attr_assign_primitive(heap, interner, args, caller_env),
+        ATTRIBUTES => attributes_primitive(heap, interner, args, caller_env),
+        ATTRIBUTES_ASSIGN => attributes_assign_primitive(heap, interner, args, caller_env),
+        IS_NULL => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let is = operands[0] == ValueId::NIL || matches!(heap.object(operands[0]), Some(RObject::Nil));
+            Ok(heap.alloc(RObject::Logical(vec![if is { 1 } else { 0 }])))
+        }
+        LENGTH_ASSIGN => length_assign_primitive(heap, interner, args, caller_env),
+        FILE_PATH => file_path_primitive(heap, interner, args, caller_env),
         DIMNAMES => attrib_getter(heap, interner, args, caller_env, "dimnames"),
         DIMNAMES_ASSIGN => attrib_replacement(heap, interner, args, caller_env, "dimnames"),
         CLASS => class_getter(heap, interner, args, caller_env),
@@ -1004,7 +1023,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -1107,6 +1126,13 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "file.rename" => Some(FILE_RENAME),
         "suppressWarnings" => Some(SUPPRESS_WARNINGS),
         "as.logical" => Some(AS_LOGICAL),
+        "attr" => Some(ATTR),
+        "attr<-" => Some(ATTR_ASSIGN),
+        "attributes" => Some(ATTRIBUTES),
+        "attributes<-" => Some(ATTRIBUTES_ASSIGN),
+        "is.null" => Some(IS_NULL),
+        "length<-" => Some(LENGTH_ASSIGN),
+        "file.path" => Some(FILE_PATH),
         "dimnames" => Some(DIMNAMES),
         "dimnames<-" => Some(DIMNAMES_ASSIGN),
         "class" => Some(CLASS),
@@ -2633,7 +2659,10 @@ fn copy_with_attrib(
                     _ => false,
                 };
                 if matches {
-                    entries.push((sym_obj, attr_value));
+                    // GNU: assigning NULL removes the attribute outright.
+                    if attr_value != ValueId::NIL {
+                        entries.push((sym_obj, attr_value));
+                    }
                     found = true;
                 } else {
                     entries.push((*tag, *car));
@@ -2643,7 +2672,7 @@ fn copy_with_attrib(
             _ => break,
         }
     }
-    if !found {
+    if !found && attr_value != ValueId::NIL {
         entries.insert(0, (sym_obj, attr_value));
     }
     // Rebuild the chain tail-to-head.
@@ -4318,4 +4347,185 @@ fn coerce_logical(
         _ => return Err(EvalError::TypeError("cannot coerce to logical").into()),
     };
     Ok(heap.alloc(RObject::Logical(out)))
+}
+
+/// `attr(x, name)` — single named attribute or NULL, exactly GNU.
+fn attr_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    let name = string_operand(heap, interner, operands[1])
+        .ok_or(EvalError::TypeError("attr name must be character"))?;
+    match get_attrib(heap, interner, operands[0], &name) {
+        Some(v) => Ok(v),
+        None => Ok(ValueId::NIL),
+    }
+}
+
+/// `attr<-(x, name, value)` — the replacement form the general desugar
+/// dispatches: object, attribute name, value positional.
+fn attr_assign_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 3)?;
+    let name = string_operand(heap, interner, operands[1])
+        .ok_or(EvalError::TypeError("attr name must be character"))?;
+    copy_with_attrib(heap, interner, operands[0], &name, operands[2]).map_err(RSignal::from)
+}
+
+/// `attributes(x)` — every attribute as a named list, NULL when bare.
+fn attributes_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    let chain = heap.get(operands[0]).map(|slot| slot.attrib).unwrap_or(ValueId::NIL);
+    let mut values: Vec<ValueId> = Vec::new();
+    let mut names: Vec<String> = Vec::new();
+    let mut cursor = chain;
+    for _ in 0..100_000 {
+        if cursor == ValueId::NIL {
+            break;
+        }
+        match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => {
+                if let Some(RObject::Symbol { name, .. }) = heap.object(*tag) {
+                    names.push(interner.symbol_name(*name).to_string());
+                    values.push(*car);
+                }
+                cursor = *cdr;
+            }
+            _ => break,
+        }
+    }
+    if values.is_empty() {
+        return Ok(ValueId::NIL);
+    }
+    let list = heap.alloc(RObject::List(values));
+    let interned: Vec<super::intern::InternedStr> = names
+        .iter()
+        .map(|n| interner.intern_string(n))
+        .collect();
+    let names_obj = heap.alloc(RObject::String(interned));
+    copy_with_attrib(heap, interner, list, "names", names_obj).map_err(RSignal::from)
+}
+
+/// `attributes<-(x, value)` — wholesale attribute replacement: value is a
+/// named list whose entries become the object's attributes, NULL clears all.
+fn attributes_assign_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    let mut object = operands[0];
+    // Clear the existing chain first: copy with an empty chain exactly —
+    // wholesale replacement is not merge.
+    object = copy_with_attrib(heap, interner, object, "\0clearall", ValueId::NIL).map_err(RSignal::from)?;
+    if let Some(slot) = heap.get_mut(object) {
+        slot.attrib = ValueId::NIL;
+    }
+    if operands[1] == ValueId::NIL {
+        return Ok(object);
+    }
+    let names = get_attrib(heap, interner, operands[1], "names");
+    let name_vec: Vec<String> = match names {
+        Some(id) => string_vec(heap, interner, id),
+        None => Vec::new(),
+    };
+    if let Some(RObject::List(items)) = heap.object(operands[1]).cloned() {
+        for (i, item) in items.iter().enumerate() {
+            if let Some(name) = name_vec.get(i) {
+                object = copy_with_attrib(heap, interner, object, name, *item).map_err(RSignal::from)?;
+            }
+        }
+    }
+    Ok(object)
+}
+
+/// `length<-(x, n)` — resize: truncation drops the tail, extension pads
+/// with the type's NA exactly as GNU.
+fn length_assign_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    let target = match heap.object(operands[1]) {
+        Some(RObject::Real(v)) if !v.is_empty() => v[0] as usize,
+        Some(RObject::Integer(v)) if !v.is_empty() => v[0] as usize,
+        _ => return Err(EvalError::TypeError("length replacement must be numeric").into()),
+    };
+    let object = heap.object(operands[0]).cloned()
+        .ok_or(EvalError::TypeError("length target missing"))?;
+    let resized = match object {
+        RObject::Real(mut v) => {
+            v.resize(target, f64::from_bits(crate::value::object::NA_REAL_BITS));
+            RObject::Real(v)
+        }
+        RObject::Integer(mut v) => {
+            v.resize(target, crate::value::object::NA_INTEGER);
+            RObject::Integer(v)
+        }
+        RObject::Logical(mut v) => {
+            v.resize(target, crate::value::object::NA_INTEGER);
+            RObject::Logical(v)
+        }
+        RObject::String(mut v) => {
+            let na = interner.intern_string("\0NA");
+            v.resize(target, na);
+            RObject::String(v)
+        }
+        RObject::List(mut v) => {
+            v.resize(target, ValueId::NIL);
+            RObject::List(v)
+        }
+        _ => return Err(EvalError::TypeError("length replacement target").into()),
+    };
+    // The attribute chain survives the resize — GNU drops dim but keeps
+    /// names for extension; the slice copies the chain wholesale.
+    let chain = heap.get(operands[0]).map(|slot| slot.attrib).unwrap_or(ValueId::NIL);
+    let id = heap.alloc(resized);
+    if let Some(slot) = heap.get_mut(id) {
+        slot.attrib = chain;
+    }
+    Ok(id)
+}
+
+/// `file.path(...)` — components joined with the platform separator exactly
+/// as GNU's forward slash on unix.
+fn file_path_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let mut components: Vec<String> = Vec::new();
+    let mut cursor = args;
+    loop {
+        let (car, cdr) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, .. }) => (*car, *cdr),
+            _ => break,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let value = force_if_promise(heap, interner, evaluated)?;
+        components.extend(string_vec(heap, interner, value));
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    let joined = components.join("/");
+    let interned = interner.intern_string(&joined);
+    Ok(heap.alloc(RObject::String(vec![interned])))
 }
