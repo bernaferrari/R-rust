@@ -1408,14 +1408,18 @@ mod tests {
         use crate::value::env;
         use crate::value::object::BuiltinId;
         use crate::value::primitives::primitive_id_for_name;
-        let env_id = env::new_environment(heap, crate::value::id::ValueId::EMPTY_ENV);
+        // GNU's environment structure: primitives live in a base environment
+        /// exactly as package:base; user code evaluates in a globalenv whose
+        /// enclosure chain reaches base — ls() sees only user bindings and
+        /// definitions never pollute the base frame.
+        let base = env::new_environment(heap, crate::value::id::ValueId::EMPTY_ENV);
         for &name in crate::value::primitives::primitive_names() {
             let sym = interner.intern_symbol(name);
             let prim = primitive_id_for_name(name).expect("mapped primitive");
             let object = heap.alloc(RObject::Primitive(BuiltinId(prim)));
-            env::define(heap, env_id, sym, object).expect("define primitive");
+            env::define(heap, base, sym, object).expect("define primitive");
         }
-        env_id
+        env::new_environment(heap, base)
     }
 
     #[test]
@@ -1890,6 +1894,11 @@ mod tests {
             "{ assign('zz', 42); zz }",
             "{ assign('zz', 42); get('zz') }",
             "{ e <- new.env(); assign('q', 9, e); get('q', e) }",
+            "{ f <- tempfile(); writeLines(c('aa', 'bb'), f); readLines(f) }",
+            "{ f <- tempfile(); cat('x', 'y', sep='|', file=f); readLines(f) }",
+            "{ f <- tempfile(); writeLines('q', f); file.exists(f) }",
+            "as.logical(c(0, 1, 2))",
+            "suppressWarnings(1 + 1)",
         ];
         // One session, one parse pass: expression objects stay valid for the
         // session's lifetime, so batching avoids per-program bootstrap cost.

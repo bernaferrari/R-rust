@@ -127,6 +127,17 @@ pub mod primitive_ids {
     pub const ROWNAMES_ASSIGN: u32 = 116;
     pub const COLNAMES: u32 = 117;
     pub const COLNAMES_ASSIGN: u32 = 118;
+    /// Text file I/O — the architecturally permanent slice of the tempfile
+    /// cluster (save/load/RDS wire formats are dropped by design).
+    pub const TEMPFILE: u32 = 119;
+    pub const WRITELINES: u32 = 120;
+    pub const READLINES: u32 = 121;
+    pub const FILE_EXISTS: u32 = 122;
+    pub const FILE_REMOVE: u32 = 123;
+    pub const FILE_COPY: u32 = 124;
+    pub const FILE_RENAME: u32 = 125;
+    pub const SUPPRESS_WARNINGS: u32 = 126;
+    pub const AS_LOGICAL: u32 = 127;
     /// Matrix construction and dimension introspection.
     pub const MATRIX: u32 = 100;
     pub const DIM: u32 = 101;
@@ -148,7 +159,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -271,9 +282,13 @@ pub(crate) fn call_primitive(
         CAT => {
             // Variadic output: operands coerce elementwise and concatenate
             /// with the separator — tagged sep exactly as GNU, default one
-            /// space. Output lands in the session capture buffer.
+            /// space. Output lands in the session capture buffer, or the
+            /// tagged file (append honored) exactly as GNU's connection
+            /// redirection.
             let mut pieces: Vec<String> = Vec::new();
             let mut sep = " ".to_string();
+            let mut file_target: Option<String> = None;
+            let mut append = false;
             let mut cursor = args;
             loop {
                 let (car, cdr, tag) = match heap.object(cursor) {
@@ -291,6 +306,12 @@ pub(crate) fn call_primitive(
                         if !values.is_empty() {
                             sep = interner.string_text(values[0]).to_string();
                         }
+                    }
+                } else if tag_name.as_deref() == Some("file") {
+                    file_target = string_operand(heap, interner, value);
+                } else if tag_name.as_deref() == Some("append") {
+                    if let Some(RObject::Logical(vals)) = heap.object(value) {
+                        append = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
                     }
                 } else {
                     // Every element of the operand contributes, vector or scalar.
@@ -313,7 +334,24 @@ pub(crate) fn call_primitive(
             }
             // GNU cat: separator BETWEEN pieces only, no trailing newline.
             let joined = pieces.join(&sep);
-            heap.output.push_str(&joined);
+            match file_target {
+                Some(path) => {
+                    // GNU: file connections open write or append per the
+                    /// tagged append argument.
+                    use std::io::Write;
+                    let file = if append {
+                        std::fs::OpenOptions::new().append(true).create(true).open(&path)
+                    } else {
+                        std::fs::File::create(&path)
+                    };
+                    let mut file = file.map_err(|_| RSignal::Error(EvalError::TypeError(
+                        "cat: cannot open file",
+                    )))?;
+                    file.write_all(joined.as_bytes())
+                        .map_err(|_| RSignal::Error(EvalError::TypeError("cat: write failed")))?;
+                }
+                None => heap.output.push_str(&joined),
+            }
             Ok(ValueId::NIL)
         }
         INVISIBLE => {
@@ -346,6 +384,23 @@ pub(crate) fn call_primitive(
         STRUCTURE => structure_primitive(heap, interner, args, caller_env),
         ASSIGN_FN => assign_primitive(heap, interner, args, caller_env),
         GET => get_primitive(heap, interner, args, caller_env),
+        TEMPFILE => tempfile_primitive(heap, interner, args, caller_env),
+        WRITELINES => writelines_primitive(heap, interner, args, caller_env),
+        READLINES => readlines_primitive(heap, interner, args, caller_env),
+        FILE_EXISTS => file_exists_primitive(heap, interner, args, caller_env),
+        FILE_REMOVE => file_remove_primitive(heap, interner, args, caller_env),
+        FILE_COPY => file_copy_primitive(heap, interner, args, caller_env),
+        FILE_RENAME => file_rename_primitive(heap, interner, args, caller_env),
+        SUPPRESS_WARNINGS => {
+            // Identity over the evaluated argument — the new world has no
+            /// warning system to suppress, so suppression is transparent.
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            Ok(operands[0])
+        }
+        AS_LOGICAL => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            coerce_logical(heap, interner, operands[0])
+        }
         DIMNAMES => attrib_getter(heap, interner, args, caller_env, "dimnames"),
         DIMNAMES_ASSIGN => attrib_replacement(heap, interner, args, caller_env, "dimnames"),
         CLASS => class_getter(heap, interner, args, caller_env),
@@ -949,7 +1004,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -1043,6 +1098,15 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "assign" => Some(ASSIGN_FN),
         "get" => Some(GET),
         "character" => Some(CHARACTER_CTOR),
+        "tempfile" => Some(TEMPFILE),
+        "writeLines" => Some(WRITELINES),
+        "readLines" => Some(READLINES),
+        "file.exists" => Some(FILE_EXISTS),
+        "file.remove" => Some(FILE_REMOVE),
+        "file.copy" => Some(FILE_COPY),
+        "file.rename" => Some(FILE_RENAME),
+        "suppressWarnings" => Some(SUPPRESS_WARNINGS),
+        "as.logical" => Some(AS_LOGICAL),
         "dimnames" => Some(DIMNAMES),
         "dimnames<-" => Some(DIMNAMES_ASSIGN),
         "class" => Some(CLASS),
@@ -4056,4 +4120,202 @@ fn rowcolnames_assign(
     elements[index] = operands[1];
     let list = heap.alloc(RObject::List(elements));
     copy_with_attrib(heap, interner, operands[0], "dimnames", list).map_err(RSignal::from)
+}
+
+/// Extract the first string of an operand — the path coercion every file
+/// primitive shares.
+fn string_operand(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Option<String> {
+    match heap.object(value) {
+        Some(RObject::String(values)) if !values.is_empty() => {
+            Some(interner.string_text(values[0]).to_string())
+        }
+        _ => None,
+    }
+}
+
+fn string_vec(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<String> {
+    match heap.object(value) {
+        Some(RObject::String(values)) => values
+            .iter()
+            .map(|v| interner.string_text(*v).to_string())
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// `tempfile()`: a unique non-existent path inside the system tempdir —
+/// process id plus a counter makes collision impossible within the session
+/// exactly as GNU's pattern randomization does across sessions.
+fn tempfile_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let _ = (args, caller_env);
+    static COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let dir = std::env::temp_dir();
+    loop {
+        let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
+        let path = dir.join(format!(
+            "Rtmpfile{}x{:x}{}",
+            std::process::id(),
+            nanos,
+            n
+        ));
+        if !path.exists() {
+            let text = interner.intern_string(&path.to_string_lossy());
+            return Ok(heap.alloc(RObject::String(vec![text])));
+        }
+    }
+}
+
+/// `writeLines(text, con)`: every element of text plus a trailing newline,
+/// con a filename string exactly as the conformance slice uses it.
+fn writelines_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    let lines = string_vec(heap, interner, operands[0]);
+    let path = string_operand(heap, interner, operands[1])
+        .ok_or(EvalError::TypeError("writeLines connection must be a filename"))?;
+    let mut content = String::new();
+    for line in &lines {
+        content.push_str(line);
+        content.push('\n');
+    }
+    std::fs::write(&path, content)
+        .map_err(|_| RSignal::Error(EvalError::TypeError("writeLines: cannot open file")))?;
+    Ok(ValueId::NIL)
+}
+
+/// `readLines(con)`: the file's lines as a character vector, trailing
+/// newline not producing a spurious empty final element — GNU exactly.
+fn readlines_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    let path = string_operand(heap, interner, operands[0])
+        .ok_or(EvalError::TypeError("readLines connection must be a filename"))?;
+    let content = std::fs::read_to_string(&path)
+        .map_err(|_| RSignal::Error(EvalError::TypeError("readLines: cannot open file")))?;
+    let mut lines: Vec<&str> = content.split('\n').collect();
+    if lines.last() == Some(&"") {
+        lines.pop();
+    }
+    let interned: Vec<super::intern::InternedStr> = lines
+        .iter()
+        .map(|l| interner.intern_string(l))
+        .collect();
+    Ok(heap.alloc(RObject::String(interned)))
+}
+
+/// `file.exists(paths)` — elementwise existence probe.
+fn file_exists_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    let paths = string_vec(heap, interner, operands[0]);
+    let out: Vec<i32> = paths
+        .iter()
+        .map(|p| if std::path::Path::new(p).exists() { 1 } else { 0 })
+        .collect();
+    Ok(heap.alloc(RObject::Logical(out)))
+}
+
+/// `file.remove(paths)` — elementwise removal with logical success exactly
+/// as GNU.
+fn file_remove_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    let paths = string_vec(heap, interner, operands[0]);
+    let out: Vec<i32> = paths
+        .iter()
+        .map(|p| if std::fs::remove_file(p).is_ok() { 1 } else { 0 })
+        .collect();
+    Ok(heap.alloc(RObject::Logical(out)))
+}
+
+/// `file.copy(from, to)` — scalar copy with logical success.
+fn file_copy_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    let from = string_operand(heap, interner, operands[0])
+        .ok_or(EvalError::TypeError("file.copy source"))?;
+    let to = string_operand(heap, interner, operands[1])
+        .ok_or(EvalError::TypeError("file.copy target"))?;
+    let ok = std::fs::copy(&from, &to).is_ok();
+    Ok(heap.alloc(RObject::Logical(vec![if ok { 1 } else { 0 }])))
+}
+
+/// `file.rename(from, to)` — scalar rename with logical success.
+fn file_rename_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    let from = string_operand(heap, interner, operands[0])
+        .ok_or(EvalError::TypeError("file.rename source"))?;
+    let to = string_operand(heap, interner, operands[1])
+        .ok_or(EvalError::TypeError("file.rename target"))?;
+    let ok = std::fs::rename(&from, &to).is_ok();
+    Ok(heap.alloc(RObject::Logical(vec![if ok { 1 } else { 0 }])))
+}
+
+/// `as.logical(x)` — numeric nonzero is true, NA propagates, strings parse
+/// the T/F/TRUE/FALSE spellings exactly as GNU.
+fn coerce_logical(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    value: ValueId,
+) -> EvalResult {
+    let out: Vec<i32> = match heap.object(value) {
+        Some(RObject::Logical(values)) => values.clone(),
+        Some(RObject::Integer(values)) => values.clone(),
+        Some(RObject::Real(values)) => values
+            .iter()
+            .map(|v| {
+                if v.is_nan() {
+                    crate::value::object::NA_INTEGER
+                } else if *v != 0.0 {
+                    1
+                } else {
+                    0
+                }
+            })
+            .collect(),
+        Some(RObject::String(values)) => values
+            .iter()
+            .map(|v| match interner.string_text(*v) {
+                "TRUE" | "T" | "true" => 1,
+                "FALSE" | "F" | "false" => 0,
+                _ => crate::value::object::NA_INTEGER,
+            })
+            .collect(),
+        _ => return Err(EvalError::TypeError("cannot coerce to logical").into()),
+    };
+    Ok(heap.alloc(RObject::Logical(out)))
 }
