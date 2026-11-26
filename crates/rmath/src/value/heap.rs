@@ -31,6 +31,11 @@ pub struct Heap {
     pub interner: SymbolInterner,
     /// The last error message — GNU's geterrmessage/seterrmessage state.
     pub err_message: String,
+    /// Deferred warning texts — GNU's end-of-task warning queue. The harness
+    /// drains this into `Warning message:` blocks after each top-level task.
+    pub pending_warnings: Vec<String>,
+    /// suppressWarnings dynamic state — warnings raised while true are dropped.
+    pub warn_suppressed: bool,
     /// Interrupt suspension flag — GNU's interruptsSuspended state.
     pub interrupts_suspended: bool,
     /// bindtextdomain registry — domain to translation directory.

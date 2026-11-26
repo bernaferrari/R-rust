@@ -2343,6 +2343,21 @@ print(array(1:4, c(2, 2), dimnames = list(c(\"r1\", \"r2\"), c(\"c1\", \"c2\")))
                             heap.output.push_str(&text);
                             heap.output.push('\n');
                         }
+                        // Deferred warnings flush at end-of-task exactly as
+                        /// GNU's REPL — after the visible result prints.
+                        if !heap.pending_warnings.is_empty() {
+                            let pending = std::mem::take(&mut heap.pending_warnings);
+                            if pending.len() == 1 {
+                                heap.output.push_str("Warning message:\n");
+                                heap.output.push_str(&pending[0]);
+                                heap.output.push('\n');
+                            } else {
+                                heap.output.push_str("Warning messages:\n");
+                                for (i, text) in pending.iter().enumerate() {
+                                    heap.output.push_str(&format!("{}: {}\n", i + 1, text));
+                                }
+                            }
+                        }
                     }
                     Err(error) => {
                         new_error = Some(format!("{error:?}"));

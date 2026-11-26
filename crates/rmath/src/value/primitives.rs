@@ -269,6 +269,19 @@ pub mod primitive_ids {
     pub const PPOIS: u32 = 251;
     pub const DBINOM: u32 = 252;
     pub const PBINOM: u32 = 253;
+    pub const MESSAGE_FN: u32 = 254;
+    pub const MISSING_FN: u32 = 255;
+    pub const PARENT_ENV: u32 = 256;
+    pub const ORDER_FN: u32 = 257;
+    pub const RANK_FN: u32 = 258;
+    pub const ORDERED_FN: u32 = 259;
+    pub const IS_ORDERED: u32 = 260;
+    pub const IS_FACTOR: u32 = 261;
+    pub const NA_OMIT: u32 = 262;
+    pub const NA_EXCLUDE: u32 = 263;
+    pub const PBETA: u32 = 264;
+    pub const DBETA: u32 = 265;
+    pub const QBETA: u32 = 266;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -299,7 +312,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -321,12 +334,13 @@ pub(crate) fn call_primitive(
     // Braces and parens propagate the final inner visibility exactly as
     /// GNU — `{ invisible(1) }` returns invisibly — so they join .Internal
     /// and eval in the propagation exceptions.
-    if result.is_ok() && id.0 != INTERNAL && id.0 != EVAL_FN && id.0 != BRACE && id.0 != PAREN {
+    if result.is_ok() && id.0 != INTERNAL && id.0 != EVAL_FN && id.0 != BRACE && id.0 != PAREN && id.0 != SUPPRESS_WARNINGS {
         heap.visible = !matches!(
             id.0,
             ASSIGN | SUPERASSIGN | PRINT | CAT | INVISIBLE | WHILE | REPEAT | FOR
                 | WRITELINES | ASSIGN_FN | FILE_REMOVE | FILE_COPY | FILE_RENAME
                 | SYS_SETENV | SYS_UNSETENV | UNLINK | DIR_CREATE | SAVE | RM | DPUT
+                | WARNING | MESSAGE_FN
         );
     }
     result
@@ -523,10 +537,30 @@ fn call_primitive_inner(
             match_primitive(heap, operands[0], operands[1])
         }
         NEW_ENV => {
-            // GNU's parent defaults to the calling environment; hash and
-            /// size are performance hints outside the slice.
-            let _ = eval_args(heap, interner, args, caller_env, 0);
-            Ok(crate::value::env::new_environment(heap, caller_env))
+            // GNU's parent defaults to the calling environment; a tagged
+            /// parent= argument overrides it exactly as GNU. hash and size
+            /// are performance hints outside the slice.
+            let mut parent = caller_env;
+            let mut cursor = args;
+            loop {
+                let (car, cdr, tag) = match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+                    _ => break,
+                };
+                let tag_name = match heap.object(tag) {
+                    Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+                    _ => None,
+                };
+                if tag_name.as_deref() == Some("parent") {
+                    let evaluated = eval(heap, interner, car, caller_env)?;
+                    parent = force_if_promise(heap, interner, evaluated)?;
+                }
+                if cdr == ValueId::NIL {
+                    break;
+                }
+                cursor = cdr;
+            }
+            Ok(crate::value::env::new_environment(heap, parent))
         }
         EXISTS => exists_primitive(heap, interner, args, caller_env),
         LS => {
@@ -685,10 +719,20 @@ fn call_primitive_inner(
         FILE_COPY => file_copy_primitive(heap, interner, args, caller_env),
         FILE_RENAME => file_rename_primitive(heap, interner, args, caller_env),
         SUPPRESS_WARNINGS => {
-            // Identity over the evaluated argument — the new world has no
-            /// warning system to suppress, so suppression is transparent.
-            let operands = eval_args(heap, interner, args, caller_env, 1)?;
-            Ok(operands[0])
+            // Warnings raised inside are dropped rather than buffered —
+            /// save/restore keeps the flag exact across reentry.
+            let raw = raw_args(heap, args);
+            let prior = heap.warn_suppressed;
+            heap.warn_suppressed = true;
+            let mut result = Ok(ValueId::NIL);
+            for expr in &raw {
+                result = eval(heap, interner, *expr, caller_env);
+                if result.is_err() {
+                    break;
+                }
+            }
+            heap.warn_suppressed = prior;
+            result
         }
         AS_LOGICAL => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
@@ -968,19 +1012,90 @@ fn call_primitive_inner(
             }
         }
         WARNING => {
-            // warning(..., msg) — the message is the final argument; the
-            /// value is the message itself exactly as GNU returns it.
+            // GNU defers warnings to end-of-task: collapse every argument
+            /// paste0-style — vectors contribute every element, empties
+            /// nothing — buffer the text, and return NULL invisibly. The
+            /// harness drains the buffer into `Warning message:` blocks.
             let raw = raw_args(heap, args);
             let mut message = String::new();
             for expr in &raw {
                 let evaluated = eval(heap, interner, *expr, caller_env)?;
                 let v = force_if_promise(heap, interner, evaluated)?;
+                for piece in string_vec(heap, interner, v) {
+                    if piece != "\0NA" {
+                        message.push_str(&piece);
+                    }
+                }
                 if let Some(text) = string_operand(heap, interner, v) {
-                    message = text;
+                    if string_vec(heap, interner, v).is_empty() {
+                        message.push_str(&text);
+                    }
                 }
             }
-            Ok(heap.alloc(RObject::String(vec![interner.intern_string(&message)])))
+            if !heap.warn_suppressed {
+                heap.pending_warnings.push(message);
+            }
+            heap.visible = false;
+            Ok(ValueId::NIL)
         }
+        MESSAGE_FN => {
+            // message(...) concatenates paste0-style and writes one line to
+            /// the message stream immediately — the harness merges streams
+            /// in order, so direct output exactly matches GNU's interleave.
+            let raw = raw_args(heap, args);
+            let mut text = String::new();
+            for expr in &raw {
+                let evaluated = eval(heap, interner, *expr, caller_env)?;
+                let v = force_if_promise(heap, interner, evaluated)?;
+                for piece in string_vec(heap, interner, v) {
+                    if piece != "\0NA" {
+                        text.push_str(&piece);
+                    }
+                }
+            }
+            heap.output.push_str(&text);
+            heap.output.push('\n');
+            heap.visible = false;
+            Ok(ValueId::NIL)
+        }
+        MISSING_FN => {
+            // missing(x) inspects the UNEVALUATED symbol — TRUE exactly when
+            /// the frame binding is the missing-argument sentinel.
+            let raw = raw_args(heap, args);
+            let mut missing = false;
+            if let Some(first) = raw.first() {
+                if let Some(RObject::Symbol { name, .. }) = heap.object(*first) {
+                    let sym = *name;
+                    missing = match super::env::lookup_in_frame(heap, caller_env, sym) {
+                        Some(binding) => binding.value == ValueId::MISSING,
+                        None => false,
+                    };
+                }
+            }
+            Ok(heap.alloc(RObject::Logical(vec![missing as i32])))
+        }
+        PARENT_ENV => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let parent = match heap.object(operands[0]) {
+                Some(RObject::Environment { enclos, .. }) => *enclos,
+                _ => ValueId::EMPTY_ENV,
+            };
+            Ok(parent)
+        }
+        ORDER_FN => order_primitive(heap, interner, args, caller_env),
+        RANK_FN => rank_primitive(heap, interner, args, caller_env),
+        ORDERED_FN => ordered_primitive(heap, interner, args, caller_env),
+        IS_ORDERED => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let is = class_contains(heap, interner, operands[0], "ordered");
+            Ok(heap.alloc(RObject::Logical(vec![is as i32])))
+        }
+        IS_FACTOR => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let is = is_factor(heap, interner, operands[0]);
+            Ok(heap.alloc(RObject::Logical(vec![is as i32])))
+        }
+        NA_OMIT | NA_EXCLUDE => na_action_primitive(heap, interner, id.0, args, caller_env),
         GETTEXT => {
             // Identity translation — the C locale never translates.
             let operands = eval_args(heap, interner, args, caller_env, 2)?;
@@ -1198,7 +1313,9 @@ fn call_primitive_inner(
             let name = {
                 let sym = interner.intern_symbol(".GlobalEnv");
                 let genv = super::env::lookup(heap, caller_env, sym).map(|(_, b)| b.value);
-                if Some(operands[0]) == genv {
+                if operands[0] == ValueId::EMPTY_ENV {
+                    "R_EmptyEnv"
+                } else if Some(operands[0]) == genv {
                     "R_GlobalEnv"
                 } else {
                     ""
@@ -1840,7 +1957,7 @@ fn call_primitive_inner(
             Ok(heap.alloc(RObject::Logical(vec![is as i32])))
         }
         SIN | COS | SINH | COSH | TANH_F => trig_unary(heap, interner, id.0, args, caller_env),
-        DNORM | PNORM | QNORM | DPOIS | PPOIS | DBINOM | PBINOM => dpq_primitive(heap, interner, id.0, args, caller_env),
+        DNORM | PNORM | QNORM | DPOIS | PPOIS | DBINOM | PBINOM | PBETA | DBETA | QBETA => dpq_primitive(heap, interner, id.0, args, caller_env),
         COMPLEX_CTOR => complex_ctor(heap, interner, args, caller_env),
         AS_COMPLEX => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
@@ -3185,7 +3302,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom", "message", "missing", "parent.env", "order", "rank", "ordered", "is.ordered", "is.factor", "na.omit", "na.exclude", "pbeta", "dbeta", "qbeta",
     ]
 }
 
@@ -3426,6 +3543,19 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "ppois" => Some(PPOIS),
         "dbinom" => Some(DBINOM),
         "pbinom" => Some(PBINOM),
+        "message" => Some(MESSAGE_FN),
+        "missing" => Some(MISSING_FN),
+        "parent.env" => Some(PARENT_ENV),
+        "order" => Some(ORDER_FN),
+        "rank" => Some(RANK_FN),
+        "ordered" => Some(ORDERED_FN),
+        "is.ordered" => Some(IS_ORDERED),
+        "is.factor" => Some(IS_FACTOR),
+        "na.omit" => Some(NA_OMIT),
+        "na.exclude" => Some(NA_EXCLUDE),
+        "pbeta" => Some(PBETA),
+        "dbeta" => Some(DBETA),
+        "qbeta" => Some(QBETA),
         _ => None,
     }
 }
@@ -9756,6 +9886,7 @@ fn dpq_primitive(
         DNORM | PNORM | QNORM => ("mean", 0.0, "sd", 1.0),
         DPOIS | PPOIS => ("lambda", f64::NAN, "", 0.0),
         DBINOM | PBINOM => ("size", f64::NAN, "prob", f64::NAN),
+        PBETA | DBETA | QBETA => ("shape1", f64::NAN, "shape2", f64::NAN),
         _ => unreachable!(),
     };
     let param1 = real_arg(p1n, 1, p1d)?;
@@ -9777,11 +9908,402 @@ fn dpq_primitive(
                 PPOIS => crate::nmath::dist::poisson::ppois_inner(x, param1, lower_flag, log_flag),
                 DBINOM => crate::nmath::dist::binomial::dbinom_inner(x, param1, param2, log_flag),
                 PBINOM => crate::nmath::dist::binomial::pbinom_inner(x, param1, param2, lower_flag, log_flag),
+                DBETA => crate::nmath::dist::beta::dbeta_inner(x, param1, param2, log_flag),
+                PBETA => crate::nmath::dist::beta::pbeta_inner(x, param1, param2, lower_flag, log_flag),
+                QBETA => crate::nmath::dist::beta::qbeta_inner(x, param1, param2, lower_flag, log_flag),
                 _ => unreachable!(),
             }
         })
         .collect();
     Ok(heap.alloc(RObject::Real(out)))
+}
+
+
+/// class vector membership — the shared predicate behind is.factor/is.ordered.
+fn class_contains(heap: &Heap, interner: &SymbolInterner, value: ValueId, class: &str) -> bool {
+    match get_attrib(heap, interner, value, "class") {
+        Some(id) => match heap.object(id) {
+            Some(RObject::String(vals)) => vals.iter().any(|v| interner.string_text(*v) == class),
+            _ => false,
+        },
+        None => false,
+    }
+}
+
+/// ordered() — the factor constructor plus the two-element class vector
+/// exactly as GNU: c("ordered", "factor").
+fn ordered_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let factored = factor_primitive(heap, interner, args, caller_env)?;
+    let ordered = interner.intern_string("ordered");
+    let factor = interner.intern_string("factor");
+    let class_obj = heap.alloc(RObject::String(vec![ordered, factor]));
+    copy_with_attrib(heap, interner, factored, "class", class_obj).map_err(RSignal::from)
+}
+
+/// Keys for ordering — numeric and character vectors both participate
+/// exactly as GNU's radix order admits them.
+enum OrderKey {
+    Real(f64),
+    Text(String),
+    Na,
+}
+
+fn order_keys(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<OrderKey> {
+    match heap.object(value) {
+        Some(RObject::Real(vals)) => vals
+            .iter()
+            .map(|v| if v.is_nan() { OrderKey::Na } else { OrderKey::Real(*v) })
+            .collect(),
+        Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals
+            .iter()
+            .map(|v| if *v == crate::value::object::NA_INTEGER { OrderKey::Na } else { OrderKey::Real(*v as f64) })
+            .collect(),
+        Some(RObject::String(vals)) => vals
+            .iter()
+            .map(|v| {
+                let text = interner.string_text(*v).to_string();
+                if text == "\0NA" { OrderKey::Na } else { OrderKey::Text(text) }
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn compare_keys(a: &OrderKey, b: &OrderKey) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    match (a, b) {
+        (OrderKey::Real(x), OrderKey::Real(y)) => x.partial_cmp(y).unwrap_or(Ordering::Equal),
+        (OrderKey::Text(x), OrderKey::Text(y)) => x.cmp(y),
+        _ => Ordering::Equal,
+    }
+}
+
+/// Positional+named argument collection shared by order/rank — first
+/// argument positional, flags resolved by tag with positional fallback.
+fn collect_order_args(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> Result<(Vec<ValueId>, Vec<(String, ValueId)>), RSignal> {
+    let mut positional: Vec<ValueId> = Vec::new();
+    let mut named: Vec<(String, ValueId)> = Vec::new();
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let value = force_if_promise(heap, interner, evaluated)?;
+        match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => {
+                named.push((interner.symbol_name(*name).to_string(), value));
+            }
+            _ => positional.push(value),
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    Ok((positional, named))
+}
+
+fn flag_lookup(
+    heap: &Heap,
+    positional: &[ValueId],
+    named: &[(String, ValueId)],
+    name: &str,
+    position: usize,
+) -> Option<ValueId> {
+    named
+        .iter()
+        .find(|(n, _)| n == name)
+        .map(|(_, v)| *v)
+        .or_else(|| positional.get(position).copied())
+        .filter(|v| {
+            let _ = heap;
+            true
+        })
+}
+
+fn logical_or_na(heap: &Heap, value: ValueId) -> Option<bool> {
+    match heap.object(value) {
+        Some(RObject::Logical(vals)) => {
+            let first = vals.first().copied().unwrap_or(crate::value::object::NA_INTEGER);
+            if first == crate::value::object::NA_INTEGER {
+                None
+            } else {
+                Some(first != 0)
+            }
+        }
+        _ => Some(false),
+    }
+}
+
+/// order(x, ..., na.last=TRUE, decreasing=FALSE) — the stable 1-based
+/// permutation exactly as GNU's radix order: na.last=TRUE sorts missing
+/// last, FALSE first, NA removes them from the result entirely.
+fn order_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let (positional, named) = collect_order_args(heap, interner, args, caller_env)?;
+    let x = positional.first().copied().ok_or(EvalError::TypeError("order requires an argument"))?;
+    let keys = order_keys(heap, interner, x);
+    let na_last = flag_lookup(heap, &positional, &named, "na.last", usize::MAX)
+        .map(|v| logical_or_na(heap, v))
+        .unwrap_or(Some(true));
+    let decreasing = flag_lookup(heap, &positional, &named, "decreasing", usize::MAX)
+        .map(|v| logical_or_na(heap, v).unwrap_or(false))
+        .unwrap_or(false);
+
+    let mut indices: Vec<usize> = (0..keys.len()).collect();
+    indices.sort_by(|&a, &b| {
+        use std::cmp::Ordering;
+        let ka = &keys[a];
+        let kb = &keys[b];
+        let a_na = matches!(ka, OrderKey::Na);
+        let b_na = matches!(kb, OrderKey::Na);
+        let ordering = match (a_na, b_na) {
+            (true, true) => Ordering::Equal,
+            (true, false) => return if na_last == Some(false) { Ordering::Less } else { Ordering::Greater },
+            (false, true) => return if na_last == Some(false) { Ordering::Greater } else { Ordering::Less },
+            (false, false) => compare_keys(ka, kb),
+        };
+        if decreasing { ordering.reverse() } else { ordering }
+    });
+    let out: Vec<i32> = indices
+        .iter()
+        .filter(|&&i| !(na_last.is_none() && matches!(keys[i], OrderKey::Na)))
+        .map(|i| *i as i32 + 1)
+        .collect();
+    Ok(heap.alloc(RObject::Integer(out)))
+}
+
+/// rank(x, na.last=TRUE, ties.method="average") — GNU's exact matrix:
+/// missing entries join the ranking with sequential integer positions
+/// before (na.last=FALSE) or after (TRUE) the ranked values, or drop out
+/// entirely (na.last=NA); ties resolve average/first/last/min/max.
+fn rank_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let (positional, named) = collect_order_args(heap, interner, args, caller_env)?;
+    let x = positional.first().copied().ok_or(EvalError::TypeError("rank requires an argument"))?;
+    let keys = order_keys(heap, interner, x);
+    let na_last = flag_lookup(heap, &positional, &named, "na.last", 1)
+        .map(|v| logical_or_na(heap, v))
+        .unwrap_or(Some(true));
+    let ties_method = flag_lookup(heap, &positional, &named, "ties.method", 2)
+        .and_then(|v| string_operand(heap, interner, v))
+        .unwrap_or_else(|| "average".to_string());
+
+    let na_count = keys.iter().filter(|k| matches!(k, OrderKey::Na)).count();
+    let non_na: Vec<usize> = (0..keys.len())
+        .filter(|&i| !matches!(keys[i], OrderKey::Na))
+        .collect();
+    let mut sorted = non_na.clone();
+    sorted.sort_by(|&a, &b| compare_keys(&keys[a], &keys[b]));
+
+    // The shift applied to non-missing ranks when missing values sort first.
+    let shift = if na_last == Some(false) { na_count as f64 } else { 0.0 };
+    let mut ranks: Vec<Option<f64>> = vec![None; keys.len()];
+    let mut cursor = 0usize;
+    while cursor < sorted.len() {
+        let mut end = cursor + 1;
+        while end < sorted.len() && compare_keys(&keys[sorted[cursor]], &keys[sorted[end]]) == std::cmp::Ordering::Equal {
+            end += 1;
+        }
+        let first_rank = cursor as f64 + 1.0 + shift;
+        let last_rank = end as f64 + shift;
+        for (tie_position, slot) in (cursor..end).enumerate() {
+            let rank = match ties_method.as_str() {
+                "first" => first_rank + tie_position as f64,
+                "last" => last_rank - tie_position as f64,
+                "min" => first_rank,
+                "max" => last_rank,
+                _ => (first_rank + last_rank) / 2.0,
+            };
+            ranks[sorted[slot]] = Some(rank);
+        }
+        cursor = end;
+    }
+
+    // Missing entries: sequential positions at the edge they sort toward,
+    /// in original order exactly as GNU — never tie-averaged.
+    if na_last.is_some() {
+        let mut next = if na_last == Some(false) {
+            1.0
+        } else {
+            non_na.len() as f64 + 1.0
+        };
+        for (i, key) in keys.iter().enumerate() {
+            if matches!(key, OrderKey::Na) {
+                ranks[i] = Some(next);
+                next += 1.0;
+            }
+        }
+    }
+
+    let present: Vec<f64> = ranks.iter().filter_map(|r| *r).collect();
+    let any_fractional = present.iter().any(|v| v.fract() != 0.0);
+    if na_last.is_none() {
+        if any_fractional {
+            return Ok(heap.alloc(RObject::Real(present)));
+        }
+        return Ok(heap.alloc(RObject::Integer(present.iter().map(|v| *v as i32).collect())));
+    }
+    let all: Vec<f64> = ranks.iter().map(|r| r.unwrap_or(f64::NAN)).collect();
+    if any_fractional {
+        return Ok(heap.alloc(RObject::Real(all)));
+    }
+    Ok(heap.alloc(RObject::Integer(all.iter().map(|v| *v as i32).collect())))
+}
+
+/// na.omit / na.exclude — drop missing entries and record their positions
+/// in the na.action attribute exactly as GNU: indices named after the
+/// dropped elements, classed "omit" or "exclude".
+fn na_action_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    which: u32,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    let value = operands[0];
+
+    // Elementwise missingness across the atomic shapes the cases pin.
+    enum Item {
+        Real(f64),
+        Int(i32),
+        Logical(i32),
+        Text(String),
+    }
+    let (items, template): (Vec<Item>, u8) = match heap.object(value) {
+        Some(RObject::Real(vals)) => (
+            vals.iter().map(|v| Item::Real(*v)).collect(),
+            0,
+        ),
+        Some(RObject::Integer(vals)) => (
+            vals.iter().map(|v| Item::Int(*v)).collect(),
+            1,
+        ),
+        Some(RObject::Logical(vals)) => (
+            vals.iter().map(|v| Item::Logical(*v)).collect(),
+            2,
+        ),
+        Some(RObject::String(vals)) => (
+            vals.iter()
+                .map(|v| Item::Text(interner.string_text(*v).to_string()))
+                .collect(),
+            3,
+        ),
+        _ => (Vec::new(), 1),
+    };
+    let is_na = |item: &Item| -> bool {
+        match item {
+            Item::Real(v) => v.is_nan(),
+            Item::Int(v) => *v == crate::value::object::NA_INTEGER,
+            Item::Logical(v) => *v == crate::value::object::NA_INTEGER,
+            Item::Text(s) => s == "\0NA",
+        }
+    };
+    let names: Vec<String> = match get_attrib(heap, interner, value, "names") {
+        Some(id) => string_vec(heap, interner, id),
+        None => Vec::new(),
+    };
+
+    let mut kept_indices: Vec<usize> = Vec::new();
+    let mut dropped: Vec<usize> = Vec::new();
+    for (i, item) in items.iter().enumerate() {
+        if is_na(item) {
+            dropped.push(i);
+        } else {
+            kept_indices.push(i);
+        }
+    }
+
+    let kept_real: Vec<f64> = kept_indices
+        .iter()
+        .filter_map(|&i| match &items[i] {
+            Item::Real(v) => Some(*v),
+            Item::Int(v) => Some(*v as f64),
+            Item::Logical(v) => Some(*v as f64),
+            _ => None,
+        })
+        .collect();
+    let mut result = match template {
+        0 => heap.alloc(RObject::Real(kept_real)),
+        1 => heap.alloc(RObject::Integer(
+            kept_indices
+                .iter()
+                .filter_map(|&i| match &items[i] {
+                    Item::Int(v) => Some(*v),
+                    _ => None,
+                })
+                .collect(),
+        )),
+        2 => heap.alloc(RObject::Logical(
+            kept_indices
+                .iter()
+                .filter_map(|&i| match &items[i] {
+                    Item::Logical(v) => Some(*v),
+                    Item::Int(v) => Some(*v),
+                    _ => None,
+                })
+                .collect(),
+        )),
+        3 => {
+            let interned: Vec<super::intern::InternedStr> = kept_indices
+                .iter()
+                .filter_map(|&i| match &items[i] {
+                    Item::Text(s) => Some(interner.intern_string(s)),
+                    _ => None,
+                })
+                .collect();
+            heap.alloc(RObject::String(interned))
+        }
+        _ => unreachable!(),
+    };
+
+    // Kept names survive on the result exactly as GNU preserves them.
+    if !names.is_empty() {
+        let kept_names: Vec<super::intern::InternedStr> = kept_indices
+            .iter()
+            .map(|&i| interner.intern_string(names.get(i).map(|s| s.as_str()).unwrap_or("")))
+            .collect();
+        let names_obj = heap.alloc(RObject::String(kept_names));
+        result = copy_with_attrib(heap, interner, result, "names", names_obj).map_err(RSignal::from)?;
+    }
+
+    if !dropped.is_empty() {
+        let mut action = heap.alloc(RObject::Integer(dropped.iter().map(|i| *i as i32 + 1).collect()));
+        if !names.is_empty() {
+            let dropped_names: Vec<super::intern::InternedStr> = dropped
+                .iter()
+                .map(|&i| interner.intern_string(names.get(i).map(|s| s.as_str()).unwrap_or("")))
+                .collect();
+            let names_obj = heap.alloc(RObject::String(dropped_names));
+            action = copy_with_attrib(heap, interner, action, "names", names_obj).map_err(RSignal::from)?;
+        }
+        let class_name = if which == NA_OMIT { "omit" } else { "exclude" };
+        let class_obj = heap.alloc(RObject::String(vec![interner.intern_string(class_name)]));
+        action = copy_with_attrib(heap, interner, action, "class", class_obj).map_err(RSignal::from)?;
+        result = copy_with_attrib(heap, interner, result, "na.action", action).map_err(RSignal::from)?;
+    }
+    Ok(result)
 }
 
 fn trig_unary(
