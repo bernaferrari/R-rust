@@ -200,6 +200,12 @@ pub mod primitive_ids {
     /// N-dimensional array construction.
     pub const ARRAY: u32 = 184;
     pub const IS_ARRAY: u32 = 185;
+    /// The Date surface — ISO parsing, calendar labels, difftime.
+    pub const AS_DATE: u32 = 186;
+    pub const WEEKDAYS: u32 = 187;
+    pub const MONTHS: u32 = 188;
+    pub const QUARTERS: u32 = 189;
+    pub const FORMAT: u32 = 190;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -230,7 +236,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -1055,6 +1061,96 @@ fn call_primitive_inner(
             Ok(heap.alloc(RObject::List(vec![component])))
         }
         ARRAY => array_primitive(heap, interner, args, caller_env),
+        AS_DATE => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let out: Vec<f64> = match heap.object(operands[0]) {
+                Some(RObject::String(values)) => values
+                    .iter()
+                    .map(|v| {
+                        let text = interner.string_text(*v);
+                        if text == "\0NA" {
+                            f64::from_bits(crate::value::object::NA_REAL_BITS)
+                        } else {
+                            match super::civil::parse_iso(text) {
+                                Some(days) => days as f64,
+                                None => f64::from_bits(crate::value::object::NA_REAL_BITS),
+                            }
+                        }
+                    })
+                    .collect(),
+                Some(RObject::Real(values)) => values.clone(),
+                Some(RObject::Integer(values)) => values
+                    .iter()
+                    .map(|&v| {
+                        if v == crate::value::object::NA_INTEGER {
+                            f64::from_bits(crate::value::object::NA_REAL_BITS)
+                        } else {
+                            v as f64
+                        }
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            };
+            let value = heap.alloc(RObject::Real(out));
+            let class = heap.alloc(RObject::String(vec![interner.intern_string("Date")]));
+            copy_with_attrib(heap, interner, value, "class", class).map_err(RSignal::from)
+        }
+        WEEKDAYS | MONTHS | QUARTERS => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let days = numeric_vector(heap, operands[0]);
+            let out: Vec<super::intern::InternedStr> = days
+                .iter()
+                .map(|&d| {
+                    if d.is_nan() {
+                        // GNU: quarters renders NA as the literal "QNA"
+                        /// while weekdays and months use the NA sentinel.
+                        if id.0 == QUARTERS {
+                            interner.intern_string("QNA")
+                        } else {
+                            interner.intern_string("\0NA")
+                        }
+                    } else {
+                        let day_count = d as i64;
+                        let text = match id.0 {
+                            WEEKDAYS => {
+                                super::civil::WEEKDAY_NAMES[super::civil::weekday_of(day_count) as usize].to_string()
+                            }
+                            MONTHS => {
+                                let (_, m, _) = super::civil::civil_from_days(day_count);
+                                super::civil::MONTH_NAMES[(m - 1) as usize].to_string()
+                            }
+                            _ => {
+                                let (_, m, _) = super::civil::civil_from_days(day_count);
+                                format!("Q{}", (m - 1) / 3 + 1)
+                            }
+                        };
+                        interner.intern_string(&text)
+                    }
+                })
+                .collect();
+            Ok(heap.alloc(RObject::String(out)))
+        }
+        FORMAT => {
+            // format() on Date-classed input renders ISO exactly as the
+            /// print path; other input coerces to character.
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            if is_date_classed(heap, interner, operands[0]) {
+                let days = numeric_vector(heap, operands[0]);
+                let out: Vec<super::intern::InternedStr> = days
+                    .iter()
+                    .map(|&d| {
+                        if d.is_nan() {
+                            interner.intern_string("\0NA")
+                        } else {
+                            interner.intern_string(&super::civil::format_iso(d as i64))
+                        }
+                    })
+                    .collect();
+                Ok(heap.alloc(RObject::String(out)))
+            } else {
+                coerce_character(heap, interner, operands[0])
+            }
+        }
         IS_ARRAY => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             let is = get_attrib(heap, interner, operands[0], "dim").is_some();
@@ -1384,6 +1480,49 @@ fn arithmetic(
         }
     }
     let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    // difftime operands in +/- against a Date rescale into days and shed
+    /// their class before the fold — the Date side's chain then wins
+    /// propagation exactly as GNU's arithmetic methods arrange.
+    let scale_difftime = |heap: &mut Heap, interner: &mut SymbolInterner, v: ValueId| -> ValueId {
+        let classed = get_attrib(heap, interner, v, "class")
+            .and_then(|id| match heap.object(id) {
+                Some(RObject::String(vals)) => Some(vals.iter().any(|x| interner.string_text(*x) == "difftime")),
+                _ => None,
+            })
+            .unwrap_or(false);
+        if !classed {
+            return v;
+        }
+        let units = get_attrib(heap, interner, v, "units")
+            .and_then(|id| match heap.object(id) {
+                Some(RObject::String(vals)) if !vals.is_empty() => Some(interner.string_text(vals[0]).to_string()),
+                _ => None,
+            })
+            .unwrap_or_else(|| "days".to_string());
+        let scale = match units.as_str() {
+            "secs" => 1.0 / 86400.0,
+            "mins" => 1.0 / 1440.0,
+            "hours" => 1.0 / 24.0,
+            "weeks" => 7.0,
+            _ => 1.0,
+        };
+        let scaled: Vec<f64> = match heap.object(v) {
+            Some(RObject::Real(vals)) => vals.iter().map(|x| x * scale).collect(),
+            Some(RObject::Integer(vals)) => vals.iter().map(|&x| x as f64 * scale).collect(),
+            _ => return v,
+        };
+        heap.alloc(RObject::Real(scaled))
+    };
+    let left_date = is_date_classed(heap, interner, operands[0]);
+    let right_date = is_date_classed(heap, interner, operands[1]);
+    let operands = if matches!(op, ADD | SUB) && (left_date || right_date) {
+        vec![
+            scale_difftime(heap, interner, operands[0]),
+            scale_difftime(heap, interner, operands[1]),
+        ]
+    } else {
+        operands
+    };
     let left = numeric_operands(heap, operands[0]).map_err(RSignal::from)?;
     let right = numeric_operands(heap, operands[1]).map_err(RSignal::from)?;
     match (left, right) {
@@ -1439,7 +1578,76 @@ fn arithmetic(
             })
             .map_err(RSignal::from)?;
             let result = heap.alloc(RObject::Real(folded));
-            Ok(propagate_attributes(heap, operands[0], operands[1], result))
+            // GNU's Date arithmetic discipline: the classed operand's
+            /// attribute chain wins regardless of position — Date +/-
+            /// numeric keeps Date; Date - Date yields difftime in days.
+            let left_date = is_date_classed(heap, interner, operands[0]);
+            let right_date = is_date_classed(heap, interner, operands[1]);
+            let result = if left_date && !right_date {
+                propagate_attributes(heap, operands[0], operands[0], result)
+            } else if right_date && !left_date {
+                propagate_attributes(heap, operands[1], operands[1], result)
+            } else {
+                propagate_attributes(heap, operands[0], operands[1], result)
+            };
+            let op_text = match op {
+                ADD => "+",
+                SUB => "-",
+                MUL => "*",
+                DIV => "/",
+                POW => "^",
+                MOD => "%%",
+                _ => "op",
+            };
+            // GNU's exact Date arithmetic error matrix: non-subtraction
+            /// between Dates, multiplication of a Date by anything, and
+            /// subtraction of a Date from a number all raise distinct
+            /// conditions exactly as the oracle pins.
+            if left_date && right_date && op != SUB {
+                return Err(EvalError::Condition(format!(
+                    "binary {op_text} is not defined for \"Date\" objects"
+                ))
+                .into());
+            }
+            if left_date && op != SUB && op != ADD {
+                return Err(EvalError::Condition(format!(
+                    "{op_text} not defined for \"Date\" objects"
+                ))
+                .into());
+            }
+            if right_date && !left_date && op == SUB {
+                return Err(EvalError::Condition(
+                    "can only subtract from \"Date\" objects".to_string(),
+                )
+                .into());
+            }
+            // Subtracting a classed non-number from a Date is the exact
+            /// "can only subtract numbers" condition — foo-classed input
+            /// is not a number for arithmetic purposes in GNU.
+            if left_date && op == SUB && !right_date {
+                let right_classed = get_attrib(heap, interner, operands[1], "class").is_some();
+                let right_difftime = get_attrib(heap, interner, operands[1], "class")
+                    .and_then(|id| match heap.object(id) {
+                        Some(RObject::String(vals)) => Some(vals.iter().any(|x| interner.string_text(*x) == "difftime")),
+                        _ => None,
+                    })
+                    .unwrap_or(false);
+                if right_classed && !right_difftime {
+                    return Err(EvalError::Condition(
+                        "can only subtract numbers from \"Date\" objects".to_string(),
+                    )
+                    .into());
+                }
+            }
+            if left_date && right_date && op == SUB {
+                // Strip the Date class, stamp difftime with units=days.
+                let stripped = remove_attrib(heap, interner, result, "class").map_err(RSignal::from)?;
+                let class = heap.alloc(RObject::String(vec![interner.intern_string("difftime")]));
+                let units = heap.alloc(RObject::String(vec![interner.intern_string("days")]));
+                let with_class = copy_with_attrib(heap, interner, stripped, "class", class).map_err(RSignal::from)?;
+                return copy_with_attrib(heap, interner, with_class, "units", units).map_err(RSignal::from);
+            }
+            Ok(result)
         }
     }
 }
@@ -1686,13 +1894,13 @@ fn comparison(
         if len == 0 {
             return Ok(heap.alloc(RObject::Logical(vec![])));
         }
+        if lefts.is_empty() || rights.is_empty() {
+            return Err(EvalError::TypeError("comparison requires non-empty operands").into());
+        }
         let mut out: Vec<i32> = Vec::with_capacity(len);
         for i in 0..len {
-            let a = &lefts[i % lefts.len().max(1)];
-            let b = &rights[i % rights.len().max(1)];
-            if lefts.is_empty() || rights.is_empty() {
-                return Err(EvalError::TypeError("comparison requires non-empty operands").into());
-            }
+            let a = &lefts[i % lefts.len()];
+            let b = &rights[i % rights.len()];
             if a == "\0NA" || b == "\0NA" {
                 out.push(crate::value::object::NA_INTEGER);
                 continue;
@@ -1747,7 +1955,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -1898,6 +2106,11 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "is.list" => Some(IS_LIST),
         "array" => Some(ARRAY),
         "is.array" => Some(IS_ARRAY),
+        "as.Date" => Some(AS_DATE),
+        "weekdays" => Some(WEEKDAYS),
+        "months" => Some(MONTHS),
+        "quarters" => Some(QUARTERS),
+        "format" => Some(FORMAT),
         "tsp" => Some(TSP),
         "tsp<-" => Some(TSP_ASSIGN),
         "printDeferredWarnings" => Some(PRINT_DEFERRED_WARNINGS),
@@ -6724,6 +6937,21 @@ fn coerce_character(
     interner: &mut SymbolInterner,
     value: ValueId,
 ) -> EvalResult {
+    // Date-classed input renders ISO exactly as as.character.Date.
+    if is_date_classed(heap, interner, value) {
+        let days = numeric_vector(heap, value);
+        let out: Vec<super::intern::InternedStr> = days
+            .iter()
+            .map(|&d| {
+                if d.is_nan() {
+                    interner.intern_string("\0NA")
+                } else {
+                    interner.intern_string(&super::civil::format_iso(d as i64))
+                }
+            })
+            .collect();
+        return Ok(heap.alloc(RObject::String(out)));
+    }
     // factor input decodes through its levels first — as.character(factor)
     /// yields the labels exactly as GNU.
     let factor_classed = get_attrib(heap, interner, value, "class")
@@ -6986,4 +7214,32 @@ fn array_primitive(
         result = copy_with_attrib(heap, interner, result, "dimnames", dimnames_arg).map_err(RSignal::from)?;
     }
     Ok(result)
+}
+
+/// Whether the object carries the Date class.
+pub(crate) fn is_date_classed(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
+    get_attrib(heap, interner, value, "class")
+        .and_then(|id| match heap.object(id) {
+            Some(RObject::String(vals)) => Some(vals.iter().any(|v| interner.string_text(*v) == "Date")),
+            _ => None,
+        })
+        .unwrap_or(false)
+}
+
+/// Numeric payload of a vector as reals — integer input widens exactly.
+fn numeric_vector(heap: &Heap, value: ValueId) -> Vec<f64> {
+    match heap.object(value) {
+        Some(RObject::Real(vals)) => vals.clone(),
+        Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals
+            .iter()
+            .map(|&v| {
+                if v == crate::value::object::NA_INTEGER {
+                    f64::from_bits(crate::value::object::NA_REAL_BITS)
+                } else {
+                    v as f64
+                }
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
 }

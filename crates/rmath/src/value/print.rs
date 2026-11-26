@@ -102,7 +102,10 @@ fn format_element(heap: &Heap, interner: &SymbolInterner, value: &RObject, index
             if text == "\0NA" {
                 "NA".to_string()
             } else {
-                format!("\"{}\"", text)
+                // GNU escapes embedded quotes and backslashes inside the
+                /// surrounding quotes exactly as print.c does.
+                let escaped = text.replace('\\', "\\\\").replace('"', "\\\"");
+                format!("\"{}\"", escaped)
             }
         }
         _ => "?".to_string(),
@@ -122,6 +125,72 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     /// unquoted, with the Levels line trailing exactly as print.factor.
     if matches!(object, RObject::Integer(_)) && is_factor(heap, interner, value) {
         return format_factor(heap, interner, value);
+    }
+    // Date printing: classed day counts display as quoted ISO strings
+    /// exactly as print.Date — a character-vector rendering of the civil
+    /// dates.
+    if matches!(object, RObject::Real(_) | RObject::Integer(_))
+        && super::primitives::is_date_classed(heap, interner, value)
+    {
+        let days: Vec<f64> = match object {
+            RObject::Real(vals) => vals.clone(),
+            RObject::Integer(vals) => vals
+                .iter()
+                .map(|&v| {
+                    if v == crate::value::object::NA_INTEGER {
+                        f64::from_bits(crate::value::object::NA_REAL_BITS)
+                    } else {
+                        v as f64
+                    }
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        let elements: Vec<String> = days
+            .iter()
+            .map(|&d| {
+                if d.is_nan() {
+                    "NA".to_string()
+                } else {
+                    format!("\"{}\"", super::civil::format_iso(d as i64))
+                }
+            })
+            .collect();
+        if elements.is_empty() {
+            return "Date of length 0".to_string();
+        }
+        let width = elements.iter().map(|e| e.len()).max().unwrap_or(0);
+        let mut out = String::from("[1]");
+        for element in &elements {
+            out.push(' ');
+            out.push_str(&" ".repeat(width.saturating_sub(element.len())));
+            out.push_str(element);
+        }
+        return out;
+    }
+    // difftime printing: the unclassed numeric prints inside the "Time
+    /// difference of N units" phrasing exactly as print.difftime.
+    if matches!(object, RObject::Real(_) | RObject::Integer(_)) && is_difftime(heap, interner, value) {
+        let nums: Vec<f64> = match object {
+            RObject::Real(vals) => vals.clone(),
+            RObject::Integer(vals) => vals.iter().map(|&v| v as f64).collect(),
+            _ => Vec::new(),
+        };
+        let first = nums.first().copied().unwrap_or(0.0);
+        let unit = super::primitives::get_attrib(heap, interner, value, "units")
+            .and_then(|id| match heap.object(id) {
+                Some(RObject::String(vals)) if !vals.is_empty() => {
+                    Some(interner.string_text(vals[0]).to_string())
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| "days".to_string());
+        let amount = if first.fract() == 0.0 && !first.is_nan() {
+            format!("{}", first as i64)
+        } else {
+            format_real(first)
+        };
+        return format!("Time difference of {amount} {unit}");
     }
     // data.frame printing: classed lists lay out as tables — column names
     /// right-justified over per-column widths, row names on the left,
@@ -594,6 +663,15 @@ fn format_data_frame(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> 
         }
     }
     out
+}
+
+fn is_difftime(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
+    super::primitives::get_attrib(heap, interner, value, "class")
+        .and_then(|id| match heap.object(id) {
+            Some(RObject::String(vals)) => Some(vals.iter().any(|v| interner.string_text(*v) == "difftime")),
+            _ => None,
+        })
+        .unwrap_or(false)
 }
 
 fn is_factor(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
