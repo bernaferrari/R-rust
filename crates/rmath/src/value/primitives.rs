@@ -9751,12 +9751,38 @@ fn data_frame_primitive(
         positional += 1;
         let evaluated = eval(heap, interner, car, caller_env)?;
         let value = force_if_promise(heap, interner, evaluated)?;
-        let name = match heap.object(tag) {
-            Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
-            _ => format!("V{positional}"),
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
         };
-        names.push(name);
-        columns.push(value);
+        // Data frame arguments splice columnwise exactly as GNU — untagged
+        // frames contribute their bare column names, tagged frames prefix
+        // each column as tag.name.
+        let is_frame = match get_attrib(heap, interner, value, "class") {
+            Some(c) => string_vec(heap, interner, c).iter().any(|s| s == "data.frame"),
+            None => false,
+        };
+        if is_frame {
+            let inner_names = match get_attrib(heap, interner, value, "names") {
+                Some(n) => string_vec(heap, interner, n),
+                None => Vec::new(),
+            };
+            if let Some(RObject::List(items)) = heap.object(value) {
+                let items = items.clone();
+                for (position, item) in items.iter().enumerate() {
+                    let inner = inner_names.get(position).cloned().unwrap_or_default();
+                    let spliced = match &tag_name {
+                        Some(tag) => format!("{tag}.{inner}"),
+                        None => inner,
+                    };
+                    names.push(spliced);
+                    columns.push(*item);
+                }
+            }
+        } else {
+            names.push(tag_name.unwrap_or_else(|| format!("V{positional}")));
+            columns.push(value);
+        }
         if cdr == ValueId::NIL {
             break;
         }
@@ -9765,7 +9791,23 @@ fn data_frame_primitive(
     if columns.is_empty() {
         return Err(EvalError::TypeError("data.frame requires columns").into());
     }
-    build_data_frame(heap, interner, columns, names)
+    // Duplicate names disambiguate through GNU's make.unique suffixing —
+    // the first occurrence stands, repeats gain .1, .2 in order.
+    let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let unique_names: Vec<String> = names
+        .iter()
+        .map(|n| {
+            let count = counts.entry(n.clone()).or_insert(0);
+            let out = if *count == 0 {
+                n.clone()
+            } else {
+                format!("{n}.{count}")
+            };
+            *count += 1;
+            out
+        })
+        .collect();
+    build_data_frame(heap, interner, columns, unique_names)
 }
 
 /// The shared data.frame assembly: equal-length column validation, the
