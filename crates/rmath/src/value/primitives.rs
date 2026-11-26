@@ -2853,10 +2853,33 @@ fn dollar_primitive(
         // GNU: dollar on a nameless object is NULL, not an error.
         None => return Ok(ValueId::NIL),
     };
+    // GNU's matching order for `$`: exact first, then a UNIQUE prefix
+    /// match — ambiguous prefixes and missing names are NULL.
     let position = match heap.object(names) {
-        Some(RObject::String(values)) => values
-            .iter()
-            .position(|s| interner.string_text(*s) == wanted),
+        Some(RObject::String(values)) => {
+            let exact = values
+                .iter()
+                .position(|s| interner.string_text(*s) == wanted);
+            match exact {
+                Some(p) => Some(p),
+                None => {
+                    let prefixes: Vec<usize> = values
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, s)| {
+                            let text = interner.string_text(**s);
+                            text.starts_with(wanted.as_str()) && !wanted.is_empty()
+                        })
+                        .map(|(i, _)| i)
+                        .collect();
+                    if prefixes.len() == 1 {
+                        Some(prefixes[0])
+                    } else {
+                        None
+                    }
+                }
+            }
+        }
         _ => None,
     };
     // GNU discipline: `$` is invalid for atomic vectors — only recursive

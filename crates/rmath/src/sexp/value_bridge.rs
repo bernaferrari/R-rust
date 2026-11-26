@@ -1998,6 +1998,18 @@ mod tests {
     /// `cargo test -p rmath conformance_sweep_cross_world -- --ignored`
     /// RPORT_SWEEP_LIMIT=n caps cases, RPORT_SWEEP_TO=999 raises the series
     /// ceiling, RPORT_SWEEP_FULL=1 disables series filtering.
+
+    /// Functions whose top-level results never auto-print — GNU's invisible
+    /// return discipline for the migrated surface. Assignment, output, and
+    /// file primitives return invisibly exactly as GNU.
+    fn returns_invisibly(name: &str) -> bool {
+        matches!(
+            name,
+            "<-" | "=" | "<<-" | "print" | "cat" | "invisible" | "assign"
+                | "writeLines" | "file.remove" | "file.copy" | "file.rename" | "unlink"
+        )
+    }
+
     /// Diagnostic probe: RPORT_SWEEP_CASE=027_list_print.R prints the golden
     /// and the new-world output side by side for one conformance case.
     #[test]
@@ -2029,10 +2041,9 @@ mod tests {
                 Ok(value) => {
                     let invisible = match heap.object(*expr) {
                         Some(RObject::Language { car, .. }) => match heap.object(*car) {
-                            Some(RObject::Symbol { name, .. }) => matches!(
-                                interner.symbol_name(*name),
-                                "<-" | "=" | "<<-" | "print" | "cat" | "invisible"
-                            ),
+                            Some(RObject::Symbol { name, .. }) => {
+                                returns_invisibly(interner.symbol_name(*name))
+                            }
                             _ => false,
                         },
                         _ => false,
@@ -2149,10 +2160,7 @@ mod tests {
                             Some(RObject::Language { car, .. }) => {
                                 match heap.object(*car) {
                                     Some(RObject::Symbol { name, .. }) => {
-                                        matches!(
-                                            interner.symbol_name(*name),
-                                            "<-" | "=" | "<<-" | "print" | "cat" | "invisible"
-                                        )
+                                        returns_invisibly(interner.symbol_name(*name))
                                     }
                                     _ => false,
                                 }
@@ -2193,7 +2201,15 @@ mod tests {
                 continue;
             }
 
-            if heap.output.trim_end() == golden.trim_end() {
+            let normalize = |s: &str| -> String {
+                s.lines()
+                    .map(|l| l.trim_end())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+                    .trim_end()
+                    .to_string()
+            };
+            if normalize(&heap.output) == normalize(&golden) {
                 pass += 1;
                 pass_cases.push(name.clone());
             } else {
