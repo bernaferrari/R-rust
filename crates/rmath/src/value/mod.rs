@@ -7,6 +7,7 @@
 //! (docs/pure-rust-foundation-plan.md section 2.1). It shares no code with
 //! the legacy `sexp` machinery and forbids unsafe code throughout.
 
+pub mod env;
 pub mod gc;
 pub mod heap;
 pub mod id;

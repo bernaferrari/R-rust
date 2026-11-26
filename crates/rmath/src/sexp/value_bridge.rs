@@ -218,7 +218,7 @@ impl ValueBridge {
                             .transpose()?
                             .unwrap_or(ValueId::NIL);
                         if let Some(sym_id) = sym_id {
-                            entries.push((sym_id, value));
+                            entries.push((sym_id, crate::value::object::Binding::plain(value)));
                         }
                         cursor = cell.try_cdr().ok().filter(|rest| {
                             rest.typeof_() == SEXPTYPE::LISTSXP

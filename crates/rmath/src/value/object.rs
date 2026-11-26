@@ -26,47 +26,83 @@ pub struct BytecodeChunk {
     pub constants: Vec<ValueId>,
 }
 
+/// One environment binding: the bound value plus the GNU binding metadata.
+///
+/// Binding flags live here — not on the value object — because locking and
+/// active-binding status are properties of the binding cell, exactly as in
+/// GNU R where they are header bits of the frame's pairlist cell.
+#[derive(Debug, Clone, Copy)]
+pub struct Binding {
+    pub value: ValueId,
+    pub locked: bool,
+    pub active: bool,
+}
+
+impl Binding {
+    pub fn plain(value: ValueId) -> Binding {
+        Binding {
+            value,
+            locked: false,
+            active: false,
+        }
+    }
+}
+
 /// Environment frame storage: small frames stay in association-list order,
 /// large frames hash. Both are safe container types.
 #[derive(Debug, Default)]
 pub enum EnvFrame {
     #[default]
     Empty,
-    List(Vec<(SymId, ValueId)>),
-    Hash(HashMap<SymId, ValueId>),
+    List(Vec<(SymId, Binding)>),
+    Hash(HashMap<SymId, Binding>),
 }
 
 impl EnvFrame {
     pub fn get(&self, sym: SymId) -> Option<ValueId> {
+        self.get_binding(sym).map(|binding| binding.value)
+    }
+
+    /// Full binding lookup including lock/active metadata — what GNU
+    /// environment semantics actually dispatch on.
+    pub fn get_binding(&self, sym: SymId) -> Option<Binding> {
         match self {
             EnvFrame::Empty => None,
             EnvFrame::List(entries) => entries
                 .iter()
                 .find(|(k, _)| *k == sym)
-                .map(|(_, v)| *v),
+                .map(|(_, binding)| *binding),
             EnvFrame::Hash(map) => map.get(&sym).copied(),
         }
     }
 
     pub fn insert(&mut self, sym: SymId, value: ValueId) {
+        self.insert_binding(sym, Binding::plain(value));
+    }
+
+    pub fn insert_binding(&mut self, sym: SymId, binding: Binding) {
         match self {
             EnvFrame::Empty => {
-                *self = EnvFrame::List(vec![(sym, value)]);
+                *self = EnvFrame::List(vec![(sym, binding)]);
             }
             EnvFrame::List(entries) => {
                 if let Some(entry) = entries.iter_mut().find(|(k, _)| *k == sym) {
-                    entry.1 = value;
+                    entry.1 = binding;
                 } else {
-                    entries.push((sym, value));
+                    entries.push((sym, binding));
                 }
             }
             EnvFrame::Hash(map) => {
-                map.insert(sym, value);
+                map.insert(sym, binding);
             }
         }
     }
 
     pub fn remove(&mut self, sym: SymId) -> Option<ValueId> {
+        self.remove_binding(sym).map(|binding| binding.value)
+    }
+
+    pub fn remove_binding(&mut self, sym: SymId) -> Option<Binding> {
         match self {
             EnvFrame::Empty => None,
             EnvFrame::List(entries) => entries
@@ -81,8 +117,10 @@ impl EnvFrame {
     pub(crate) fn trace_edges(&self, out: &mut Vec<ValueId>) {
         match self {
             EnvFrame::Empty => {}
-            EnvFrame::List(entries) => out.extend(entries.iter().map(|(_, v)| *v)),
-            EnvFrame::Hash(map) => out.extend(map.values().copied()),
+            EnvFrame::List(entries) => {
+                out.extend(entries.iter().map(|(_, binding)| binding.value))
+            }
+            EnvFrame::Hash(map) => out.extend(map.values().map(|binding| binding.value)),
         }
     }
 }
@@ -227,6 +265,9 @@ pub struct ObjectFlags {
     pub s4: bool,
     pub active_binding: bool,
     pub locked_binding: bool,
+    /// Environment lock — GNU's `LOCKED_ENVIRONMENT` header bit. Meaningful
+    /// only on `RObject::Environment`; namespace integrity depends on it.
+    pub env_locked: bool,
 }
 
 /// One heap slot: generation counter for stale-handle rejection, mark bit
