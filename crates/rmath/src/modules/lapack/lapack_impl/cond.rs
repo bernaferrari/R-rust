@@ -142,7 +142,8 @@ pub fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
             ptr::copy_nonoverlapping(REAL(a), a_copy.as_mut_ptr(), len);
         }
 
-        let ipiv = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
+        let mut ipiv_ws = vec![0 as c_int; n as usize];
+        let ipiv = ipiv_ws.as_mut_ptr();
         let mut info: c_int = 0;
 
         // LU factorization
@@ -158,7 +159,8 @@ pub fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
 
         let mut rcond: f64 = 0.0;
         let mut work = vec![0.0f64; work_len];
-        let iwork = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
+        let mut iwork_ws = vec![0 as c_int; n as usize];
+        let iwork = iwork_ws.as_mut_ptr();
 
         super::backend::dgecon_(
             &norm_c,
@@ -237,7 +239,8 @@ pub fn La_dtrcon(a: SEXP, norm: SEXP) -> SEXP {
 
         let mut rcond: f64 = 0.0;
         let mut work = vec![0.0f64; work_len];
-        let iwork = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
+        let mut iwork_ws = vec![0 as c_int; n as usize];
+        let iwork = iwork_ws.as_mut_ptr();
         let mut info: c_int = 0;
 
         let uplo = b'U'; // Default upper
@@ -328,7 +331,8 @@ pub fn La_dtrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
 
         let mut rcond: f64 = 0.0;
         let mut work = vec![0.0f64; work_len];
-        let iwork = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
+        let mut iwork_ws = vec![0 as c_int; n as usize];
+        let iwork = iwork_ws.as_mut_ptr();
         let diag = b'N';
         let mut info: c_int = 0;
 
@@ -507,7 +511,8 @@ pub fn La_zgecon(a: SEXP, norm: SEXP) -> SEXP {
             ptr::copy_nonoverlapping(COMPLEX(a) as *const LapRcomplex, a_copy.as_mut_ptr(), len);
         }
 
-        let ipiv = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
+        let mut ipiv_ws = vec![0 as c_int; n as usize];
+        let ipiv = ipiv_ws.as_mut_ptr();
         let mut info: c_int = 0;
 
         super::backend::zgetrf_(&n, &n, a_copy.as_mut_ptr(), &n, ipiv, &mut info);
