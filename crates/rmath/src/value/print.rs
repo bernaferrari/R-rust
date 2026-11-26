@@ -853,14 +853,23 @@ pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String
             };
             // Collect the argument expressions in order.
             let mut items: Vec<ValueId> = Vec::new();
+            let mut item_tags: Vec<Option<String>> = Vec::new();
             let mut cursor = *cdr;
             for _ in 0..100_000 {
                 if cursor == ValueId::NIL {
                     break;
                 }
                 match heap.object(cursor) {
-                    Some(RObject::Pairlist { car, cdr, .. }) => {
+                    Some(RObject::Pairlist { car, cdr, tag, .. }) => {
                         items.push(*car);
+                        let tag_text = match heap.object(*tag) {
+                            Some(RObject::Symbol { name, .. }) => {
+                                let text = interner.symbol_name(*name).to_string();
+                                if text.is_empty() { None } else { Some(text) }
+                            }
+                            _ => None,
+                        };
+                        item_tags.push(tag_text);
                         cursor = *cdr;
                     }
                     _ => break,
@@ -888,11 +897,18 @@ pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String
             }
             let rendered: Vec<String> = items
                 .iter()
-                .map(|v| {
-                    if *v == crate::value::id::ValueId::MISSING {
+                .enumerate()
+                .map(|(i, v)| {
+                    // Tagged arguments render name = value exactly as GNU's
+                    /// deparse of a call object.
+                    let value_text = if *v == crate::value::id::ValueId::MISSING {
                         String::new()
                     } else {
                         deparse(heap, interner, *v)
+                    };
+                    match item_tags.get(i).cloned().flatten() {
+                        Some(tag) => format!("{tag} = {value_text}"),
+                        None => value_text,
                     }
                 })
                 .collect();

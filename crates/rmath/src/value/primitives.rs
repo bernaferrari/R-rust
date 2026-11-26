@@ -261,6 +261,7 @@ pub mod primitive_ids {
     pub const IS_DOUBLE_FN: u32 = 243;
     pub const IS_LOGICAL_FN: u32 = 244;
     pub const IS_CHARACTER_FN: u32 = 245;
+    pub const SUBSTITUTE_FN: u32 = 246;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -291,7 +292,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -1783,7 +1784,22 @@ fn call_primitive_inner(
                 .into());
             }
             match heap.object(args) {
-                Some(RObject::Pairlist { car, .. }) => Ok(*car),
+                Some(RObject::Pairlist { car, tag, .. }) => {
+                    // A supplied name must match the sole formal exactly as
+                    /// GNU's hand-rolled matching in quote.
+                    if *tag != ValueId::NIL {
+                        if let Some(RObject::Symbol { name, .. }) = heap.object(*tag) {
+                            let tag_name = interner.symbol_name(*name).to_string();
+                            if tag_name != "expr" {
+                                return Err(EvalError::Condition(format!(
+                                    "supplied argument name '{tag_name}' does not match 'expr'"
+                                ))
+                                .into());
+                            }
+                        }
+                    }
+                    Ok(*car)
+                }
                 _ => Ok(ValueId::NIL),
             }
         }
@@ -1998,6 +2014,7 @@ fn call_primitive_inner(
                 None => Ok(ValueId::NIL),
             }
         }
+        SUBSTITUTE_FN => substitute_primitive(heap, interner, args, caller_env),
         IS_NUMERIC_FN | IS_INTEGER_FN | IS_DOUBLE_FN | IS_LOGICAL_FN | IS_CHARACTER_FN => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             let yes = match id.0 {
@@ -3160,7 +3177,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -3372,6 +3389,7 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "is.double" => Some(IS_DOUBLE_FN),
         "is.logical" => Some(IS_LOGICAL_FN),
         "is.character" => Some(IS_CHARACTER_FN),
+        "substitute" => Some(SUBSTITUTE_FN),
         "tsp" => Some(TSP),
         "tsp<-" => Some(TSP_ASSIGN),
         "printDeferredWarnings" => Some(PRINT_DEFERRED_WARNINGS),
@@ -10307,4 +10325,162 @@ fn bind_primitive(
     } else {
         Ok(matrix)
     }
+}
+
+/// `substitute(expr, env)` — GNU's matchArgs matrix in miniature for the
+/// two formals, then symbol substitution through the expression tree
+/// exactly as substitute does for list environments.
+fn substitute_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    // Collect tagged/untagged actuals in order.
+    struct Actual {
+        car: ValueId,
+        tag: Option<String>,
+        index: usize,
+    }
+    let mut actuals = Vec::new();
+    let mut cursor = args;
+    for i in 0..100_000usize {
+        if cursor == ValueId::NIL {
+            break;
+        }
+        let (car, tag, next) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, tag, cdr, .. }) => (*car, *tag, *cdr),
+            _ => break,
+        };
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
+        };
+        actuals.push(Actual { car, tag: tag_name, index: i });
+        cursor = next;
+    }
+    let formals = ["expr", "env"];
+    let mut bound: [Option<ValueId>; 2] = [None, None];
+    let mut exact_taken = [false; 2];
+    let mut partial_taken = [false; 2];
+    let mut used = vec![false; actuals.len()];
+    // Pass 1: exact names.
+    for (ai, actual) in actuals.iter().enumerate() {
+        if let Some(tag) = &actual.tag {
+            if let Some(fi) = formals.iter().position(|f| f == tag) {
+                if exact_taken[fi] || partial_taken[fi] || bound[fi].is_some() {
+                    return Err(EvalError::Condition(format!(
+                        "formal argument \"{}\" matched by multiple actual arguments",
+                        formals[fi]
+                    ))
+                    .into());
+                }
+                bound[fi] = Some(actual.car);
+                exact_taken[fi] = true;
+                used[ai] = true;
+            }
+        }
+    }
+    // Pass 2: partial matching among non-exact-bound formals.
+    for (ai, actual) in actuals.iter().enumerate() {
+        if used[ai] {
+            continue;
+        }
+        if let Some(tag) = &actual.tag {
+            if tag.is_empty() {
+                continue;
+            }
+            let matches: Vec<usize> = (0..2)
+                .filter(|&fi| !exact_taken[fi] && formals[fi].starts_with(tag.as_str()))
+                .collect();
+            if matches.len() > 1 {
+                return Err(EvalError::Condition(format!(
+                    "argument {} matches multiple formal arguments",
+                    actual.index + 1
+                ))
+                .into());
+            }
+            if matches.len() == 1 {
+                let fi = matches[0];
+                if partial_taken[fi] {
+                    return Err(EvalError::Condition(format!(
+                        "formal argument \"{}\" matched by multiple actual arguments",
+                        formals[fi]
+                    ))
+                    .into());
+                }
+                bound[fi] = Some(actual.car);
+                partial_taken[fi] = true;
+                used[ai] = true;
+            }
+        }
+    }
+    // Pass 3: untagged actuals fill unbound formals in order.
+    for (ai, actual) in actuals.iter().enumerate() {
+        if used[ai] || actual.tag.is_some() {
+            continue;
+        }
+        if let Some(fi) = (0..2).find(|&fi| bound[fi].is_none()) {
+            bound[fi] = Some(actual.car);
+            used[ai] = true;
+        }
+    }
+    // Leftovers error with their deparsed actuals exactly as GNU.
+    for (ai, actual) in actuals.iter().enumerate() {
+        if used[ai] {
+            continue;
+        }
+        let rendered = crate::value::print::deparse(heap, interner, actual.car);
+        let detail = match &actual.tag {
+            Some(tag) => format!("{tag} = {rendered}"),
+            None => rendered,
+        };
+        return Err(EvalError::Condition(format!("unused argument ({detail})")).into());
+    }
+    let expr = bound[0].unwrap_or(ValueId::NIL);
+    // The environment argument evaluates exactly as any argument does.
+    let env_value = match bound[1] {
+        Some(env_expr) => {
+            let evaluated = eval(heap, interner, env_expr, caller_env)?;
+            force_if_promise(heap, interner, evaluated)?
+        }
+        None => ValueId::NIL,
+    };
+    Ok(substitute_in_tree(heap, interner, expr, env_value))
+}
+
+/// Recursive symbol substitution through a language tree — symbols named
+/// in the environment list replace with their values exactly as GNU's
+/// substitute; everything else rebuilds structurally.
+fn substitute_in_tree(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    expr: ValueId,
+    env: ValueId,
+) -> ValueId {
+    if let Some(RObject::Symbol { name, .. }) = heap.object(expr) {
+        let text = interner.symbol_name(*name).to_string();
+        if let Some(RObject::List(items)) = heap.object(env) {
+            let names = get_attrib(heap, interner, env, "names")
+                .map(|id| string_vec(heap, interner, id))
+                .unwrap_or_default();
+            for (i, item) in items.clone().iter().enumerate() {
+                if names.get(i).map(|n| n == &text).unwrap_or(false) {
+                    return *item;
+                }
+            }
+        }
+        return expr;
+    }
+    if let Some(RObject::Language { car, cdr, tag }) = heap.object(expr).cloned() {
+        let new_car = substitute_in_tree(heap, interner, car, env);
+        let new_cdr = substitute_in_tree(heap, interner, cdr, env);
+        return heap.alloc(RObject::Language { car: new_car, cdr: new_cdr, tag });
+    }
+    if let Some(RObject::Pairlist { car, cdr, tag, .. }) = heap.object(expr).cloned() {
+        let new_car = substitute_in_tree(heap, interner, car, env);
+        let new_cdr = substitute_in_tree(heap, interner, cdr, env);
+        return heap.alloc(RObject::Pairlist { car: new_car, cdr: new_cdr, tag });
+    }
+    expr
 }
