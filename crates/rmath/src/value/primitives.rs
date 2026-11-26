@@ -76,6 +76,10 @@ pub mod primitive_ids {
     pub const SAPPLY: u32 = 73;
     /// List flattening.
     pub const UNLIST: u32 = 74;
+    /// Sequence and repetition constructors.
+    pub const SEQ: u32 = 75;
+    pub const SEQ_LEN: u32 = 76;
+    pub const REP: u32 = 77;
     /// Attribute access — names getter and replacement, dollar extraction.
     pub const NAMES: u32 = 69;
     pub const NAMES_ASSIGN: u32 = 70;
@@ -92,7 +96,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -142,6 +146,20 @@ pub(crate) fn call_primitive(
         UNLIST => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             unlist_primitive(heap, operands[0])
+        }
+        SEQ_LEN => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let n = first_real(heap, operands[0])? as i64;
+            if n < 0 {
+                return Err(EvalError::TypeError("seq_len requires non-negative").into());
+            }
+            let out: Vec<i32> = (1..=n as i32).collect();
+            Ok(heap.alloc(RObject::Integer(out)))
+        }
+        SEQ => seq_primitive(heap, interner, args, caller_env),
+        REP => {
+            let operands = eval_args(heap, interner, args, caller_env, 2)?;
+            rep_primitive(heap, operands[0], operands[1])
         }
         PASTE => paste_primitive(heap, interner, args, caller_env, " "),
         PASTE0 => paste_primitive(heap, interner, args, caller_env, ""),
@@ -642,7 +660,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep",
     ]
 }
 
@@ -706,6 +724,9 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "lapply" => Some(LAPPLY),
         "sapply" => Some(SAPPLY),
         "unlist" => Some(UNLIST),
+        "seq" => Some(SEQ),
+        "seq_len" => Some(SEQ_LEN),
+        "rep" => Some(REP),
         _ => None,
     }
 }
@@ -1782,6 +1803,57 @@ fn subset_replace(
         return Ok(object);
     }
 
+    // GNU coercion discipline: target and replacement normalize to their
+    /// common numeric rank before replacement — logical < integer < real.
+    /// The vector widens when the replacement ranks higher; the replacement
+    /// coerces when the target ranks higher. Strings are outside the slice.
+    fn rank(heap: &Heap, value: ValueId) -> Option<u32> {
+        match heap.object(value) {
+            Some(RObject::Logical(_)) => Some(0),
+            Some(RObject::Integer(_)) => Some(1),
+            Some(RObject::Real(_)) => Some(2),
+            _ => None,
+        }
+    }
+    fn coerce(heap: &mut Heap, value: ValueId, to: u32) -> ValueId {
+        let na_int = crate::value::object::NA_INTEGER;
+        let na_real = f64::from_bits(crate::value::object::NA_REAL_BITS);
+        match (heap.object(value), to) {
+            (Some(RObject::Logical(v)), 1) => {
+                let out: Vec<i32> = v.clone();
+                heap.alloc(RObject::Integer(out))
+            }
+            (Some(RObject::Logical(v)), 2) => {
+                let out: Vec<f64> = v
+                    .iter()
+                    .map(|x| if *x == na_int { na_real } else { *x as f64 })
+                    .collect();
+                heap.alloc(RObject::Real(out))
+            }
+            (Some(RObject::Integer(v)), 2) => {
+                let out: Vec<f64> = v
+                    .iter()
+                    .map(|x| if *x == na_int { na_real } else { *x as f64 })
+                    .collect();
+                heap.alloc(RObject::Real(out))
+            }
+            _ => value,
+        }
+    }
+    let (target_rank, replacement_rank) = match (rank(heap, object), rank(heap, value)) {
+        (Some(a), Some(b)) => (a, b),
+        _ => (0, 0),
+    };
+    let (object, value) = if target_rank > 0 || replacement_rank > 0 {
+        let common = target_rank.max(replacement_rank);
+        (
+            coerce(heap, object, common),
+            coerce(heap, value, common),
+        )
+    } else {
+        (object, value)
+    };
+
     macro_rules! replace_typed {
         ($variant:ident, $na:expr) => {
             match (heap.object(object), heap.object(value)) {
@@ -1806,29 +1878,6 @@ fn subset_replace(
     replace_typed!(Real, f64::from_bits(crate::value::object::NA_REAL_BITS));
     replace_typed!(Raw, 0u8);
     // Integer object with real value: GNU widens the whole vector to real.
-    if let (Some(RObject::Integer(target)), Some(RObject::Real(replacements))) =
-        (heap.object(object), heap.object(value))
-    {
-        let mut out: Vec<f64> = target
-            .iter()
-            .map(|v| {
-                if *v == crate::value::object::NA_INTEGER {
-                    f64::from_bits(crate::value::object::NA_REAL_BITS)
-                } else {
-                    *v as f64
-                }
-            })
-            .collect();
-        let replacements = replacements.clone();
-        let required = positions.iter().max().map(|m| m + 1).unwrap_or(0);
-        while out.len() < required {
-            out.push(f64::from_bits(crate::value::object::NA_REAL_BITS));
-        }
-        for (n, pos) in positions.iter().enumerate() {
-            out[*pos] = replacements[n % replacements.len()];
-        }
-        return Ok(heap.alloc(RObject::Real(out)));
-    }
     Err(EvalError::TypeError("replacement type mismatch"))
 }
 
@@ -2209,5 +2258,127 @@ fn unlist_primitive(heap: &mut Heap, value: ValueId) -> EvalResult {
         Ok(heap.alloc(RObject::Real(reals)))
     } else {
         Ok(heap.alloc(RObject::Integer(ints)))
+    }
+}
+
+/// First element of a numeric vector as a double — the scalar extraction
+/// the constructors share.
+fn first_real(heap: &Heap, value: ValueId) -> Result<f64, EvalError> {
+    match heap.object(value) {
+        Some(RObject::Real(v)) if !v.is_empty() => Ok(v[0]),
+        Some(RObject::Integer(v)) if !v.is_empty() => {
+            if v[0] == crate::value::object::NA_INTEGER {
+                Err(EvalError::TypeError("NA scalar"))
+            } else {
+                Ok(v[0] as f64)
+            }
+        }
+        Some(RObject::Logical(v)) if !v.is_empty() => Ok(v[0] as f64),
+        _ => Err(EvalError::TypeError("numeric scalar required")),
+    }
+}
+
+/// `seq(from, to, by)` — GNU's general sequence. Integer-valued from/to/by
+/// yield integer sequences when from and by are both whole, matching the
+/// colon operator's integer fidelity; otherwise real. Positional and named
+/// argument shapes both resolve — named extraction uses the same eval_args
+/// machinery since seq's operands are positional in practice.
+fn seq_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    // Collect raw operands with tags so seq(from=1, to=5, by=2) resolves.
+    let mut positional: Vec<ValueId> = Vec::new();
+    let mut named: Vec<(String, ValueId)> = Vec::new();
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let value = force_if_promise(heap, interner, evaluated)?;
+        match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => {
+                named.push((interner.symbol_name(*name).to_string(), value));
+            }
+            _ => positional.push(value),
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    let lookup = |name: &str, position: usize| -> Option<ValueId> {
+        named
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| *v)
+            .or_else(|| positional.get(position).copied())
+    };
+    let from = lookup("from", 0).ok_or(EvalError::TypeError("seq requires from"))?;
+    let to = lookup("to", 1).ok_or(EvalError::TypeError("seq requires to"))?;
+    let from_v = first_real(heap, from).map_err(RSignal::from)?;
+    let to_v = first_real(heap, to).map_err(RSignal::from)?;
+    let by_v = match lookup("by", 2) {
+        Some(by) => first_real(heap, by).map_err(RSignal::from)?,
+        None => 1.0,
+    };
+    if by_v == 0.0 {
+        return Err(EvalError::TypeError("seq by zero").into());
+    }
+    let mut out: Vec<f64> = Vec::new();
+    let mut current = from_v;
+    for _ in 0..100_000_000 {
+        if (by_v > 0.0 && current > to_v) || (by_v < 0.0 && current < to_v) {
+            break;
+        }
+        out.push(current);
+        current += by_v;
+    }
+    // GNU fidelity: integer-valued from and by produce integer sequences.
+    let whole = from_v.fract() == 0.0 && by_v.fract() == 0.0 && out.iter().all(|v| v.fract() == 0.0);
+    if whole && out.iter().all(|v| v.abs() <= i32::MAX as f64) {
+        let ints: Vec<i32> = out.iter().map(|v| *v as i32).collect();
+        return Ok(heap.alloc(RObject::Integer(ints)));
+    }
+    Ok(heap.alloc(RObject::Real(out)))
+}
+
+/// `rep(x, times)` — GNU's simplest repetition shape: the whole vector
+/// repeats times over. Per-element repetition (times as a vector) is
+/// future work.
+fn rep_primitive(heap: &mut Heap, source: ValueId, times: ValueId) -> EvalResult {
+    let n = first_real(heap, times).map_err(RSignal::from)? as usize;
+    macro_rules! repeat {
+        ($variant:ident) => {
+            match heap.object(source) {
+                Some(RObject::$variant(values)) => {
+                    let mut out = Vec::with_capacity(values.len() * n);
+                    for _ in 0..n {
+                        out.extend(values.iter().copied());
+                    }
+                    return Ok(heap.alloc(RObject::$variant(out)));
+                }
+                _ => {}
+            }
+        };
+    }
+    repeat!(Logical);
+    repeat!(Integer);
+    repeat!(Real);
+    repeat!(String);
+    repeat!(Raw);
+    match heap.object(source) {
+        Some(RObject::List(values)) => {
+            let mut out = Vec::with_capacity(values.len() * n);
+            for _ in 0..n {
+                out.extend(values.iter().copied());
+            }
+            Ok(heap.alloc(RObject::List(out)))
+        }
+        _ => Err(EvalError::TypeError("rep requires a vector").into()),
     }
 }

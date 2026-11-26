@@ -1821,6 +1821,14 @@ mod tests {
             "{ x <- c(10, 20); names(x) <- c('p', 'q'); x[c('q', 'p')] }",
             "{ x <- c(5, 6); names(x) <- c('a', 'b'); x['missing'] }",
             "{ x <- c(1, 2); names(x) <- c('a', 'b'); x[2] }",
+            "seq(1, 5)",
+            "seq(0, 1, 0.25)",
+            "seq(10, 2, -2)",
+            "seq_len(4)",
+            "rep(1:3, 2)",
+            "rep(c(1.5, 2.5), 3)",
+            "{ x <- rep(0, 5); for (i in 1:5) x[i] <- i * i; x }",
+            "sum(rep(2, 10))",
         ];
         // One session, one parse pass: expression objects stay valid for the
         // session's lifetime, so batching avoids per-program bootstrap cost.
