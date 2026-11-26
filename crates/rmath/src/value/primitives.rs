@@ -3361,6 +3361,15 @@ fn sequence_elements(heap: &mut Heap, seq: ValueId) -> Result<Vec<ValueId>, RSig
 
 /// Binary comparisons with GNU elementwise semantics: numeric coercion,
 /// recycling, logical results.
+
+/// Ordered-factor class membership — the class vector carries "ordered".
+fn is_ordered_classed(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
+    match get_attrib(heap, interner, value, "class") {
+        Some(class_id) => string_vec(heap, interner, class_id).iter().any(|c| c == "ordered"),
+        None => false,
+    }
+}
+
 fn comparison(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
@@ -3388,6 +3397,193 @@ fn comparison(
         }
         ops
     };
+    // Classed comparison matrix — datetime and ordered-factor operands
+    // intercept before the plain character lattice exactly as GNU's
+    // Ops.Date/Ops.POSIXct/Ops.factor methods.
+    let left_ordered = is_ordered_classed(heap, interner, operands[0]);
+    let right_ordered = is_ordered_classed(heap, interner, operands[1]);
+    let left_factor = left_ordered || is_factor(heap, interner, operands[0]);
+    let right_factor = right_ordered || is_factor(heap, interner, operands[1]);
+    if left_factor || right_factor {
+        let left_is_string = matches!(heap.object(operands[0]), Some(RObject::String(_))) && !left_factor;
+        let right_is_string = matches!(heap.object(operands[1]), Some(RObject::String(_))) && !right_factor;
+        // Factor-vs-factor: the level sets must agree exactly — GNU errors
+        // otherwise. Codes compare directly with NA propagation.
+        if left_factor && right_factor {
+            let left_levels: Vec<String> = match get_attrib(heap, interner, operands[0], "levels") {
+                Some(l) => string_vec(heap, interner, l),
+                None => Vec::new(),
+            };
+            let right_levels: Vec<String> = match get_attrib(heap, interner, operands[1], "levels") {
+                Some(l) => string_vec(heap, interner, l),
+                None => Vec::new(),
+            };
+            if left_levels != right_levels {
+                return Err(EvalError::TypeError("level sets of factors are different").into());
+            }
+            let lefts: Vec<i32> = match heap.object(operands[0]) {
+                Some(RObject::Integer(vals)) => vals.clone(),
+                _ => Vec::new(),
+            };
+            let rights: Vec<i32> = match heap.object(operands[1]) {
+                Some(RObject::Integer(vals)) => vals.clone(),
+                _ => Vec::new(),
+            };
+            let len = lefts.len().max(rights.len());
+            if len == 0 {
+                return Ok(heap.alloc(RObject::Logical(vec![])));
+            }
+            let mut out: Vec<i32> = Vec::with_capacity(len);
+            for i in 0..len {
+                let a = lefts[i % lefts.len().max(1)];
+                let b = rights[i % rights.len().max(1)];
+                if a == crate::value::object::NA_INTEGER || b == crate::value::object::NA_INTEGER {
+                    out.push(crate::value::object::NA_INTEGER);
+                    continue;
+                }
+                let result = match op {
+                    LT => a < b,
+                    GT => a > b,
+                    LE => a <= b,
+                    GE => a >= b,
+                    EQ => a == b,
+                    _ => a != b,
+                };
+                out.push(result as i32);
+            }
+            return Ok(heap.alloc(RObject::Logical(out)));
+        }
+        // Factor vs character — equality compares labels; ordering on
+        // ordered factors converts the string through its level index.
+        let (factor_side, string_side, factor_levels) = if left_factor {
+            let levels = match get_attrib(heap, interner, operands[0], "levels") {
+                Some(l) => string_vec(heap, interner, l),
+                None => Vec::new(),
+            };
+            (operands[0], operands[1], levels)
+        } else {
+            let levels = match get_attrib(heap, interner, operands[1], "levels") {
+                Some(l) => string_vec(heap, interner, l),
+                None => Vec::new(),
+            };
+            (operands[1], operands[0], levels)
+        };
+        let flipped = !left_factor;
+        let _ = (left_is_string, right_is_string);
+        let codes: Vec<i32> = match heap.object(factor_side) {
+            Some(RObject::Integer(vals)) => vals.clone(),
+            _ => Vec::new(),
+        };
+        let strings = string_vec(heap, interner, string_side);
+        let len = codes.len().max(strings.len());
+        if len == 0 {
+            return Ok(heap.alloc(RObject::Logical(vec![])));
+        }
+        let mut out: Vec<i32> = Vec::with_capacity(len);
+        for i in 0..len {
+            let code = codes[i % codes.len().max(1)];
+            let text = &strings[i % strings.len().max(1)];
+            if code == crate::value::object::NA_INTEGER || text == "\0NA" {
+                out.push(crate::value::object::NA_INTEGER);
+                continue;
+            }
+            let label = factor_levels.get((code as usize).saturating_sub(1)).cloned().unwrap_or_default();
+            let result = match op {
+                EQ | NE => {
+                    let eq = &label == text;
+                    if op == EQ { eq } else { !eq }
+                }
+                _ => {
+                    // Ordering: the string resolves through its level index
+                    // exactly as GNU's ordered-factor method.
+                    let text_index = factor_levels.iter().position(|l| l == text).map(|p| p as i32 + 1);
+                    match text_index {
+                        Some(ti) => {
+                            let (a, b) = if flipped { (ti, code) } else { (code, ti) };
+                            match op {
+                                LT => a < b,
+                                GT => a > b,
+                                LE => a <= b,
+                                _ => a >= b,
+                            }
+                        }
+                        None => {
+                            out.push(crate::value::object::NA_INTEGER);
+                            continue;
+                        }
+                    }
+                }
+            };
+            out.push(result as i32);
+        }
+        return Ok(heap.alloc(RObject::Logical(out)));
+    }
+    // Date/POSIXct vs character — strings parse into the temporal lattice
+    // exactly as GNU's coercion; failures raise the unambiguous-format
+    // error, NA_character_ poisons to NA.
+    let left_temporal = is_date_classed(heap, interner, operands[0]) || is_posixct_classed(heap, interner, operands[0]);
+    let right_temporal = is_date_classed(heap, interner, operands[1]) || is_posixct_classed(heap, interner, operands[1]);
+    if (left_temporal || right_temporal)
+        && (matches!(heap.object(operands[0]), Some(RObject::String(_))) || matches!(heap.object(operands[1]), Some(RObject::String(_))))
+    {
+        let posix = is_posixct_classed(heap, interner, operands[0]) || is_posixct_classed(heap, interner, operands[1]);
+        let parse = |text: &str| -> Result<Option<f64>, EvalError> {
+            if text == "\0NA" {
+                return Ok(None);
+            }
+            let parsed = if posix {
+                super::civil::parse_iso_datetime(text).map(|v| v as f64)
+            } else {
+                super::civil::parse_iso(text).map(|v| v as f64)
+            };
+            match parsed {
+                Some(v) => Ok(Some(v)),
+                None => Err(EvalError::TypeError("character string is not in a standard unambiguous format")),
+            }
+        };
+        let numerify = |side: ValueId| -> Result<Vec<Option<f64>>, EvalError> {
+            if matches!(heap.object(side), Some(RObject::String(_))) {
+                let mut out = Vec::new();
+                for text in string_vec(heap, interner, side) {
+                    out.push(parse(&text)?);
+                }
+                Ok(out)
+            } else {
+                let vals = match heap.object(side) {
+                    Some(RObject::Real(vals)) => vals.iter().map(|v| if v.is_nan() { None } else { Some(*v) }).collect(),
+                    Some(RObject::Integer(vals)) => vals
+                        .iter()
+                        .map(|v| if *v == crate::value::object::NA_INTEGER { None } else { Some(*v as f64) })
+                        .collect(),
+                    _ => Vec::new(),
+                };
+                Ok(vals)
+            }
+        };
+        let lefts = numerify(operands[0]).map_err(RSignal::from)?;
+        let rights = numerify(operands[1]).map_err(RSignal::from)?;
+        let len = lefts.len().max(rights.len());
+        let mut out: Vec<i32> = Vec::with_capacity(len);
+        for i in 0..len {
+            let a = lefts[i % lefts.len().max(1)];
+            let b = rights[i % rights.len().max(1)];
+            match (a, b) {
+                (Some(x), Some(y)) => {
+                    let result = match op {
+                        LT => x < y,
+                        GT => x > y,
+                        LE => x <= y,
+                        GE => x >= y,
+                        EQ => x == y,
+                        _ => x != y,
+                    };
+                    out.push(result as i32);
+                }
+                _ => out.push(crate::value::object::NA_INTEGER),
+            }
+        }
+        return Ok(heap.alloc(RObject::Logical(out)));
+    }
     // GNU character comparison: when either operand is character the other
     // coerces, equality is exact and ordering lexicographic, and NA or NaN
     // participation poisons the element to NA logical exactly as numerics.
