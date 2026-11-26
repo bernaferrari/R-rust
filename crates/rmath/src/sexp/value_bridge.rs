@@ -134,14 +134,84 @@ impl ValueBridge {
                     Some(slot) => *slot = patched,
                     None => return Err(ImportError::TruncatedPayload),
                 }
+                self.attach_attributes(heap, interner, sexp, id)?;
+                Ok(id)
+            }
+            SEXPTYPE::SYMSXP => {
+                // Symbols pre-register like pairlists: an unbound symbol's
+                // value edge can be the symbol itself, and the memoized
+                // identity is what makes that cycle terminate.
+                let id = heap.alloc(RObject::Symbol {
+                    name: crate::value::intern::SymId(0),
+                    value: ValueId::NIL,
+                    internal: ValueId::NIL,
+                });
+                self.forward.insert(key, id);
+
+                let name_text = sexp
+                    .try_printname()
+                    .ok()
+                    .and_then(|pname| pname.as_string())
+                    .ok_or(ImportError::TruncatedPayload)?;
+                let name = interner.intern_symbol(&name_text);
+
+                // Sentinel edges stay NIL: the unbound-value singleton has no
+                // meaningfully distinct identity in the new heap yet.
+                let value = match sexp.symvalue() {
+                    Some(target)
+                        if target.typeof_() != SEXPTYPE::NILSXP
+                            && target.as_raw() != crate::sexp::globals::R_UnboundValue() =>
+                    {
+                        self.import(heap, interner, &target)?
+                    }
+                    _ => ValueId::NIL,
+                };
+
+                match heap.object_mut(id) {
+                    Some(slot @ RObject::Symbol { .. }) => {
+                        *slot = RObject::Symbol {
+                            name,
+                            value,
+                            internal: ValueId::NIL,
+                        };
+                    }
+                    _ => return Err(ImportError::TruncatedPayload),
+                }
+                self.attach_attributes(heap, interner, sexp, id)?;
                 Ok(id)
             }
             _ => {
                 let body = convert_atomic(interner, sexp)?;
                 let id = heap.alloc(body);
                 self.forward.insert(key, id);
+                self.attach_attributes(heap, interner, sexp, id)?;
                 Ok(id)
             }
+        }
+    }
+
+    /// Import the attribute chain of a source object and attach it to the
+    /// already-imported heap object. Attribute-less objects keep
+    /// `ValueId::NIL` in the slot's attribute edge.
+    fn attach_attributes(
+        &mut self,
+        heap: &mut Heap,
+        interner: &mut SymbolInterner,
+        sexp: &Sexp<'_>,
+        id: ValueId,
+    ) -> Result<(), ImportError> {
+        let attrib = match sexp.try_attrib() {
+            Ok(attrib) if attrib.typeof_() != SEXPTYPE::NILSXP => {
+                self.import(heap, interner, &attrib)?
+            }
+            _ => ValueId::NIL,
+        };
+        match heap.get_mut(id) {
+            Some(slot) => {
+                slot.attrib = attrib;
+                Ok(())
+            }
+            None => Err(ImportError::TruncatedPayload),
         }
     }
 
@@ -490,6 +560,60 @@ mod tests {
                 other => panic!("expected real vector car, got {other:?}"),
             }
             drop(vector);
+        });
+    }
+    #[test]
+    fn import_symbol_captures_printname() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let mut heap = Heap::new();
+            let mut interner = SymbolInterner::new();
+            let mut bridge = ValueBridge::new();
+
+            let raw = crate::sexp::symbol::install_str("bridgeprobe");
+            assert!(!raw.is_null());
+            Sexp::with_registered_raw(raw, |sexp| {
+                assert_eq!(sexp.typeof_(), SEXPTYPE::SYMSXP);
+                let id = bridge
+                    .import(&mut heap, &mut interner, sexp)
+                    .expect("symbols import");
+                match heap.object(id) {
+                    Some(RObject::Symbol { name, .. }) => {
+                        assert_eq!(interner.symbol_name(*name), "bridgeprobe");
+                    }
+                    other => panic!("expected symbol, got {other:?}"),
+                }
+            })
+            .expect("registered symbol");
+        });
+    }
+
+    #[test]
+    fn import_attaches_attribute_chain() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let mut heap = Heap::new();
+            let mut interner = SymbolInterner::new();
+            let mut bridge = ValueBridge::new();
+            let mut arena = crate::sexp::memory::RArena::new();
+
+            let vector_raw = arena.alloc_vector(SEXPTYPE::REALSXP, 1);
+            let attrib_chain = arena.alloc_list_chain(1);
+            unsafe { crate::sexp::accessors::SET_ATTRIB(vector_raw, attrib_chain) };
+            let vector = fill_real_vector(&arena, vector_raw, &[5.0]);
+
+            let id = bridge
+                .import(&mut heap, &mut interner, &vector)
+                .expect("vector imports");
+            let attrib_id = heap.get(id).map(|slot| slot.attrib);
+            assert!(
+                matches!(attrib_id, Some(a) if a != ValueId::NIL),
+                "attribute chain must be attached, got {attrib_id:?}"
+            );
+            assert!(
+                matches!(heap.object(attrib_id.unwrap()), Some(RObject::Pairlist { .. })),
+                "attributes import as their pairlist representation"
+            );
         });
     }
 }
