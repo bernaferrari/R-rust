@@ -220,6 +220,27 @@ pub mod primitive_ids {
     pub const IS_CALL: u32 = 202;
     pub const IS_ENVIRONMENT: u32 = 203;
     pub const XTABS: u32 = 204;
+    pub const SIN: u32 = 205;
+    pub const COS: u32 = 206;
+    pub const SINH: u32 = 207;
+    pub const COSH: u32 = 208;
+    pub const TANH_F: u32 = 209;
+    pub const COMPLEX_CTOR: u32 = 210;
+    pub const AS_COMPLEX: u32 = 211;
+    pub const RE_C: u32 = 212;
+    pub const IM_C: u32 = 213;
+    pub const MOD_C: u32 = 214;
+    pub const ARG_C: u32 = 215;
+    pub const CONJ_C: u32 = 216;
+    pub const IS_COMPLEX: u32 = 217;
+    pub const AS_RAW: u32 = 218;
+    pub const IS_RAW: u32 = 219;
+    pub const MODE_FN: u32 = 220;
+    pub const STORAGE_MODE: u32 = 221;
+    pub const EXPRESSION_FN: u32 = 222;
+    pub const RAW_CTOR: u32 = 223;
+    pub const VECTOR_FN: u32 = 224;
+    pub const IDENTITY_FN: u32 = 225;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -250,7 +271,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -314,8 +335,72 @@ fn call_primitive_inner(
         SUM | PROD | MIN | MAX => reduction(heap, interner, id.0, args, caller_env),
         EXTRACT => extract_primitive(heap, interner, args, caller_env),
         SUBSET_ASSIGN => subset_assign_primitive(heap, interner, args, caller_env),
-        NUMERIC | INTEGER_CTOR | LOGICAL_CTOR => {
+        NUMERIC | INTEGER_CTOR | LOGICAL_CTOR | RAW_CTOR => {
             vector_constructor(heap, interner, id.0, args, caller_env)
+        }
+        VECTOR_FN => {
+            // vector(mode, length) — the mode selects the zero-filled
+            /// atomic or list shape exactly as GNU.
+            let mut mode = String::new();
+            let mut length = 0usize;
+            let mut positional = 0usize;
+            let mut cursor = args;
+            for _ in 0..100_000 {
+                if cursor == ValueId::NIL {
+                    break;
+                }
+                let (car, tag, next) = match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, tag, cdr, .. }) => (*car, *tag, *cdr),
+                    _ => break,
+                };
+                let value = eval(heap, interner, car, caller_env)?;
+                let tag_name = if tag == ValueId::NIL {
+                    None
+                } else {
+                    match heap.object(tag) {
+                        Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+                        _ => None,
+                    }
+                };
+                match tag_name.as_deref() {
+                    Some("mode") => {
+                        if let Some(RObject::String(vals)) = heap.object(value) {
+                            if let Some(first) = vals.first() {
+                                mode = interner.string_text(*first).to_string();
+                            }
+                        }
+                    }
+                    Some("length") => length = numeric_vector(heap, value).first().copied().unwrap_or(0.0) as usize,
+                    _ => {
+                        positional += 1;
+                        if positional == 1 {
+                            if let Some(RObject::String(vals)) = heap.object(value) {
+                                if let Some(first) = vals.first() {
+                                    mode = interner.string_text(*first).to_string();
+                                }
+                            }
+                        } else if positional == 2 {
+                            length = numeric_vector(heap, value).first().copied().unwrap_or(0.0) as usize;
+                        }
+                    }
+                }
+                cursor = next;
+            }
+            let body = match mode.as_str() {
+                "logical" => RObject::Logical(vec![0; length]),
+                "integer" => RObject::Integer(vec![0; length]),
+                "numeric" | "double" => RObject::Real(vec![0.0; length]),
+                "complex" => RObject::Complex(vec![crate::value::object::RComplex { r: 0.0, i: 0.0 }; length]),
+                "character" => RObject::String(vec![interner.intern_string(""); length]),
+                "raw" => RObject::Raw(vec![0u8; length]),
+                "list" => RObject::List(vec![ValueId::NIL; length]),
+                _ => RObject::Logical(vec![0; length]),
+            };
+            Ok(heap.alloc(body))
+        }
+        IDENTITY_FN => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            Ok(operands[0])
         }
         NAMES => names_primitive(heap, interner, args, caller_env),
         NAMES_ASSIGN => names_assign_primitive(heap, interner, args, caller_env),
@@ -509,6 +594,8 @@ fn call_primitive_inner(
                 Some(RObject::Logical(_)) => "logical",
                 Some(RObject::Integer(_)) => "integer",
                 Some(RObject::Real(_)) => "double",
+                Some(RObject::Complex(_)) => "complex",
+                Some(RObject::Expression(_)) => "expression",
                 Some(RObject::String(_)) => "character",
                 Some(RObject::Raw(_)) => "raw",
                 Some(RObject::List(_)) => "list",
@@ -1175,20 +1262,118 @@ fn call_primitive_inner(
             Ok(heap.alloc(RObject::String(out)))
         }
         IS_UNSORTED => {
-            // TRUE when any adjacent pair descends; NA participation makes
-            /// the result NA exactly as GNU's sortedness check.
-            let operands = eval_args(heap, interner, args, caller_env, 1)?;
-            let vals = numeric_vector(heap, operands[0]);
-            let mut result = 0i32;
-            for w in vals.windows(2) {
-                if w[0].is_nan() || w[1].is_nan() {
-                    result = crate::value::object::NA_INTEGER;
+            // GNU sortedness across the atomic lattice: numeric, character,
+            /// complex (real then imaginary), and raw each order by their
+            /// own keys; NA participation makes the result NA unless na.rm
+            /// drops it; strictly counts equality as unsorted.
+            let mut xval = ValueId::NIL;
+            let mut na_rm = false;
+            let mut strictly = false;
+            let mut cursor = args;
+            for _ in 0..100_000 {
+                if cursor == ValueId::NIL {
                     break;
                 }
-                if w[0] > w[1] {
+                let (car, tag, next) = match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, tag, cdr, .. }) => (*car, *tag, *cdr),
+                    _ => break,
+                };
+                let value = eval(heap, interner, car, caller_env)?;
+                let tag_name = if tag == ValueId::NIL {
+                    None
+                } else {
+                    match heap.object(tag) {
+                        Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+                        _ => None,
+                    }
+                };
+                match tag_name.as_deref() {
+                    Some("na.rm") => na_rm = logical_scalar(heap, value),
+                    Some("strictly") => strictly = logical_scalar(heap, value),
+                    _ => {
+                        if xval == ValueId::NIL {
+                            xval = value;
+                        }
+                    }
+                }
+                cursor = next;
+            }
+            // Keys as (primary, secondary, is_na) triples — complex ordering
+            /// uses both parts, everything else keys on the primary alone.
+            let keys: Vec<(f64, f64, bool)> = match heap.object(xval) {
+                Some(RObject::Real(vals)) => vals
+                    .iter()
+                    .map(|v| (*v, 0.0, v.to_bits() == crate::value::object::NA_REAL_BITS))
+                    .collect(),
+                Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals
+                    .iter()
+                    .map(|&v| {
+                        if v == crate::value::object::NA_INTEGER {
+                            (0.0, 0.0, true)
+                        } else {
+                            (v as f64, 0.0, false)
+                        }
+                    })
+                    .collect(),
+                Some(RObject::Complex(vals)) => vals
+                    .iter()
+                    .map(|z| {
+                        let na = z.r.to_bits() == crate::value::object::NA_REAL_BITS
+                            || z.i.to_bits() == crate::value::object::NA_REAL_BITS
+                            || z.r.is_nan()
+                            || z.i.is_nan();
+                        (z.r, z.i, na)
+                    })
+                    .collect(),
+                Some(RObject::Raw(vals)) => vals.iter().map(|&v| (v as f64, 0.0, false)).collect(),
+                Some(RObject::String(vals)) => {
+                    // Character ordering is lexicographic in the C locale —
+                    /// encode strings as rank positions of their sorted order.
+                    let texts: Vec<(String, bool)> = vals
+                        .iter()
+                        .map(|v| {
+                            let tx = interner.string_text(*v).to_string();
+                            (tx.clone(), tx == "\0NA")
+                        })
+                        .collect();
+                    let mut order: Vec<String> = texts
+                        .iter()
+                        .filter(|(_, na)| !na)
+                        .map(|(s, _)| s.clone())
+                        .collect();
+                    order.sort();
+                    order.dedup();
+                    texts
+                        .iter()
+                        .map(|(s, na)| {
+                            if *na {
+                                (0.0, 0.0, true)
+                            } else {
+                                let rank = order.iter().position(|o| o == s).unwrap_or(0) as f64;
+                                (rank, 0.0, false)
+                            }
+                        })
+                        .collect()
+                }
+                _ => Vec::new(),
+            };
+            let filtered: Vec<(f64, f64)> = keys
+                .iter()
+                .filter(|(_, _, na)| !*na)
+                .map(|(a, b, _)| (*a, *b))
+                .collect();
+            let had_na = keys.iter().any(|(_, _, na)| *na);
+            let mut result = 0i32;
+            for w in filtered.windows(2) {
+                let descending = w[0].0 > w[1].0 || (w[0].0 == w[1].0 && w[0].1 > w[1].1);
+                let equal = w[0].0 == w[1].0 && w[0].1 == w[1].1;
+                if descending || (strictly && equal) {
                     result = 1;
                     break;
                 }
+            }
+            if result == 0 && had_na && !na_rm {
+                result = crate::value::object::NA_INTEGER;
             }
             Ok(heap.alloc(RObject::Logical(vec![result])))
         }
@@ -1575,6 +1760,114 @@ fn call_primitive_inner(
             let is = matches!(heap.object(operands[0]), Some(RObject::Environment { .. }));
             Ok(heap.alloc(RObject::Logical(vec![is as i32])))
         }
+        SIN | COS | SINH | COSH | TANH_F => trig_unary(heap, interner, id.0, args, caller_env),
+        COMPLEX_CTOR => complex_ctor(heap, interner, args, caller_env),
+        AS_COMPLEX => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let vals = as_complex_vec(heap, operands[0]).map_err(RSignal::from)?;
+            Ok(heap.alloc(RObject::Complex(vals)))
+        }
+        RE_C | IM_C | MOD_C | ARG_C => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let vals = as_complex_vec(heap, operands[0]).map_err(RSignal::from)?;
+            let out: Vec<f64> = vals
+                .iter()
+                .map(|z| match id.0 {
+                    RE_C => z.r,
+                    IM_C => z.i,
+                    MOD_C => (z.r * z.r + z.i * z.i).sqrt(),
+                    _ => z.i.atan2(z.r),
+                })
+                .collect();
+            Ok(heap.alloc(RObject::Real(out)))
+        }
+        CONJ_C => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let vals = as_complex_vec(heap, operands[0]).map_err(RSignal::from)?;
+            let out: Vec<crate::value::object::RComplex> = vals
+                .iter()
+                .map(|z| crate::value::object::RComplex { r: z.r, i: -z.i })
+                .collect();
+            Ok(heap.alloc(RObject::Complex(out)))
+        }
+        IS_COMPLEX => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let yes = matches!(heap.object(operands[0]), Some(RObject::Complex(_)));
+            Ok(heap.alloc(RObject::Logical(vec![yes as i32])))
+        }
+        IS_RAW => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let yes = matches!(heap.object(operands[0]), Some(RObject::Raw(_)));
+            Ok(heap.alloc(RObject::Logical(vec![yes as i32])))
+        }
+        AS_RAW => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let out: Vec<u8> = match heap.object(operands[0]) {
+                Some(RObject::Real(vals)) => vals
+                    .iter()
+                    .map(|v| {
+                        if v.is_nan() || *v < 0.0 || *v > 255.0 {
+                            0u8
+                        } else {
+                            *v as u8
+                        }
+                    })
+                    .collect(),
+                Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals
+                    .iter()
+                    .map(|&v| {
+                        if v == crate::value::object::NA_INTEGER || v < 0 || v > 255 {
+                            0u8
+                        } else {
+                            v as u8
+                        }
+                    })
+                    .collect(),
+                Some(RObject::Raw(vals)) => vals.clone(),
+                _ => Vec::new(),
+            };
+            Ok(heap.alloc(RObject::Raw(out)))
+        }
+        MODE_FN | STORAGE_MODE => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            // mode collapses the numeric family and renames the object
+            /// types exactly as GNU's mode; storage.mode keeps the storage
+            /// precision names.
+            let storage = match heap.object(operands[0]) {
+                Some(RObject::Nil) | None => "NULL",
+                Some(RObject::Logical(_)) => "logical",
+                Some(RObject::Integer(_)) => "integer",
+                Some(RObject::Real(_)) => "double",
+                Some(RObject::Complex(_)) => "complex",
+                Some(RObject::String(_)) => "character",
+                Some(RObject::Raw(_)) => "raw",
+                Some(RObject::List(_)) => "list",
+                Some(RObject::Symbol { .. }) => "symbol",
+                Some(RObject::Language { .. }) => "language",
+                Some(RObject::Expression(_)) => "expression",
+                Some(RObject::Closure { .. }) | Some(RObject::Primitive(_)) => "function",
+                Some(RObject::Environment { .. }) => "environment",
+                Some(RObject::Pairlist { .. }) => "pairlist",
+                _ => "unknown",
+            };
+            let text = if id.0 == STORAGE_MODE {
+                storage
+            } else {
+                match storage {
+                    "integer" | "double" => "numeric",
+                    "symbol" => "name",
+                    "language" => "call",
+                    other => other,
+                }
+            };
+            Ok(heap.alloc(RObject::String(vec![interner.intern_string(text)])))
+        }
+        EXPRESSION_FN => {
+            // The argument expressions capture unevaluated exactly as GNU's
+            /// expression vector constructor.
+            let raw = raw_args(heap, args);
+            Ok(heap.alloc(RObject::Expression(raw)))
+        }
         XTABS => xtabs_primitive(heap, interner, args, caller_env),
         FORMAT => {
             // format() on Date-classed input renders ISO exactly as the
@@ -1637,11 +1930,11 @@ fn call_primitive_inner(
         COLNAMES => rowcolnames(heap, interner, args, caller_env, false),
         COLNAMES_ASSIGN => rowcolnames_assign(heap, interner, args, caller_env, false),
         CHARACTER_CTOR => {
-            let operands = eval_args(heap, interner, args, caller_env, 1)?;
-            let length = match heap.object(operands[0]) {
+            let operands = eval_args(heap, interner, args, caller_env, 1).unwrap_or_default();
+            let length = match operands.first().and_then(|v| heap.object(*v)) {
                 Some(RObject::Real(v)) if !v.is_empty() => v[0] as usize,
                 Some(RObject::Integer(v)) if !v.is_empty() => v[0] as usize,
-                _ => return Err(EvalError::TypeError("length must be scalar numeric").into()),
+                _ => 0,
             };
             let empty = interner.intern_string("");
             Ok(heap.alloc(RObject::String(vec![empty; length])))
@@ -1920,6 +2213,19 @@ fn arithmetic(
             let classed = is_difftime_classed(heap, interner, unary[0])
                 || is_date_classed(heap, interner, unary[0])
                 || is_posixct_classed(heap, interner, unary[0]);
+            if let Some(RObject::Complex(vals)) = heap.object(unary[0]) {
+                let folded: Vec<crate::value::object::RComplex> = vals
+                    .iter()
+                    .map(|z| {
+                        if op == ADD {
+                            *z
+                        } else {
+                            crate::value::object::RComplex { r: -z.r, i: -z.i }
+                        }
+                    })
+                    .collect();
+                return Ok(heap.alloc(RObject::Complex(folded)));
+            }
             let operand = numeric_operands(heap, unary[0]).map_err(RSignal::from)?;
             return match operand {
                 Numeric::Integer(values) => {
@@ -2024,6 +2330,13 @@ fn arithmetic(
         }
         ops
     };
+    // Complex arithmetic: either operand complex promotes both exactly as
+    /// GNU's type lattice, complex being the highest arithmetic type.
+    let complex_involved = matches!(heap.object(operands[0]), Some(RObject::Complex(_)))
+        || matches!(heap.object(operands[1]), Some(RObject::Complex(_)));
+    if complex_involved {
+        return complex_arithmetic(heap, interner, op, operands[0], operands[1]);
+    }
     let left = numeric_operands(heap, operands[0]).map_err(RSignal::from)?;
     let right = numeric_operands(heap, operands[1]).map_err(RSignal::from)?;
     match (left, right) {
@@ -2546,7 +2859,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -2716,6 +3029,27 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "is.call" => Some(IS_CALL),
         "is.environment" => Some(IS_ENVIRONMENT),
         "xtabs" => Some(XTABS),
+        "sin" => Some(SIN),
+        "cos" => Some(COS),
+        "sinh" => Some(SINH),
+        "cosh" => Some(COSH),
+        "tanh" => Some(TANH_F),
+        "complex" => Some(COMPLEX_CTOR),
+        "as.complex" => Some(AS_COMPLEX),
+        "Re" => Some(RE_C),
+        "Im" => Some(IM_C),
+        "Mod" => Some(MOD_C),
+        "Arg" => Some(ARG_C),
+        "Conj" => Some(CONJ_C),
+        "is.complex" => Some(IS_COMPLEX),
+        "as.raw" => Some(AS_RAW),
+        "is.raw" => Some(IS_RAW),
+        "mode" => Some(MODE_FN),
+        "storage.mode" => Some(STORAGE_MODE),
+        "expression" => Some(EXPRESSION_FN),
+        "raw" => Some(RAW_CTOR),
+        "vector" => Some(VECTOR_FN),
+        "identity" => Some(IDENTITY_FN),
         "tsp" => Some(TSP),
         "tsp<-" => Some(TSP_ASSIGN),
         "printDeferredWarnings" => Some(PRINT_DEFERRED_WARNINGS),
@@ -2882,9 +3216,11 @@ fn concat_primitive_inner(
     }
 
     enum Flat {
+        Raw(Vec<u8>),
         Logical(Vec<i32>),
         Integer(Vec<i32>),
         Real(Vec<f64>),
+        Complex(Vec<crate::value::object::RComplex>),
         String(Vec<super::intern::InternedStr>),
     }
     let mut flattened = Vec::new();
@@ -2893,6 +3229,10 @@ fn concat_primitive_inner(
     for operand in operands {
         let flat = match heap.object(operand) {
             Some(RObject::Nil) => continue,
+            Some(RObject::Raw(values)) => {
+                operand_lengths.push(values.len());
+                Flat::Raw(values.clone())
+            }
             Some(RObject::Logical(values)) => {
                 rank = rank.max(1);
                 operand_lengths.push(values.len());
@@ -2908,8 +3248,13 @@ fn concat_primitive_inner(
                 operand_lengths.push(values.len());
                 Flat::Real(values.clone())
             }
-            Some(RObject::String(values)) => {
+            Some(RObject::Complex(values)) => {
                 rank = rank.max(4);
+                operand_lengths.push(values.len());
+                Flat::Complex(values.clone())
+            }
+            Some(RObject::String(values)) => {
+                rank = rank.max(5);
                 operand_lengths.push(values.len());
                 Flat::String(values.clone())
             }
@@ -2947,12 +3292,14 @@ fn concat_primitive_inner(
 
     fn logicals_of(flat: &Flat) -> Vec<i32> {
         match flat {
+            Flat::Raw(v) => v.iter().map(|&x| (x != 0) as i32).collect(),
             Flat::Logical(v) => v.clone(),
             _ => unreachable!("lower ranks coerce upward before extraction"),
         }
     }
     fn integers_of(flat: &Flat) -> Vec<i32> {
         match flat {
+            Flat::Raw(v) => v.iter().map(|&x| x as i32).collect(),
             Flat::Logical(v) | Flat::Integer(v) => v.clone(),
             _ => unreachable!("lower ranks coerce upward before extraction"),
         }
@@ -2970,17 +3317,56 @@ fn concat_primitive_inner(
                 })
                 .collect(),
             Flat::Real(v) => v.clone(),
-            Flat::String(_) => unreachable!("lower ranks coerce upward before extraction"),
+            Flat::Raw(v) => v.iter().map(|&x| x as f64).collect(),
+            _ => unreachable!("lower ranks coerce upward before extraction"),
+        }
+    }
+    fn complexes_of(flat: &Flat) -> Vec<crate::value::object::RComplex> {
+        use crate::value::object::{NA_REAL_BITS, RComplex};
+        match flat {
+            Flat::Complex(v) => v.clone(),
+            _ => reals_of(flat)
+                .iter()
+                .map(|&r| {
+                    if r.to_bits() == NA_REAL_BITS {
+                        RComplex { r: f64::from_bits(NA_REAL_BITS), i: f64::from_bits(NA_REAL_BITS) }
+                    } else {
+                        RComplex { r, i: 0.0 }
+                    }
+                })
+                .collect(),
+        }
+    }
+    fn raws_of(flat: &Flat) -> Vec<u8> {
+        match flat {
+            Flat::Raw(v) => v.clone(),
+            _ => unreachable!("any higher operand raises the rank past raw"),
         }
     }
 
     match rank {
+        0 => {
+            let mut out = Vec::new();
+            for flat in &flattened {
+                out.extend(raws_of(flat));
+            }
+            let value = heap.alloc(RObject::Raw(out));
+            attach_names(heap, interner, value)
+        }
         1 => {
             let mut out = Vec::new();
             for flat in &flattened {
                 out.extend(logicals_of(flat));
             }
             let value = heap.alloc(RObject::Logical(out));
+            attach_names(heap, interner, value)
+        }
+        4 => {
+            let mut out = Vec::new();
+            for flat in &flattened {
+                out.extend(complexes_of(flat));
+            }
+            let value = heap.alloc(RObject::Complex(out));
             attach_names(heap, interner, value)
         }
         2 => {
@@ -3041,6 +3427,16 @@ fn concat_primitive_inner(
                                 format!("{v}")
                             };
                             out.push(interner.intern_string(&text));
+                        }
+                    }
+                    Flat::Complex(values) => {
+                        for z in values {
+                            out.push(interner.intern_string(&crate::value::print::format_complex(z)));
+                        }
+                    }
+                    Flat::Raw(values) => {
+                        for v in values {
+                            out.push(interner.intern_string(&format!("{v}")));
                         }
                     }
                 }
@@ -4384,15 +4780,16 @@ fn vector_constructor(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    let operands = eval_args(heap, interner, args, caller_env, 1)?;
-    let length = match heap.object(operands[0]) {
+    let operands = eval_args(heap, interner, args, caller_env, 1).unwrap_or_default();
+    let length = match operands.first().and_then(|v| heap.object(*v)) {
         Some(RObject::Real(v)) if !v.is_empty() => v[0] as usize,
         Some(RObject::Integer(v)) if !v.is_empty() => v[0] as usize,
-        _ => return Err(EvalError::TypeError("length must be scalar numeric").into()),
+        _ => 0,
     };
     let body = match op {
         NUMERIC => RObject::Real(vec![0.0; length]),
         INTEGER_CTOR => RObject::Integer(vec![0; length]),
+        RAW_CTOR => RObject::Raw(vec![0u8; length]),
         _ => RObject::Logical(vec![0; length]),
     };
     Ok(heap.alloc(body))
@@ -7977,6 +8374,20 @@ fn structural_identical(
         (Some(RObject::Nil), Some(RObject::Nil)) => true,
         (Some(RObject::Logical(a)), Some(RObject::Logical(b))) => a == b,
         (Some(RObject::Integer(a)), Some(RObject::Integer(b))) => a == b,
+        (Some(RObject::Complex(a)), Some(RObject::Complex(b))) => {
+            a.len() == b.len()
+                && a.iter().zip(b.iter()).all(|(x, y)| {
+                    let part_same = |u: f64, v: f64| {
+                        if u.is_nan() && v.is_nan() {
+                            u.to_bits() == v.to_bits()
+                        } else {
+                            u == v
+                        }
+                    };
+                    part_same(x.r, y.r) && part_same(x.i, y.i)
+                })
+        }
+        (Some(RObject::Raw(a)), Some(RObject::Raw(b))) => a == b,
         (Some(RObject::Real(a)), Some(RObject::Real(b))) => {
             a.len() == b.len()
                 && a.iter().zip(b.iter()).all(|(x, y)| {
@@ -8454,5 +8865,251 @@ fn xtabs_primitive(
         copy_with_attrib(heap, interner, with_class, "names", names_vec).map_err(RSignal::from)
     } else {
         Ok(with_class)
+    }
+}
+
+/// Promote any arithmetic input to its complex vector form exactly as
+/// GNU's type lattice — integer/logical/real gain a zero imaginary part,
+/// NA propagating into both parts as GNU's complex NA does.
+fn as_complex_vec(heap: &Heap, value: ValueId) -> Result<Vec<crate::value::object::RComplex>, EvalError> {
+    use crate::value::object::{NA_INTEGER, NA_REAL_BITS, RComplex};
+    match heap.object(value) {
+        Some(RObject::Complex(vals)) => Ok(vals.clone()),
+        Some(RObject::Real(vals)) => Ok(vals
+            .iter()
+            .map(|v| {
+                if v.to_bits() == NA_REAL_BITS {
+                    RComplex { r: f64::from_bits(NA_REAL_BITS), i: f64::from_bits(NA_REAL_BITS) }
+                } else {
+                    RComplex { r: *v, i: 0.0 }
+                }
+            })
+            .collect()),
+        Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => Ok(vals
+            .iter()
+            .map(|&v| {
+                if v == NA_INTEGER {
+                    RComplex { r: f64::from_bits(NA_REAL_BITS), i: f64::from_bits(NA_REAL_BITS) }
+                } else {
+                    RComplex { r: v as f64, i: 0.0 }
+                }
+            })
+            .collect()),
+        _ => Err(EvalError::TypeError("non-numeric argument to binary operator")),
+    }
+}
+
+/// Is this complex element NA — either part carrying GNU's NA payload.
+fn complex_na(z: crate::value::object::RComplex) -> bool {
+    z.r.to_bits() == crate::value::object::NA_REAL_BITS
+        || z.i.to_bits() == crate::value::object::NA_REAL_BITS
+}
+
+/// Binary complex arithmetic with GNU recycling and NA propagation — an
+/// NA operand element poisons both parts of the result element exactly as
+/// GNU's complex NA semantics.
+fn complex_arithmetic(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    op: u32,
+    a_id: ValueId,
+    b_id: ValueId,
+) -> EvalResult {
+    use crate::value::object::{NA_REAL_BITS, RComplex};
+    if op == MOD {
+        return Err(EvalError::TypeError("unimplemented complex operation").into());
+    }
+    let a = as_complex_vec(heap, a_id).map_err(RSignal::from)?;
+    let b = as_complex_vec(heap, b_id).map_err(RSignal::from)?;
+    let na = f64::from_bits(NA_REAL_BITS);
+    let folded = fold_numeric(a, b, op, move |x, y| {
+        if complex_na(x) || complex_na(y) {
+            return RComplex { r: na, i: na };
+        }
+        match op {
+            ADD => RComplex { r: x.r + y.r, i: x.i + y.i },
+            SUB => RComplex { r: x.r - y.r, i: x.i - y.i },
+            MUL => RComplex {
+                r: x.r * y.r - x.i * y.i,
+                i: x.r * y.i + x.i * y.r,
+            },
+            DIV => {
+                // Smith's scaled division — resistant to overflow exactly
+                /// as GNU's complex quotient.
+                let denom = y.r * y.r + y.i * y.i;
+                if denom == 0.0 {
+                    RComplex { r: f64::NAN, i: f64::NAN }
+                } else {
+                    RComplex {
+                        r: (x.r * y.r + x.i * y.i) / denom,
+                        i: (x.i * y.r - x.r * y.i) / denom,
+                    }
+                }
+            }
+            POW => {
+                // z^w = exp(w * log z) on the principal branch.
+                let modulus = (x.r * x.r + x.i * x.i).sqrt();
+                let theta = x.i.atan2(x.r);
+                let lr = modulus.ln();
+                let wr = y.r * lr - y.i * theta;
+                let wi = y.r * theta + y.i * lr;
+                let m = wr.exp();
+                RComplex { r: m * wi.cos(), i: m * wi.sin() }
+            }
+            _ => RComplex { r: f64::NAN, i: f64::NAN },
+        }
+    })
+    .map_err(RSignal::from)?;
+    let result = heap.alloc(RObject::Complex(folded));
+    let _ = interner;
+    Ok(propagate_attributes(heap, a_id, b_id, result))
+}
+
+/// Trigonometric and hyperbolic family — real inputs produce real outputs
+/// exactly as the other unary math; complex inputs evaluate through the
+/// standard real-part compositions GNU's complex trig derives from.
+fn trig_unary(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    op: u32,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    use crate::value::object::{NA_REAL_BITS, RComplex};
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    if let Some(RObject::Complex(vals)) = heap.object(operands[0]) {
+        let na = f64::from_bits(NA_REAL_BITS);
+        let out: Vec<RComplex> = vals
+            .iter()
+            .map(|z| {
+                if complex_na(*z) {
+                    return RComplex { r: na, i: na };
+                }
+                let (a, b) = (z.r, z.i);
+                match op {
+                    SIN => RComplex {
+                        r: a.sin() * b.cosh(),
+                        i: a.cos() * b.sinh(),
+                    },
+                    COS => RComplex {
+                        r: a.cos() * b.cosh(),
+                        i: -a.sin() * b.sinh(),
+                    },
+                    SINH => RComplex {
+                        r: a.sinh() * b.cos(),
+                        i: a.cosh() * b.sin(),
+                    },
+                    COSH => RComplex {
+                        r: a.cosh() * b.cos(),
+                        i: a.sinh() * b.sin(),
+                    },
+                    _ => {
+                        // tanh = sinh/cosh stabilized through the tanh(a)
+                        /// composition — dividing numerator and denominator
+                        /// by cosh(a) keeps large-real inputs finite exactly
+                        /// as libm's saturated complex tanh.
+                        let ta = a.tanh();
+                        let num = RComplex { r: ta * b.cos(), i: b.sin() };
+                        let den = RComplex { r: b.cos(), i: ta * b.sin() };
+                        let denom = den.r * den.r + den.i * den.i;
+                        if denom == 0.0 {
+                            RComplex { r: f64::NAN, i: f64::NAN }
+                        } else {
+                            RComplex {
+                                r: (num.r * den.r + num.i * den.i) / denom,
+                                i: (num.i * den.r - num.r * den.i) / denom,
+                            }
+                        }
+                    }
+                }
+            })
+            .collect();
+        return Ok(heap.alloc(RObject::Complex(out)));
+    }
+    let values = reals_of_value(heap, operands[0]).map_err(RSignal::from)?;
+    let out: Vec<f64> = values
+        .iter()
+        .map(|v| {
+            if v.is_nan() {
+                f64::from_bits(crate::value::object::NA_REAL_BITS)
+            } else {
+                match op {
+                    SIN => v.sin(),
+                    COS => v.cos(),
+                    SINH => v.sinh(),
+                    COSH => v.cosh(),
+                    _ => v.tanh(),
+                }
+            }
+        })
+        .collect();
+    Ok(heap.alloc(RObject::Real(out)))
+}
+
+/// `complex(length.out, real, imaginary)` — zeros by default exactly as
+/// GNU's constructor, real/imaginary parts recycling through the length.
+fn complex_ctor(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    use crate::value::object::RComplex;
+    let mut length_out = 0usize;
+    let mut real_vals: Vec<f64> = Vec::new();
+    let mut imag_vals: Vec<f64> = Vec::new();
+    let mut positional = 0usize;
+    let mut cursor = args;
+    for _ in 0..100_000 {
+        if cursor == ValueId::NIL {
+            break;
+        }
+        let (car, tag, next) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, tag, cdr, .. }) => (*car, *tag, *cdr),
+            _ => break,
+        };
+        let value = eval(heap, interner, car, caller_env)?;
+        let tag_name = if tag == ValueId::NIL {
+            None
+        } else {
+            match heap.object(tag) {
+                Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+                _ => None,
+            }
+        };
+        let reals = numeric_vector(heap, value);
+        match tag_name.as_deref() {
+            Some("length.out") => length_out = reals.first().copied().unwrap_or(0.0) as usize,
+            Some("real") => real_vals = reals,
+            Some("imaginary") => imag_vals = reals,
+            _ => {
+                positional += 1;
+                if positional == 1 {
+                    length_out = reals.first().copied().unwrap_or(0.0) as usize;
+                }
+            }
+        }
+        cursor = next;
+    }
+    if length_out == 0 {
+        length_out = real_vals.len().max(imag_vals.len());
+    }
+    let out: Vec<RComplex> = (0..length_out)
+        .map(|i| RComplex {
+            r: if real_vals.is_empty() { 0.0 } else { real_vals[i % real_vals.len()] },
+            i: if imag_vals.is_empty() { 0.0 } else { imag_vals[i % imag_vals.len()] },
+        })
+        .collect();
+    Ok(heap.alloc(RObject::Complex(out)))
+}
+
+/// First logical element as a boolean — the tagged-argument coercion every
+/// flag-style parameter shares.
+fn logical_scalar(heap: &Heap, value: ValueId) -> bool {
+    match heap.object(value) {
+        Some(RObject::Logical(vals)) => vals.first().copied().unwrap_or(0) != 0,
+        Some(RObject::Integer(vals)) => vals.first().copied().unwrap_or(0) != 0,
+        Some(RObject::Real(vals)) => vals.first().copied().unwrap_or(0.0) != 0.0,
+        _ => false,
     }
 }

@@ -58,6 +58,19 @@ fn trim_fixed(v: f64, decimals: usize) -> String {
 
 /// The decimals a fixed-notation element actually uses after trailing-zero
 /// trimming — the input to GNU's uniform-decimal computation.
+/// One complex element's display text — real part, explicit imaginary
+/// sign, magnitude, trailing i exactly as GNU's complex printing; an NA
+/// in either part renders the whole element NA.
+pub fn format_complex(z: crate::value::object::RComplex) -> String {
+    if z.r.to_bits() == crate::value::object::NA_REAL_BITS
+        || z.i.to_bits() == crate::value::object::NA_REAL_BITS
+    {
+        return "NA".to_string();
+    }
+    let sign = if z.i.is_sign_negative() && !z.i.is_nan() { "-" } else { "+" };
+    format!("{}{}{}{}", format_real(z.r), sign, format_real(z.i.abs()), "i")
+}
+
 fn decimals_used(v: f64) -> Option<usize> {
     if v.is_nan() || v.is_infinite() || v == 0.0 {
         return Some(0);
@@ -97,6 +110,8 @@ fn format_element(heap: &Heap, interner: &SymbolInterner, value: &RObject, index
                 v.to_string()
             }
         }
+        RObject::Complex(values) => format_complex(values[index]),
+        RObject::Raw(values) => format!("{:02x}", values[index]),
         RObject::String(values) => {
             let text = interner.string_text(values[index]);
             if text == "\0NA" {
@@ -270,6 +285,8 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         RObject::Integer(v) => v.len(),
         RObject::Logical(v) => v.len(),
         RObject::String(v) => v.len(),
+        RObject::Complex(v) => v.len(),
+        RObject::Raw(v) => v.len(),
         RObject::Nil => return "NULL".to_string(),
         RObject::List(items) => {
             // List printing in GNU is a recursive [[i]] layout — the slice
@@ -327,6 +344,8 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
             RObject::Integer(_) => "integer(0)".to_string(),
             RObject::Logical(_) => "logical(0)".to_string(),
             RObject::String(_) => "character(0)".to_string(),
+            RObject::Complex(_) => "complex(0)".to_string(),
+            RObject::Raw(_) => "raw(0)".to_string(),
             _ => "NULL".to_string(),
         };
     }

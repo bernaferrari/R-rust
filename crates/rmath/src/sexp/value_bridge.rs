@@ -2242,7 +2242,7 @@ print(array(1:4, c(2, 2), dimnames = list(c(\"r1\", \"r2\"), c(\"c1\", \"c2\")))
                 }
             }
         }
-        println!("--- SOURCE ---\n{source}\n--- GOLDEN ---\n{golden}\n--- NEW OUTPUT ---\n{}\n--- ERROR ---\n{err}", heap.output);
+        println!("--- SOURCE ---\n{source}\n--- GOLDEN ---\n{golden}\n--- NEW OUTPUT ---\n{}\n--- ERROR ---\n{err}\n--- IMPORTED {} of {} ---", heap.output, imported.len(), expressions.len());
     }
 
     #[test]
