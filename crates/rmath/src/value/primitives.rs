@@ -1065,11 +1065,18 @@ fn call_primitive_inner(
                                     return Ok(ValueId::NIL);
                                 }
                                 "file.show" => {
-                                    // file.show(files, ...): contents stream
-                                    // to output with a trailing blank line,
-                                    // NULL invisibly; empty filenames raise
-                                    // the invalid-specification error.
-                                    let ops = eval_args(heap, interner, inner_args, caller_env, 1)?;
+                                    // file.show(files, header, title,
+                                    // delete.file, pager): contents stream
+                                    // with a trailing blank line, deletion
+                                    // when the fourth argument holds exactly
+                                    // as GNU, NULL invisibly; empty names
+                                    // raise the invalid-specification error.
+                                    let raw_inner = raw_args(heap, inner_args);
+                                    let mut ops: Vec<ValueId> = Vec::new();
+                                    for expr in &raw_inner {
+                                        let v = eval(heap, interner, *expr, caller_env)?;
+                                        ops.push(force_if_promise(heap, interner, v)?);
+                                    }
                                     let files = string_vec(heap, interner, ops[0]);
                                     if files.is_empty() {
                                         return Err(EvalError::Condition(
@@ -1077,6 +1084,7 @@ fn call_primitive_inner(
                                         )
                                         .into());
                                     }
+                                    let delete = ops.get(3).map(|v| matches!(heap.object(*v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) == 1)).unwrap_or(false);
                                     for path in &files {
                                         if let Ok(content) = std::fs::read_to_string(path) {
                                             heap.output.push_str(&content);
@@ -1084,6 +1092,9 @@ fn call_primitive_inner(
                                                 heap.output.push('\n');
                                             }
                                             heap.output.push('\n');
+                                        }
+                                        if delete {
+                                            let _ = std::fs::remove_file(path);
                                         }
                                     }
                                     heap.visible = false;

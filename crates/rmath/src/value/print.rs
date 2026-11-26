@@ -372,6 +372,11 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         RObject::Complex(v) => v.len(),
         RObject::Raw(v) => v.len(),
         RObject::Nil => return "NULL".to_string(),
+        RObject::List(items) if items.is_empty() && !is_data_frame(heap, interner, value) => {
+            // GNU prints the bare empty list as list() exactly — no
+            /// recursion layout applies to zero elements.
+            return "list()".to_string();
+        }
         RObject::List(items) => {
             // List printing in GNU is a recursive [[i]] layout — the slice
             // prints the flat element count shape for scalarness checks.
