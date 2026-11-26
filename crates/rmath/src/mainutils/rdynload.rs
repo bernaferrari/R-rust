@@ -55,9 +55,6 @@ fn native_dynamic_loading_policy_error(entrypoint: &str) -> ! {
     }
 }
 
-fn native_dynamic_loading_policy_enabled() -> bool {
-    !native_extensions_enabled()
-}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -179,9 +176,6 @@ pub(crate) struct DynloadState {
     pub dll_error: [u8; 4000],
     pub max_num_dlls: usize,
     pub c_entry_table: SEXP,
-    /// Trusted desktop hosts may opt into process-native extensions. Mobile
-    /// and WASM sessions remain deny-by-default.
-    pub allow_native_extensions: bool,
 }
 
 impl Default for DynloadState {
@@ -193,7 +187,6 @@ impl Default for DynloadState {
             dll_error: [0; 4000],
             max_num_dlls: MAX_NUM_DLLS_DEFAULT,
             c_entry_table: ptr::null_mut(),
-            allow_native_extensions: false,
         }
     }
 }
@@ -206,13 +199,7 @@ where
     with_required_current_instance(|instance| unsafe { f(&mut (*instance).dynload_state) })
 }
 
-pub(crate) fn set_native_extensions_enabled(enabled: bool) {
-    with_dynload_state(|state| state.allow_native_extensions = enabled);
-}
 
-pub(crate) fn native_extensions_enabled() -> bool {
-    with_dynload_state(|state| state.allow_native_extensions)
-}
 
 // ---------------------------------------------------------------------------
 // Native symbol type constants
@@ -762,9 +749,6 @@ pub fn R_getSymbolInfo(sname: SEXP, spackage: SEXP, _with_registration: SEXP) ->
 // ---------------------------------------------------------------------------
 
 pub fn R_getDllTable() -> SEXP {
-    if native_extensions_enabled() {
-        return legacy_foreign_dll_table();
-    }
     bundled_dll_table_entry()
 }
 
@@ -786,28 +770,6 @@ fn bundled_dll_table_entry() -> SEXP {
     result
         .unwrap_or_else(|e: crate::sexp::object::SexpError| error(&e.to_string()))
         .as_raw()
-}
-
-fn legacy_foreign_dll_table() -> SEXP {
-    let dlls = with_dynload_state(|state| state.loaded_dll.clone());
-    // Root `ans` across the per-entry allocations below.
-    let ans = crate::sexp::context::own_control_value(Rf_allocVector(
-        SEXPTYPE::VECSXP,
-        dlls.len() as c_int,
-    ));
-    for (index, dll) in dlls.iter().enumerate() {
-        SET_VECTOR_ELT(
-            ans.as_raw(),
-            index as R_xlen_t,
-            make_dll_info_sexp(&dll.info),
-        );
-    }
-    setAttrib(
-        ans.as_raw(),
-        R_ClassSymbol(),
-        crate::sexp::constructors::mk_string_str("DLLInfoList"),
-    );
-    ans.as_raw()
 }
 
 use crate::sexp::ffi::R_xlen_t;

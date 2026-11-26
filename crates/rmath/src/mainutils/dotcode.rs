@@ -141,9 +141,6 @@ fn native_extension_policy_error(call: SEXP, entrypoint: &str) -> ! {
     }
 }
 
-fn native_extension_policy_enabled() -> bool {
-    !crate::mainutils::rdynload::native_extensions_enabled()
-}
 
 fn ported_call_name(op: SEXP) -> Option<String> {
     if TYPEOF(op) == SEXPTYPE::STRSXP && LENGTH(op) >= 1 {

@@ -374,7 +374,6 @@ impl RSession {
             allow_environment_mutation: true,
         });
         self.core.with_active(|| {
-            crate::mainutils::rdynload::set_native_extensions_enabled(true);
             // GNU Rscript: setlocale(LC_ALL, "") then LC_NUMERIC back to "C"
             // so collation follows the host but numeric formatting stays C.
             #[cfg(not(target_arch = "wasm32"))]

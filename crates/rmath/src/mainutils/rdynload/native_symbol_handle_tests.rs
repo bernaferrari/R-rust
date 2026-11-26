@@ -351,10 +351,8 @@ fn typed_native_symbol_introspection_keeps_foreign_loading_disabled() {
     let session = RSession::new_for_gc_tests();
     session.with_active(|| unsafe {
         let owner = session.owner_token().unwrap();
-        assert!(!super::native_extensions_enabled());
         let _table = native_symbols::dll_table(owner, &keys(owner)).unwrap();
         let _info = info(owner);
-        assert!(!super::native_extensions_enabled());
         let nil = owner.node_factory().nil();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             super::do_dynload(nil.as_raw(), nil.as_raw(), nil.as_raw(), nil.as_raw())
