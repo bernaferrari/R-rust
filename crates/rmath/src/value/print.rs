@@ -121,6 +121,11 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         Some(o) => o,
         None => return "NULL".to_string(),
     };
+    // Language objects and bare symbols print deparsed — the source
+    /// reconstruction exactly as GNU's print.language, no [1] prefix.
+    if matches!(object, RObject::Language { .. } | RObject::Symbol { .. }) {
+        return deparse(heap, interner, value);
+    }
     // factor printing: classed integer codes display as their level labels
     /// unquoted, with the Levels line trailing exactly as print.factor.
     if matches!(object, RObject::Integer(_)) && is_factor(heap, interner, value) {
@@ -791,4 +796,89 @@ fn format_factor(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Stri
         out.push_str(level);
     }
     out
+}
+
+/// Deparse a language object into R source text exactly as GNU's
+/// print.language — infix operators render infix, calls parenthesize
+/// comma-space-separated arguments, missing arguments print empty, and
+/// atomic literals carry their literal form.
+pub(crate) fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String {
+    match heap.object(value) {
+        Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+        Some(RObject::Language { car, cdr, .. }) => {
+            let op_text = match heap.object(*car) {
+                Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+                _ => return deparse(heap, interner, *car),
+            };
+            // Collect the argument expressions in order.
+            let mut items: Vec<ValueId> = Vec::new();
+            let mut cursor = *cdr;
+            for _ in 0..100_000 {
+                if cursor == ValueId::NIL {
+                    break;
+                }
+                match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, cdr, .. }) => {
+                        items.push(*car);
+                        cursor = *cdr;
+                    }
+                    _ => break,
+                }
+            }
+            const INFIX: &[&str] = &[
+                "+", "-", "*", "/", "^", "%%", "<", ">", "<=", ">=", "==", "!=", "|", "&", "~", "=", "<-", ":=", "%in%", "|>", "||", "&&",
+            ];
+            if INFIX.contains(&op_text.as_str()) {
+                if items.len() == 2 {
+                    let left = deparse(heap, interner, items[0]);
+                    let right = deparse(heap, interner, items[1]);
+                    return format!("{} {} {}", left, op_text, right);
+                }
+                if items.len() == 1 {
+                    return format!("{} {}", op_text, deparse(heap, interner, items[0]));
+                }
+            }
+            if op_text == "(" {
+                return format!("({})", items.first().map(|v| deparse(heap, interner, *v)).unwrap_or_default());
+            }
+            if op_text == "{" {
+                let inner: Vec<String> = items.iter().map(|v| deparse(heap, interner, *v)).collect();
+                return format!("{{{}}}", inner.join("; "));
+            }
+            let rendered: Vec<String> = items
+                .iter()
+                .map(|v| {
+                    if *v == crate::value::id::ValueId::MISSING {
+                        String::new()
+                    } else {
+                        deparse(heap, interner, *v)
+                    }
+                })
+                .collect();
+            format!("{}({})", op_text, rendered.join(", "))
+        }
+        Some(RObject::Real(vals)) if vals.len() == 1 => format_real(vals[0]),
+        Some(RObject::Integer(vals)) if vals.len() == 1 => {
+            if vals[0] == crate::value::object::NA_INTEGER {
+                "NA_integer_".to_string()
+            } else {
+                format!("{}L", vals[0])
+            }
+        }
+        Some(RObject::Logical(vals)) if vals.len() == 1 => {
+            if vals[0] == crate::value::object::NA_INTEGER {
+                "NA".to_string()
+            } else if vals[0] != 0 {
+                "TRUE".to_string()
+            } else {
+                "FALSE".to_string()
+            }
+        }
+        Some(RObject::String(vals)) if vals.len() == 1 => {
+            let text = interner.string_text(vals[0]);
+            format!("\"{}\"", text)
+        }
+        Some(RObject::Nil) => "NULL".to_string(),
+        _ => "?".to_string(),
+    }
 }

@@ -215,6 +215,10 @@ pub mod primitive_ids {
     pub const VAPPLY: u32 = 197;
     pub const AS_POSIXCT: u32 = 198;
     pub const PROC_TIME: u32 = 199;
+    pub const QUOTE: u32 = 200;
+    pub const TILDE: u32 = 201;
+    pub const IS_CALL: u32 = 202;
+    pub const IS_ENVIRONMENT: u32 = 203;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -245,7 +249,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -1525,6 +1529,51 @@ fn call_primitive_inner(
             let with_names = copy_with_attrib(heap, interner, values, "names", names).map_err(RSignal::from)?;
             copy_with_attrib(heap, interner, with_names, "class", class).map_err(RSignal::from)
         }
+        QUOTE => {
+            // The argument returns unevaluated exactly as GNU — quote is
+            /// the fundamental capture primitive, and its arity discipline
+            /// counts empty arguments exactly as the oracle pins.
+            let count = raw_args(heap, args).len();
+            if count != 1 {
+                return Err(EvalError::Condition(format!(
+                    "{count} arguments passed to 'quote' which requires 1"
+                ))
+                .into());
+            }
+            match heap.object(args) {
+                Some(RObject::Pairlist { car, .. }) => Ok(*car),
+                _ => Ok(ValueId::NIL),
+            }
+        }
+        TILDE => {
+            // The formula constructor captures both sides unevaluated as a
+            /// language object, stamped with the formula class and the
+            /// calling environment exactly as GNU's ~ evaluation.
+            let tilde_sym = heap.alloc(RObject::Symbol {
+                name: interner.intern_symbol("~"),
+                value: ValueId::UNBOUND,
+                internal: ValueId::UNBOUND,
+            });
+            let call = heap.alloc(RObject::Language {
+                car: tilde_sym,
+                cdr: args,
+                tag: ValueId::NIL,
+            });
+            let class = heap.alloc(RObject::String(vec![interner.intern_string("formula")]));
+            let env_val = caller_env;
+            let with_class = copy_with_attrib(heap, interner, call, "class", class).map_err(RSignal::from)?;
+            copy_with_attrib(heap, interner, with_class, ".Environment", env_val).map_err(RSignal::from)
+        }
+        IS_CALL => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let is = matches!(heap.object(operands[0]), Some(RObject::Language { .. }));
+            Ok(heap.alloc(RObject::Logical(vec![is as i32])))
+        }
+        IS_ENVIRONMENT => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let is = matches!(heap.object(operands[0]), Some(RObject::Environment { .. }));
+            Ok(heap.alloc(RObject::Logical(vec![is as i32])))
+        }
         FORMAT => {
             // format() on Date-classed input renders ISO exactly as the
             /// print path; other input coerces to character.
@@ -2495,7 +2544,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -2660,6 +2709,10 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "vapply" => Some(VAPPLY),
         "as.POSIXct" => Some(AS_POSIXCT),
         "proc.time" => Some(PROC_TIME),
+        "quote" => Some(QUOTE),
+        "~" => Some(TILDE),
+        "is.call" => Some(IS_CALL),
+        "is.environment" => Some(IS_ENVIRONMENT),
         "tsp" => Some(TSP),
         "tsp<-" => Some(TSP_ASSIGN),
         "printDeferredWarnings" => Some(PRINT_DEFERRED_WARNINGS),
@@ -3013,6 +3066,24 @@ fn length_primitive(
         Some(RObject::Raw(v)) => v.len(),
         Some(RObject::List(v)) => v.len(),
         Some(RObject::Nil) => 0,
+        // GNU: length of a call counts the operator plus every argument.
+        Some(RObject::Language { cdr, .. }) => {
+            let mut count = 1usize;
+            let mut cursor = *cdr;
+            for _ in 0..100_000 {
+                if cursor == ValueId::NIL {
+                    break;
+                }
+                match heap.object(cursor) {
+                    Some(RObject::Pairlist { cdr: next, .. }) => {
+                        count += 1;
+                        cursor = *next;
+                    }
+                    _ => break,
+                }
+            }
+            count
+        }
         _ => return Err(EvalError::TypeError("length requires a vector").into()),
     };
     Ok(heap.alloc(RObject::Integer(vec![length as i32])))
@@ -3370,6 +3441,25 @@ fn vector_length(heap: &Heap, value: ValueId) -> Option<usize> {
         Some(RObject::String(v)) => Some(v.len()),
         Some(RObject::Raw(v)) => Some(v.len()),
         Some(RObject::List(v)) => Some(v.len()),
+        // GNU: length of a call counts the operator plus every argument
+        /// exactly as the pairlist chain encodes.
+        Some(RObject::Language { cdr, .. }) => {
+            let mut count = 1usize;
+            let mut cursor = *cdr;
+            for _ in 0..100_000 {
+                if cursor == ValueId::NIL {
+                    break;
+                }
+                match heap.object(cursor) {
+                    Some(RObject::Pairlist { cdr, .. }) => {
+                        count += 1;
+                        cursor = *cdr;
+                    }
+                    _ => break,
+                }
+            }
+            Some(count)
+        }
         _ => None,
     }
 }
@@ -3784,6 +3874,24 @@ fn extract_primitive(
         return Err(EvalError::TypeError("extraction requires positive indices").into());
     }
     let position = (index_value - 1) as usize;
+    // Language extraction: position zero is the operator itself, further
+    /// positions walk the argument chain exactly as GNU's call indexing.
+    if let Some(RObject::Language { car, cdr, .. }) = heap.object(operands[0]).cloned() {
+        if position == 0 {
+            return Ok(car);
+        }
+        let mut cursor = cdr;
+        for _ in 1..position {
+            match heap.object(cursor) {
+                Some(RObject::Pairlist { cdr: next, .. }) => cursor = *next,
+                _ => return Err(EvalError::TypeError("subscript out of bounds").into()),
+            }
+        }
+        return match heap.object(cursor) {
+            Some(RObject::Pairlist { car, .. }) => Ok(*car),
+            _ => Err(EvalError::TypeError("subscript out of bounds").into()),
+        };
+    }
     macro_rules! extract_scalar {
         ($variant:ident) => {
             match heap.object(operands[0]) {
@@ -7719,6 +7827,12 @@ fn coerce_character(
     interner: &mut SymbolInterner,
     value: ValueId,
 ) -> EvalResult {
+    // Symbols coerce to their print name exactly as as.character of a
+    /// name object does in GNU.
+    if let Some(RObject::Symbol { name, .. }) = heap.object(value) {
+        let text = interner.symbol_name(*name).to_string();
+        return Ok(heap.alloc(RObject::String(vec![interner.intern_string(&text)])));
+    }
     // POSIXct-classed input renders the datetime exactly as
     /// as.character.POSIXct — no timezone suffix.
     if is_posixct_classed(heap, interner, value) {
