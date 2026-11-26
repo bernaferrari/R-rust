@@ -332,6 +332,7 @@ pub mod primitive_ids {
     pub const STORAGE_MODE_ASSIGN: u32 = 314;
     pub const AS_LIST: u32 = 315;
     pub const BODY_FN: u32 = 316;
+    pub const SUMMARY_FN: u32 = 317;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -362,7 +363,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN, SUMMARY_FN};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -1378,6 +1379,7 @@ fn call_primitive_inner(
             Err(EvalError::Condition("URL scheme unsupported".to_string()).into())
         }
         DIM_ASSIGN => dim_assign_primitive(heap, interner, args, caller_env),
+        SUMMARY_FN => summary_primitive(heap, interner, args, caller_env),
         AS_LIST => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             // Language and pairlist chains flatten to their node cars with
@@ -3980,7 +3982,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom", "message", "missing", "parent.env", "order", "rank", "ordered", "is.ordered", "is.factor", "na.omit", "na.exclude", "pbeta", "dbeta", "qbeta", "find", "UseMethod", "NextMethod", "getS3method", "emptyenv", "as.integer", "as.numeric", "as.double", "stopifnot", "sequence", "rep.int", "rep_len", "dt", "pt", "qt", "sample", "sample.int", "builtins", "regexec", "df", "pf", "qf", "substr", "file", "isOpen", "close", "flush", "writeChar", "readChar", "union", "intersect", "setdiff", "setequal", "table", "setClass", "new", "is", "slot", "slotNames", "unname", "which.min", "which.max", "withVisible", "system", "writeBin", "readBin", "url", "dim<-", "storage.mode<-", "as.list", "body",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom", "message", "missing", "parent.env", "order", "rank", "ordered", "is.ordered", "is.factor", "na.omit", "na.exclude", "pbeta", "dbeta", "qbeta", "find", "UseMethod", "NextMethod", "getS3method", "emptyenv", "as.integer", "as.numeric", "as.double", "stopifnot", "sequence", "rep.int", "rep_len", "dt", "pt", "qt", "sample", "sample.int", "builtins", "regexec", "df", "pf", "qf", "substr", "file", "isOpen", "close", "flush", "writeChar", "readChar", "union", "intersect", "setdiff", "setequal", "table", "setClass", "new", "is", "slot", "slotNames", "unname", "which.min", "which.max", "withVisible", "system", "writeBin", "readBin", "url", "dim<-", "storage.mode<-", "as.list", "body", "summary",
     ]
 }
 
@@ -4285,6 +4287,7 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "storage.mode<-" => Some(STORAGE_MODE_ASSIGN),
         "as.list" => Some(AS_LIST),
         "body" => Some(BODY_FN),
+        "summary" => Some(SUMMARY_FN),
         _ => None,
     }
 }
@@ -13787,4 +13790,197 @@ fn substitute_in_tree(
         return heap.alloc(RObject::Pairlist { car: new_car, cdr: new_cdr, tag });
     }
     expr
+}
+
+/// `summary(x)` — the default methods exactly as GNU's summary.default
+/// family: numeric yields the five-number summary plus mean as a classed
+/// vector, logical yields mode and counts, character yields the length/
+/// unique/nchar profile, and factor/ordered yields level counts exactly
+/// as summary.factor. The classed object prints through the
+/// summaryDefault table path.
+fn summary_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    let value = operands[0];
+
+    let names_attr = |heap: &mut Heap, interner: &mut SymbolInterner, target: ValueId, names: &[&str]| -> Result<ValueId, RSignal> {
+        let interned: Vec<_> = names.iter().map(|n| interner.intern_string(n)).collect();
+        let names_obj = heap.alloc(RObject::String(interned));
+        copy_with_attrib(heap, interner, target, "names", names_obj).map_err(Into::into)
+    };
+    let class_summary = |heap: &mut Heap, interner: &mut SymbolInterner, target: ValueId| -> Result<ValueId, RSignal> {
+        let class_obj = heap.alloc(RObject::String(vec![interner.intern_string("summaryDefault")]));
+        copy_with_attrib(heap, interner, target, "class", class_obj).map_err(Into::into)
+    };
+
+    // factor/ordered: level counts exactly as summary.factor — a plain
+    // named integer vector, NAs count appended when missing values exist.
+    if is_factor(heap, interner, value) {
+        let levels = get_attrib(heap, interner, value, "levels")
+            .map(|id| string_vec(heap, interner, id))
+            .unwrap_or_default();
+        let codes: Vec<i32> = match heap.object(value) {
+            Some(RObject::Integer(vals)) => vals.clone(),
+            _ => Vec::new(),
+        };
+        let mut counts = vec![0i32; levels.len()];
+        let mut na_count = 0i32;
+        for code in &codes {
+            if *code == crate::value::object::NA_INTEGER {
+                na_count += 1;
+            } else if *code >= 1 && (*code as usize) <= levels.len() {
+                counts[(*code - 1) as usize] += 1;
+            }
+        }
+        let mut names: Vec<&str> = levels.iter().map(|s| s.as_str()).collect();
+        if na_count > 0 {
+            counts.push(na_count);
+            names.push("NAs");
+        }
+        let result = heap.alloc(RObject::Integer(counts));
+        return names_attr(heap, interner, result, &names);
+    }
+
+    match heap.object(value) {
+        Some(RObject::Real(_)) | Some(RObject::Integer(_)) => {
+            let vals: Vec<f64> = match heap.object(value) {
+                Some(RObject::Real(v)) => v.clone(),
+                Some(RObject::Integer(v)) => v
+                    .iter()
+                    .map(|&x| {
+                        if x == crate::value::object::NA_INTEGER {
+                            f64::from_bits(crate::value::object::NA_REAL_BITS)
+                        } else {
+                            x as f64
+                        }
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            };
+            let mut finite: Vec<f64> = vals.iter().copied().filter(|v| !v.is_nan()).collect();
+            let na_count = vals.len() - finite.len();
+            finite.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            // GNU's quantile type 7 interpolation exactly as the default.
+            let quantile7 = |sorted: &[f64], prob: f64| -> f64 {
+                let n = sorted.len();
+                if n == 0 {
+                    return f64::from_bits(crate::value::object::NA_REAL_BITS);
+                }
+                if n == 1 {
+                    return sorted[0];
+                }
+                let h = 1.0 + (n as f64 - 1.0) * prob;
+                let lower = h.floor() as usize;
+                if lower >= n {
+                    return sorted[n - 1];
+                }
+                let frac = h - lower as f64;
+                sorted[lower - 1] + frac * (sorted[lower] - sorted[lower - 1])
+            };
+            let (min, q1, median, mean, q3, max);
+            if finite.is_empty() {
+                let na = f64::from_bits(crate::value::object::NA_REAL_BITS);
+                min = na;
+                q1 = na;
+                median = na;
+                mean = f64::NAN;
+                q3 = na;
+                max = na;
+            } else {
+                min = finite[0];
+                q1 = quantile7(&finite, 0.25);
+                median = quantile7(&finite, 0.5);
+                mean = finite.iter().sum::<f64>() / finite.len() as f64;
+                q3 = quantile7(&finite, 0.75);
+                max = finite[finite.len() - 1];
+            }
+            let mut stats = vec![min, q1, median, mean, q3, max];
+            let mut names = vec!["Min.", "1st Qu.", "Median", "Mean", "3rd Qu.", "Max."];
+            if na_count > 0 {
+                stats.push(na_count as f64);
+                names.push("NAs");
+            }
+            let result = heap.alloc(RObject::Real(stats));
+            let result = names_attr(heap, interner, result, &names)?;
+            class_summary(heap, interner, result)
+        }
+        Some(RObject::Logical(vals)) => {
+            let vals = vals.clone();
+            let mut false_count = 0i32;
+            let mut true_count = 0i32;
+            let mut na_count = 0i32;
+            for v in &vals {
+                if *v == crate::value::object::NA_INTEGER {
+                    na_count += 1;
+                } else if *v != 0 {
+                    true_count += 1;
+                } else {
+                    false_count += 1;
+                }
+            }
+            // GNU's logical summary is a character matrix of mode plus
+            // counts, NAs column only when missing values exist.
+            let mut cells = vec!["logical".to_string()];
+            let mut names = vec!["Mode".to_string()];
+            if false_count > 0 || true_count > 0 || na_count == 0 {
+                names.push("FALSE".to_string());
+                cells.push(false_count.to_string());
+                names.push("TRUE".to_string());
+                cells.push(true_count.to_string());
+            }
+            if na_count > 0 {
+                names.push("NAs".to_string());
+                cells.push(na_count.to_string());
+            }
+            let interned: Vec<_> = cells.iter().map(|c| interner.intern_string(c)).collect();
+            let result = heap.alloc(RObject::String(interned));
+            let name_refs: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
+            let result = names_attr(heap, interner, result, &name_refs)?;
+            class_summary(heap, interner, result)
+        }
+        Some(RObject::String(vals)) => {
+            let texts: Vec<String> = vals.iter().map(|v| interner.string_text(*v).to_string()).collect();
+            let total = texts.len() as i32;
+            let non_na: Vec<&String> = texts.iter().filter(|s| !s.starts_with('\0')).collect();
+            let na_count = total as usize - non_na.len();
+            let mut unique = std::collections::HashSet::new();
+            let mut blank = 0i32;
+            for s in &non_na {
+                unique.insert(s.as_str());
+                if s.is_empty() {
+                    blank += 1;
+                }
+            }
+            let min_nchar = if non_na.is_empty() {
+                crate::value::object::NA_INTEGER
+            } else {
+                non_na.iter().map(|s| s.chars().count() as i32).min().unwrap_or(0)
+            };
+            let max_nchar = if non_na.is_empty() {
+                crate::value::object::NA_INTEGER
+            } else {
+                non_na.iter().map(|s| s.chars().count() as i32).max().unwrap_or(0)
+            };
+            let mut stats = vec![
+                total,
+                unique.len() as i32,
+                blank,
+                min_nchar,
+                max_nchar,
+            ];
+            let mut names = vec!["Length", "N.unique", "N.blank", "Min.nchar", "Max.nchar"];
+            if na_count > 0 {
+                stats.push(na_count as i32);
+                names.push("NAs");
+            }
+            let result = heap.alloc(RObject::Integer(stats));
+            let result = names_attr(heap, interner, result, &names)?;
+            class_summary(heap, interner, result)
+        }
+        _ => Ok(value),
+    }
 }

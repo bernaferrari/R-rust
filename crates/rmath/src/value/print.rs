@@ -197,6 +197,87 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     if matches!(object, RObject::Integer(_)) && is_factor(heap, interner, value) {
         return format_factor(heap, interner, value);
     }
+    // summaryDefault printing: GNU's two-row table — statistic names as
+    // the header row, formatted values below, every column right-justified
+    // to a uniform table-wide width with single-space separators.
+    if matches!(object, RObject::Real(_) | RObject::Integer(_) | RObject::String(_))
+        && is_summary_default(heap, interner, value)
+    {
+        let headers: Vec<String> = match super::primitives::get_attrib(heap, interner, value, "names") {
+            Some(n) => super::primitives::string_vec_pub(heap, interner, n),
+            None => Vec::new(),
+        };
+        // Numeric cells format as a uniform-decimal group exactly as GNU's
+        // zapsmall-printed statistics; a trailing NAs count stays integer,
+        // and character-valued cells (the logical mode row) pass through.
+        let cells: Vec<String> = match object {
+            RObject::Real(vals) => {
+                let stat_len = if headers.last().map(|h| h == "NAs").unwrap_or(false) {
+                    vals.len().saturating_sub(1)
+                } else {
+                    vals.len()
+                };
+                let stats = &vals[..stat_len.min(vals.len())];
+                // Decimals needed: the maximum minimal decimal count across
+                // finite statistics, trailing zeros trimmed per value.
+                let decimals_needed = |v: f64, digits: usize| -> usize {
+                    for d in 0..digits {
+                        if (v * 10f64.powi(d as i32)).fract().abs() < 1e-9 {
+                            return d;
+                        }
+                    }
+                    digits
+                };
+                let max_decimals = stats
+                    .iter()
+                    .filter(|v| v.is_finite())
+                    .map(|v| decimals_needed(*v, 4))
+                    .max()
+                    .unwrap_or(0);
+                let mut out: Vec<String> = stats
+                    .iter()
+                    .map(|v| {
+                        if v.is_nan() {
+                            if v.to_bits() == crate::value::object::NA_REAL_BITS {
+                                "NA".to_string()
+                            } else {
+                                "NaN".to_string()
+                            }
+                        } else if v.is_infinite() {
+                            if *v > 0.0 { "Inf".to_string() } else { "-Inf".to_string() }
+                        } else {
+                            format!("{:.*}", max_decimals, v)
+                        }
+                    })
+                    .collect();
+                for v in &vals[stat_len.min(vals.len())..] {
+                    out.push(if v.is_nan() { "NA".to_string() } else { format!("{}", *v as i64) });
+                }
+                out
+            }
+            RObject::Integer(vals) => vals
+                .iter()
+                .map(|v| {
+                    if *v == crate::value::object::NA_INTEGER {
+                        "NA".to_string()
+                    } else {
+                        v.to_string()
+                    }
+                })
+                .collect(),
+            RObject::String(vals) => vals.iter().map(|v| interner.string_text(*v).to_string()).collect(),
+            _ => Vec::new(),
+        };
+        let width = headers
+            .iter()
+            .chain(cells.iter())
+            .map(|s| s.len())
+            .max()
+            .unwrap_or(0);
+        let header_row: Vec<String> = headers.iter().map(|h| format!("{:>width$}", h, width = width)).collect();
+        let value_row: Vec<String> = cells.iter().map(|c| format!("{:>width$}", c, width = width)).collect();
+        return format!("{}\n{}", header_row.join(" "), value_row.join(" "));
+    }
     // table printing: the category header row above the count row, columns
     /// right-aligned to the wider of the two exactly as print.table.
     if matches!(object, RObject::Integer(_)) && is_table(heap, interner, value) {
@@ -866,6 +947,15 @@ fn is_difftime(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
     super::primitives::get_attrib(heap, interner, value, "class")
         .and_then(|id| match heap.object(id) {
             Some(RObject::String(vals)) => Some(vals.iter().any(|v| interner.string_text(*v) == "difftime")),
+            _ => None,
+        })
+        .unwrap_or(false)
+}
+
+fn is_summary_default(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
+    super::primitives::get_attrib(heap, interner, value, "class")
+        .and_then(|id| match heap.object(id) {
+            Some(RObject::String(vals)) => Some(vals.iter().any(|v| interner.string_text(*v) == "summaryDefault")),
             _ => None,
         })
         .unwrap_or(false)
