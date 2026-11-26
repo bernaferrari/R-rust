@@ -894,17 +894,37 @@ fn call_primitive_inner(
             /// calling environment exactly as GNU's non-standard lookup.
             let raw = raw_args(heap, args);
             for expr in &raw {
+                // GNU accepts both bare symbols and character names.
                 if let Some(RObject::Symbol { name, .. }) = heap.object(*expr) {
                     let sym = *name;
                     let _ = super::env::remove(heap, caller_env, sym);
+                } else {
+                    let evaluated = eval(heap, interner, *expr, caller_env)?;
+                    let v = force_if_promise(heap, interner, evaluated)?;
+                    for text in string_vec(heap, interner, v) {
+                        let sym = interner.intern_symbol(&text);
+                        let _ = super::env::remove(heap, caller_env, sym);
+                    }
                 }
             }
             Ok(ValueId::NIL)
         }
         AS_VECTOR => {
             // as.vector strips every attribute — the bare vector remains.
-            let operands = eval_args(heap, interner, args, caller_env, 1)?;
-            let stripped = heap.alloc(heap.object(operands[0]).cloned().unwrap_or(RObject::Nil));
+            /// The optional mode argument coerces exactly as GNU.
+            let raw = raw_args(heap, args);
+            let first = eval(heap, interner, raw[0], caller_env)?;
+            let first = force_if_promise(heap, interner, first)?;
+            let stripped = heap.alloc(heap.object(first).cloned().unwrap_or(RObject::Nil));
+            if let Some(mode_expr) = raw.get(1).copied() {
+                let evaluated = eval(heap, interner, mode_expr, caller_env)?;
+                let mode_v = force_if_promise(heap, interner, evaluated)?;
+                if let Some(mode) = string_operand(heap, interner, mode_v) {
+                    if mode == "character" {
+                        return coerce_character(heap, interner, stripped);
+                    }
+                }
+            }
             Ok(stripped)
         }
         AS_CHARACTER => {
@@ -913,9 +933,56 @@ fn call_primitive_inner(
         }
         TSP => attrib_getter(heap, interner, args, caller_env, "tsp"),
         TSP_ASSIGN => {
-            // tsp<- is plain attribute replacement exactly as GNU treats it.
+            // tsp<- coerces its value to double exactly as GNU's time
+            /// series parameter discipline; NULL removes the attribute.
             let operands = eval_args(heap, interner, args, caller_env, 2)?;
-            copy_with_attrib(heap, interner, operands[0], "tsp", operands[1]).map_err(RSignal::from)
+            if matches!(heap.object(operands[1]), Some(RObject::Nil)) || operands[1] == ValueId::NIL {
+                return remove_attrib(heap, interner, operands[0], "tsp").map_err(RSignal::from);
+            }
+            // GNU validates the time series parameters: numeric of length
+            /// three, and frequency and ordering sane — NA and NaN slip
+            /// through exactly as the oracle documents because their
+            /// comparisons are never definitively true.
+            let numeric_vals: Option<Vec<f64>> = match heap.object(operands[1]) {
+                Some(RObject::Real(vals)) => Some(vals.clone()),
+                Some(RObject::Integer(vals)) => Some(
+                    vals.iter()
+                        .map(|&v| {
+                            if v == crate::value::object::NA_INTEGER {
+                                f64::from_bits(crate::value::object::NA_REAL_BITS)
+                            } else {
+                                v as f64
+                            }
+                        })
+                        .collect(),
+                ),
+                _ => None,
+            };
+            let vals = match numeric_vals {
+                Some(v) if v.len() == 3 => v,
+                _ => {
+                    return Err(EvalError::Condition(
+                        "'tsp' attribute must be numeric of length three".to_string(),
+                    )
+                    .into())
+                }
+            };
+            let freq = vals[2];
+            let invalid_order = vals[0] > vals[1];
+            let invalid_freq = freq < 1.0;
+            if invalid_order || invalid_freq {
+                let freq_text = if freq.fract() == 0.0 && !freq.is_nan() {
+                    format!("{}", freq as i64)
+                } else {
+                    super::print::format_real(freq)
+                };
+                return Err(EvalError::Condition(format!(
+                    "invalid time series parameters specified ({freq_text})"
+                ))
+                .into());
+            }
+            let coerced = heap.alloc(RObject::Real(vals));
+            copy_with_attrib(heap, interner, operands[0], "tsp", coerced).map_err(RSignal::from)
         }
         SETNAMES => {
             let operands = eval_args(heap, interner, args, caller_env, 2)?;
@@ -6776,4 +6843,40 @@ fn structural_identical(
         _ => false,
     };
     payload_same && attrib_identical(heap, interner, left, right)
+}
+
+/// Copy an object dropping one attribute — attribute removal exactly as
+/// GNU's attr(x, "name") <- NULL semantics.
+pub(crate) fn remove_attrib(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    value: ValueId,
+    name: &str,
+) -> Result<ValueId, EvalError> {
+    let chain = heap.get(value).map(|slot| slot.attrib).unwrap_or(ValueId::NIL);
+    let mut kept: Vec<(String, ValueId)> = Vec::new();
+    let mut cursor = chain;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        let attr_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+            _ => String::new(),
+        };
+        if attr_name != name {
+            kept.push((attr_name, car));
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    let stripped = heap.alloc(heap.object(value).cloned().unwrap_or(RObject::Nil));
+    let mut result = stripped;
+    for (attr_name, attr_value) in kept.into_iter().rev() {
+        result = copy_with_attrib(heap, interner, result, &attr_name, attr_value)?;
+    }
+    Ok(result)
 }
