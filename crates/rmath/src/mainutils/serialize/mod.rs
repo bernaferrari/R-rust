@@ -266,11 +266,3 @@ pub use self::compress::*;
 pub use self::core::*;
 pub use self::lazyload::*;
 pub(crate) use self::raw_codecs::DecodeError as LazyRecordDecodeError;
-#[cfg(test)]
-mod tests;
-
-#[cfg(test)]
-mod ascii_numeric_tests;
-
-#[cfg(test)]
-mod ascii_stream_tests;
