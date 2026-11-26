@@ -118,6 +118,15 @@ pub mod primitive_ids {
     pub const ASSIGN_FN: u32 = 108;
     pub const GET: u32 = 109;
     pub const CHARACTER_CTOR: u32 = 110;
+    /// Attribute accessors and their replacement forms.
+    pub const DIMNAMES: u32 = 111;
+    pub const DIMNAMES_ASSIGN: u32 = 112;
+    pub const CLASS: u32 = 113;
+    pub const CLASS_ASSIGN: u32 = 114;
+    pub const ROWNAMES: u32 = 115;
+    pub const ROWNAMES_ASSIGN: u32 = 116;
+    pub const COLNAMES: u32 = 117;
+    pub const COLNAMES_ASSIGN: u32 = 118;
     /// Matrix construction and dimension introspection.
     pub const MATRIX: u32 = 100;
     pub const DIM: u32 = 101;
@@ -139,7 +148,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -327,6 +336,14 @@ pub(crate) fn call_primitive(
         STRUCTURE => structure_primitive(heap, interner, args, caller_env),
         ASSIGN_FN => assign_primitive(heap, interner, args, caller_env),
         GET => get_primitive(heap, interner, args, caller_env),
+        DIMNAMES => attrib_getter(heap, interner, args, caller_env, "dimnames"),
+        DIMNAMES_ASSIGN => attrib_replacement(heap, interner, args, caller_env, "dimnames"),
+        CLASS => class_getter(heap, interner, args, caller_env),
+        CLASS_ASSIGN => attrib_replacement(heap, interner, args, caller_env, "class"),
+        ROWNAMES => rowcolnames(heap, interner, args, caller_env, true),
+        ROWNAMES_ASSIGN => rowcolnames_assign(heap, interner, args, caller_env, true),
+        COLNAMES => rowcolnames(heap, interner, args, caller_env, false),
+        COLNAMES_ASSIGN => rowcolnames_assign(heap, interner, args, caller_env, false),
         CHARACTER_CTOR => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             let length = match heap.object(operands[0]) {
@@ -922,7 +939,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -1016,6 +1033,14 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "assign" => Some(ASSIGN_FN),
         "get" => Some(GET),
         "character" => Some(CHARACTER_CTOR),
+        "dimnames" => Some(DIMNAMES),
+        "dimnames<-" => Some(DIMNAMES_ASSIGN),
+        "class" => Some(CLASS),
+        "class<-" => Some(CLASS_ASSIGN),
+        "rownames" => Some(ROWNAMES),
+        "rownames<-" => Some(ROWNAMES_ASSIGN),
+        "colnames" => Some(COLNAMES),
+        "colnames<-" => Some(COLNAMES_ASSIGN),
         "tryCatch" => Some(TRYCATCH),
         "conditionMessage" => Some(CONDITION_MESSAGE),
         "matrix" => Some(MATRIX),
@@ -2206,18 +2231,48 @@ fn assign_replacement(
         return Ok(value);
     }
     // Generic replacement functions: `F(x, ...) <- v` desugars to
-    // `x <- `F<-`(x, ..., v)` — the object is the first target argument,
-    // the value the last replacement argument, exactly GNU's rewrite.
+    // `x <- `F<-`(x, ..., v)` — exactly GNU's rewrite. The synthetic call
+    // evaluates through ordinary dispatch, so primitive AND user-defined
+    // replacement functions resolve uniformly. The rhs pre-evaluates once
+    // and injects as a self-evaluating constant.
     let replacement_name = format!("{head_name}<-");
-    if replacement_name == "names<-" {
-        if call_args.len() != 1 {
-            return Err(EvalError::UnsupportedForm("names replacement arity").into());
-        }
-        let object = eval(heap, interner, call_args[0], caller_env)?;
-        let object = force_if_promise(heap, interner, object)?;
+    if primitive_id_for_name(&replacement_name).is_some()
+        || crate::value::env::lookup(heap, caller_env, interner.intern_symbol(&replacement_name)).is_some()
+    {
         let value = eval(heap, interner, rhs, caller_env)?;
         let value = force_if_promise(heap, interner, value)?;
-        let replaced = names_assign_core(heap, interner, object, value).map_err(RSignal::from)?;
+        // Build the argument chain: object expression, any extra target
+        /// arguments, the pre-evaluated value last.
+        let mut chain = heap.alloc(RObject::Pairlist {
+            car: value,
+            cdr: ValueId::NIL,
+            tag: ValueId::NIL,
+        });
+        for extra in call_args[1..].iter().rev() {
+            chain = heap.alloc(RObject::Pairlist {
+                car: *extra,
+                cdr: chain,
+                tag: ValueId::NIL,
+            });
+        }
+        chain = heap.alloc(RObject::Pairlist {
+            car: call_args[0],
+            cdr: chain,
+            tag: ValueId::NIL,
+        });
+        let head_sym = interner.intern_symbol(&replacement_name);
+        let head_obj = heap.alloc(RObject::Symbol {
+            name: head_sym,
+            value: ValueId::UNBOUND,
+            internal: ValueId::NIL,
+        });
+        let synthetic = heap.alloc(RObject::Language {
+            car: head_obj,
+            cdr: chain,
+            tag: ValueId::NIL,
+        });
+        let replaced = eval(heap, interner, synthetic, caller_env)?;
+        let replaced = force_if_promise(heap, interner, replaced)?;
         crate::value::env::define(heap, caller_env, sym, replaced)
             .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("replacement define")))?;
         return Ok(value);
@@ -3791,4 +3846,116 @@ fn get_primitive(
         Some((_, binding)) => Ok(binding.value),
         None => Err(EvalError::UnboundVariable(name).into()),
     }
+}
+
+/// Generic named-attribute getter: NULL when absent, exactly GNU.
+fn attrib_getter(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+    attr: &str,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    match get_attrib(heap, interner, operands[0], attr) {
+        Some(v) => Ok(v),
+        None => Ok(ValueId::NIL),
+    }
+}
+
+/// Generic attribute replacement primitive: `(object, value)` attaches the
+/// value under the attribute name through copy-on-write discipline.
+fn attrib_replacement(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+    attr: &str,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    copy_with_attrib(heap, interner, operands[0], attr, operands[1]).map_err(RSignal::from)
+}
+
+/// `class(x)`: the class attribute when present, otherwise GNU's implicit
+/// class — matrix/array for dimensioned vectors, the type name otherwise.
+fn class_getter(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    if let Some(v) = get_attrib(heap, interner, operands[0], "class") {
+        return Ok(v);
+    }
+    let implicit = if get_attrib(heap, interner, operands[0], "dim").is_some() {
+        "matrix"
+    } else {
+        match heap.object(operands[0]) {
+            Some(RObject::Real(_)) => "numeric",
+            Some(RObject::Integer(_)) => "integer",
+            Some(RObject::Logical(_)) => "logical",
+            Some(RObject::String(_)) => "character",
+            Some(RObject::List(_)) => "list",
+            _ => "NULL",
+        }
+    };
+    Ok(heap.alloc(RObject::String(vec![interner.intern_string(implicit)])))
+}
+
+/// rownames/colnames: element one/two of the dimnames attribute.
+fn rowcolnames(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+    rows: bool,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    let dimnames = match get_attrib(heap, interner, operands[0], "dimnames") {
+        Some(v) => v,
+        None => return Ok(ValueId::NIL),
+    };
+    let index = if rows { 0 } else { 1 };
+    match heap.object(dimnames) {
+        Some(RObject::List(items)) => items.get(index).copied().map_or(Ok(ValueId::NIL), |v| {
+            if v == ValueId::NIL {
+                Ok(ValueId::NIL)
+            } else {
+                Ok(v)
+            }
+        }),
+        _ => Ok(ValueId::NIL),
+    }
+}
+
+/// rownames<-/colnames<-: rebuild the dimnames list with element one/two
+/// replaced — constructing the two-element NULL list when absent, exactly
+/// GNU's lazy dimnames materialization.
+fn rowcolnames_assign(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+    rows: bool,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    let index = if rows { 0 } else { 1 };
+    let existing = get_attrib(heap, interner, operands[0], "dimnames");
+    let mut elements: Vec<ValueId> = match existing {
+        Some(id) => match heap.object(id) {
+            Some(RObject::List(items)) => {
+                let mut v = items.clone();
+                while v.len() < 2 {
+                    v.push(ValueId::NIL);
+                }
+                v
+            }
+            _ => vec![ValueId::NIL, ValueId::NIL],
+        },
+        None => vec![ValueId::NIL, ValueId::NIL],
+    };
+    elements[index] = operands[1];
+    let list = heap.alloc(RObject::List(elements));
+    copy_with_attrib(heap, interner, operands[0], "dimnames", list).map_err(RSignal::from)
 }

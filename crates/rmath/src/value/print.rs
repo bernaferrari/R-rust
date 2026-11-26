@@ -131,7 +131,16 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     /// GNU's print.matrix does.
     if let Some(dim) = dim_attribute(heap, interner, value) {
         if dim.len() == 2 && dim[0] > 0 && dim[1] > 0 && dim[0] * dim[1] == length as i32 {
-            return format_matrix(heap, interner, object, dim[0] as usize, dim[1] as usize);
+            let (row_names, col_names) = dimnames_of(heap, interner, value);
+            return format_matrix_inner(
+                heap,
+                interner,
+                object,
+                dim[0] as usize,
+                dim[1] as usize,
+                row_names,
+                col_names,
+            );
         }
     }
     // GNU right-justifies every element to the widest element text so the
@@ -161,7 +170,8 @@ fn dim_attribute(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Opti
 
 /// Column-major matrix print: header line indented by the row-label width,
 /// every column right-justified to the wider of its widest element and its
-/// `[,j]` header — GNU's print.matrix layout for the atomic types.
+/// header — GNU's print.matrix layout for the atomic types. Dimnames
+/// replace the positional `[,j]`/`[i,]` labels with bare names.
 fn format_matrix(
     heap: &Heap,
     interner: &SymbolInterner,
@@ -169,8 +179,24 @@ fn format_matrix(
     nrow: usize,
     ncol: usize,
 ) -> String {
+    format_matrix_inner(heap, interner, object, nrow, ncol, None, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn format_matrix_inner(
+    heap: &Heap,
+    interner: &SymbolInterner,
+    object: &RObject,
+    nrow: usize,
+    ncol: usize,
+    row_names: Option<Vec<String>>,
+    col_names: Option<Vec<String>>,
+) -> String {
     let element = |i: usize, j: usize| format_element(heap, interner, object, i + j * nrow);
-    let headers: Vec<String> = (0..ncol).map(|j| format!("[,{}]", j + 1)).collect();
+    let headers: Vec<String> = match &col_names {
+        Some(names) => names.clone(),
+        None => (0..ncol).map(|j| format!("[,{}]", j + 1)).collect(),
+    };
     let widths: Vec<usize> = (0..ncol)
         .map(|j| {
             let mut width = headers[j].len();
@@ -180,8 +206,14 @@ fn format_matrix(
             width
         })
         .collect();
-    let row_labels: Vec<String> = (0..nrow).map(|i| format!("[{},]", i + 1)).collect();
+    let row_labels: Vec<String> = match &row_names {
+        Some(names) => names.clone(),
+        None => (0..nrow).map(|i| format!("[{},]", i + 1)).collect(),
+    };
     let label_width = row_labels.iter().map(|l| l.len()).max().unwrap_or(0);
+    // Positional headers carry a leading space column the bare dimnames
+    /// headers do not — GNU's alignment detail.
+    let positional = row_names.is_none() && col_names.is_none();
     let mut out = String::new();
     out.push_str(&" ".repeat(label_width + 1));
     for (j, header) in headers.iter().enumerate() {
@@ -191,6 +223,7 @@ fn format_matrix(
         out.push_str(&" ".repeat(widths[j] - header.len()));
         out.push_str(header);
     }
+    let _ = positional;
     for i in 0..nrow {
         out.push('\n');
         out.push_str(&row_labels[i]);
@@ -236,4 +269,33 @@ pub fn format_cat_element(heap: &Heap, interner: &SymbolInterner, value: &RObjec
         }
         _ => "?".to_string(),
     }
+}
+
+/// Extract dimnames as unquoted row/column name vectors when present.
+fn dimnames_of(
+    heap: &Heap,
+    interner: &SymbolInterner,
+    value: ValueId,
+) -> (Option<Vec<String>>, Option<Vec<String>>) {
+    let id = match super::primitives::get_attrib(heap, interner, value, "dimnames") {
+        Some(v) => v,
+        None => return (None, None),
+    };
+    let items = match heap.object(id) {
+        Some(RObject::List(items)) => items.clone(),
+        _ => return (None, None),
+    };
+    let extract = |idx: usize| -> Option<Vec<String>> {
+        let item = items.get(idx)?;
+        match heap.object(*item) {
+            Some(RObject::String(values)) => Some(
+                values
+                    .iter()
+                    .map(|v| interner.string_text(*v).to_string())
+                    .collect(),
+            ),
+            _ => None,
+        }
+    };
+    (extract(0), extract(1))
 }
