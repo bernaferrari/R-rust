@@ -2199,7 +2199,13 @@ fn call_primitive_inner(
                             out.push(elem);
                         }
                     }
-                    Ok(heap.alloc(RObject::List(out)))
+                    let result = heap.alloc(RObject::List(out));
+                    // Element names ride the list exactly as GNU — the
+                    // vector's names attribute transfers positionally.
+                    if let Some(names_id) = get_attrib(heap, interner, v, "names") {
+                        return copy_with_attrib(heap, interner, result, "names", names_id).map_err(Into::into);
+                    }
+                    Ok(result)
                 }
             }
         }
@@ -14805,7 +14811,7 @@ fn substitute_primitive(
             let evaluated = eval(heap, interner, env_expr, caller_env)?;
             force_if_promise(heap, interner, evaluated)?
         }
-        None => ValueId::NIL,
+        None => caller_env,
     };
     Ok(substitute_in_tree(heap, interner, expr, env_value))
 }
@@ -14828,6 +14834,19 @@ fn substitute_in_tree(
             for (i, item) in items.clone().iter().enumerate() {
                 if names.get(i).map(|n| n == &text).unwrap_or(false) {
                     return *item;
+                }
+            }
+        }
+        // GNU's frame semantics: a symbol bound to a promise in the
+        // calling frame substitutes the promise's unevaluated expression;
+        // plain bindings and misses leave the symbol standing.
+        if matches!(heap.object(env), Some(RObject::Environment { .. })) {
+            let sym = interner.intern_symbol(&text);
+            if let Some(binding) = super::env::lookup_in_frame(heap, env, sym) {
+                if let Some(RObject::Promise { expr: promise_expr, .. }) = heap.object(binding.value) {
+                    if *promise_expr != ValueId::MISSING {
+                        return *promise_expr;
+                    }
                 }
             }
         }
