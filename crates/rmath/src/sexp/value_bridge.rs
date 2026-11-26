@@ -100,7 +100,46 @@ impl ValueBridge {
         if let Some(existing) = self.forward.get(&key) {
             return Ok(*existing);
         }
+        // NIL is a singleton sentinel in both worlds: it maps to the
+        // reserved `ValueId::NIL` instead of allocating a heap object.
+        if sexp.typeof_() == SEXPTYPE::NILSXP {
+            return Ok(ValueId::NIL);
+        }
         match sexp.typeof_() {
+            SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => {
+                // List and expression vectors pre-register with empty element
+                // storage, then fill in element identities recursively —
+                // elements can reference the list itself through nesting.
+                let len = sexp.len();
+                let is_expression = sexp.typeof_() == SEXPTYPE::EXPRSXP;
+                let placeholder = if is_expression {
+                    RObject::Expression(Vec::new())
+                } else {
+                    RObject::List(Vec::new())
+                };
+                let id = heap.alloc(placeholder);
+                self.forward.insert(key, id);
+
+                let mut elements = Vec::with_capacity(len as usize);
+                for i in 0..len {
+                    let element = sexp
+                        .try_vector_elt(i)
+                        .map_err(|_| ImportError::TruncatedPayload)?;
+                    elements.push(self.import(heap, interner, &element)?);
+                }
+
+                let patched = if is_expression {
+                    RObject::Expression(elements)
+                } else {
+                    RObject::List(elements)
+                };
+                match heap.object_mut(id) {
+                    Some(slot) => *slot = patched,
+                    None => return Err(ImportError::TruncatedPayload),
+                }
+                self.attach_attributes(heap, interner, sexp, id)?;
+                Ok(id)
+            }
             SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => {
                 // Pre-register with empty edges so cycles terminate, then
                 // convert the actual edges and patch the slot in place.
@@ -614,6 +653,45 @@ mod tests {
                 matches!(heap.object(attrib_id.unwrap()), Some(RObject::Pairlist { .. })),
                 "attributes import as their pairlist representation"
             );
+        });
+    }
+    #[test]
+    fn import_list_vector_preserves_elements() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let mut heap = Heap::new();
+            let mut interner = SymbolInterner::new();
+            let mut bridge = ValueBridge::new();
+            let mut arena = crate::sexp::memory::RArena::new();
+
+            let list_raw = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
+            let element_raw = arena.alloc_vector(SEXPTYPE::REALSXP, 1);
+            unsafe {
+                crate::sexp::accessors::SET_VECTOR_ELT(list_raw, 0, element_raw);
+                crate::sexp::accessors::SET_VECTOR_ELT(
+                    list_raw,
+                    1,
+                    crate::sexp::globals::R_NilValue(),
+                );
+            }
+            let element = fill_real_vector(&arena, element_raw, &[42.0]);
+            let list = Sexp::from_arena_raw(list_raw, &arena).expect("live list");
+
+            let id = bridge
+                .import(&mut heap, &mut interner, &list)
+                .expect("list vectors import");
+            match heap.object(id) {
+                Some(RObject::List(elements)) => {
+                    assert_eq!(elements.len(), 2);
+                    match heap.object(elements[0]) {
+                        Some(RObject::Real(values)) => assert_eq!(values.as_slice(), &[42.0]),
+                        other => panic!("expected real element, got {other:?}"),
+                    }
+                    assert_eq!(elements[1], ValueId::NIL);
+                }
+                other => panic!("expected list vector, got {other:?}"),
+            }
+            drop(element);
         });
     }
 }
