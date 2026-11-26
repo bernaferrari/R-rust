@@ -1852,6 +1852,12 @@ mod tests {
             "match(c(3, 1), c(1, 2, 3))",
             "{ x <- 1:10; x[x %% 3 == 0] }",
             "{ x <- c(2, 7, 1, 8); x[x %in% c(1, 8)] }",
+            // Capstone: outlier analysis — z-scores, filtering, recomputation.
+            "{ x <- c(1, 2, 2, 3, 2, 50, 2, 3, 2, 1); m <- mean(x); s <- sd(x); z <- abs((x - m) / s); keep <- x[z < 2]; c(length(keep), mean(keep), sd(keep)) }",
+            // Capstone: bootstrap-style resample means through apply and replacement.
+            "{ x <- 1:10; means <- rep(0, 5); for (i in 1:5) { idx <- ((i * 3 + 1:5) %% 10) + 1; means[i] <- mean(x[idx]) }; means }",
+            // Capstone: grouped aggregation through sapply and unique keys.
+            "{ keys <- c(1, 2, 1, 2, 1); vals <- c(10, 20, 30, 40, 50); sapply(unique(keys), function(k) sum(vals[keys == k])) }",
         ];
         // One session, one parse pass: expression objects stay valid for the
         // session's lifetime, so batching avoids per-program bootstrap cost.
