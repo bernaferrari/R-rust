@@ -47,10 +47,16 @@ pub mod primitive_ids {
     pub const COLON: u32 = 33;
     /// Grouping — `(x)` parses as a call to the parenthesis primitive.
     pub const PAREN: u32 = 34;
+    /// Logic operators — elementwise (&, |, !) and short-circuit (&&, ||).
+    pub const AND: u32 = 40;
+    pub const OR: u32 = 41;
+    pub const NOT: u32 = 42;
+    pub const SHORT_AND: u32 = 43;
+    pub const SHORT_OR: u32 = 44;
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ADD, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LT, MUL, NE, NEXT, PAREN, REPEAT, RETURN, SUB, SUBSET, SUPERASSIGN, WHILE};
+use primitive_ids::{ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LT, MUL, NE, NEXT, NOT, OR, PAREN, REPEAT, RETURN, SHORT_AND, SHORT_OR, SUB, SUBSET, SUPERASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -84,6 +90,9 @@ pub(crate) fn call_primitive(
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             Ok(operands[0])
         }
+        AND | OR => logic_elementwise(heap, interner, id.0, args, caller_env),
+        NOT => logic_not(heap, interner, args, caller_env),
+        SHORT_AND | SHORT_OR => logic_short_circuit(heap, interner, id.0, args, caller_env),
         _ => Err(EvalError::UnsupportedForm("unregistered primitive").into()),
     }
 }
@@ -527,7 +536,7 @@ pub fn primitive_names() -> &'static [&'static str] {
     &[
         "+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!=", "if", "{", "<-", "=",
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
-        "length", ":", "(",
+        "length", ":", "(", "&", "|", "!", "&&", "||",
     ]
 }
 
@@ -561,6 +570,11 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "length" => Some(LENGTH),
         ":" => Some(COLON),
         "(" => Some(PAREN),
+        "&" => Some(AND),
+        "|" => Some(OR),
+        "!" => Some(NOT),
+        "&&" => Some(SHORT_AND),
+        "||" => Some(SHORT_OR),
         _ => None,
     }
 }
@@ -970,4 +984,140 @@ fn extract_elements(
         }
         _ => Err(EvalError::TypeError("subscript requires a vector")),
     }
+}
+
+/// Extract a logical view of a value with GNU coercion: numeric zero is
+/// FALSE, nonzero TRUE, NA propagates as the integer NA sentinel.
+fn logicals_of_value(heap: &Heap, value: ValueId) -> Result<Vec<i32>, EvalError> {
+    match heap.object(value) {
+        Some(RObject::Logical(values)) => Ok(values.clone()),
+        Some(RObject::Integer(values)) => Ok(values.clone()),
+        Some(RObject::Real(values)) => Ok(values
+            .iter()
+            .map(|v| {
+                if v.is_nan() {
+                    crate::value::object::NA_INTEGER
+                } else if *v != 0.0 {
+                    1
+                } else {
+                    0
+                }
+            })
+            .collect()),
+        _ => Err(EvalError::TypeError("logical operand must be logical or numeric")),
+    }
+}
+
+/// `&` and `|` — elementwise logic with GNU NA semantics: NA & FALSE is
+/// FALSE, NA & TRUE is NA, NA | TRUE is TRUE, NA | FALSE is NA. Length
+/// recycling follows the arithmetic rule.
+fn logic_elementwise(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    op: u32,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    let a = logicals_of_value(heap, operands[0]).map_err(RSignal::from)?;
+    let b = logicals_of_value(heap, operands[1]).map_err(RSignal::from)?;
+    let na = crate::value::object::NA_INTEGER;
+    let combine = |x: i32, y: i32| -> i32 {
+        let xt = x != 0 && x != na;
+        let yt = y != 0 && y != na;
+        if op == AND {
+            if (x != na && !xt) || (y != na && !yt) {
+                0 // either operand definitely FALSE
+            } else if x == na || y == na {
+                na
+            } else {
+                (xt && yt) as i32
+            }
+        } else {
+            if xt || yt {
+                1 // either operand definitely TRUE
+            } else if x == na || y == na {
+                na
+            } else {
+                0
+            }
+        }
+    };
+    let folded = fold_numeric(a, b, op, combine).map_err(RSignal::from)?;
+    Ok(heap.alloc(RObject::Logical(folded)))
+}
+
+/// `!` — elementwise negation; NA stays NA, exactly GNU.
+fn logic_not(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    let values = logicals_of_value(heap, operands[0]).map_err(RSignal::from)?;
+    let na = crate::value::object::NA_INTEGER;
+    let out = values
+        .into_iter()
+        .map(|v| if v == na { na } else { (v == 0) as i32 })
+        .collect();
+    Ok(heap.alloc(RObject::Logical(out)))
+}
+
+/// `&&` and `||` — short-circuit operators over first elements only. The
+/// right operand evaluates only when the left doesn't decide the outcome —
+/// GNU's control-flow contract, which side effects observe.
+fn logic_short_circuit(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    op: u32,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let parts = raw_args(heap, args);
+    if parts.len() != 2 {
+        return Err(EvalError::UnsupportedForm("short-circuit arity").into());
+    }
+    let na = crate::value::object::NA_INTEGER;
+    let first_of = |heap: &Heap, value: ValueId| -> Result<i32, EvalError> {
+        let values = logicals_of_value(heap, value)?;
+        Ok(values.first().copied().unwrap_or(na))
+    };
+    let left = eval(heap, interner, parts[0], caller_env)?;
+    let left = force_if_promise(heap, interner, left)?;
+    let left_first = first_of(heap, left).map_err(RSignal::from)?;
+
+    // Does the left operand decide the outcome without the right?
+    let decided = if op == SHORT_AND {
+        left_first == 0
+    } else {
+        left_first != 0 && left_first != na
+    };
+    if decided {
+        let verdict = if op == SHORT_AND { 0 } else { 1 };
+        return Ok(heap.alloc(RObject::Logical(vec![verdict])));
+    }
+
+    let right = eval(heap, interner, parts[1], caller_env)?;
+    let right = force_if_promise(heap, interner, right)?;
+    let right_first = first_of(heap, right).map_err(RSignal::from)?;
+
+    let result = if op == SHORT_AND {
+        if right_first == 0 {
+            0
+        } else if left_first == na || right_first == na {
+            na
+        } else {
+            1
+        }
+    } else {
+        if right_first != 0 && right_first != na {
+            1
+        } else if left_first == na || right_first == na {
+            na
+        } else {
+            0
+        }
+    };
+    Ok(heap.alloc(RObject::Logical(vec![result])))
 }

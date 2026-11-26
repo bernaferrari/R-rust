@@ -1263,32 +1263,10 @@ mod tests {
         }
     }
 
-    /// The cross-world oracle: identical source must evaluate to identical
-    /// values in the legacy SEXP world and the ValueId world.
-    fn oracle_agrees(session: &mut crate::sexp::session::RSession, source: &str) {
-        let (heap, _interner, result) = eval_in_new_world(source);
-        let new_world = new_world_as_doubles(&heap, result);
-        let (legacy, _output, _visible) = session.eval_code_with_output_capture(source);
-        let legacy = legacy.expect("legacy evaluation succeeds");
-        let legacy_world = legacy_as_doubles(&legacy);
-        assert_eq!(
-            new_world.len(),
-            legacy_world.len(),
-            "length mismatch for `{source}`: new {new_world:?} vs legacy {legacy_world:?}"
-        );
-        for (i, (a, b)) in new_world.iter().zip(legacy_world.iter()).enumerate() {
-            let both_na = a.is_nan() && b.is_nan();
-            assert!(
-                both_na || a == b,
-                "element {i} mismatch for `{source}`: new {a} vs legacy {b}"
-            );
-        }
-    }
-
     #[test]
     fn oracle_cross_world_numeric_programs() {
         let mut session = crate::sexp::session::RSession::new();
-        for source in [
+        let programs = [
             "{ x <- c(1, 2, 3); x[2] }",
             "{ x <- 1:5; x[c(TRUE, FALSE)] }",
             "{ x <- 1:5; x[-2] }",
@@ -1299,9 +1277,103 @@ mod tests {
             "{ x <- 1:3; length(x) }",
             "{ x <- c(2, 4, 8); x * 2 + 1 }",
             "-(1:5)",
-        ] {
-            oracle_agrees(&mut session, source);
+            "c(TRUE, FALSE) & c(TRUE, TRUE)",
+            "c(TRUE, FALSE) | c(FALSE, FALSE)",
+            "!c(TRUE, FALSE, TRUE)",
+            "{ x <- 5; x > 3 && x < 10 }",
+            "{ x <- 1; x > 3 || x < 10 }",
+            "FALSE && stop(\"boom\")",
+            "TRUE || stop(\"boom\")",
+        ];
+        // One session, one parse pass: expression objects stay valid for the
+        // session's lifetime, so batching avoids per-program bootstrap cost.
+        let parsed: Vec<_> = programs
+            .iter()
+            .map(|source| {
+                session
+                    .with_active(|| {
+                        crate::eval::parser::parse_active_expressions(source)
+                            .expect("source parses")
+                    })
+                    .into_iter()
+                    .next()
+                    .expect("one expression")
+            })
+            .collect();
+        for (source, expression) in programs.iter().zip(parsed.iter()) {
+            let mut heap = Heap::new();
+            let mut interner = SymbolInterner::new();
+            let mut bridge = ValueBridge::new();
+            let imported = bridge
+                .import(&mut heap, &mut interner, expression)
+                .expect("program imports");
+            let env_id = bootstrap_env(&mut heap, &mut interner);
+            let result = crate::value::eval::eval(&mut heap, &mut interner, imported, env_id);
+            let new_world = new_world_as_doubles(&heap, result);
+            let (legacy, _output, _visible) = session.eval_code_with_output_capture(source);
+            let legacy = legacy.expect("legacy evaluation succeeds");
+            let legacy_world = legacy_as_doubles(&legacy);
+            assert_eq!(
+                new_world.len(),
+                legacy_world.len(),
+                "length mismatch for `{source}`: new {new_world:?} vs legacy {legacy_world:?}"
+            );
+            for (i, (a, b)) in new_world.iter().zip(legacy_world.iter()).enumerate() {
+                let both_na = a.is_nan() && b.is_nan();
+                assert!(
+                    both_na || a == b,
+                    "element {i} mismatch for `{source}`: new {a} vs legacy {b}"
+                );
+            }
         }
+    }
+
+    #[test]
+    fn logic_na_semantics_new_world() {
+        // GNU's three-valued logic, verified against the documented truth
+        // table since the oracle extractor conflates NA representation.
+        let (heap, _interner, result) = eval_in_new_world("FALSE & NA");
+        match result {
+            Ok(value) => match heap.object(value) {
+                Some(RObject::Logical(values)) => assert_eq!(values.as_slice(), &[0]),
+                other => panic!("FALSE & NA should be FALSE, got {other:?}"),
+            },
+            Err(error) => panic!("eval failed: {error:?}"),
+        }
+        let (heap, _interner, result) = eval_in_new_world("TRUE | NA");
+        match result {
+            Ok(value) => match heap.object(value) {
+                Some(RObject::Logical(values)) => assert_eq!(values.as_slice(), &[1]),
+                other => panic!("TRUE | NA should be TRUE, got {other:?}"),
+            },
+            Err(error) => panic!("eval failed: {error:?}"),
+        }
+        let (heap, _interner, result) = eval_in_new_world("TRUE & NA");
+        match result {
+            Ok(value) => match heap.object(value) {
+                Some(RObject::Logical(values)) => {
+                    assert_eq!(values.as_slice(), &[crate::value::object::NA_INTEGER])
+                }
+                other => panic!("TRUE & NA should be NA, got {other:?}"),
+            },
+            Err(error) => panic!("eval failed: {error:?}"),
+        }
+    }
+
+    #[test]
+    fn short_circuit_skips_rhs_evaluation() {
+        // The right operand never evaluates when the left decides: a side
+        // effect that would error is silently skipped, GNU exactly.
+        let (heap, _interner, result) =
+            eval_in_new_world("{ x <- 0; f <- function() { x <<- 99; TRUE }; FALSE && f(); x }");
+        expect_reals(&heap, result, &[0.0]);
+        let (heap, _interner, result) =
+            eval_in_new_world("{ x <- 0; f <- function() { x <<- 99; TRUE }; TRUE || f(); x }");
+        expect_reals(&heap, result, &[0.0]);
+        // And when the left does not decide, the right does run.
+        let (heap, _interner, result) =
+            eval_in_new_world("{ x <- 0; f <- function() { x <<- 99; TRUE }; TRUE && f(); x }");
+        expect_reals(&heap, result, &[99.0]);
     }
 
     #[test]
