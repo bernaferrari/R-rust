@@ -13,7 +13,7 @@
 use rmath::host::{RSession, RValue};
 
 fn eval_script(session: &mut RSession, code: &str) -> String {
-    let result = session.eval(code);
+    let result = session.eval_engine(code);
     assert!(
         !matches!(result.typed, RValue::Error(_)),
         "{}",
@@ -24,7 +24,7 @@ fn eval_script(session: &mut RSession, code: &str) -> String {
 
 #[test]
 fn serialize_roundtrip_under_gctorture() {
-    let mut session = RSession::new();
+    let mut session = RSession::new().unwrap();
     eval_script(&mut session, "gctorture(TRUE)");
     // Minimal allocating round-trip through the serialize paths: a small
     // expression vector with a language element, saved and reloaded.
@@ -48,7 +48,7 @@ cat(loaded, "|", length(e), "|", typeof(e[[3]]), "\n")
 
 #[test]
 fn nested_closures_on_exit_survive_collection() {
-    let mut session = RSession::new();
+    let mut session = RSession::new().unwrap();
     let out = eval_script(
         &mut session,
         "f <- function() { on.exit(cat('outer')); g <- function() { on.exit(cat('inner')); gc(); 7L }; g() }; cat(f())",

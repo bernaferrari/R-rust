@@ -37,9 +37,19 @@ pub use crate::sexp::session::TopLevelEvaluationMode;
 
 mod resources;
 pub use resources::{RMemoryUsage, RWorkspaceReservation};
+pub(crate) mod packages;
 mod session;
 mod values;
 
+pub mod facade;
+#[cfg(feature = "renderplot-device")]
+mod facade_graphics;
+
+pub use facade::{EvalOutput, HostCancellationToken, RSessionError, RuntimePaths, ValueHandle};
+#[cfg(feature = "renderplot-device")]
+pub use facade::InteractiveOutput;
+pub use facade::AndroidRuntimePaths;
+pub use packages::RPackageInfo;
 pub use session::*;
 pub use values::*;
 

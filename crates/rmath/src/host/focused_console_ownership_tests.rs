@@ -8,10 +8,7 @@ use std::{cell::Cell, rc::Rc};
 fn session() -> RSession {
     // Ordinary lookup still executes the production registry/cached wrappers.
     // These tests install only their parsed user method and active binding.
-    RSession {
-        core: CoreRSession::new_for_gc_tests(),
-        result_limit: None,
-    }
+    RSession::from_core(CoreRSession::new_for_gc_tests())
 }
 
 #[test]
@@ -33,7 +30,7 @@ fn focused_console_closed_error_preserves_live_owner_warning() {
             },
             1
         );
-        let result = closed.eval_script("7L");
+        let result = closed.eval_script_engine("7L");
         assert!(matches!(result.typed, RValue::Error(_)), "{result:?}");
         assert_eq!(result.stdout, "");
         assert!(result.stderr.contains("session is closed"));
@@ -69,14 +66,14 @@ fn focused_console_active_binding_stop_is_typed_and_recovers() {
         .unwrap()
         .pin()
         .unwrap();
-    let result = session.eval("7L; 8L");
+    let result = session.eval_engine("7L; 8L");
     // GNU 4.7 rememberLastValue stores via SET_SYMVALUE on the binding
     // cell, bypassing user active-binding functions: `7L; 8L` succeeds
     // even with an erroring active binding installed on .Last.value.
     assert_eq!(result.stdout, "[1] 7\n[1] 8\n", "{result:?}");
     assert_eq!(result.typed, RValue::Integer(Some(8)), "{result:?}");
     // The binding itself is still active: reading it invokes the function.
-    let read = session.eval(".Last.value");
+    let read = session.eval_engine(".Last.value");
     assert!(
         matches!(&read.typed, RValue::Error(message) if message.contains("last value failed")),
         "{read:?}"
@@ -88,14 +85,14 @@ fn focused_console_active_binding_stop_is_typed_and_recovers() {
         .eval_code_with_output_capture("rm('.Last.value')");
     assert!(removed.is_ok(), "{removed:?}");
     drop(removed);
-    assert_eq!(session.eval("7L").stdout, "[1] 7\n");
+    assert_eq!(session.eval_engine("7L").stdout, "[1] 7\n");
 }
 
 #[test]
 fn focused_console_revoked_print_keeps_prefix_and_original_cleanup() {
     for code in ["x", "x; 7L"] {
         let mut session = session();
-        let setup = session.eval(
+        let setup = session.eval_engine(
             "print.zz <- function(x, ...) { cat('partial  '); gc(); invisible(x) }; x <- structure(1L, class='zz')",
         );
         assert!(!matches!(setup.typed, RValue::Error(_)), "{setup:?}");
@@ -113,14 +110,14 @@ fn focused_console_revoked_print_keeps_prefix_and_original_cleanup() {
                 }
             }));
         });
-        let result = session.eval(code);
+        let result = session.eval_engine(code);
         assert_eq!(notifications.get(), 1, "{code}");
         assert!(matches!(result.typed, RValue::Error(_)), "{result:?}");
         assert_eq!(result.stdout, "partial  ", "{code}");
         assert!(result.output.starts_with("partial  "));
         assert!(owner.pin().is_err());
         assert!(!session.is_active());
-        let subsequent = session.eval("cat('must not run')");
+        let subsequent = session.eval_engine("cat('must not run')");
         assert!(
             matches!(subsequent.typed, RValue::Error(_)),
             "{subsequent:?}"
@@ -135,7 +132,7 @@ fn focused_console_revoked_print_keeps_prefix_and_original_cleanup() {
 #[test]
 fn focused_console_live_print_panic_preserves_payload_and_cleanup() {
     let mut session = session();
-    let setup = session.eval(
+    let setup = session.eval_engine(
         "print.zz <- function(x, ...) { cat('before panic'); gc(); invisible(x) }; x <- structure(1L, class='zz')",
     );
     assert!(!matches!(setup.typed, RValue::Error(_)), "{setup:?}");
@@ -155,7 +152,7 @@ fn focused_console_live_print_panic_preserves_payload_and_cleanup() {
             std::panic::panic_any(991_u32);
         }));
     });
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| session.eval("x; 7L")));
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| session.eval_engine("x; 7L")));
     let payload = outcome.expect_err("live-owner Rust panic must preserve its payload");
     assert_eq!(payload.downcast_ref::<u32>(), Some(&991));
     assert_eq!(notifications.get(), 1);
@@ -166,5 +163,5 @@ fn focused_console_live_print_panic_preserves_payload_and_cleanup() {
         .with_active_in(|instance| unsafe {
             crate::sexp::gengc::clear_gc_callbacks_in(instance)
         });
-    assert_eq!(session.eval("7L").stdout, "[1] 7\n");
+    assert_eq!(session.eval_engine("7L").stdout, "[1] 7\n");
 }

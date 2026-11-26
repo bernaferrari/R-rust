@@ -15,7 +15,7 @@ browser-analysis-tools = []
 default = []
 # Enable RenderPlot-backed GE device for high-quality skia output inside real R graphics (plot, grid, etc.)
 # Pulls r-graphics-engine (kept optional so pure-math WASM builds stay small).
-renderplot-device = ["r-graphics-engine"]
+renderplot-device = ["r-graphics-engine", "r-device-android-headless"]
 # GNU configures this off unless --enable-memory-profiling. The pinned
 # oracle is built without it, so tracemem errors and duplicate does not
 # report copies. Enable to match a Homebrew-style build.
@@ -45,6 +45,7 @@ serde_json = "1.0"
 faer = { version = "0.24", default-features = false, features = ["std", "linalg"] }
 
 r-graphics-engine = { path = "../r-graphics-engine", optional = true }
+r-device-android-headless = { path = "../r-device-android-headless", optional = true }
 regex-syntax = "0.8.11"
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]

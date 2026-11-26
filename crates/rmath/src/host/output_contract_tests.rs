@@ -4,10 +4,7 @@
 use super::*;
 
 fn session() -> RSession {
-    RSession {
-        core: CoreRSession::new_without_default_packages(),
-        result_limit: None,
-    }
+    RSession::from_core(CoreRSession::new_without_default_packages())
 }
 
 #[test]
@@ -19,7 +16,7 @@ fn exact_console_capture_preserves_invisible_explicit_bytes() {
         ("cat('\\r')", "\r"),
         ("cat(''); invisible(7L)", ""),
     ] {
-        let result = session.eval(code);
+        let result = session.eval_engine(code);
         assert!(
             !matches!(result.typed, RValue::Error(_)),
             "{code}: {result:?}"
@@ -41,7 +38,7 @@ fn exact_console_capture_prints_visible_values_without_inventing_separators() {
         ),
         ("1L; 2L", "[1] 1\n[1] 2\n"),
     ] {
-        let result = session.eval(code);
+        let result = session.eval_engine(code);
         assert!(
             !matches!(result.typed, RValue::Error(_)),
             "{code}: {result:?}"
@@ -58,12 +55,12 @@ fn exact_console_capture_preserves_pre_error_output_and_recovers() {
         ("cat('before  '); stop('boom')", "before  "),
         ("cat('before\\n\\n'); stop('boom')", "before\n\n"),
     ] {
-        let result = session.eval(code);
+        let result = session.eval_engine(code);
         assert!(matches!(result.typed, RValue::Error(_)));
         assert_eq!(result.stdout, expected, "{code}");
         assert!(result.stderr.contains("boom"));
         assert!(result.output.starts_with(expected));
-        assert_eq!(session.eval("cat('recovered')").output, "recovered");
+        assert_eq!(session.eval_engine("cat('recovered')").output, "recovered");
     }
 }
 
@@ -84,7 +81,7 @@ fn exact_console_capture_preserves_final_and_intermediate_custom_print() {
             "custom  [1] 2\n",
         ),
     ] {
-        let result = session.eval(code);
+        let result = session.eval_engine(code);
         assert!(
             !matches!(result.typed, RValue::Error(_)),
             "{code}: {result:?}"
@@ -105,7 +102,7 @@ fn exact_console_capture_matches_independent_gnu_oracle() {
         // methods or bindings from another case into the Rust session.
         let mut session = session();
         let code = case["code"].as_str().unwrap();
-        let result = session.eval(code);
+        let result = session.eval_engine(code);
         assert_eq!(
             matches!(result.typed, RValue::Error(_)),
             case["error"].as_bool().unwrap(),
@@ -122,7 +119,7 @@ fn exact_console_capture_matches_independent_gnu_oracle() {
 #[test]
 fn exact_console_capture_preserves_custom_print_stream_order_and_error_prefix() {
     let mut session = session();
-    let result = session.eval(
+    let result = session.eval_engine(
         "print.zz <- function(x, ...) {cat('first  '); message('second'); cat('third\\n\\n')}; structure(1, class='zz')",
     );
     assert!(!matches!(result.typed, RValue::Error(_)), "{result:?}");
@@ -130,7 +127,7 @@ fn exact_console_capture_preserves_custom_print_stream_order_and_error_prefix() 
     assert_eq!(result.stderr, "second\n");
     assert_eq!(result.output, "first  second\nthird\n\n");
 
-    let result = session.eval("cat('before  '); message('notice'); cat('after'); stop('boom')");
+    let result = session.eval_engine("cat('before  '); message('notice'); cat('after'); stop('boom')");
     assert!(matches!(&result.typed, RValue::Error(message) if message == "boom"));
     assert_eq!(result.stdout, "before  after");
     assert!(result.stderr.starts_with("notice\nError"), "{result:?}");
@@ -148,5 +145,5 @@ fn exact_console_capture_preserves_custom_print_stream_order_and_error_prefix() 
             .count(),
         1
     );
-    assert_eq!(session.eval("cat('recovered')").stdout, "recovered");
+    assert_eq!(session.eval_engine("cat('recovered')").stdout, "recovered");
 }

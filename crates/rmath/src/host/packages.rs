@@ -1,4 +1,4 @@
-//! Package metadata discovery for an embedded session.
+//! Package metadata discovery for the host session.
 
 use std::collections::BTreeMap;
 

@@ -1,7 +1,7 @@
 use r_graphics_engine::Scene;
 
 fn run(code: &str) -> String {
-    let mut session = rmath::host::RSession::new();
+    let mut session = rmath::host::RSession::new().unwrap();
     let mut scene = Scene::new(640, 480);
     let result = session.eval_script_with_renderplot_backend(code, &mut scene);
     assert!(
@@ -111,7 +111,7 @@ fn first_device_size_query_uses_the_renderplot_backend_geometry() {
 
 #[test]
 fn device_size_query_tracks_a_replaced_renderplot_backend() {
-    let mut session = rmath::host::RSession::new();
+    let mut session = rmath::host::RSession::new().unwrap();
     let mut first = Scene::new(640, 480);
     let snapshot = r#"
 par(mai=c(.5,.6,.7,.8)); par(omi=c(.25,.3,.35,.4))

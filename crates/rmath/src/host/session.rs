@@ -17,6 +17,15 @@ use super::*;
 pub struct RSession {
     pub(crate) core: CoreRSession,
     pub(crate) result_limit: Option<usize>,
+    /// Process-wide unique session identity — handle validation and host
+    /// diagnostics key on it exactly as the embedding facade pinned.
+    pub(crate) session_id: u64,
+    /// Interactive graphics are recorded into a session-owned scene so a
+    /// later command (for example `lines()`) can draw on the prior plot.
+    #[cfg(feature = "renderplot-device")]
+    pub(crate) interactive_scene: Option<r_graphics_engine::Scene>,
+    #[cfg(feature = "renderplot-device")]
+    pub(crate) interactive_scene_reservation: Option<RWorkspaceReservation>,
 }
 
 fn result_from_sexp(sexp: Sexp<'_>) -> RResult {
@@ -200,38 +209,83 @@ impl RSession {
         self.result_limit = max_bytes;
     }
 
-    pub fn new() -> Self {
+    /// Test-only construction around a custom core — the facade fields fill
+    /// exactly as the public constructors.
+    #[cfg(test)]
+    pub(crate) fn from_core(core: CoreRSession) -> Self {
         RSession {
-            core: CoreRSession::new_detached(),
+            core,
             result_limit: None,
+            session_id: super::facade::next_session_id(),
+            #[cfg(feature = "renderplot-device")]
+            interactive_scene: None,
+            #[cfg(feature = "renderplot-device")]
+            interactive_scene_reservation: None,
         }
     }
 
+    /// Create a new host session. The constructor is fallible exactly as the
+    /// public embedding contract pinned — runtime allocation and resource
+    /// discovery are the failure modes the shape reserves.
+    pub fn new() -> Result<Self, super::facade::RSessionError> {
+        Ok(RSession {
+            core: CoreRSession::new_detached(),
+            result_limit: None,
+            session_id: super::facade::next_session_id(),
+            #[cfg(feature = "renderplot-device")]
+            interactive_scene: None,
+            #[cfg(feature = "renderplot-device")]
+            interactive_scene_reservation: None,
+        })
+    }
+
     /// Configure library discovery before the runtime loads default packages.
-    pub fn new_with_path_policy(policy: RuntimePathPolicy) -> Self {
-        RSession {
+    pub fn new_with_path_policy(
+        policy: RuntimePathPolicy,
+    ) -> Result<Self, super::facade::RSessionError> {
+        Ok(RSession {
             core: CoreRSession::new_detached_with_path_policy(policy),
             result_limit: None,
-        }
+            session_id: super::facade::next_session_id(),
+            #[cfg(feature = "renderplot-device")]
+            interactive_scene: None,
+            #[cfg(feature = "renderplot-device")]
+            interactive_scene_reservation: None,
+        })
     }
 
     pub fn close(&mut self) {
         self.core.close();
     }
     pub fn enable_browser_files(&mut self) {
-        self.core.enable_browser_files();
+        if self.is_active() {
+            self.core.enable_browser_files();
+        }
     }
-    pub fn import_file(&mut self, path: &str, bytes: &[u8]) -> Result<(), String> {
-        self.core.put_browser_file(path, bytes)
+    /// Browser-file operations carry the public facade contract: closed
+    /// sessions error exactly as the embedding surface pinned.
+    pub fn import_file(&mut self, path: &str, bytes: &[u8]) -> Result<(), super::facade::RSessionError> {
+        self.browser_file_session()?
+            .put_browser_file(path, bytes)
+            .map_err(super::facade::RSessionError::EvalError)
     }
-    pub fn export_file(&mut self, path: &str) -> Option<Vec<u8>> {
-        self.core.get_browser_file(path)
+    pub fn export_file(&mut self, path: &str) -> Result<Vec<u8>, super::facade::RSessionError> {
+        self.browser_file_session()?
+            .get_browser_file(path)
+            .ok_or_else(|| super::facade::RSessionError::EvalError(format!("browser file not found: {path}")))
     }
-    pub fn list_files(&mut self) -> Vec<String> {
-        self.core.list_browser_files()
+    pub fn list_files(&mut self) -> Result<Vec<String>, super::facade::RSessionError> {
+        Ok(self.browser_file_session()?.list_browser_files())
     }
-    pub fn remove_file(&mut self, path: &str) -> bool {
-        self.core.remove_browser_file(path)
+    pub fn remove_file(&mut self, path: &str) -> Result<bool, super::facade::RSessionError> {
+        Ok(self.browser_file_session()?.remove_browser_file(path))
+    }
+
+    fn browser_file_session(&mut self) -> Result<&mut CoreRSession, super::facade::RSessionError> {
+        if !self.is_active() {
+            return Err(super::facade::RSessionError::EvalError("Session closed".into()));
+        }
+        Ok(&mut self.core)
     }
 
     pub fn is_active(&self) -> bool {
@@ -384,7 +438,15 @@ impl RSession {
         });
     }
 
-    pub fn set_resource_limits(&mut self, limits: RResourceLimits) {
+    pub fn set_resource_limits(&mut self, limits: RResourceLimits) -> Result<(), super::facade::RSessionError> {
+        if !self.is_active() {
+            return Err(super::facade::RSessionError::EvalError("Session closed".into()));
+        }
+        self.set_resource_limits_engine(limits);
+        Ok(())
+    }
+
+    fn set_resource_limits_engine(&mut self, limits: RResourceLimits) {
         self.core.set_eval_limits(crate::eval::eval::EvalLimits {
             max_eval_depth: saturating_usize(limits.max_eval_depth),
             max_execution_time_ms: limits.max_execution_time_ms,
@@ -421,7 +483,7 @@ impl RSession {
         if !is_valid_package_name(package) {
             return Err("invalid package name".to_string());
         }
-        let result = self.eval(&format!("library(\"{package}\")"));
+        let result = self.eval_engine(&format!("library(\"{package}\")"));
         match result.typed {
             RValue::Error(message) => Err(message),
             _ => Ok(()),
@@ -430,9 +492,14 @@ impl RSession {
 
     /// Snapshot the global environment's binding names (`ls(all.names=TRUE)`).
     ///
-    /// Owned strings only — no raw `SEXP` crosses this boundary.
-    pub fn global_binding_names(&mut self) -> Vec<String> {
-        self.core.global_binding_names()
+    /// Owned strings only — no raw `SEXP` crosses this boundary. Hosts use
+    /// this for tab completion; no evaluation runs, so session state is
+    /// untouched beyond the closed-session gate.
+    pub fn global_binding_names(&mut self) -> Result<Vec<String>, super::facade::RSessionError> {
+        if !self.is_active() {
+            return Err(super::facade::RSessionError::EvalError("Session closed".into()));
+        }
+        Ok(self.core.global_binding_names())
     }
 
     pub fn set_cancellation_token(&mut self, token: Option<CancellationToken>) {
@@ -643,12 +710,15 @@ impl RSession {
     /// Parses and evaluates code against this session's isolated global
     /// environment.
     /// One-shot migration tooling: convert a compressed GNU-format lazy-load
-    pub fn eval(&mut self, code: &str) -> RResult {
-        self.eval_script(code)
+    /// Engine-shaped evaluation: the full [`RResult`] without facade error
+    /// adaptation. The public `eval`/`eval_script` names carry the facade's
+    /// owned-value contract.
+    pub fn eval_engine(&mut self, code: &str) -> RResult {
+        self.eval_script_engine(code)
     }
 
     /// Parse and evaluate a multi-expression R script.
-    pub fn eval_script(&mut self, code: &str) -> RResult {
+    pub fn eval_script_engine(&mut self, code: &str) -> RResult {
         self.eval_script_with_cancellation_token(code, None)
     }
 
@@ -767,6 +837,18 @@ fn allocation_error() -> RResult {
 
 impl Default for RSession {
     fn default() -> Self {
-        Self::new()
+        Self::new().expect("host session constructs")
+    }
+}
+
+impl Drop for RSession {
+    fn drop(&mut self) {
+        // close() is idempotent — the core guards on its active flag.
+        self.close();
+        #[cfg(feature = "renderplot-device")]
+        {
+            self.interactive_scene = None;
+            self.interactive_scene_reservation = None;
+        }
     }
 }

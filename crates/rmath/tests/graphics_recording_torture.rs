@@ -47,7 +47,7 @@ fn assert_no_default_pdf() {
 #[test]
 fn record_replay_serializes_owned_scene_backend() {
     remove_default_pdf();
-    let mut session = RSession::new();
+    let mut session = RSession::new().unwrap();
     let mut scene = Scene::new(320, 240);
     let result = session.eval_script_with_renderplot_backend(
         "plot(1:3, c(1,4,9), col='blue'); saved <- serialize(recordPlot(), NULL); plot.new(); replayPlot(unserialize(saved))",
@@ -64,7 +64,7 @@ fn record_replay_serializes_owned_scene_backend() {
 #[test]
 fn record_replay_under_gc_torture_uses_owned_scene_backend() {
     remove_default_pdf();
-    let mut session = RSession::new();
+    let mut session = RSession::new().unwrap();
     let mut scene = Scene::new(320, 240);
     // Torture the snapshot and replay, not every allocation inside plot().
     // gctorture around plot() itself collects for hours.
@@ -83,7 +83,7 @@ fn record_replay_under_gc_torture_uses_owned_scene_backend() {
 #[test]
 fn renderplot_catch_script_errors_continues_and_draws() {
     remove_default_pdf();
-    let mut session = RSession::new();
+    let mut session = RSession::new().unwrap();
     let mut scene = Scene::new(320, 240);
     let result = session.eval_script_with_renderplot_backend(
         r#"
@@ -122,7 +122,7 @@ fn renderplot_catch_script_errors_continues_and_draws() {
 #[test]
 fn renderplot_catch_script_errors_then_plots() {
     remove_default_pdf();
-    let mut session = RSession::new();
+    let mut session = RSession::new().unwrap();
     let mut scene = Scene::new(320, 240);
     let result = session.eval_script_with_renderplot_backend(
         r#"
@@ -160,7 +160,7 @@ fn renderplot_catch_script_errors_then_plots() {
 #[test]
 fn backend_guard_restores_after_eval_error() {
     remove_default_pdf();
-    let mut session = RSession::new();
+    let mut session = RSession::new().unwrap();
     let mut scene = Scene::new(320, 240);
     let error = session.eval_script_with_renderplot_backend(
         "plot(1:3, c(1,4,9)); stop('recording backend error')",

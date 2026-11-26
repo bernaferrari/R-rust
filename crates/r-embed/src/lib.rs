@@ -15,39 +15,18 @@
 //! # Ok::<(), r_embed::RSessionError>(())
 //! ```
 
-mod packages;
-mod session;
-
+// The canonical public session lives in rmath::host exactly as the
+// pure-Rust foundation plan pins — one core session, one public host
+// session. This crate is the stable re-export boundary embedders depend on.
 pub use rmath::host::{
-    RArenaStats, RAttribute, RComplexValue, RMemoryUsage, RMetadata, RResourceLimits, RRuntimeInfo,
-    RValue, RWorkspaceReservation, RuntimePathPolicy,
+    AndroidRuntimePaths, EvalOutput, HostCancellationToken as CancellationToken, RArenaStats,
+    RAttribute, RComplexValue, RMemoryUsage, RMetadata, RPackageInfo, RResourceLimits, RRuntimeInfo,
+    RSession, RSessionError, RValue, RWorkspaceReservation, RuntimePathPolicy, RuntimePaths,
+    ValueHandle,
 };
-
-pub use packages::RPackageInfo;
+pub use rmath::host::facade::{ReadGuard, WriteGuard};
+pub use rmath::host::InteractiveOutput;
 pub use rmath::{MAX_BROWSER_FILE_BYTES, MAX_BROWSER_FILE_PATH_BYTES};
-pub use session::{
-    AndroidRuntimePaths, CancellationToken, EvalOutput, InteractiveOutput, RSession, ReadGuard,
-    ValueHandle, WriteGuard,
-};
-
-use thiserror::Error;
-
-/// Errors that can occur during R session operations.
-#[derive(Debug, Error)]
-pub enum RSessionError {
-    #[error("Failed to initialize R session: {0}")]
-    InitFailed(String),
-    #[error("Evaluation error: {0}")]
-    EvalError(String),
-    #[error("Evaluation error: {message}")]
-    EvalErrorWithOutput {
-        message: String,
-        output: String,
-        png: Option<Vec<u8>>,
-    },
-    #[error("Render error: {0}")]
-    RenderError(String),
-}
 
 #[cfg(feature = "vello-gpu")]
 pub use r_device_vello_gpu::{GpuError, GpuRenderer};

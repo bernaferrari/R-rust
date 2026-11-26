@@ -4,8 +4,8 @@ use rmath::host::{RSession, RValue};
 
 #[test]
 fn native_trycatch_trace_keeps_gnu_frames_around_the_real_try_closure() {
-    let mut session = RSession::new();
-    let output = session.eval(
+    let mut session = RSession::new().unwrap();
+    let output = session.eval_engine(
         r#"local({x<-c(1L,2L);y<-x;invisible(tracemem(x));try(x[[1L]]<-3L,silent=TRUE);TRUE})"#,
     );
     assert!(

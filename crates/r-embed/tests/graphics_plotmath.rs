@@ -77,7 +77,7 @@ fn invalid_math_arity_fails_and_session_recovers() {
 #[test]
 fn expression_scene_contains_greek_and_independently_positioned_scripts() {
     use r_graphics_engine::{DrawOperation, FontFace, Scene};
-    let mut session = rmath::host::RSession::new();
+    let mut session = rmath::host::RSession::new().unwrap();
     let mut scene = Scene::new(320, 240);
     let result = session.eval_script_with_renderplot_backend(
         "plot.new();text(.5,.5,expression(frac(bold(alpha[1]^2),beta)))",
@@ -127,7 +127,7 @@ fn expression_scene_contains_greek_and_independently_positioned_scripts() {
 #[test]
 fn accents_operators_and_fixed_groups_draw_owned_geometry() {
     use r_graphics_engine::{DrawOperation, Scene};
-    let mut session = rmath::host::RSession::new();
+    let mut session = rmath::host::RSession::new().unwrap();
     let mut scene = Scene::new(500, 300);
     let result=session.eval_script_with_renderplot_backend("plot.new();text(c(.2,.5,.8),c(.5,.5,.5),expression(bar(x)+underline(y),sum(x[i],i==1,n),group('(',hat(theta),' )')))",&mut scene);
     assert!(
@@ -154,7 +154,7 @@ fn accents_operators_and_fixed_groups_draw_owned_geometry() {
 #[test]
 fn latin_variables_default_to_plain_and_explicit_faces_work() {
     use r_graphics_engine::{DrawOperation, FontFace, Scene};
-    let mut session = rmath::host::RSession::new();
+    let mut session = rmath::host::RSession::new().unwrap();
     let mut scene = Scene::new(300, 200);
     let result = session.eval_script_with_renderplot_backend(
         "plot.new();text(.5,.5,expression(x+italic(y)+bold(z)))",
@@ -177,7 +177,7 @@ fn latin_variables_default_to_plain_and_explicit_faces_work() {
 #[test]
 fn tall_math_main_fits_above_plot_without_canvas_clipping() {
     use r_graphics_engine::{DrawOperation, DrawTarget, Scene};
-    let mut session = rmath::host::RSession::new();
+    let mut session = rmath::host::RSession::new().unwrap();
     let mut scene = Scene::new(640, 480);
     let result = session.eval_script_with_renderplot_backend(
         "plot(1:3,axes=FALSE,xlab='',ylab='',main=expression(frac(alpha[1]^2,sqrt(beta))))",
@@ -214,7 +214,7 @@ fn tall_math_main_fits_above_plot_without_canvas_clipping() {
 #[test]
 fn stretchy_groups_wide_accents_and_display_limits_emit_owned_geometry() {
     use r_graphics_engine::{DrawOperation, Scene};
-    let mut session = rmath::host::RSession::new();
+    let mut session = rmath::host::RSession::new().unwrap();
     let mut scene = Scene::new(640, 360);
     let result = session.eval_script_with_renderplot_backend(
         "plot.new();text(.5,.5,expression(bgroup('(',frac(alpha+beta,gamma+delta),')')+widehat(alpha+beta)+sum(x[i],i==1,n)))",
@@ -251,7 +251,7 @@ fn stretchy_groups_wide_accents_and_display_limits_emit_owned_geometry() {
 #[test]
 fn standard_plotmath_symbol_and_relation_catalog_renders() {
     use r_graphics_engine::{DrawOperation, Scene};
-    let mut session = rmath::host::RSession::new();
+    let mut session = rmath::host::RSession::new().unwrap();
     let mut scene = Scene::new(800, 320);
     let result = session.eval_script_with_renderplot_backend(
         "plot.new();text(.5,.5,expression(infinity + partialdiff + nabla + degree + arrowleft + arrowright + plusminus + notequal + lessequal + greaterequal + intersection + union + therefore + x %subset% y %notin% z %<->% w))",
@@ -278,7 +278,7 @@ fn standard_plotmath_symbol_and_relation_catalog_renders() {
 #[test]
 fn named_limit_operators_use_display_layout() {
     use r_graphics_engine::{DrawOperation, Scene};
-    let mut session = rmath::host::RSession::new();
+    let mut session = rmath::host::RSession::new().unwrap();
     let mut scene = Scene::new(640, 320);
     let result = session.eval_script_with_renderplot_backend(
         "plot.new();text(.5,.5,expression(lim(x,x==0)+inf(x,i==1,n)+max(x,i==1,n)))",

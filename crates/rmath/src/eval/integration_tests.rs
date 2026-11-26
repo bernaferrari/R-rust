@@ -735,7 +735,7 @@ fn test_protect_stack_integrity() {
 #[test]
 fn test_session_eval_parsed_exprs() {
     let _session = crate::sexp::session::RSession::new();
-    let mut session = crate::host::RSession::new();
+    let mut session = crate::host::RSession::new().unwrap();
 
     let r1 = session.eval("42");
     assert!(r1.output.contains("42"));

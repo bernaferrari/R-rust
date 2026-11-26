@@ -2,7 +2,7 @@ use r_graphics_engine::Scene;
 
 #[test]
 fn failed_plot_new_preserves_mfrow_index_and_session_for_recovery() {
-    let mut session = rmath::host::RSession::new();
+    let mut session = rmath::host::RSession::new().unwrap();
     let mut scene = Scene::new(640, 480);
 
     let failed = session.eval_script_with_renderplot_backend(
@@ -57,8 +57,8 @@ cat("wrapped|", paste(par("mfg"), collapse=","),
 
 #[test]
 fn failed_first_plot_keeps_fresh_device_state_and_other_session_isolated() {
-    let mut failed_session = rmath::host::RSession::new();
-    let mut other_session = rmath::host::RSession::new();
+    let mut failed_session = rmath::host::RSession::new().unwrap();
+    let mut other_session = rmath::host::RSession::new().unwrap();
     let mut failed_scene = Scene::new(640, 480);
     let mut other_scene = Scene::new(640, 480);
 

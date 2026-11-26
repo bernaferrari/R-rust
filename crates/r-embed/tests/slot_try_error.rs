@@ -85,9 +85,9 @@ fn uncaught_top_level_stop_matches_original_gnu_error_cases() {
             rmath::host::RSession::new_with_path_policy(rmath::host::RuntimePathPolicy::new(
                 Vec::new(),
                 std::env::temp_dir(),
-            ))
+            )).unwrap()
         } else {
-            rmath::host::RSession::new()
+            rmath::host::RSession::new().unwrap()
         };
         for (source, expected) in [
             (
@@ -103,10 +103,10 @@ fn uncaught_top_level_stop_matches_original_gnu_error_cases() {
                 ),
             ),
         ] {
-            let result = session.eval_script(source);
+            let result = session.eval_script_engine(source);
             assert!(matches!(result.typed, rmath::host::RValue::Error(_)));
             assert_eq!(result.output, expected, "portable={portable}");
         }
-        assert_eq!(session.eval_script("1 + 1").output, "[1] 2\n");
+        assert_eq!(session.eval_script_engine("1 + 1").output, "[1] 2\n");
     }
 }
