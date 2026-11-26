@@ -484,7 +484,7 @@ fn call_primitive_inner(
         AGGREGATE => aggregate_primitive(heap, interner, args, caller_env),
         FACTOR => factor_primitive(heap, interner, args, caller_env),
         LEVELS => attrib_getter(heap, interner, args, caller_env, "levels"),
-        LEVELS_ASSIGN => attrib_replacement(heap, interner, args, caller_env, "levels"),
+        LEVELS_ASSIGN => levels_assign_primitive(heap, interner, args, caller_env),
         UNCLASS => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             copy_with_attrib(heap, interner, operands[0], "class", ValueId::NIL).map_err(RSignal::from)
@@ -4784,7 +4784,9 @@ fn attributes_assign_primitive(
         None => Vec::new(),
     };
     if let Some(RObject::List(items)) = heap.object(operands[1]).cloned() {
-        for (i, item) in items.iter().enumerate() {
+        // Reverse iteration: copy_with_attrib prepends, so list order is
+        /// preserved in the final chain exactly as GNU's insertion order.
+        for (i, item) in items.iter().enumerate().rev() {
             if let Some(name) = name_vec.get(i) {
                 object = copy_with_attrib(heap, interner, object, name, *item).map_err(RSignal::from)?;
             }
@@ -5385,4 +5387,127 @@ fn format_spec(
         }
     };
     body
+}
+
+/// `levels<-` — GNU's full remap discipline. Character vector form maps
+/// positionally over the current levels with NA entries dropping levels
+/// (elements recode to NA, higher codes shift down); a named list form
+/// remaps new-level-names to the old labels they absorb. Length mismatch
+/// in the vector form is GNU's "number of levels differs" error. On
+/// non-factors the attribute attaches plainly exactly as GNU.
+fn levels_assign_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    let object = operands[0];
+    let value = operands[1];
+    let is_factor = match get_attrib(heap, interner, object, "class") {
+        Some(id) => match heap.object(id) {
+            Some(RObject::String(values)) => values
+                .iter()
+                .any(|v| interner.string_text(*v) == "factor"),
+            _ => false,
+        },
+        None => false,
+    };
+    if !is_factor {
+        return copy_with_attrib(heap, interner, object, "levels", value).map_err(RSignal::from);
+    }
+    let old_levels: Vec<String> = match get_attrib(heap, interner, object, "levels") {
+        Some(id) => string_vec(heap, interner, id),
+        None => Vec::new(),
+    };
+    let codes = match heap.object(object) {
+        Some(RObject::Integer(values)) => values.clone(),
+        _ => return Err(EvalError::TypeError("levels target must be integer-coded").into()),
+    };
+
+    // The list form: names are new levels, elements the old labels each
+    // absorbs — a full recode map.
+    if let Some(RObject::List(items)) = heap.object(value).cloned() {
+        let names_id = get_attrib(heap, interner, value, "names");
+        let new_names: Vec<String> = match names_id {
+            Some(id) => string_vec(heap, interner, id),
+            None => Vec::new(),
+        };
+        // Map old label -> new code (1-based).
+        let mut remap: Vec<(String, usize)> = Vec::new();
+        for (i, item) in items.iter().enumerate() {
+            let absorbed = string_vec(heap, interner, *item);
+            for label in absorbed {
+                remap.push((label, i + 1));
+            }
+        }
+        let new_codes: Vec<i32> = codes
+            .iter()
+            .map(|c| {
+                if *c == crate::value::object::NA_INTEGER {
+                    return crate::value::object::NA_INTEGER;
+                }
+                let label = old_levels.get((*c - 1) as usize).cloned().unwrap_or_default();
+                remap
+                    .iter()
+                    .find(|(l, _)| *l == label)
+                    .map(|(_, nc)| *nc as i32)
+                    .unwrap_or(crate::value::object::NA_INTEGER)
+            })
+            .collect();
+        return rebuild_factor(heap, interner, object, new_codes, new_names);
+    }
+
+    // Vector form: positional rename with NA-drop recoding.
+    let new_names_raw = string_vec(heap, interner, value);
+    if new_names_raw.len() != old_levels.len() {
+        return Err(EvalError::Condition("number of levels differs".to_string()).into());
+    }
+    // Positional map old position -> new name; NA drops the level.
+    // Surviving levels compact in order; codes remap.
+    let mut surviving: Vec<String> = Vec::new();
+    let mut position_map: Vec<Option<usize>> = Vec::new(); // old idx -> new 0-based
+    for (i, name) in new_names_raw.iter().enumerate() {
+        if name == "\0NA" || name == "NA" && !old_levels.contains(name) {
+            position_map.push(None);
+        } else {
+            position_map.push(Some(surviving.len()));
+            surviving.push(name.clone());
+        }
+    }
+    let new_codes: Vec<i32> = codes
+        .iter()
+        .map(|c| {
+            if *c == crate::value::object::NA_INTEGER {
+                return crate::value::object::NA_INTEGER;
+            }
+            match position_map.get((*c - 1) as usize) {
+                Some(Some(new_pos)) => *new_pos as i32 + 1,
+                _ => crate::value::object::NA_INTEGER,
+            }
+        })
+        .collect();
+    rebuild_factor(heap, interner, object, new_codes, surviving)
+}
+
+/// Reassemble a factor with recoded integers and fresh levels — the
+/// copy-on-write discipline the replacement forms share.
+fn rebuild_factor(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    object: ValueId,
+    new_codes: Vec<i32>,
+    new_levels: Vec<String>,
+) -> EvalResult {
+    let interned: Vec<super::intern::InternedStr> = new_levels
+        .iter()
+        .map(|l| interner.intern_string(l))
+        .collect();
+    let levels_obj = heap.alloc(RObject::String(interned));
+    // Fresh integer vector carrying the recoded values; class and levels
+    // attach through copy-on-write discipline.
+    let fresh = heap.alloc(RObject::Integer(new_codes));
+    let fresh = copy_with_attrib(heap, interner, fresh, "levels", levels_obj).map_err(RSignal::from)?;
+    let class_obj = heap.alloc(RObject::String(vec![interner.intern_string("factor")]));
+    copy_with_attrib(heap, interner, fresh, "class", class_obj).map_err(RSignal::from)
 }
