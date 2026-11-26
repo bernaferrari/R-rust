@@ -211,6 +211,7 @@ pub mod primitive_ids {
     pub const CAPTURE_OUTPUT: u32 = 193;
     pub const ROW_NAMES: u32 = 194;
     pub const ROW_NAMES_SET: u32 = 195;
+    pub const TAPPLY: u32 = 196;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -241,7 +242,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -1200,6 +1201,91 @@ fn call_primitive_inner(
             let operands = eval_args(heap, interner, args, caller_env, 2)?;
             copy_with_attrib(heap, interner, operands[0], "row.names", operands[1]).map_err(RSignal::from)
         }
+        TAPPLY => {
+            // Groups order by the index's factor levels exactly as GNU —
+            /// level order, not sorted-unique — and the result is a 1-D
+            /// array carrying dim, dimnames, and the array class.
+            let operands = eval_args(heap, interner, args, caller_env, 3)?;
+            let x = operands[0];
+            let index = operands[1];
+            let fun = operands[2];
+            let levels: Vec<String> = match get_attrib(heap, interner, index, "levels") {
+                Some(id) => string_vec(heap, interner, id),
+                None => {
+                    let mut vals = string_vec(heap, interner, index);
+                    vals.sort();
+                    vals.dedup();
+                    vals
+                }
+            };
+            // Factor indices are integer codes into levels; plain indices
+            /// match by their text exactly.
+            let index_is_factor = matches!(heap.object(index), Some(RObject::Integer(_)))
+                && get_attrib(heap, interner, index, "levels").is_some();
+            let index_text: Vec<String> = if index_is_factor {
+                match heap.object(index) {
+                    Some(RObject::Integer(codes)) => codes
+                        .iter()
+                        .map(|&c| {
+                            if c == crate::value::object::NA_INTEGER {
+                                "\0NA".to_string()
+                            } else {
+                                levels.get((c - 1) as usize).cloned().unwrap_or_default()
+                            }
+                        })
+                        .collect(),
+                    _ => Vec::new(),
+                }
+            } else {
+                string_vec(heap, interner, index)
+            };
+            let x_len = vector_length(heap, x).unwrap_or(0);
+            let mut result_values: Vec<f64> = Vec::new();
+            let mut result_int = true;
+            for level in &levels {
+                let positions: Vec<usize> = index_text
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, t)| *i < x_len && *t == level)
+                    .map(|(i, _)| i)
+                    .collect();
+                let sub = extract_positions(heap, interner, x, &positions)?;
+                let applied = apply_fun_to(heap, interner, fun, sub, caller_env)?;
+                match heap.object(applied) {
+                    Some(RObject::Real(v)) if !v.is_empty() => {
+                        result_values.push(v[0]);
+                        result_int = false;
+                    }
+                    Some(RObject::Integer(v)) if !v.is_empty() => {
+                        result_values.push(v[0] as f64);
+                    }
+                    Some(RObject::Real(_)) => {
+                        result_values.push(f64::from_bits(crate::value::object::NA_REAL_BITS));
+                        result_int = false;
+                    }
+                    _ => return Err(EvalError::TypeError("tapply FUN must return scalar numeric").into()),
+                }
+            }
+            let nlevels = levels.len();
+            let values: ValueId = if result_int {
+                heap.alloc(RObject::Integer(result_values.iter().map(|&v| v as i32).collect()))
+            } else {
+                heap.alloc(RObject::Real(result_values))
+            };
+            let level_interned: Vec<super::intern::InternedStr> = levels
+                .iter()
+                .map(|s| interner.intern_string(s))
+                .collect();
+            let names_vec = heap.alloc(RObject::String(level_interned.clone()));
+            let dim_vec = heap.alloc(RObject::Integer(vec![nlevels as i32]));
+            let dn_inner = heap.alloc(RObject::String(level_interned));
+            let dn_list = heap.alloc(RObject::List(vec![dn_inner]));
+            let class_vec = heap.alloc(RObject::String(vec![interner.intern_string("array")]));
+            let with_names = copy_with_attrib(heap, interner, values, "names", names_vec).map_err(RSignal::from)?;
+            let with_dim = copy_with_attrib(heap, interner, with_names, "dim", dim_vec).map_err(RSignal::from)?;
+            let with_dn = copy_with_attrib(heap, interner, with_dim, "dimnames", dn_list).map_err(RSignal::from)?;
+            copy_with_attrib(heap, interner, with_dn, "class", class_vec).map_err(RSignal::from)
+        }
         FORMAT => {
             // format() on Date-classed input renders ISO exactly as the
             /// print path; other input coerces to character.
@@ -2025,7 +2111,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -2186,6 +2272,7 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "capture.output" => Some(CAPTURE_OUTPUT),
         "row.names" => Some(ROW_NAMES),
         "row.names<-" => Some(ROW_NAMES_SET),
+        "tapply" => Some(TAPPLY),
         "tsp" => Some(TSP),
         "tsp<-" => Some(TSP_ASSIGN),
         "printDeferredWarnings" => Some(PRINT_DEFERRED_WARNINGS),
@@ -6151,13 +6238,42 @@ fn factor_primitive(
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 1)?;
     let texts = string_vec(heap, interner, operands[0]);
-    let mut levels: Vec<String> = texts
-        .iter()
-        .filter(|s| *s != "\0NA")
-        .cloned()
-        .collect();
-    levels.sort();
-    levels.dedup();
+    // A tagged levels argument supplies the level set verbatim — order and
+    /// empties included — exactly as GNU; otherwise levels derive sorted
+    /// from the data.
+    let mut tagged_levels: Option<Vec<String>> = None;
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
+        };
+        if tag_name.as_deref() == Some("levels") {
+            let v = eval(heap, interner, car, caller_env)?;
+            tagged_levels = Some(string_vec(heap, interner, v));
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    let mut levels: Vec<String> = match tagged_levels {
+        Some(ls) => ls.into_iter().filter(|s| s != "\0NA").collect(),
+        None => {
+            let mut ls: Vec<String> = texts
+                .iter()
+                .filter(|s| *s != "\0NA")
+                .cloned()
+                .collect();
+            ls.sort();
+            ls.dedup();
+            ls
+        }
+    };
     let codes: Vec<i32> = texts
         .iter()
         .map(|s| {
