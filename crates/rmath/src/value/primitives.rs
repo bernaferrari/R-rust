@@ -1009,12 +1009,17 @@ fn subset_primitive(
     caller_env: ValueId,
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 2)?;
-    subset_impl(heap, operands[0], operands[1])
+    subset_impl(heap, interner, operands[0], operands[1])
 }
 
 /// Subsetting core operating on already-evaluated operands — shared by the
 /// primitive and by the real-index truncation recursion.
-fn subset_impl(heap: &mut Heap, source: ValueId, index: ValueId) -> EvalResult {
+fn subset_impl(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    source: ValueId,
+    index: ValueId,
+) -> EvalResult {
     enum Selection {
         /// Explicit 0-based positions; usize::MAX encodes an NA element.
         Positions(Vec<usize>),
@@ -1054,7 +1059,7 @@ fn subset_impl(heap: &mut Heap, source: ValueId, index: ValueId) -> EvalResult {
         Some(RObject::Real(values)) => {
             let truncs: Vec<i32> = values.iter().map(|v| *v as i32).collect();
             let truncated = heap.alloc(RObject::Integer(truncs));
-            return subset_impl(heap, source, truncated);
+            return subset_impl(heap, interner, source, truncated);
         }
         Some(RObject::Logical(values)) => {
             let mut positions = Vec::new();
@@ -1066,6 +1071,35 @@ fn subset_impl(heap: &mut Heap, source: ValueId, index: ValueId) -> EvalResult {
                     positions.push(i);
                 }
             }
+            Selection::Positions(positions)
+        }
+        Some(RObject::String(values)) => {
+            // Named access: exact matching against the source's names,
+            /// unmatched positions yield NA exactly as GNU. Partial matching
+            /// is `[[`'s business, not `[`'s.
+            let source_names = get_attrib(heap, interner, source, "names");
+            let positions: Vec<usize> = match source_names {
+                Some(names_id) => {
+                    let names_vec: Vec<String> = match heap.object(names_id) {
+                        Some(RObject::String(entries)) => entries
+                            .iter()
+                            .map(|entry| interner.string_text(*entry).to_string())
+                            .collect(),
+                        _ => Vec::new(),
+                    };
+                    values
+                        .iter()
+                        .map(|wanted| {
+                            let wanted_text = interner.string_text(*wanted);
+                            match names_vec.iter().position(|n| n == wanted_text) {
+                                Some(position) => position,
+                                None => usize::MAX,
+                            }
+                        })
+                        .collect()
+                }
+                None => values.iter().map(|_| usize::MAX).collect(),
+            };
             Selection::Positions(positions)
         }
         _ => return Err(EvalError::TypeError("unsupported subscript type").into()),
@@ -1082,7 +1116,33 @@ fn subset_impl(heap: &mut Heap, source: ValueId, index: ValueId) -> EvalResult {
             .collect(),
     };
 
-    extract_elements(heap, source, &positions).map_err(RSignal::from)
+    let extracted = extract_elements(heap, source, &positions).map_err(RSignal::from)?;
+    // GNU fidelity: `[` carries the names of selected elements across —
+    /// positional and named subsetting alike. Out-of-range and NA positions
+    /// take the NA-string sentinel the bridge round-trips.
+    if let Some(names_id) = get_attrib(heap, interner, source, "names") {
+        let source_names: Vec<super::intern::InternedStr> = match heap.object(names_id) {
+            Some(RObject::String(entries)) => entries.clone(),
+            _ => Vec::new(),
+        };
+        if !source_names.is_empty() {
+            let na_text = interner.intern_string("\0NA");
+            let selected: Vec<super::intern::InternedStr> = positions
+                .iter()
+                .map(|p| {
+                    if *p == usize::MAX || *p >= source_names.len() {
+                        na_text
+                    } else {
+                        source_names[*p]
+                    }
+                })
+                .collect();
+            let names_vec = heap.alloc(RObject::String(selected));
+            return copy_with_attrib(heap, interner, extracted, "names", names_vec)
+                .map_err(RSignal::from);
+        }
+    }
+    Ok(extracted)
 }
 
 fn vector_length(heap: &Heap, value: ValueId) -> Option<usize> {
