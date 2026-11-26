@@ -35,6 +35,9 @@ export RAYON_NUM_THREADS="${RAYON_NUM_THREADS:-2}"
 # though GNU R handles the same recursion on a normal 8 MiB main thread.
 # Give test threads a stack sized for real evaluation depth.
 export RUST_MIN_STACK="${RUST_MIN_STACK:-33554432}"
+# Cap libtest parallelism as well: rmath tests each spin up evaluator
+# sessions, and unbounded test threads exhaust memory on this workstation.
+export RUST_TEST_THREADS="${RUST_TEST_THREADS:-3}"
 
 cargo "$@"
 result=$?
