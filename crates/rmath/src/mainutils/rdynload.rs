@@ -643,134 +643,12 @@ pub unsafe fn R_FindSymbol(name: *const c_char, pkg: *const c_char, sym_type: c_
     None
 }
 
-// ---------------------------------------------------------------------------
-// DeleteDLL — remove a DLL from the table
-// ---------------------------------------------------------------------------
-
-/// Invoke `R_init_`/`R_unload_` style loader hooks for a loaded DLL.
-fn call_dll_hook(library: &Rc<LoadedDll>, prefix: &[u8]) {
-    let info = &library.info;
-    if info.handle.is_null() {
-        return;
-    }
-    let mut symbol = prefix.to_vec();
-    symbol.extend_from_slice(info.name.to_bytes_with_nul());
-    let Ok(symbol) = CStr::from_bytes_with_nul(&symbol) else {
-        return;
-    };
-    // SAFETY: the library lease keeps the handle live; `symbol` is a C string.
-    let sym = unsafe { lookup_address(info.handle, symbol) };
-    if !sym.is_null() {
-        // SAFETY: the R native loader hook has the C signature fn(DllInfo*);
-        // the physical lease survives for the duration of the callback.
-        let hook: unsafe extern "C" fn(*mut DllInfo) = unsafe { std::mem::transmute(sym) };
-        unsafe { hook(library.pointer()) };
-    }
-}
-
-fn delete_dll(path: &CStr) -> bool {
-    let dll = with_dynload_state(|state| {
-        state
-            .loaded_dll
-            .iter()
-            .position(|dll| dll.info.path.as_c_str() == path)
-            .map(|index| state.loaded_dll.remove(index))
-    });
-
-    let Some(dll) = dll else {
-        return false;
-    };
-    call_dll_hook(&dll, b"R_unload_");
-    // Removing the table's ownership retires future lookup immediately.
-    // Active invocation leases delay dlclose and DllInfo destruction.
-    drop(dll);
-    true
-}
 
 // ---------------------------------------------------------------------------
 // AddDLL — high-level DLL loading (with dlopen)
 // ---------------------------------------------------------------------------
 
-/// Load a shared library and register it.
-///
-/// # Safety
-/// The caller must be the trusted native-loader path (`dyn.load`, module
-/// cdynload); the loaded library can execute arbitrary native code during
-/// `R_init_` and later calls.
-unsafe fn AddDLL(path: &CStr, as_local: c_int, now: c_int) -> Option<Rc<LoadedDll>> {
-    // Check if already loaded — if so, move to end of list (most recent)
-    let already_loaded = with_dynload_state(|state| {
-        let index = state
-            .loaded_dll
-            .iter()
-            .position(|dll| dll.info.path.as_c_str() == path)?;
-        let dll = state.loaded_dll.remove(index);
-        state.loaded_dll.push(dll.clone());
-        Some(dll)
-    });
-    if already_loaded.is_some() {
-        return already_loaded;
-    }
 
-    let at_max = with_dynload_state(|state| state.loaded_dll.len() >= state.max_num_dlls);
-    if at_max {
-        return None;
-    }
-
-    // Reduce fallible work after dlopen.
-    let name = extract_dll_name(path);
-    let stored_path = path.to_owned();
-
-    // Pure-Rust runtime: foreign shared objects can never load — they are
-    // C-ABI by definition. `dyn.load` fails cleanly through the existing
-    // error path, exactly as it always has on wasm32 and Android.
-    let _ = (as_local, now);
-    let handle: *mut std::ffi::c_void = std::ptr::null_mut();
-
-    if handle.is_null() {
-        static MSG: &[u8] = b"foreign shared libraries are not supported in pure-Rust rport\0";
-        let message = MSG.as_ptr() as *mut std::ffi::c_char;
-        // Take an owned copy promptly before mutating session state.
-        let bytes = if message.is_null() {
-            Vec::new()
-        } else {
-            // SAFETY: `message` is non-null and NUL-terminated for the call.
-            unsafe { CStr::from_ptr(message) }.to_bytes().to_vec()
-        };
-        with_dynload_state(|state| {
-            state.dll_error.fill(0);
-            let copy_len = bytes.len().min(state.dll_error.len() - 1);
-            state.dll_error[..copy_len].copy_from_slice(&bytes[..copy_len]);
-        });
-        return None;
-    }
-
-    let library = LoadedDll::new(DllInfo::new(stored_path, name, handle, true));
-    with_dynload_state(|state| state.loaded_dll.push(library.clone()));
-
-    call_dll_hook(&library, b"R_init_");
-    // An initialization hook can unload its own library. The local lease
-    // protects the hook, but a retired entry must not escape as DllInfo.
-    with_dynload_state(|state| {
-        state
-            .loaded_dll
-            .iter()
-            .any(|entry| Rc::ptr_eq(entry, &library))
-    })
-    .then_some(library)
-}
-
-/// Extract the DLL name from a full path: basename minus the shared-library
-/// extension. An invalid-UTF-8 path produces the empty name, as before.
-fn extract_dll_name(path: &CStr) -> CString {
-    let path = path.to_str().unwrap_or("");
-    let basename = path.rsplit(['/', '\\']).next().unwrap_or(path);
-    let name = [".so", ".dylib", ".dll"]
-        .iter()
-        .find_map(|extension| basename.strip_suffix(extension))
-        .unwrap_or(basename);
-    CString::new(name).unwrap_or_default()
-}
 
 // ---------------------------------------------------------------------------
 // R_getSymbolInfo — resolve a symbol and return its info as an SEXP
@@ -1053,74 +931,13 @@ pub fn R_getRegisteredRoutines(dll: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// `.Internal(dyn.load(...))` handler.
-pub fn do_dynload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    if native_dynamic_loading_policy_enabled() {
-        native_dynamic_loading_policy_error("dyn.load()");
-    }
-
-    checkArity(op, args);
-    if Rf_isString(CAR(args)) == 0 || Rf_length(CAR(args)) != 1 {
-        error("character argument expected");
-    }
-    let path = CString::new(crate::sexp::accessors::char_cstr_bytes(STRING_ELT(
-        CAR(args),
-        0,
-    )))
-    .expect("checked CHAR bytes have no NUL");
-    // asLocal, now, searchPath from remaining args (simplified)
-    let as_local = if !CAR(CDR(args)).is_null() {
-        let l = crate::mainutils::coerce::asLogical(CAR(CDR(args)));
-        if l != 0 { 1 } else { 0 }
-    } else {
-        1
-    };
-    let now = if !CAR(CDR(CDR(args))).is_null() {
-        let l = crate::mainutils::coerce::asLogical(CAR(CDR(CDR(args))));
-        if l != 0 { 1 } else { 0 }
-    } else {
-        1
-    };
-
-    // SAFETY: `dyn.load` is the trusted native-loader policy seam; AddDLL may
-    // execute the library's `R_init_` hook and later native code.
-    let Some(dll) = (unsafe { AddDLL(&path, as_local, now) }) else {
-        let message = with_dynload_state(|state| {
-            let err_str = std::ffi::CStr::from_bytes_until_nul(&state.dll_error).unwrap_or(
-                std::ffi::CStr::from_bytes_with_nul(b"unknown error\0").unwrap_or_default(),
-            );
-            format!(
-                "unable to load shared object '{}':\n  {}",
-                path.to_str().unwrap_or("?"),
-                err_str.to_str().unwrap_or("?")
-            )
-        });
-        error(&message);
-    };
-    make_dll_info_sexp(&dll.info)
+pub fn do_dynload(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+    native_dynamic_loading_policy_error("dyn.load()");
 }
 
 /// `.Internal(dyn.unload(...))` handler.
-pub fn do_dynunload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    if native_dynamic_loading_policy_enabled() {
-        native_dynamic_loading_policy_error("dyn.unload()");
-    }
-
-    checkArity(op, args);
-    if Rf_isString(CAR(args)) == 0 || Rf_length(CAR(args)) != 1 {
-        error("character argument expected");
-    }
-    let path = CString::new(crate::sexp::accessors::char_cstr_bytes(STRING_ELT(
-        CAR(args),
-        0,
-    )))
-    .expect("checked CHAR bytes have no NUL");
-    if !delete_dll(&path) {
-        error(&format!(
-            "shared object '{}' was not loaded",
-            path.to_str().unwrap_or("?")
-        ));
-    }
-    R_NilValue()
+pub fn do_dynunload(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+    native_dynamic_loading_policy_error("dyn.unload()");
 }
 
 // ---------------------------------------------------------------------------
@@ -1150,38 +967,6 @@ pub fn do_getRegisteredRoutines(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
     R_getRegisteredRoutines(CAR(args))
 }
 
-// ---------------------------------------------------------------------------
-// R_moduleCdynload / R_cairoCdynload
-// ---------------------------------------------------------------------------
-
-/// # Safety
-/// `module` must be null or a live NUL-terminated string for the call; the
-/// trusted module loader may execute native initializers.
-pub unsafe fn R_moduleCdynload(module: *const c_char, local: c_int, now: c_int) -> c_int {
-    let r_home = std::env::var("R_HOME").unwrap_or_default();
-    if r_home.is_empty() || module.is_null() {
-        return 0;
-    }
-    // SAFETY: `module` is non-null and NUL-terminated for the call.
-    let module_str = unsafe { CStr::from_ptr(module) }.to_str().unwrap_or("");
-    let Ok(path) = CString::new(format!("{r_home}/modules/{module_str}.so")) else {
-        return 0;
-    };
-    // SAFETY: the trusted module loader may execute native initializers.
-    c_int::from(unsafe { AddDLL(&path, local, now) }.is_some())
-}
-
-pub fn R_cairoCdynload(local: c_int, now: c_int) -> c_int {
-    let r_home = std::env::var("R_HOME").unwrap_or_default();
-    if r_home.is_empty() {
-        return 0;
-    }
-    let Ok(path) = CString::new(format!("{r_home}/library/grDevices/libs/cairo.so")) else {
-        return 0;
-    };
-    // SAFETY: the trusted module loader may execute native initializers.
-    c_int::from(unsafe { AddDLL(&path, local, now) }.is_some())
-}
 
 // ---------------------------------------------------------------------------
 // R_RegisterCCallable / R_GetCCallable — inter-package C function sharing
@@ -1349,25 +1134,7 @@ mod tests {
         });
     }
 
-    #[test]
-    fn test_delete_dll() {
-        with_session(|| {
-            init_loaded_dll();
-            let _ = add_dll(c"to_delete", c"del_name");
-            assert!(delete_dll(c"to_delete"));
-            with_dynload_state(|state| {
-                assert!(state.loaded_dll.is_empty());
-            });
-        });
-    }
 
-    #[test]
-    fn test_delete_dll_not_found() {
-        with_session(|| {
-            init_loaded_dll();
-            assert!(!delete_dll(c"nonexistent"));
-        });
-    }
 
     #[test]
     fn test_use_dynamic_symbols() {
@@ -1395,20 +1162,6 @@ mod tests {
         });
     }
 
-    #[test]
-    fn test_extract_dll_name() {
-        for (path, expected) in [
-            ("/usr/lib/libfoo.so", "libfoo"),
-            ("/usr/lib/libfoo.dylib", "libfoo"),
-            (r"C:\\R\\library\\foo.dll", "foo"),
-        ] {
-            let path = CString::new(path).expect("test path");
-            assert_eq!(extract_dll_name(&path).to_str(), Ok(expected));
-        }
-        // An invalid-UTF-8 path produces the empty name.
-        let path = CString::new([b'/', 0xff]).expect("test path");
-        assert_eq!(extract_dll_name(&path).as_c_str(), c"");
-    }
 
     #[test]
     fn test_find_symbol_empty() {
