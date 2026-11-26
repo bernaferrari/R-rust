@@ -109,6 +109,9 @@ pub mod primitive_ids {
     /// Output and visibility.
     pub const CAT: u32 = 98;
     pub const INVISIBLE: u32 = 99;
+    /// Condition handling — tryCatch and condition introspection.
+    pub const TRYCATCH: u32 = 104;
+    pub const CONDITION_MESSAGE: u32 = 105;
     /// Matrix construction and dimension introspection.
     pub const MATRIX: u32 = 100;
     pub const DIM: u32 = 101;
@@ -130,7 +133,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -265,6 +268,28 @@ pub(crate) fn call_primitive(
             // Visibility metadata is a print-system concern outside the slice;
             /// the value passes through exactly as GNU's return shape.
             Ok(operands[0])
+        }
+        TRYCATCH => trycatch_primitive(heap, interner, args, caller_env),
+        CONDITION_MESSAGE => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            // The condition object is a list with a message element —
+            /// extraction mirrors dollar access exactly.
+            match heap.object(operands[0]) {
+                Some(RObject::List(items)) => {
+                    let message_pos = get_attrib(heap, interner, operands[0], "names")
+                        .and_then(|id| match heap.object(id) {
+                            Some(RObject::String(entries)) => entries
+                                .iter()
+                                .position(|e| interner.string_text(*e) == "message"),
+                            _ => None,
+                        });
+                    match message_pos {
+                        Some(pos) if pos < items.len() => Ok(items[pos]),
+                        _ => Ok(heap.alloc(RObject::String(vec![interner.intern_string("")]))),
+                    }
+                }
+                _ => Err(EvalError::TypeError("conditionMessage requires a condition").into()),
+            }
         }
         MATRIX => matrix_primitive(heap, interner, args, caller_env),
         DIM => {
@@ -809,7 +834,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -898,6 +923,8 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "$<-" => Some(DOLLAR_ASSIGN),
         "cat" => Some(CAT),
         "invisible" => Some(INVISIBLE),
+        "tryCatch" => Some(TRYCATCH),
+        "conditionMessage" => Some(CONDITION_MESSAGE),
         "matrix" => Some(MATRIX),
         "dim" => Some(DIM),
         "nrow" => Some(NROW),
@@ -3460,4 +3487,81 @@ fn rep_each(heap: &mut Heap, source: ValueId, times: usize, each: usize) -> Eval
     per_type!(Logical);
     per_type!(String);
     Err(EvalError::TypeError("rep requires an atomic vector").into())
+}
+
+/// `tryCatch(expr, error=handler)` — GNU's condition handling shape: the
+/// expression evaluates inside the protection; an error condition invokes
+/// the handler with a condition object and the handler's value becomes the
+/// result. Non-error control flow (break/next/return) propagates exactly —
+/// it is not a condition.
+fn trycatch_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    // Collect UNEVALUATED operands with tags: the expression is positional
+    /// first, handlers arrive tagged by condition class.
+    let mut positional: Vec<ValueId> = Vec::new();
+    let mut named: Vec<(String, ValueId)> = Vec::new();
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => {
+                named.push((interner.symbol_name(*name).to_string(), car));
+            }
+            _ => positional.push(car),
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    let expr = match positional.first() {
+        Some(e) => *e,
+        None => return Err(EvalError::TypeError("tryCatch requires an expression").into()),
+    };
+    match eval(heap, interner, expr, caller_env) {
+        Ok(value) => Ok(value),
+        Err(RSignal::Error(error)) => {
+            let handler_expr = match named.iter().find(|(n, _)| n == "error").map(|(_, e)| *e) {
+                Some(e) => e,
+                // No matching handler: the condition propagates exactly as
+                /// GNU's unwinding continues outward.
+                None => return Err(RSignal::Error(error)),
+            };
+            let message = match &error {
+                EvalError::Condition(text) => text.clone(),
+                EvalError::UnboundVariable(name) => format!("object '{name}' not found"),
+                other => format!("{other:?}"),
+            };
+            // The condition object: a named list carrying the message —
+            /// conditionMessage reads exactly this shape.
+            let message_str = heap.alloc(RObject::String(vec![interner.intern_string(&message)]));
+            let condition = heap.alloc(RObject::List(vec![message_str]));
+            let names_vec = heap.alloc(RObject::String(vec![interner.intern_string("message")]));
+            let condition = copy_with_attrib(heap, interner, condition, "names", names_vec)
+                .map_err(RSignal::from)?;
+            let handler = eval(heap, interner, handler_expr, caller_env)?;
+            let handler = force_if_promise(heap, interner, handler)?;
+            let (formals, body, closure_env) = match heap.object(handler) {
+                Some(RObject::Closure { formals, body, env }) => (*formals, *body, *env),
+                _ => return Err(EvalError::TypeError("tryCatch handler must be a closure").into()),
+            };
+            let arg_node = heap.alloc(RObject::Pairlist {
+                car: condition,
+                cdr: ValueId::NIL,
+                tag: ValueId::NIL,
+            });
+            super::eval::apply_closure_public(
+                heap, interner, formals, body, closure_env, arg_node, caller_env,
+            )
+        }
+        // Control flow is not a condition — break/next/return propagate.
+        Err(signal) => Err(signal),
+    }
 }

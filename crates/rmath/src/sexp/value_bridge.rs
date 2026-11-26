@@ -1882,6 +1882,9 @@ mod tests {
             "rep(c(1, 2), times=c(2, 3))",
             "(1:3)[c(TRUE, FALSE, TRUE, TRUE)]",
             "(1:3)[c(1, 0, NA, 4)]",
+            "tryCatch(1 + 2, error=function(e) 99)",
+            "tryCatch(stop('boom'), error=function(e) 99)",
+            "{ x <- tryCatch(stop('boom'), error=function(e) 42); x + 1 }",
         ];
         // One session, one parse pass: expression objects stay valid for the
         // session's lifetime, so batching avoids per-program bootstrap cost.
@@ -2007,6 +2010,12 @@ mod tests {
             println!("case: {name}");
             use std::io::Write;
             let _ = std::io::stdout().flush();
+            // Hermetic legacy state: top-level bindings from earlier cases
+            /// must not leak into this one — the new world starts a fresh
+            /// heap per case, so the legacy world resets symmetrically.
+            /// Resetting before evaluation is immune to the loop's many
+            /// early-continue paths.
+            let _ = session.eval_code_with_output_capture("rm(list = ls())");
             case_counter += 1;
             if case_counter % 100 == 0 {
                 println!("tally@{case_counter}: pass={pass} mismatch={value_mismatch} uncmp={uncomparable} fails={}", failure_reasons.values().map(|v| v.len()).sum::<usize>());
@@ -2056,6 +2065,11 @@ mod tests {
             }
 
             // Legacy world: evaluate the same source, take the final value.
+            /// Top-level assignments in earlier cases pollute the session's
+            /// global environment — cases that probe absence (exists("x"))
+            /// diverge as harness artifacts, not semantics. Clearing user
+            /// bindings after every case keeps each case hermetic exactly
+            /// as the fresh new-world heap is.
             let (legacy, _output, _visible) = session.eval_code_with_output_capture(&source);
             let legacy = match legacy {
                 Ok(value) => value,
