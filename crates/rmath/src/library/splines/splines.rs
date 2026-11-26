@@ -194,11 +194,14 @@ pub unsafe fn spline_value(knots: SEXP, coeff: SEXP, order: SEXP, x: SEXP, deriv
             Rf_error_cstr(&msg);
         }
 
-        // Allocate scratch arrays via R_alloc (transient memory)
+        // Owned Rust scratch workspaces — the transient R_alloc arena is gone.
         let ordm1 = ord - 1;
-        let ldel = R_alloc(std::mem::size_of::<c_double>(), ordm1 as usize) as *mut c_double;
-        let rdel = R_alloc(std::mem::size_of::<c_double>(), ordm1 as usize) as *mut c_double;
-        let a = R_alloc(std::mem::size_of::<c_double>(), ord as usize) as *mut c_double;
+        let mut ldel_ws = vec![0.0f64; ordm1 as usize];
+        let mut rdel_ws = vec![0.0f64; ordm1 as usize];
+        let mut a_ws = vec![0.0f64; ord as usize];
+        let ldel = ldel_ws.as_mut_ptr();
+        let rdel = rdel_ws.as_mut_ptr();
+        let a = a_ws.as_mut_ptr();
 
         let kk = REAL(knots);
         let xx = REAL(x);
@@ -265,10 +268,13 @@ pub unsafe fn spline_basis(knots: SEXP, order: SEXP, xvals: SEXP, derivs: SEXP) 
 
         let ordm1 = ord - 1;
 
-        // Allocate scratch arrays via R_alloc (transient memory)
-        let ldel = R_alloc(std::mem::size_of::<c_double>(), ordm1 as usize) as *mut c_double;
-        let rdel = R_alloc(std::mem::size_of::<c_double>(), ordm1 as usize) as *mut c_double;
-        let a = R_alloc(std::mem::size_of::<c_double>(), ord as usize) as *mut c_double;
+        // Owned Rust scratch workspaces — the transient R_alloc arena is gone.
+        let mut ldel_ws = vec![0.0f64; ordm1 as usize];
+        let mut rdel_ws = vec![0.0f64; ordm1 as usize];
+        let mut a_ws = vec![0.0f64; ord as usize];
+        let ldel = ldel_ws.as_mut_ptr();
+        let rdel = rdel_ws.as_mut_ptr();
+        let a = a_ws.as_mut_ptr();
 
         let val = allocMatrix(SEXPTYPE::REALSXP.into(), ord, nx);
         let _val_guard = protect(val);
