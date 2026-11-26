@@ -44,7 +44,7 @@ pub unsafe fn R_init_stats(_dll: *mut c_void) {
     // but stats' typed cross-package callable is part of its public contract.
     let package = c"stats";
     let name = c"rcont2";
-    let callable: unsafe extern "C" fn(
+    let callable: unsafe fn(
         c_int,
         c_int,
         *const c_int,
@@ -56,7 +56,7 @@ pub unsafe fn R_init_stats(_dll: *mut c_void) {
     ) = super::rcont::rcont2_c_callable;
     let erased = unsafe {
         std::mem::transmute::<
-            unsafe extern "C" fn(
+            unsafe fn(
                 c_int,
                 c_int,
                 *const c_int,
@@ -66,7 +66,7 @@ pub unsafe fn R_init_stats(_dll: *mut c_void) {
                 *mut c_int,
                 *mut c_int,
             ),
-            unsafe extern "C" fn(),
+            unsafe fn(),
         >(callable)
     };
     unsafe {

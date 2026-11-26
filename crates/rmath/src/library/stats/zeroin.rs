@@ -467,7 +467,7 @@ fn nlm_attr_real(v: crate::sexp::ffi::SEXP, len: usize) -> Vec<f64> {
 }
 
 /// The optimizer's objective handler (`fcn` in optimize.c).
-unsafe extern "C" fn nlm_fcn(
+unsafe fn nlm_fcn(
     n: core::ffi::c_int,
     x: *mut core::ffi::c_double,
     f: *mut core::ffi::c_double,
@@ -567,7 +567,7 @@ fn nlm_bad_value() -> ! {
 }
 
 /// Handler for the analytic gradient (`Cd1fcn` in optimize.c).
-unsafe extern "C" fn nlm_d1fcn(
+unsafe fn nlm_d1fcn(
     n: core::ffi::c_int,
     x: *mut core::ffi::c_double,
     g: *mut core::ffi::c_double,
@@ -596,7 +596,7 @@ unsafe extern "C" fn nlm_d1fcn(
 }
 
 /// Handler for the analytic hessian (`Cd2fcn` in optimize.c).
-unsafe extern "C" fn nlm_d2fcn(
+unsafe fn nlm_d2fcn(
     nr: core::ffi::c_int,
     n: core::ffi::c_int,
     x: *mut core::ffi::c_double,

@@ -2,7 +2,7 @@
 use super::*;
 use crate::sexp::RSession;
 
-unsafe extern "C" fn address_only() {}
+unsafe fn address_only() {}
 
 unsafe fn c_table(info: *mut DllInfo, count: c_int, types: &[c_int]) {
     let name = CString::new("owned_registered").unwrap();

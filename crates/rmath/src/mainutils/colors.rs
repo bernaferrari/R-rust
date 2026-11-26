@@ -23,19 +23,19 @@ use crate::sexp::instance::with_required_current_instance;
 
 /// Signature of the RGBpar3 implementation in grDevices.
 /// `SEXP x, int i, unsigned int bg -> unsigned int`
-type F1 = unsafe extern "C" fn(*mut c_void, c_int, std::os::raw::c_uint) -> std::os::raw::c_uint;
+type F1 = unsafe fn(*mut c_void, c_int, std::os::raw::c_uint) -> std::os::raw::c_uint;
 
 /// Signature of the col2name implementation in grDevices.
 /// `unsigned int col -> const char *`
-type F2 = unsafe extern "C" fn(std::os::raw::c_uint) -> *const c_char;
+type F2 = unsafe fn(std::os::raw::c_uint) -> *const c_char;
 
 /// Signature of the R_GE_str2col implementation in grDevices.
 /// `const char *s -> unsigned int`
-type F3 = unsafe extern "C" fn(*const c_char) -> std::os::raw::c_uint;
+type F3 = unsafe fn(*const c_char) -> std::os::raw::c_uint;
 
 /// Signature of the savePalette implementation in grDevices.
 /// `Rboolean save -> void`
-type F4 = unsafe extern "C" fn(c_int);
+type F4 = unsafe fn(c_int);
 
 // ---------------------------------------------------------------------------
 // Per-session dispatch table
@@ -171,7 +171,7 @@ mod tests {
 
     use super::*;
 
-    extern "C" fn first_rgbpar3(
+    fn first_rgbpar3(
         _x: *mut c_void,
         _i: c_int,
         _bg: std::os::raw::c_uint,
@@ -179,7 +179,7 @@ mod tests {
         0x00AA_0001
     }
 
-    extern "C" fn second_rgbpar3(
+    fn second_rgbpar3(
         _x: *mut c_void,
         _i: c_int,
         _bg: std::os::raw::c_uint,
@@ -187,23 +187,23 @@ mod tests {
         0x00BB_0002
     }
 
-    extern "C" fn first_col2name(_col: std::os::raw::c_uint) -> *const c_char {
+    fn first_col2name(_col: std::os::raw::c_uint) -> *const c_char {
         c"first".as_ptr()
     }
 
-    extern "C" fn second_col2name(_col: std::os::raw::c_uint) -> *const c_char {
+    fn second_col2name(_col: std::os::raw::c_uint) -> *const c_char {
         c"second".as_ptr()
     }
 
-    extern "C" fn first_str2col(_s: *const c_char) -> std::os::raw::c_uint {
+    fn first_str2col(_s: *const c_char) -> std::os::raw::c_uint {
         11
     }
 
-    extern "C" fn second_str2col(_s: *const c_char) -> std::os::raw::c_uint {
+    fn second_str2col(_s: *const c_char) -> std::os::raw::c_uint {
         22
     }
 
-    extern "C" fn ignore_palette(_save: c_int) {}
+    fn ignore_palette(_save: c_int) {}
 
     unsafe fn col_name() -> String {
         unsafe { CStr::from_ptr(col2name(0)).to_string_lossy().into_owned() }

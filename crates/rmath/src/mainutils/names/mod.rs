@@ -113,7 +113,7 @@ impl PPinfo {
 // FunTabEntry
 // ---------------------------------------------------------------------------
 
-type PrimFun = Option<unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP>;
+type PrimFun = Option<unsafe fn(SEXP, SEXP, SEXP, SEXP) -> SEXP>;
 
 #[derive(Clone, Copy)]
 pub struct FunTabEntry {

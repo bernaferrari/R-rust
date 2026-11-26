@@ -25,7 +25,7 @@ fn checkArity(op: SEXP, args: SEXP) {
 // ---------------------------------------------------------------------------
 
 /// Function pointer type for the LAPACK dispatch function.
-type LapackFn = Option<unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP>;
+type LapackFn = Option<unsafe fn(SEXP, SEXP, SEXP, SEXP) -> SEXP>;
 
 #[derive(Default)]
 pub(crate) struct LapackRuntimeState {
@@ -37,7 +37,7 @@ pub unsafe fn R_setLapackRoutines(routines: *const c_void) -> *const c_void {
         let new_dispatch = if !routines.is_null() {
             Some(std::mem::transmute::<
                 *const c_void,
-                unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+                unsafe fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
             >(routines))
         } else {
             None
@@ -89,11 +89,11 @@ mod tests {
 
     use super::*;
 
-    extern "C" fn return_op(_call: SEXP, op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    fn return_op(_call: SEXP, op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
         op
     }
 
-    extern "C" fn return_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    fn return_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         args
     }
 

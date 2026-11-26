@@ -103,7 +103,7 @@ fn sweep_remap_torture_clears_old_children_of_unmarked_young_survivor() {
 
 #[test]
 fn sweep_remap_retains_newly_ready_finalizer_vector_graph_before_retirement() {
-    unsafe extern "C" fn finalizer(_: *mut std::ffi::c_void) {}
+    unsafe fn finalizer(_: *mut std::ffi::c_void) {}
     for collect in [minor_gc as fn() -> (usize, usize), full_gc] {
         let mut session = RSession::new_for_gc_tests();
         let (key, vector, child, garbage) = session

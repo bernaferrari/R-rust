@@ -70,7 +70,7 @@ fn destroying_ambient_owner_then_panicking_clears_activation_on_unwind() {
 
 #[test]
 fn collection_cleanup_skips_retired_owner_for_full_minor_and_pending_gc() {
-    unsafe extern "C" fn unexpected_finalizer(_: *mut std::ffi::c_void) {
+    unsafe fn unexpected_finalizer(_: *mut std::ffi::c_void) {
         TEARDOWN_FINALIZERS.set(TEARDOWN_FINALIZERS.get() + 1);
     }
     for mode in 0..3 {

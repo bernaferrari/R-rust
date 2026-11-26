@@ -191,7 +191,7 @@ pub fn findInterval2(
 ///
 /// `n`, `x`, `rightmost_closed`, `all_inside`, `ilo` must be valid for one read and `mflag` for one
 /// write; `xt` must be valid for reads of `*n` doubles.
-pub unsafe extern "C" fn F77_SUB_interv(
+pub unsafe fn F77_SUB_interv(
     xt: *const f64,
     n: *mut std::os::raw::c_int,
     x: *mut f64,

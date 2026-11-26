@@ -3,7 +3,7 @@ use super::*;
 // objectives reproduce the R-level demo arithmetic bit for bit.
 // Reference values: GNU R 4.7.0 (bac5839) on this machine, from
 // stats::nlm on demo(nlm)'s objectives printed at full precision.
-unsafe extern "C" fn rosenbrock(
+unsafe fn rosenbrock(
     _n: std::os::raw::c_int,
     x: *mut f64,
     f: *mut f64,
@@ -18,7 +18,7 @@ unsafe extern "C" fn rosenbrock(
     // SAFETY: f points to the optimizer's writable scalar result.
     unsafe { *f = 100.0 * (t * t) + (u * u) };
 }
-unsafe extern "C" fn rosenbrock_g(
+unsafe fn rosenbrock_g(
     _n: std::os::raw::c_int,
     x: *mut f64,
     g: *mut f64,
@@ -32,7 +32,7 @@ unsafe extern "C" fn rosenbrock_g(
     g[0] = -400.0 * x1 * (x2 - x1 * x1) - 2.0 * (1.0 - x1);
     g[1] = 200.0 * (x2 - x1 * x1);
 }
-unsafe extern "C" fn rosenbrock_h(
+unsafe fn rosenbrock_h(
     nr: std::os::raw::c_int,
     _n: std::os::raw::c_int,
     x: *mut f64,
@@ -50,7 +50,7 @@ unsafe extern "C" fn rosenbrock_h(
     h[0 + 1 * nr] = -400.0 * x1;
     h[1 + 1 * nr] = 200.0;
 }
-unsafe extern "C" fn helical(
+unsafe fn helical(
     _n: std::os::raw::c_int,
     x: *mut f64,
     f: *mut f64,
@@ -133,7 +133,7 @@ unsafe fn run_nlm(
         itncnt,
     }
 }
-unsafe extern "C" fn never_called(
+unsafe fn never_called(
     _n: std::os::raw::c_int,
     _x: *mut f64,
     _g: *mut f64,
@@ -166,7 +166,7 @@ fn nlm_rosenbrock_matches_gnu() {
         assert_eq!(o.itncnt, 23);
     }
 }
-unsafe extern "C" fn never_called2(
+unsafe fn never_called2(
     _nr: std::os::raw::c_int,
     _n: std::os::raw::c_int,
     _x: *mut f64,

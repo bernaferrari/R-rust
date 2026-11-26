@@ -12,20 +12,20 @@ use crate::sexp::instance::with_required_current_instance;
 // Function pointer types for system interface
 // ---------------------------------------------------------------------------
 
-type PtrSuicide = Option<unsafe extern "C" fn(*const c_char)>;
-type PtrShowMessage = Option<unsafe extern "C" fn(*const c_char)>;
-// Read-console callbacks are installed as `unsafe extern "C" fn` by callers
+type PtrSuicide = Option<unsafe fn(*const c_char)>;
+type PtrShowMessage = Option<unsafe fn(*const c_char)>;
+// Read-console callbacks are installed as `unsafe fn` by callers
 // outside this module, so the slot keeps that type.
-type PtrReadConsole = Option<unsafe extern "C" fn(*const c_char, *mut u8, c_int, c_int) -> c_int>;
-type PtrWriteConsole = Option<unsafe extern "C" fn(*const c_char, c_int)>;
-type PtrWriteConsoleEx = Option<unsafe extern "C" fn(*const c_char, c_int, c_int)>;
-type PtrResetConsole = Option<extern "C" fn()>;
-type PtrFlushConsole = Option<extern "C" fn()>;
-type PtrClearerrConsole = Option<extern "C" fn()>;
-type PtrBusy = Option<extern "C" fn(c_int)>;
-type PtrCleanUp = Option<extern "C" fn(c_int, c_int, c_int)>;
+type PtrReadConsole = Option<unsafe fn(*const c_char, *mut u8, c_int, c_int) -> c_int>;
+type PtrWriteConsole = Option<unsafe fn(*const c_char, c_int)>;
+type PtrWriteConsoleEx = Option<unsafe fn(*const c_char, c_int, c_int)>;
+type PtrResetConsole = Option<fn()>;
+type PtrFlushConsole = Option<fn()>;
+type PtrClearerrConsole = Option<fn()>;
+type PtrBusy = Option<fn(c_int)>;
+type PtrCleanUp = Option<fn(c_int, c_int, c_int)>;
 type PtrShowFiles = Option<
-    unsafe extern "C" fn(
+    unsafe fn(
         c_int,
         *const *const c_char,
         *const *const c_char,
@@ -34,10 +34,10 @@ type PtrShowFiles = Option<
         *const c_char,
     ) -> c_int,
 >;
-type PtrChooseFile = Option<unsafe extern "C" fn(c_int, *mut c_char, c_int) -> c_int>;
-type PtrHistory = Option<unsafe extern "C" fn(*const c_char)>;
+type PtrChooseFile = Option<unsafe fn(c_int, *mut c_char, c_int) -> c_int>;
+type PtrHistory = Option<unsafe fn(*const c_char)>;
 type PtrEditFiles = Option<
-    unsafe extern "C" fn(c_int, *const *const c_char, *const *const c_char, *const c_char) -> c_int,
+    unsafe fn(c_int, *const *const c_char, *const *const c_char, *const c_char) -> c_int,
 >;
 
 // ---------------------------------------------------------------------------
@@ -89,7 +89,7 @@ fn with_system_state<R>(f: impl FnOnce(&mut UnixSystemRuntimeState) -> R) -> R {
 
 #[cfg(test)]
 pub(crate) fn set_read_console_callback_for_tests(
-    callback: Option<unsafe extern "C" fn(*const c_char, *mut u8, c_int, c_int) -> c_int>,
+    callback: Option<unsafe fn(*const c_char, *mut u8, c_int, c_int) -> c_int>,
 ) {
     with_system_state(|state| {
         state.callbacks.read_console = callback;
@@ -137,7 +137,7 @@ pub unsafe fn R_ReadConsole(
     addtohistory: c_int,
 ) -> c_int {
     if let Some(f) = with_system_state(|state| state.callbacks.read_console) {
-        // SAFETY: callbacks are registered as `unsafe extern "C" fn`; the caller
+        // SAFETY: callbacks are registered as `unsafe fn`; the caller
         // upholds the prompt/buffer contract of the R_ReadConsole ABI.
         unsafe { f(prompt, buf, len, addtohistory) }
     } else {
@@ -364,7 +364,7 @@ mod tests {
         std::thread_local! {
             static FLUSHES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
         }
-        extern "C" fn flush() {
+        fn flush() {
             FLUSHES.set(FLUSHES.get() + 1);
             crate::sexp::gengc::full_gc();
         }
@@ -417,7 +417,7 @@ mod tests {
         let mut first = RInstance::new();
         let mut second = RInstance::new();
 
-        unsafe extern "C" fn show_message(_message: *const c_char) {}
+        unsafe fn show_message(_message: *const c_char) {}
         unsafe {
             let previous = replace_current_instance(Some(&mut first as *mut RInstance));
             R_setupHistory();

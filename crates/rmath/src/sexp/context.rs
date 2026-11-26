@@ -127,7 +127,7 @@ pub struct RCNTXT {
     pub sysparent: ContextValue,
     pub callfun: ContextValue,
     /// Function to call on exit (on.exit handlers)
-    pub cfn: Option<unsafe extern "C" fn(*mut SexprecCore) -> *mut SexprecCore>,
+    pub cfn: Option<unsafe fn(*mut SexprecCore) -> *mut SexprecCore>,
     /// Closure being evaluated
     pub closure: ContextValue,
     /// Promises for arguments
@@ -160,7 +160,7 @@ pub struct RCNTXT {
     pub conexit: ContextValue,
     pub onexit_active: i32,
     /// cleanup function pointer (cend in R)
-    pub cend: Option<unsafe extern "C" fn(*mut std::os::raw::c_void)>,
+    pub cend: Option<unsafe fn(*mut std::os::raw::c_void)>,
     /// cleanup function data (cenddata in R)
     pub cenddata: *mut std::os::raw::c_void,
     pub srcref: ContextValue,
@@ -291,7 +291,7 @@ pub unsafe fn Rf_begincontext(
     call: SEXP,
     cloenv: SEXP,
     sysparent: SEXP,
-    cfn: Option<unsafe extern "C" fn(*mut SexprecCore) -> *mut SexprecCore>,
+    cfn: Option<unsafe fn(*mut SexprecCore) -> *mut SexprecCore>,
     closure: SEXP,
     promiseargs: SEXP,
 ) -> *mut RCNTXT {
@@ -316,7 +316,7 @@ pub unsafe fn Rf_begincontext_in(
     call: SEXP,
     cloenv: SEXP,
     sysparent: SEXP,
-    cfn: Option<unsafe extern "C" fn(*mut SexprecCore) -> *mut SexprecCore>,
+    cfn: Option<unsafe fn(*mut SexprecCore) -> *mut SexprecCore>,
     closure: SEXP,
     promiseargs: SEXP,
 ) -> *mut RCNTXT {
@@ -453,7 +453,7 @@ pub fn begin_context_guard(
     call: SEXP,
     cloenv: SEXP,
     sysparent: SEXP,
-    cfn: Option<unsafe extern "C" fn(*mut SexprecCore) -> *mut SexprecCore>,
+    cfn: Option<unsafe fn(*mut SexprecCore) -> *mut SexprecCore>,
     closure: SEXP,
     promiseargs: SEXP,
 ) -> ContextGuard {
@@ -1229,7 +1229,7 @@ mod tests {
             node: crate::sexp::heap::CheckedNode,
             invoked: bool,
         }
-        unsafe extern "C" fn cleanup(data: *mut std::os::raw::c_void) {
+        unsafe fn cleanup(data: *mut std::os::raw::c_void) {
             let data = unsafe { &mut *data.cast::<CallbackData>() };
             unsafe {
                 (*data.instance).context_stack.clear();

@@ -209,7 +209,7 @@ pub fn do_traceOnOff(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // R_current_debug_state — return this session's debugging state
 // ---------------------------------------------------------------------------
 
-pub extern "C" fn R_current_debug_state() -> c_int {
+pub fn R_current_debug_state() -> c_int {
     with_trace_debug_flags(|flags| flags.debugging.get()).unwrap_or(TRUE)
 }
 
@@ -217,7 +217,7 @@ pub extern "C" fn R_current_debug_state() -> c_int {
 // R_current_trace_state — return this session's tracing state
 // ---------------------------------------------------------------------------
 
-pub extern "C" fn R_current_trace_state() -> c_int {
+pub fn R_current_trace_state() -> c_int {
     with_trace_debug_flags(|flags| flags.tracing.get()).unwrap_or(TRUE)
 }
 

@@ -13,7 +13,7 @@ thread_local! {
     static RESURRECTION_SYMBOL: Cell<SEXP> = const { Cell::new(std::ptr::null_mut()) };
 }
 
-unsafe extern "C" fn count_finalizer(_: *mut c_void) {
+unsafe fn count_finalizer(_: *mut c_void) {
     FINALIZER_RUNS.set(FINALIZER_RUNS.get() + 1);
 }
 
@@ -153,7 +153,7 @@ fn newly_ready_finalizer_graph_survives_torture_collection() {
 
 #[test]
 fn newly_ready_finalizer_can_resurrect_its_transitive_child_graph() {
-    unsafe extern "C" fn resurrect(pointer: *mut c_void) {
+    unsafe fn resurrect(pointer: *mut c_void) {
         let key = pointer.cast();
         let _root = unsafe { crate::sexp::protect::protect(key) };
         let child = unsafe { crate::mainutils::memory_main::R_ExternalPtrProtected(key) };

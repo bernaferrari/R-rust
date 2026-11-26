@@ -33,7 +33,7 @@ use crate::sexp::symbol::Rf_install;
 ///
 /// Historically this matched R's `DL_FUNC` process-loader type; in the
 /// pure-Rust runtime it only ever carries bundled Rust routine pointers.
-pub type DL_FUNC = Option<unsafe extern "C" fn()>;
+pub type DL_FUNC = Option<unsafe fn()>;
 
 // ---------------------------------------------------------------------------
 // Local error helper
@@ -930,7 +930,7 @@ pub unsafe fn R_GetCCallable(package: *const c_char, name: *const c_char) -> DL_
             error("table entry must be an external pointer");
         }
         let addr = R_ExternalPtrAddr(val);
-        std::mem::transmute::<*mut c_void, Option<unsafe extern "C" fn()>>(addr)
+        std::mem::transmute::<*mut c_void, Option<unsafe fn()>>(addr)
     }
 }
 
@@ -1078,7 +1078,7 @@ mod tests {
         });
     }
 
-    extern "C" fn test_registered_call() {}
+    fn test_registered_call() {}
 
     #[test]
     fn test_find_symbol_registered_call() {
@@ -1126,7 +1126,7 @@ mod tests {
     fn test_dynload_tables_are_session_local_on_same_thread() {
         let left = RSession::new();
         let right = RSession::new();
-        extern "C" fn left_only() {}
+        fn left_only() {}
         unsafe fn stats_registration() -> (SEXP, *mut c_void) {
             unsafe {
                 let root = with_dynload_state(|state| state.c_entry_table);

@@ -14,7 +14,7 @@ use crate::sexp::object::{Sexp, SexpOwner};
 use crate::sexp::owner::BorrowedOwnerRef;
 
 /// Function pointer type for primitive functions (SPECIAL and BUILTIN).
-pub type PrimFun = unsafe extern "C" fn(
+pub type PrimFun = unsafe fn(
     SEXP, // call
     SEXP, // op (the function)
     SEXP, // args

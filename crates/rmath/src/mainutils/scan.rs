@@ -417,7 +417,7 @@ mod tests {
     use crate::sexp::session::RSession;
     use std::ptr;
 
-    unsafe extern "C" fn fixture_read_console(
+    unsafe fn fixture_read_console(
         _prompt: *const c_char,
         buf: *mut u8,
         len: c_int,

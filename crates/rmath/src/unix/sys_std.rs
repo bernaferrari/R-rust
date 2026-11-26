@@ -254,8 +254,8 @@ pub fn Rstd_ChooseFile(_new: c_int, _buf: *mut c_char, _len: c_int) -> c_int {
 
 #[derive(Default)]
 pub(crate) struct SysStdRuntimeState {
-    pub(crate) r_polled_events: Option<extern "C" fn()>,
-    pub(crate) rg_polled_events: Option<extern "C" fn()>,
+    pub(crate) r_polled_events: Option<fn()>,
+    pub(crate) rg_polled_events: Option<fn()>,
     history: Vec<String>,
     readline_word_breaks: Option<String>,
 }
@@ -349,19 +349,19 @@ pub unsafe fn Rstd_read_history(file: *const c_char) {
 // Event loop callbacks
 // ---------------------------------------------------------------------------
 
-pub(crate) fn set_r_polled_events(callback: Option<extern "C" fn()>) {
+pub(crate) fn set_r_polled_events(callback: Option<fn()>) {
     with_sys_std_state(|state| state.r_polled_events = callback);
 }
 
-pub(crate) fn set_rg_polled_events(callback: Option<extern "C" fn()>) {
+pub(crate) fn set_rg_polled_events(callback: Option<fn()>) {
     with_sys_std_state(|state| state.rg_polled_events = callback);
 }
 
-pub(crate) fn r_polled_events() -> Option<extern "C" fn()> {
+pub(crate) fn r_polled_events() -> Option<fn()> {
     with_sys_std_state(|state| state.r_polled_events)
 }
 
-pub(crate) fn rg_polled_events() -> Option<extern "C" fn()> {
+pub(crate) fn rg_polled_events() -> Option<fn()> {
     with_sys_std_state(|state| state.rg_polled_events)
 }
 
@@ -431,15 +431,15 @@ mod tests {
 
     use super::*;
 
-    extern "C" fn first_callback() {}
+    fn first_callback() {}
 
-    extern "C" fn second_callback() {}
+    fn second_callback() {}
 
-    fn callback_addr(callback: Option<extern "C" fn()>) -> usize {
+    fn callback_addr(callback: Option<fn()>) -> usize {
         callback.map(callback_fn_addr).unwrap_or(0)
     }
 
-    fn callback_fn_addr(callback: extern "C" fn()) -> usize {
+    fn callback_fn_addr(callback: fn()) -> usize {
         callback as *const () as usize
     }
 

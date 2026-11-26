@@ -49,7 +49,7 @@ fn error(msg: &str) -> ! {
 // GC control
 // ---------------------------------------------------------------------------
 
-pub type R_CFinalizer_t = unsafe extern "C" fn(*mut c_void);
+pub type R_CFinalizer_t = unsafe fn(*mut c_void);
 
 #[derive(Clone)]
 enum PendingFinalizer {
@@ -1671,11 +1671,11 @@ mod tests {
         });
     }
 
-    extern "C" fn dummy_c_finalizer(_ptr: *mut c_void) {
+    fn dummy_c_finalizer(_ptr: *mut c_void) {
         // No action needed
     }
 
-    unsafe extern "C" fn increment_external_i32_finalizer(ptr: *mut c_void) {
+    unsafe fn increment_external_i32_finalizer(ptr: *mut c_void) {
         unsafe {
             let addr = R_ExternalPtrAddr(ptr as SEXP) as *mut i32;
             if !addr.is_null() {
@@ -1684,7 +1684,7 @@ mod tests {
         }
     }
 
-    extern "C" fn count_c_finalizer(_ptr: *mut c_void) {
+    fn count_c_finalizer(_ptr: *mut c_void) {
         FINALIZER_RUNS.set(FINALIZER_RUNS.get() + 1);
     }
 
@@ -2096,7 +2096,7 @@ mod owned_gc_operation_tests {
         thread_local! {
             static RUNS: Cell<usize> = const { Cell::new(0) };
         }
-        extern "C" fn count(_: *mut c_void) {
+        fn count(_: *mut c_void) {
             RUNS.with(|runs| runs.set(runs.get() + 1));
         }
         let session = RSession::new_for_gc_tests();

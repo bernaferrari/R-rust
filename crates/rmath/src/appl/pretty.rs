@@ -30,7 +30,7 @@ const ROUNDING_EPS: f64 = 1e-10;
 /// `lo`, `up` and `ndiv` must each be valid for reads and writes of one value
 /// (and not alias each other); `high_u_fact` must be valid for reads of three
 /// `f64`s. Rust callers should use the safe [`r_pretty`].
-pub unsafe extern "C" fn R_pretty(
+pub unsafe fn R_pretty(
     lo: *mut f64,
     up: *mut f64,
     ndiv: *mut std::os::raw::c_int,

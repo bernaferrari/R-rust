@@ -28,7 +28,7 @@ pub(crate) fn log10(x: f64) -> f64 {
 // Callback types
 // =====================================================================
 /// Function type: fn(n, x, f, state) — evaluates function and stores result in f
-pub type UncminFcn = unsafe extern "C" fn(
+pub type UncminFcn = unsafe fn(
     n: std::os::raw::c_int,
     x: *mut f64,
     f: *mut f64,
@@ -36,7 +36,7 @@ pub type UncminFcn = unsafe extern "C" fn(
 );
 
 /// Gradient function type: fn(n, x, g, state)
-pub type UncminD1Fcn = unsafe extern "C" fn(
+pub type UncminD1Fcn = unsafe fn(
     n: std::os::raw::c_int,
     x: *mut f64,
     g: *mut f64,
@@ -44,7 +44,7 @@ pub type UncminD1Fcn = unsafe extern "C" fn(
 );
 
 /// Hessian function type: fn(nr, n, x, h, state)
-pub type UncminD2Fcn = unsafe extern "C" fn(
+pub type UncminD2Fcn = unsafe fn(
     nr: std::os::raw::c_int,
     n: std::os::raw::c_int,
     x: *mut f64,

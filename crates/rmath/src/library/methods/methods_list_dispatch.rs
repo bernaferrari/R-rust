@@ -1281,12 +1281,12 @@ fn with_methods_dispatch_state<R>(f: impl FnOnce(&mut MethodsDispatchState) -> R
     with_required_current_instance(|instance| f(unsafe { &mut (*instance).methods_dispatch_state }))
 }
 
-pub extern "C" fn R_clear_method_selection() -> SEXP {
+pub fn R_clear_method_selection() -> SEXP {
     with_methods_dispatch_state(|state| state.n_overrides = 0);
     nil_value()
 }
 
-pub extern "C" fn R_set_method_dispatch(onOff: SEXP) -> SEXP {
+pub fn R_set_method_dispatch(onOff: SEXP) -> SEXP {
     let prev = with_methods_dispatch_state(|state| state.table_dispatch_on);
     let value = if TYPEOF(onOff) == SEXPTYPE::LGLSXP && LENGTH(onOff) >= 1 {
         LOGICAL_ELT(onOff, 0)

@@ -59,7 +59,7 @@ pub(crate) fn rcont2_slices(
 /// satisfy the public `S_rcont2` contract and may not alias in ways that cause
 /// mutable references to overlap. The active R runtime must be initialized
 /// and have RNG state acquired, as required by the GNU callable contract.
-pub(crate) unsafe extern "C" fn rcont2_c_callable(
+pub(crate) unsafe fn rcont2_c_callable(
     nrow: c_int,
     ncol: c_int,
     nrowt: *const c_int,
@@ -308,7 +308,7 @@ mod tests {
     use super::*;
     use std::ffi::CString;
 
-    type Rcont2Callable = unsafe extern "C" fn(
+    type Rcont2Callable = unsafe fn(
         c_int,
         c_int,
         *const c_int,

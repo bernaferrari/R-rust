@@ -20,7 +20,7 @@ pub(crate) const PALETTE_INIT: [rcolor; 32] = [
 ];
 
 /// Save/restore palette (NOT #[unsafe(no_mangle)] — main/colors.rs already exports it)
-pub(crate) extern "C" fn savePalette_impl(save: c_int) {
+pub(crate) fn savePalette_impl(save: c_int) {
     {
         with_color_state(|state| {
             let ps = state.palette_size as usize;
@@ -44,7 +44,7 @@ pub(crate) extern "C" fn savePalette_impl(save: c_int) {
 /// Wrapper for inRGBpar3 with void pointer signature (for Rg_set_col_ptrs).
 ///
 /// SAFETY: the engine calls this callback with a live SEXP in `x`.
-pub(crate) extern "C" fn inRGBpar3_dispatch(
+pub(crate) fn inRGBpar3_dispatch(
     x: *mut std::os::raw::c_void,
     i: c_int,
     bg: c_uint,

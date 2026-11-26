@@ -742,7 +742,7 @@ mod owned_transfer_tests {
             target: *mut RCNTXT,
             called: bool,
         }
-        unsafe extern "C" fn cleanup(data: *mut std::ffi::c_void) {
+        unsafe fn cleanup(data: *mut std::ffi::c_void) {
             let data = unsafe { &mut *data.cast::<Cleanup>() };
             unsafe {
                 (*data.target).returnValue.replace_from_raw(R_NilValue());

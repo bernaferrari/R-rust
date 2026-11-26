@@ -1917,7 +1917,7 @@ fn test_quiescent_flush_runs_dead_key_finalizer() {
     use std::sync::atomic::{AtomicI32, Ordering};
 
     static RUNS: AtomicI32 = AtomicI32::new(0);
-    unsafe extern "C" fn count_finalizer(_ptr: *mut c_void) {
+    unsafe fn count_finalizer(_ptr: *mut c_void) {
         RUNS.fetch_add(1, Ordering::SeqCst);
     }
 
@@ -1965,7 +1965,7 @@ fn test_eval_safe_point_runs_dead_key_finalizer_only_after_collection() {
     use std::sync::atomic::{AtomicI32, Ordering};
 
     static RUNS: AtomicI32 = AtomicI32::new(0);
-    unsafe extern "C" fn count_finalizer(_ptr: *mut c_void) {
+    unsafe fn count_finalizer(_ptr: *mut c_void) {
         RUNS.fetch_add(1, Ordering::SeqCst);
     }
 

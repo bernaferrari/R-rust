@@ -497,10 +497,10 @@ pub(crate) fn str2col_bytes(s: &[u8], bg: rcolor) -> rcolor {
 /// Internal to external color representation.
 ///
 /// Registered in the engine's color-pointer table via `Rg_set_col_ptrs`
-/// (a safe `extern "C" fn` item coerces to the table's `unsafe` fn slot)
+/// (a safe `fn` item coerces to the table's `unsafe` fn slot)
 /// and also called directly, so the signature stays `extern "C"` while the
 /// value-only contract lets Rust callers stay safe.
-pub extern "C" fn incol2name(col: c_uint) -> *const c_char {
+pub fn incol2name(col: c_uint) -> *const c_char {
     if R_OPAQUE(col) != 0 {
         for entry in COLOR_DATA_BASE.iter() {
             if entry.name.is_empty() {
@@ -521,7 +521,7 @@ pub extern "C" fn incol2name(col: c_uint) -> *const c_char {
 /// Engine callback (`Rg_set_col_ptrs` slot): the engine hands over a raw
 /// NUL-terminated color name, so the pointer boundary stays unsafe while the
 /// parser itself works on the checked byte slice.
-pub unsafe extern "C" fn inR_GE_str2col(s: *const c_char) -> c_uint {
+pub unsafe fn inR_GE_str2col(s: *const c_char) -> c_uint {
     // SAFETY: the engine callback contract guarantees `s` is a live
     // NUL-terminated string for the duration of the call.
     let bytes = unsafe { std::ffi::CStr::from_ptr(s) }.to_bytes();

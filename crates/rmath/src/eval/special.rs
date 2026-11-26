@@ -840,7 +840,7 @@ pub(crate) fn do_begin_with_call(call: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// arity-checked, it returns its single (already evaluated) argument. The
 /// unevaluated special-form path (`do_paren`) keeps serving the name-based
 /// dispatch fallback.
-pub extern "C" fn do_paren_builtin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_paren_builtin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let _ = call;
     let _ = rho;
     crate::mainutils::relop::checkArity(op, args);

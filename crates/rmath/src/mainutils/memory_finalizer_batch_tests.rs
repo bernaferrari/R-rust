@@ -42,7 +42,7 @@ fn graph() -> (SEXP, ProtectGuard<'static>) {
     }
 }
 
-extern "C" fn collect_and_check_batch(_: *mut c_void) {
+fn collect_and_check_batch(_: *mut c_void) {
     let run = RUNS.get();
     RUNS.set(run + 1);
     if run == 0 {
@@ -54,18 +54,18 @@ extern "C" fn collect_and_check_batch(_: *mut c_void) {
     LOST_GRAPH.set(LOST_GRAPH.get() || lost);
 }
 
-extern "C" fn count_only(_: *mut c_void) {
+fn count_only(_: *mut c_void) {
     RUNS.set(RUNS.get() + 1);
 }
 
-unsafe extern "C" fn nested_runner(_: *mut c_void) {
+unsafe fn nested_runner(_: *mut c_void) {
     RUNS.set(RUNS.get() + 1);
     // SAFETY: the outer invocation owns the active instance and is running.
     unsafe { R_RunPendingFinalizers() };
     LOST_RUNNING_GUARD.set(!with_finalizer_state(|state| state.running_finalizers));
 }
 
-extern "C" fn destroy_owner(_: *mut c_void) {
+fn destroy_owner(_: *mut c_void) {
     RUNS.set(RUNS.get() + 1);
     let owner = OWNER_TO_DROP.with(|slot| slot.borrow_mut().take());
     drop(owner);

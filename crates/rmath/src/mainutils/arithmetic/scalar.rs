@@ -71,7 +71,7 @@ pub fn R_integer_times(x: c_int, y: c_int, pnaflag: &mut bool) -> c_int {
 /// Integer division returning double.
 ///
 /// Returns NA_REAL if either input is NA_INTEGER.
-pub extern "C" fn R_integer_divide(x: c_int, y: c_int) -> f64 {
+pub fn R_integer_divide(x: c_int, y: c_int) -> f64 {
     if x == NA_INTEGER || y == NA_INTEGER {
         NA_REAL
     } else {
