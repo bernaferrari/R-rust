@@ -1427,6 +1427,10 @@ mod tests {
         let na_real = heap.alloc(RObject::Real(vec![f64::from_bits(crate::value::object::NA_REAL_BITS)]));
         let sym = interner.intern_symbol("NA_real_");
         env::define(heap, base, sym, na_real).expect("NA_real_");
+        // pi — GNU's base constant exactly as every other named numeric.
+        let pi_val = heap.alloc(RObject::Real(vec![std::f64::consts::PI]));
+        let sym = interner.intern_symbol("pi");
+        env::define(heap, base, sym, pi_val).expect("pi");
         // .GlobalEnv resolves to the user environment itself — the global
         /// exactly as GNU's top-level reference.
         let user = env::new_environment(heap, base);

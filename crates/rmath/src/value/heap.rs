@@ -36,6 +36,9 @@ pub struct Heap {
     pub pending_warnings: Vec<String>,
     /// suppressWarnings dynamic state — warnings raised while true are dropped.
     pub warn_suppressed: bool,
+    /// Active S3 dispatch entries — (generic, object, remaining classes) —
+    /// pushed by UseMethod/NextMethod exactly as GNU's dispatch context.
+    pub s3_dispatch: Vec<(String, crate::value::id::ValueId, Vec<String>)>,
     /// Interrupt suspension flag — GNU's interruptsSuspended state.
     pub interrupts_suspended: bool,
     /// bindtextdomain registry — domain to translation directory.

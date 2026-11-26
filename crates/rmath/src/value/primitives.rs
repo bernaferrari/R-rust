@@ -282,6 +282,10 @@ pub mod primitive_ids {
     pub const PBETA: u32 = 264;
     pub const DBETA: u32 = 265;
     pub const QBETA: u32 = 266;
+    pub const FIND_FN: u32 = 267;
+    pub const USEMETHOD: u32 = 268;
+    pub const NEXTMETHOD: u32 = 269;
+    pub const GETS3METHOD: u32 = 270;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -312,7 +316,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -334,7 +338,7 @@ pub(crate) fn call_primitive(
     // Braces and parens propagate the final inner visibility exactly as
     /// GNU — `{ invisible(1) }` returns invisibly — so they join .Internal
     /// and eval in the propagation exceptions.
-    if result.is_ok() && id.0 != INTERNAL && id.0 != EVAL_FN && id.0 != BRACE && id.0 != PAREN && id.0 != SUPPRESS_WARNINGS {
+    if result.is_ok() && id.0 != INTERNAL && id.0 != EVAL_FN && id.0 != BRACE && id.0 != PAREN && id.0 != SUPPRESS_WARNINGS && id.0 != USEMETHOD && id.0 != NEXTMETHOD {
         heap.visible = !matches!(
             id.0,
             ASSIGN | SUPERASSIGN | PRINT | CAT | INVISIBLE | WHILE | REPEAT | FOR
@@ -1082,7 +1086,20 @@ fn call_primitive_inner(
             };
             Ok(parent)
         }
+        USEMETHOD => usemethod_primitive(heap, interner, args, caller_env),
+        NEXTMETHOD => nextmethod_primitive(heap, interner, caller_env),
+        GETS3METHOD => {
+            let operands = eval_args(heap, interner, args, caller_env, 2)?;
+            let generic = string_operand(heap, interner, operands[0]).unwrap_or_default();
+            let class = string_operand(heap, interner, operands[1]).unwrap_or_default();
+            let sym = interner.intern_symbol(&format!("{generic}.{class}"));
+            match super::env::lookup(heap, caller_env, sym) {
+                Some((_, binding)) => Ok(force_if_promise(heap, interner, binding.value)?),
+                None => Err(EvalError::Condition(format!("S3 method '{generic}.{class}' not found")).into()),
+            }
+        }
         ORDER_FN => order_primitive(heap, interner, args, caller_env),
+        FIND_FN => find_primitive(heap, interner, args, caller_env),
         RANK_FN => rank_primitive(heap, interner, args, caller_env),
         ORDERED_FN => ordered_primitive(heap, interner, args, caller_env),
         IS_ORDERED => {
@@ -3302,7 +3319,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom", "message", "missing", "parent.env", "order", "rank", "ordered", "is.ordered", "is.factor", "na.omit", "na.exclude", "pbeta", "dbeta", "qbeta",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom", "message", "missing", "parent.env", "order", "rank", "ordered", "is.ordered", "is.factor", "na.omit", "na.exclude", "pbeta", "dbeta", "qbeta", "find", "UseMethod", "NextMethod", "getS3method",
     ]
 }
 
@@ -3556,6 +3573,10 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "pbeta" => Some(PBETA),
         "dbeta" => Some(DBETA),
         "qbeta" => Some(QBETA),
+        "find" => Some(FIND_FN),
+        "UseMethod" => Some(USEMETHOD),
+        "NextMethod" => Some(NEXTMETHOD),
+        "getS3method" => Some(GETS3METHOD),
         _ => None,
     }
 }
@@ -9918,6 +9939,218 @@ fn dpq_primitive(
     Ok(heap.alloc(RObject::Real(out)))
 }
 
+
+
+/// find(x, mode, numeric) — the two-element search path the new world
+/// models exactly as GNU's user-first ordering: position 1 ".GlobalEnv",
+/// position 2 "package:base". The character form returns the environment
+/// name; numeric=TRUE returns the position as a named integer.
+fn find_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let (positional, named) = collect_order_args(heap, interner, args, caller_env)?;
+    let what = positional.first().copied().ok_or(EvalError::TypeError("find requires an argument"))?;
+    let name = string_operand(heap, interner, what).unwrap_or_default();
+    let numeric = flag_lookup(heap, &positional, &named, "numeric", usize::MAX)
+        .map(|v| logical_or_na(heap, v).unwrap_or(false))
+        .unwrap_or(false);
+    let mode_filter = flag_lookup(heap, &positional, &named, "mode", usize::MAX)
+        .and_then(|v| string_operand(heap, interner, v))
+        .unwrap_or_else(|| "any".to_string());
+
+    let sym = interner.intern_symbol(&name);
+    // Walk the chain from the user environment: the first frame holding the
+    // binding decides, positions counted in search order exactly as GNU.
+    let mut cursor = caller_env;
+    let mut position = 0i32;
+    let mut found: Option<(i32, ValueId)> = None;
+    for _ in 0..100 {
+        if cursor == ValueId::EMPTY_ENV || cursor.is_sentinel() {
+            break;
+        }
+        position += 1;
+        if let Some(binding) = super::env::lookup_in_frame(heap, cursor, sym) {
+            // The .GlobalEnv self-reference inside base is not a user
+            // binding — GNU reports it at its true home exactly like any
+            // other base binding.
+            found = Some((position, binding.value));
+            break;
+        }
+        cursor = match heap.object(cursor) {
+            Some(RObject::Environment { enclos, .. }) => *enclos,
+            _ => break,
+        };
+    }
+    let empty_result = |heap: &mut Heap, interner: &mut SymbolInterner, numeric: bool| -> EvalResult {
+        if numeric {
+            let result = heap.alloc(RObject::Integer(Vec::new()));
+            let names = heap.alloc(RObject::String(Vec::new()));
+            copy_with_attrib(heap, interner, result, "names", names).map_err(RSignal::from)
+        } else {
+            Ok(heap.alloc(RObject::String(Vec::new())))
+        }
+    };
+    let (position, value) = match found {
+        Some(pair) => pair,
+        None => return empty_result(heap, interner, numeric),
+    };
+    // mode filtering — "function" admits only closures and primitives
+    // exactly as GNU's mode test.
+    if mode_filter == "function" {
+        let is_function = matches!(heap.object(value), Some(RObject::Closure { .. }) | Some(RObject::Primitive(_)));
+        if !is_function {
+            return empty_result(heap, interner, numeric);
+        }
+    }
+    let env_name = if position == 1 { ".GlobalEnv" } else { "package:base" };
+    if numeric {
+        let result = heap.alloc(RObject::Integer(vec![position]));
+        let names = heap.alloc(RObject::String(vec![interner.intern_string(env_name)]));
+        copy_with_attrib(heap, interner, result, "names", names).map_err(RSignal::from)
+    } else {
+        Ok(heap.alloc(RObject::String(vec![interner.intern_string(env_name)])))
+    }
+}
+
+
+/// The class attribute as a vector of class names — empty when unclassed.
+fn class_vector(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<String> {
+    match get_attrib(heap, interner, value, "class") {
+        Some(id) => string_vec(heap, interner, id)
+            .into_iter()
+            .filter(|s| s != "\0NA")
+            .collect(),
+        None => Vec::new(),
+    }
+}
+
+/// Apply an S3 method closure to the object with the pre-forced promise
+/// discipline exactly as the apply family — the object passes as a value,
+/// never as a re-evaluated expression.
+fn s3_apply(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    method: ValueId,
+    object: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let forced = heap.alloc(RObject::Promise {
+        expr: object,
+        env: caller_env,
+        value: object,
+    });
+    let arg_node = heap.alloc(RObject::Pairlist {
+        car: forced,
+        cdr: ValueId::NIL,
+        tag: ValueId::NIL,
+    });
+    match heap.object(method).cloned() {
+        Some(RObject::Closure { formals, body, env }) => {
+            let applied = super::eval::apply_closure_public(heap, interner, formals, body, env, arg_node, caller_env)?;
+            force_if_promise(heap, interner, applied)
+        }
+        Some(RObject::Primitive(builtin)) => call_primitive(heap, interner, builtin, arg_node, caller_env),
+        _ => Err(EvalError::NotCallable.into()),
+    }
+}
+
+/// The first frame binding in insertion order — UseMethod's implicit object
+/// exactly as GNU's first-formal rule for single-argument generics.
+fn first_frame_value(heap: &Heap, env: ValueId) -> Option<ValueId> {
+    match heap.object(env) {
+        Some(RObject::Environment { frame: crate::value::object::EnvFrame::List(entries), .. }) => {
+            entries.first().map(|(_, binding)| binding.value)
+        }
+        _ => None,
+    }
+}
+
+/// UseMethod(generic, object) — walk the object's class vector for
+/// `<generic>.<class>` in the method-lookup chain, fall back to `.default`,
+/// and apply with dispatch state pushed for NextMethod exactly as GNU.
+fn usemethod_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let raw = raw_args(heap, args);
+    let generic = match raw.first() {
+        Some(expr) => {
+            let v = eval(heap, interner, *expr, caller_env)?;
+            let v = force_if_promise(heap, interner, v)?;
+            string_operand(heap, interner, v).unwrap_or_default()
+        }
+        None => return Err(EvalError::TypeError("UseMethod requires a generic name").into()),
+    };
+    let object = match raw.get(1) {
+        Some(expr) => {
+            let v = eval(heap, interner, *expr, caller_env)?;
+            force_if_promise(heap, interner, v)?
+        }
+        None => {
+            let binding = first_frame_value(heap, caller_env)
+                .ok_or(EvalError::TypeError("UseMethod has no object to dispatch on"))?;
+            force_if_promise(heap, interner, binding)?
+        }
+    };
+    let classes = class_vector(heap, interner, object);
+    let mut candidates: Vec<String> = classes.clone();
+    candidates.push("default".to_string());
+    for (index, class) in candidates.iter().enumerate() {
+        let sym = interner.intern_symbol(&format!("{generic}.{class}"));
+        if let Some((_, binding)) = super::env::lookup(heap, caller_env, sym) {
+            let method = force_if_promise(heap, interner, binding.value)?;
+            let remaining: Vec<String> = if index < classes.len() {
+                classes[index + 1..].to_vec()
+            } else {
+                Vec::new()
+            };
+            heap.s3_dispatch.push((generic.clone(), object, remaining));
+            let result = s3_apply(heap, interner, method, object, caller_env);
+            heap.s3_dispatch.pop();
+            return result;
+        }
+    }
+    Err(EvalError::Condition(format!(
+        "no applicable method for '{generic}' applied to an object of class",
+    ))
+    .into())
+}
+
+/// NextMethod() — dispatch the next class in the active generic's walk,
+/// falling back to `.default` when the class walk exhausts exactly as GNU.
+fn nextmethod_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    caller_env: ValueId,
+) -> EvalResult {
+    let (generic, object, remaining) = match heap.s3_dispatch.last().cloned() {
+        Some(entry) => entry,
+        None => return Err(EvalError::Condition("NextMethod called outside S3 dispatch".to_string()).into()),
+    };
+    let mut candidates = remaining.clone();
+    candidates.push("default".to_string());
+    for (index, class) in candidates.iter().enumerate() {
+        let sym = interner.intern_symbol(&format!("{generic}.{class}"));
+        if let Some((_, binding)) = super::env::lookup(heap, caller_env, sym) {
+            let method = force_if_promise(heap, interner, binding.value)?;
+            let next_remaining: Vec<String> = if index < remaining.len() {
+                remaining[index + 1..].to_vec()
+            } else {
+                Vec::new()
+            };
+            heap.s3_dispatch.push((generic.clone(), object, next_remaining));
+            let result = s3_apply(heap, interner, method, object, caller_env);
+            heap.s3_dispatch.pop();
+            return result;
+        }
+    }
+    Err(EvalError::Condition("no method to invoke with NextMethod".to_string()).into())
+}
 
 /// class vector membership — the shared predicate behind is.factor/is.ordered.
 fn class_contains(heap: &Heap, interner: &SymbolInterner, value: ValueId, class: &str) -> bool {
