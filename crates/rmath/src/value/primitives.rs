@@ -414,8 +414,39 @@ fn call_primitive_inner(
         DOLLAR => dollar_primitive(heap, interner, args, caller_env),
         LAPPLY | SAPPLY => apply_family(heap, interner, id.0, args, caller_env),
         UNLIST => {
-            let operands = eval_args(heap, interner, args, caller_env, 1)?;
-            unlist_primitive(heap, operands[0])
+            let mut xval = ValueId::NIL;
+            let mut recursive = true;
+            let mut use_names = true;
+            let mut cursor = args;
+            for _ in 0..100_000 {
+                if cursor == ValueId::NIL {
+                    break;
+                }
+                let (car, tag, next) = match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, tag, cdr, .. }) => (*car, *tag, *cdr),
+                    _ => break,
+                };
+                let value = eval(heap, interner, car, caller_env)?;
+                let tag_name = if tag == ValueId::NIL {
+                    None
+                } else {
+                    match heap.object(tag) {
+                        Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+                        _ => None,
+                    }
+                };
+                match tag_name.as_deref() {
+                    Some("recursive") => recursive = logical_scalar(heap, value),
+                    Some("use.names") => use_names = logical_scalar(heap, value),
+                    _ => {
+                        if xval == ValueId::NIL {
+                            xval = value;
+                        }
+                    }
+                }
+                cursor = next;
+            }
+            unlist_primitive(heap, interner, xval, recursive, use_names)
         }
         SEQ_LEN => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
@@ -5256,58 +5287,212 @@ fn simplify_sapply(heap: &mut Heap, results: Vec<ValueId>) -> EvalResult {
 /// type-hierarchy shape: any real promotes to real, integer/logical
 /// mixtures promote to integer. The slice covers numeric flattening;
 /// string mixtures are future work.
-fn unlist_primitive(heap: &mut Heap, value: ValueId) -> EvalResult {
-    fn flatten(heap: &Heap, value: ValueId, ints: &mut Vec<i32>, reals: &mut Vec<f64>) {
-        match heap.object(value) {
-            Some(RObject::Logical(values)) => {
-                for v in values {
-                    ints.push(*v as i32);
-                    reals.push(*v as f64);
-                }
-            }
-            Some(RObject::Integer(values)) => {
-                for v in values {
-                    ints.push(*v);
-                    if *v == crate::value::object::NA_INTEGER {
-                        reals.push(f64::from_bits(crate::value::object::NA_REAL_BITS));
+fn unlist_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    value: ValueId,
+    recursive: bool,
+    use_names: bool,
+) -> EvalResult {
+    // GNU unlist: recursive=TRUE flattens nested lists fully and atomizes
+    /// to the highest type in the lattice; recursive=FALSE descends exactly
+    /// one list level and yields a list whose nested lists stay intact.
+    /// Names concatenate outer.inner with dots, positional indices gluing
+    /// bare exactly as GNU's name construction.
+    if !matches!(heap.object(value), Some(RObject::List(_))) {
+        return Ok(value);
+    }
+    enum Leaf {
+        Scalar { rank: u8, int: i32, real: f64, text: String, name: String },
+        Intact { value: ValueId, name: String },
+    }
+    fn rank_of(heap: &Heap, v: ValueId) -> u8 {
+        match heap.object(v) {
+            Some(RObject::Logical(_)) | Some(RObject::Raw(_)) => 1,
+            Some(RObject::Integer(_)) => 2,
+            Some(RObject::Real(_)) => 3,
+            Some(RObject::Complex(_)) => 4,
+            Some(RObject::String(_)) => 5,
+            _ => 0,
+        }
+    }
+    fn walk(
+        heap: &Heap,
+        interner: &SymbolInterner,
+        value: ValueId,
+        prefix: &str,
+        depth: usize,
+        recursive: bool,
+        out: &mut Vec<Leaf>,
+        crossed_list: &mut bool,
+    ) {
+        if depth > 0 {
+            *crossed_list = true;
+        }
+        if let Some(RObject::List(items)) = heap.object(value) {
+            let names = get_attrib(heap, interner, value, "names")
+                .map(|id| string_vec(heap, interner, id))
+                .unwrap_or_default();
+            for (i, item) in items.clone().iter().enumerate() {
+                let outer = names.get(i).cloned().unwrap_or_default();
+                let item_prefix = if prefix.is_empty() {
+                    outer.clone()
+                } else if outer.is_empty() {
+                    prefix.to_string()
+                } else {
+                    format!("{prefix}.{outer}")
+                };
+                if matches!(heap.object(*item), Some(RObject::List(_))) {
+                    if recursive || depth == 0 {
+                        walk(heap, interner, *item, &item_prefix, depth + 1, recursive, out, crossed_list);
                     } else {
-                        reals.push(*v as f64);
+                        out.push(Leaf::Intact { value: *item, name: item_prefix });
                     }
+                    continue;
+                }
+                let len = vector_length(heap, *item).unwrap_or(0);
+                if len == 0 {
+                    continue;
+                }
+                let inner_names = get_attrib(heap, interner, *item, "names")
+                    .map(|id| string_vec(heap, interner, id))
+                    .unwrap_or_default();
+                let rank = rank_of(heap, *item);
+                for k in 0..len {
+                    let inner = inner_names.get(k).cloned().unwrap_or_default();
+                    let name = if len == 1 || !inner.is_empty() {
+                        if inner.is_empty() {
+                            item_prefix.clone()
+                        } else if item_prefix.is_empty() {
+                            inner.clone()
+                        } else {
+                            format!("{item_prefix}.{inner}")
+                        }
+                    } else if item_prefix.is_empty() {
+                        String::new()
+                    } else {
+                        format!("{item_prefix}{}", k + 1)
+                    };
+                    let (int, real, text) = match heap.object(*item) {
+                        Some(RObject::Logical(vals)) | Some(RObject::Integer(vals)) => {
+                            let v = vals.get(k).copied().unwrap_or(crate::value::object::NA_INTEGER);
+                            let r = if v == crate::value::object::NA_INTEGER {
+                                f64::from_bits(crate::value::object::NA_REAL_BITS)
+                            } else {
+                                v as f64
+                            };
+                            (v, r, v.to_string())
+                        }
+                        Some(RObject::Real(vals)) => {
+                            let v = vals.get(k).copied().unwrap_or(f64::NAN);
+                            (0, v, super::print::format_real(v))
+                        }
+                        Some(RObject::String(vals)) => {
+                            let s = vals
+                                .get(k)
+                                .map(|x| interner.string_text(*x).to_string())
+                                .unwrap_or_default();
+                            (0, f64::NAN, s)
+                        }
+                        Some(RObject::Complex(vals)) => {
+                            let z = vals.get(k).copied().unwrap_or_default();
+                            (0, f64::NAN, super::print::format_complex(z))
+                        }
+                        Some(RObject::Raw(vals)) => {
+                            let v = vals.get(k).copied().unwrap_or(0);
+                            (v as i32, v as f64, format!("{v}"))
+                        }
+                        _ => (0, f64::NAN, String::new()),
+                    };
+                    out.push(Leaf::Scalar { rank, int, real, text, name });
                 }
             }
-            Some(RObject::Real(values)) => {
-                for v in values {
-                    ints.push(0);
-                    reals.push(*v);
-                }
-            }
-            Some(RObject::List(items)) => {
-                for item in items {
-                    flatten(heap, *item, ints, reals);
-                }
-            }
-            _ => {}
         }
     }
-    fn any_real(heap: &Heap, value: ValueId) -> bool {
-        match heap.object(value) {
-            Some(RObject::Real(_)) => true,
-            Some(RObject::List(items)) => items.iter().any(|i| any_real(heap, *i)),
-            _ => false,
+    let mut leaves: Vec<Leaf> = Vec::new();
+    let mut crossed_list = false;
+    walk(heap, interner, value, "", 0, recursive, &mut leaves, &mut crossed_list);
+    // recursive=FALSE atomizes exactly like recursive=TRUE when no sublist
+    /// boundary was crossed — the shallow shape only appears once list
+    /// structure actually participates, exactly as GNU.
+    if !recursive && !crossed_list {
+        return unlist_primitive(heap, interner, value, true, use_names);
+    }
+    if !recursive {
+        let mut items = Vec::new();
+        let mut names = Vec::new();
+        for leaf in &leaves {
+            match leaf {
+                Leaf::Scalar { rank, int, real, text, name } => {
+                    let scalar = match rank {
+                        3 => heap.alloc(RObject::Real(vec![*real])),
+                        5 => heap.alloc(RObject::String(vec![interner.intern_string(text)])),
+                        1 | 2 => {
+                            if *rank == 2 {
+                                heap.alloc(RObject::Integer(vec![*int]))
+                            } else {
+                                heap.alloc(RObject::Logical(vec![*int]))
+                            }
+                        }
+                        _ => heap.alloc(RObject::Real(vec![*real])),
+                    };
+                    items.push(scalar);
+                    names.push(name.clone());
+                }
+                Leaf::Intact { value, name } => {
+                    items.push(*value);
+                    names.push(name.clone());
+                }
+            }
         }
+        let result = heap.alloc(RObject::List(items));
+        if use_names && names.iter().any(|n| !n.is_empty()) {
+            let interned: Vec<super::intern::InternedStr> = names
+                .iter()
+                .map(|s| interner.intern_string(s))
+                .collect();
+            let names_vec = heap.alloc(RObject::String(interned));
+            return copy_with_attrib(heap, interner, result, "names", names_vec).map_err(RSignal::from);
+        }
+        return Ok(result);
     }
-    match heap.object(value) {
-        Some(RObject::List(_)) => {}
-        // Atomic inputs pass through unchanged, GNU exactly.
-        _ => return Ok(value),
-    }
+    let mut top_rank = 0u8;
+    let mut names = Vec::new();
     let mut ints = Vec::new();
     let mut reals = Vec::new();
-    flatten(heap, value, &mut ints, &mut reals);
-    if any_real(heap, value) {
-        Ok(heap.alloc(RObject::Real(reals)))
+    let mut texts = Vec::new();
+    for leaf in &leaves {
+        match leaf {
+            Leaf::Scalar { rank, int, real, text, name } => {
+                top_rank = top_rank.max(*rank);
+                ints.push(*int);
+                reals.push(*real);
+                texts.push(text.clone());
+                names.push(name.clone());
+            }
+            Leaf::Intact { .. } => {}
+        }
+    }
+    let result = if top_rank >= 5 {
+        let interned: Vec<super::intern::InternedStr> = texts
+            .iter()
+            .map(|s| interner.intern_string(s))
+            .collect();
+        heap.alloc(RObject::String(interned))
+    } else if top_rank >= 3 {
+        heap.alloc(RObject::Real(reals))
     } else {
-        Ok(heap.alloc(RObject::Integer(ints)))
+        heap.alloc(RObject::Integer(ints))
+    };
+    if use_names && names.iter().any(|n| !n.is_empty()) {
+        let interned: Vec<super::intern::InternedStr> = names
+            .iter()
+            .map(|s| interner.intern_string(s))
+            .collect();
+        let names_vec = heap.alloc(RObject::String(interned));
+        copy_with_attrib(heap, interner, result, "names", names_vec).map_err(RSignal::from)
+    } else {
+        Ok(result)
     }
 }
 
