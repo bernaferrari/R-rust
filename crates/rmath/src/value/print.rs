@@ -394,9 +394,13 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         _ => return "<object>".to_string(),
     };
     if length == 0 {
+        // GNU prefixes "named" when the empty vector carries a names
+        // attribute exactly as print.default's empty-shape rendering.
+        let named = super::primitives::get_attrib(heap, interner, value, "names").is_some();
+        let prefix = if named { "named " } else { "" };
         return match object {
-            RObject::Real(_) => "numeric(0)".to_string(),
-            RObject::Integer(_) => "integer(0)".to_string(),
+            RObject::Real(_) => format!("{prefix}numeric(0)"),
+            RObject::Integer(_) => format!("{prefix}integer(0)"),
             RObject::Logical(_) => "logical(0)".to_string(),
             RObject::String(_) => "character(0)".to_string(),
             RObject::Complex(_) => "complex(0)".to_string(),

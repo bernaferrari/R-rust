@@ -575,10 +575,7 @@ fn call_primitive_inner(
             let operands = eval_args(heap, interner, args, caller_env, 2)?;
             membership_primitive(heap, interner, operands[0], operands[1])
         }
-        MATCH => {
-            let operands = eval_args(heap, interner, args, caller_env, 2)?;
-            match_primitive(heap, interner, operands[0], operands[1])
-        }
+        MATCH => match_primitive(heap, interner, args, caller_env),
         NEW_ENV => {
             // GNU's parent defaults to the calling environment; a tagged
             /// parent= argument overrides it exactly as GNU. hash and size
@@ -6951,79 +6948,99 @@ fn ifelse_primitive(
     }
 }
 
-/// `%in%` — elementwise membership: logical vector marking each left
-/// element found in the right table. Numeric slice; NA never matches,
-/// exactly as GNU.
+/// `%in%` — elementwise membership exactly as GNU: match(x, table,
+/// nomatch = 0) > 0, so NA in x matches NA in the table bitwise.
 fn membership_primitive(heap: &mut Heap, interner: &mut SymbolInterner, left: ValueId, right: ValueId) -> EvalResult {
-    // GNU coerces to the common type — character dominates. String
-    /// membership compares text exactly, the NA sentinel never matching.
-    if matches!(heap.object(left), Some(RObject::String(_))) || matches!(heap.object(right), Some(RObject::String(_))) {
-        let lhs = string_vec(heap, interner, left);
-        let table = string_vec(heap, interner, right);
-        let out: Vec<i32> = lhs
-            .iter()
-            .map(|v| {
-                if v == "\0NA" {
-                    0
-                } else {
-                    table.iter().any(|tt| tt != "\0NA" && tt == v) as i32
-                }
-            })
-            .collect();
-        return Ok(heap.alloc(RObject::Logical(out)));
-    }
-    let lhs = numerics_of(heap, left).map_err(RSignal::from)?;
-    let table = numerics_of(heap, right).map_err(RSignal::from)?;
-    let out: Vec<i32> = lhs
-        .iter()
-        .map(|v| {
-            if v.is_nan() {
-                0
-            } else {
-                table.iter().any(|t| !t.is_nan() && t == v) as i32
-            }
-        })
-        .collect();
+    let positions = match_positions(heap, interner, left, right, 0, &[]);
+    let out: Vec<i32> = positions.iter().map(|p| (*p > 0) as i32).collect();
     Ok(heap.alloc(RObject::Logical(out)))
 }
 
-/// `match(x, table)` — 1-based first-match positions, NA for no match,
-/// GNU exactly. Numeric slice.
-fn match_primitive(heap: &mut Heap, interner: &mut SymbolInterner, left: ValueId, right: ValueId) -> EvalResult {
-    if matches!(heap.object(left), Some(RObject::String(_))) || matches!(heap.object(right), Some(RObject::String(_))) {
-        let lhs = string_vec(heap, interner, left);
-        let table = string_vec(heap, interner, right);
-        let na = crate::value::object::NA_INTEGER;
-        let out: Vec<i32> = lhs
-            .iter()
-            .map(|v| {
-                if v == "\0NA" {
-                    return na;
-                }
-                match table.iter().position(|tt| tt != "\0NA" && tt == v) {
-                    Some(position) => (position + 1) as i32,
-                    None => na,
-                }
-            })
-            .collect();
-        return Ok(heap.alloc(RObject::Integer(out)));
+/// GNU's bitwise element keys — NA_real_ and NaN are distinct bit
+/// patterns, the string sentinel is its own key, and every comparison is
+/// exact: this is what makes NA match NA in the table.
+fn match_keys(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<String> {
+    match heap.object(value) {
+        Some(RObject::String(vals)) => vals.iter().map(|v| format!("s:{}", interner.string_text(*v))).collect(),
+        Some(RObject::Real(vals)) => vals.iter().map(|v| format!("r:{}", v.to_bits())).collect(),
+        Some(RObject::Integer(vals)) => vals.iter().map(|v| format!("i:{v}")).collect(),
+        Some(RObject::Logical(vals)) => vals.iter().map(|v| format!("l:{v}")).collect(),
+        _ => Vec::new(),
     }
-    let lhs = numerics_of(heap, left).map_err(RSignal::from)?;
-    let table = numerics_of(heap, right).map_err(RSignal::from)?;
-    let na = crate::value::object::NA_INTEGER;
-    let out: Vec<i32> = lhs
-        .iter()
+}
+
+/// The shared match engine — bitwise key equality, incomparables never
+/// matching, nomatch filling exactly as GNU.
+fn match_positions(
+    heap: &Heap,
+    interner: &SymbolInterner,
+    left: ValueId,
+    right: ValueId,
+    nomatch: i32,
+    incomparables: &[String],
+) -> Vec<i32> {
+    let lhs = match_keys(heap, interner, left);
+    let table = match_keys(heap, interner, right);
+    lhs.iter()
         .map(|v| {
-            if v.is_nan() {
-                return na;
+            if incomparables.iter().any(|inc| inc == v) {
+                return nomatch;
             }
-            match table.iter().position(|t| !t.is_nan() && t == v) {
-                Some(position) => (position + 1) as i32,
-                None => na,
+            match table.iter().position(|tt| tt == v) {
+                Some(pos) => (pos + 1) as i32,
+                None => nomatch,
             }
         })
-        .collect();
-    Ok(heap.alloc(RObject::Integer(out)))
+        .collect()
+}
+
+/// `match(x, table, nomatch, incomparables)` — 1-based first-match
+/// positions exactly as GNU: bitwise NA/NaN matching, incomparables
+/// excluded, nomatch the no-hit fill.
+fn match_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let mut positional: Vec<ValueId> = Vec::new();
+    let mut nomatch = crate::value::object::NA_INTEGER;
+    let mut incomparables: Vec<String> = Vec::new();
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let v = force_if_promise(heap, interner, evaluated)?;
+        match tag_name.as_deref() {
+            Some("nomatch") => {
+                nomatch = match heap.object(v) {
+                    Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals.first().copied().unwrap_or(nomatch),
+                    Some(RObject::Real(vals)) => vals.first().copied().unwrap_or(nomatch as f64) as i32,
+                    _ => nomatch,
+                };
+            }
+            Some("incomparables") => {
+                incomparables = match_keys(heap, interner, v);
+            }
+            _ => positional.push(v),
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    if positional.len() < 2 {
+        return Ok(heap.alloc(RObject::Integer(Vec::new())));
+    }
+    let positions = match_positions(heap, interner, positional[0], positional[1], nomatch, &incomparables);
+    Ok(heap.alloc(RObject::Integer(positions)))
 }
 
 /// `exists(name, envir)` — GNU's chain lookup by default: the binding may
@@ -7317,6 +7334,113 @@ fn rep_dispatch(
     caller_env: ValueId,
 ) -> EvalResult {
     let result = rep_dispatch_inner(heap, interner, args, caller_env)?;
+    // length.out truncates or recycles the repetition exactly as GNU.
+    let mut length_out: Option<usize> = None;
+    let mut times_hint: usize = 1;
+    let mut each_hint: usize = 1;
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let v = force_if_promise(heap, interner, evaluated)?;
+        match tag_name.as_deref() {
+            Some("length.out") => {
+                length_out = match heap.object(v) {
+                    Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals.first().copied().map(|x| x as usize),
+                    Some(RObject::Real(vals)) => vals.first().copied().map(|x| x as usize),
+                    _ => None,
+                };
+            }
+            Some("times") => {
+                times_hint = match heap.object(v) {
+                    Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals.first().copied().unwrap_or(1) as usize,
+                    Some(RObject::Real(vals)) => vals.first().copied().unwrap_or(1.0) as usize,
+                    _ => 1,
+                };
+            }
+            Some("each") => {
+                each_hint = match heap.object(v) {
+                    Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals.first().copied().unwrap_or(1) as usize,
+                    Some(RObject::Real(vals)) => vals.first().copied().unwrap_or(1.0) as usize,
+                    _ => 1,
+                };
+            }
+            _ => {}
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    let result = match length_out {
+        Some(target) => resize_vector(heap, interner, result, target)?,
+        None => result,
+    };
+    // GNU's rep replicates the names attribute parallel to the payload:
+    /// each-element repetition contiguous, whole-vector repetition in
+    /// blocks, length.out recycling alongside the values.
+    if let Ok(source_ops) = eval_args(heap, interner, args, caller_env, 1) {
+        let source = source_ops[0];
+        let source_names: Vec<String> = match get_attrib(heap, interner, source, "names") {
+            Some(n) => string_vec(heap, interner, n),
+            None => Vec::new(),
+        };
+        let has_names = match get_attrib(heap, interner, result, "names") {
+            Some(n) => !string_vec(heap, interner, n).is_empty(),
+            None => false,
+        };
+        if !source_names.is_empty() && !has_names {
+            let out_len = vector_length(heap, result).unwrap_or(0);
+            let src_len = source_names.len();
+            let mut replicated: Vec<String> = Vec::new();
+            if each_hint > 1 {
+                // each: every name contiguous, the whole pattern times times.
+                for _ in 0..times_hint {
+                    for name in &source_names {
+                        for _ in 0..each_hint {
+                            replicated.push(name.clone());
+                        }
+                    }
+                }
+            } else {
+                // times blocks: the names vector repeats as a unit.
+                for _ in 0..times_hint {
+                    replicated.extend(source_names.iter().cloned());
+                }
+            }
+            // Recycle to the output length exactly as the values did.
+            if replicated.len() != out_len && !replicated.is_empty() {
+                let base = replicated.clone();
+                replicated = (0..out_len).map(|i| base[i % base.len()].clone()).collect();
+            }
+            replicated.truncate(out_len);
+            if replicated.len() == out_len && out_len > 0 {
+                let names_obj = heap.alloc(RObject::String(
+                    replicated.iter().map(|n| interner.intern_string(n)).collect(),
+                ));
+                let _ = &src_len;
+                let stamped = copy_with_attrib(heap, interner, result, "names", names_obj).map_err(RSignal::from)?;
+                return finish_rep_classed(heap, interner, args, caller_env, stamped);
+            }
+        }
+    }
+    finish_rep_classed(heap, interner, args, caller_env, result)
+}
+
+fn finish_rep_classed(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+    result: ValueId,
+) -> EvalResult {
     // GNU's rep methods for datetime classes keep the chain — class and
     /// tzone replicate across the repeated payload exactly.
     if let Ok(operands) = eval_args(heap, interner, args, caller_env, 1) {
@@ -10742,23 +10866,62 @@ fn stopifnot_primitive(
     Ok(ValueId::NIL)
 }
 
-/// sequence(nvec) — concatenated 1:n exactly as GNU's integer expansion.
+/// sequence(nvec, from, by) — concatenated per-element sequences exactly
+/// as GNU: defaults from=1 by=1 with recycling across the expansion.
 fn sequence_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    let operands = eval_args(heap, interner, args, caller_env, 1)?;
-    let lengths: Vec<i64> = match heap.object(operands[0]) {
+    let mut positional: Vec<ValueId> = Vec::new();
+    let mut from_arg = ValueId::NIL;
+    let mut by_arg = ValueId::NIL;
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let v = force_if_promise(heap, interner, evaluated)?;
+        match tag_name.as_deref() {
+            Some("from") => from_arg = v,
+            Some("by") => by_arg = v,
+            _ => positional.push(v),
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    let lengths: Vec<i64> = match positional.first().and_then(|v| heap.object(*v)) {
         Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals.iter().map(|v| *v as i64).collect(),
         Some(RObject::Real(vals)) => vals.iter().map(|v| *v as i64).collect(),
         _ => Vec::new(),
     };
+    let numerics_at = |value: ValueId, index: usize, default: f64| -> f64 {
+        if value == ValueId::NIL {
+            return default;
+        }
+        match heap.object(value) {
+            Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) if !vals.is_empty() => {
+                vals[index % vals.len()] as f64
+            }
+            Some(RObject::Real(vals)) if !vals.is_empty() => vals[index % vals.len()],
+            _ => default,
+        }
+    };
     let mut out: Vec<i32> = Vec::new();
-    for len in lengths {
-        for i in 1..=len.max(0) {
-            out.push(i as i32);
+    for (index, len) in lengths.iter().enumerate() {
+        let from = numerics_at(from_arg, index, 1.0);
+        let by = numerics_at(by_arg, index, 1.0);
+        for i in 0..(*len).max(0) {
+            out.push((from + by * i as f64) as i32);
         }
     }
     Ok(heap.alloc(RObject::Integer(out)))
@@ -11737,6 +11900,37 @@ fn strip_attrib(
         Some(_) => copy_with_attrib(heap, interner, value, name, ValueId::NIL).map_err(RSignal::from),
         None => Ok(value),
     }
+}
+
+
+/// Truncate or recycle a vector to an exact length — GNU's length.out
+/// semantics shared by rep and rep_len.
+fn resize_vector(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    value: ValueId,
+    target: usize,
+) -> Result<ValueId, RSignal> {
+    let _ = interner;
+    macro_rules! resize {
+        ($variant:ident) => {
+            if let Some(RObject::$variant(vals)) = heap.object(value) {
+                if vals.len() != target && !vals.is_empty() {
+                    let out: Vec<_> = (0..target).map(|i| vals[i % vals.len()].clone()).collect();
+                    return Ok(heap.alloc(RObject::$variant(out)));
+                }
+                if vals.len() != target {
+                    return Ok(value);
+                }
+            }
+        };
+    }
+    resize!(Integer);
+    resize!(Real);
+    resize!(Logical);
+    resize!(String);
+    resize!(Raw);
+    Ok(value)
 }
 
 /// class vector membership — the shared predicate behind is.factor/is.ordered.
