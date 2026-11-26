@@ -286,6 +286,19 @@ impl ValueBridge {
                 self.attach_attributes(heap, interner, sexp, id)?;
                 Ok(id)
             }
+            SEXPTYPE::BUILTINSXP | SEXPTYPE::SPECIALSXP => {
+                // Legacy primitives map onto the new primitive registry by
+                // their print name. The scaffolding table covers the
+                // operator set the migration has reached; everything else is
+                // genuinely unsupported until its primitive lands.
+                let name = primitive_name_of(sexp).ok_or(ImportError::TruncatedPayload)?;
+                let id = crate::value::primitives::primitive_id_for_name(&name)
+                    .ok_or(ImportError::UnsupportedType(sexp.typeof_()))?;
+                let body = RObject::Primitive(crate::value::object::BuiltinId(id));
+                let id = heap.alloc(body);
+                self.forward.insert(key, id);
+                Ok(id)
+            }
             SEXPTYPE::SYMSXP => {
                 // Symbols pre-register like pairlists: an unbound symbol's
                 // value edge can be the symbol itself, and the memoized
@@ -479,6 +492,25 @@ fn singleton_sentinel(sexp: &Sexp<'_>) -> Option<ValueId> {
         .iter()
         .find(|(singleton, _)| *singleton == raw)
         .map(|(_, sentinel)| *sentinel)
+}
+
+/// Read a legacy primitive's print name through the same `PRIMNAME`
+/// accessor the legacy dispatch uses.
+fn primitive_name_of(sexp: &Sexp<'_>) -> Option<String> {
+    let name = crate::mainutils::relop::PRIMNAME(sexp.as_raw());
+    if name.is_null() {
+        return None;
+    }
+    // SAFETY: PRIMNAME of a live primitive yields a NUL-terminated static
+    // name valid for the borrow.
+    let text = unsafe { std::ffi::CStr::from_ptr(name) }
+        .to_string_lossy()
+        .into_owned();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
 }
 
 /// Stable identity key for a legacy object: its pointer identity, which is
@@ -958,6 +990,86 @@ mod tests {
                 }
             }
             other => panic!("expected closure, got {other:?}"),
+        }
+    }
+    /// Bootstrap a new-world environment with the migrated primitives bound
+    /// to their symbol names — what the future base-environment migration
+    /// produces wholesale.
+    fn bootstrap_env(
+        heap: &mut crate::value::heap::Heap,
+        interner: &mut crate::value::intern::SymbolInterner,
+    ) -> crate::value::id::ValueId {
+        use crate::value::env;
+        use crate::value::object::BuiltinId;
+        use crate::value::primitives::primitive_id_for_name;
+        let env_id = env::new_environment(heap, crate::value::id::ValueId::EMPTY_ENV);
+        for name in [
+            "+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!=", "if", "{", "<-", "<<-",
+            "return", "while", "repeat", "for", "break", "next",
+        ] {
+            let sym = interner.intern_symbol(name);
+            let prim = primitive_id_for_name(name).expect("mapped primitive");
+            let object = heap.alloc(RObject::Primitive(BuiltinId(prim)));
+            env::define(heap, env_id, sym, object).expect("define primitive");
+        }
+        env_id
+    }
+
+    #[test]
+    fn convergence_parsed_program_evaluates_in_both_worlds() {
+        let mut session = crate::sexp::session::RSession::new();
+        let mut heap = Heap::new();
+        let mut interner = SymbolInterner::new();
+        let mut bridge = ValueBridge::new();
+
+        let expressions = session.with_active(|| {
+            crate::eval::parser::parse_active_expressions("1 + 2")
+                .expect("source parses")
+        });
+        assert_eq!(expressions.len(), 1);
+
+        // import the parsed call tree into the new heap
+        let imported = bridge
+            .import(&mut heap, &mut interner, &expressions[0])
+            .expect("call tree imports");
+
+        // evaluate in the new world against the bootstrap environment
+        let env_id = bootstrap_env(&mut heap, &mut interner);
+        let new_world = crate::value::eval::eval(&mut heap, &mut interner, imported, env_id)
+            .expect("new-world evaluation succeeds");
+        match heap.object(new_world) {
+            Some(RObject::Real(values)) => assert_eq!(values.as_slice(), &[3.0]),
+            other => panic!("expected 3.0 in the new world, got {other:?}"),
+        }
+
+        // the legacy world agrees
+        let (legacy, _output, _visible) = session.eval_code_with_output_capture("1 + 2");
+        let legacy = legacy.expect("legacy evaluation succeeds");
+        assert_eq!(legacy.try_real_elt(0).expect("legacy value"), 3.0);
+    }
+
+    #[test]
+    fn convergence_compound_program_with_assignment() {
+        let mut session = crate::sexp::session::RSession::new();
+        let mut heap = Heap::new();
+        let mut interner = SymbolInterner::new();
+        let mut bridge = ValueBridge::new();
+
+        // `{ x <- 10; x + 5 }` — assignment through the environment, then
+        // symbol resolution feeding arithmetic, all in the new world.
+        let expressions = session.with_active(|| {
+            crate::eval::parser::parse_active_expressions("{ x <- 10; x + 5 }")
+                .expect("source parses")
+        });
+        let imported = bridge
+            .import(&mut heap, &mut interner, &expressions[0])
+            .expect("program imports");
+        let env_id = bootstrap_env(&mut heap, &mut interner);
+        let result = crate::value::eval::eval(&mut heap, &mut interner, imported, env_id)
+            .expect("new-world program runs");
+        match heap.object(result) {
+            Some(RObject::Real(values)) => assert_eq!(values.as_slice(), &[15.0]),
+            other => panic!("expected 15.0, got {other:?}"),
         }
     }
 }

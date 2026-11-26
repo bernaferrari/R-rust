@@ -470,3 +470,31 @@ fn comparison(
         folded.into_iter().map(|v| v as i32).collect(),
     )))
 }
+
+/// Resolve a primitive's print name to a scaffolding id — the interop
+/// mapping the import bridge uses until the canonical registry lands.
+pub fn primitive_id_for_name(name: &str) -> Option<u32> {
+    match name {
+        "+" => Some(ADD),
+        "-" => Some(SUB),
+        "*" => Some(MUL),
+        "/" => Some(DIV),
+        "if" => Some(IF),
+        "{" => Some(BRACE),
+        "<-" | "=" => Some(ASSIGN),
+        "<<-" => Some(SUPERASSIGN),
+        "return" => Some(RETURN),
+        "while" => Some(WHILE),
+        "repeat" => Some(REPEAT),
+        "for" => Some(FOR),
+        "break" => Some(BREAK),
+        "next" => Some(NEXT),
+        "<" => Some(LT),
+        ">" => Some(GT),
+        "<=" => Some(LE),
+        ">=" => Some(GE),
+        "==" => Some(EQ),
+        "!=" => Some(NE),
+        _ => None,
+    }
+}
