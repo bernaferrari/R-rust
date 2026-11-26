@@ -190,7 +190,7 @@ pub fn tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
 
     ans
 }
-pub unsafe extern "C-unwind" fn c_tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
+pub unsafe fn c_tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
     tukeyline(x, y, iter, call)
 }
 

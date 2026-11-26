@@ -181,10 +181,10 @@ pub fn dpermdist1(x: SEXP) -> SEXP {
     publish(values)
 }
 
-pub unsafe extern "C-unwind" fn c_dpermdist1(x: SEXP) -> SEXP {
+pub unsafe fn c_dpermdist1(x: SEXP) -> SEXP {
     dpermdist1(x)
 }
-pub unsafe extern "C-unwind" fn c_dpermdist2(x: SEXP, m: SEXP) -> SEXP {
+pub unsafe fn c_dpermdist2(x: SEXP, m: SEXP) -> SEXP {
     dpermdist2(x, m)
 }
 

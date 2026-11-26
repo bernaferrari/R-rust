@@ -554,48 +554,48 @@ pub fn stats_wilcox_free(_args: SEXP) -> SEXP {
     R_NilValue()
 }
 
-pub(crate) unsafe extern "C-unwind" fn c_signrank_free(_args: SEXP) -> SEXP {
+pub(crate) unsafe fn c_signrank_free(_args: SEXP) -> SEXP {
     stats_signrank_free(R_NilValue())
 }
-pub(crate) unsafe extern "C-unwind" fn c_wilcox_free(_args: SEXP) -> SEXP {
+pub(crate) unsafe fn c_wilcox_free(_args: SEXP) -> SEXP {
     stats_wilcox_free(R_NilValue())
 }
 
 
-pub(crate) unsafe extern "C-unwind" fn c_psignrank(a: SEXP, b: SEXP, i: SEXP, j: SEXP) -> SEXP {
+pub(crate) unsafe fn c_psignrank(a: SEXP, b: SEXP, i: SEXP, j: SEXP) -> SEXP {
     signrank::evaluate(a, b, i, j, signrank::Kind::Cdf)
 }
-pub(crate) unsafe extern "C-unwind" fn c_qsignrank(a: SEXP, b: SEXP, i: SEXP, j: SEXP) -> SEXP {
+pub(crate) unsafe fn c_qsignrank(a: SEXP, b: SEXP, i: SEXP, j: SEXP) -> SEXP {
     signrank::evaluate(a, b, i, j, signrank::Kind::Quantile)
 }
-pub(crate) unsafe extern "C-unwind" fn c_dsignrank(a: SEXP, b: SEXP, i: SEXP) -> SEXP {
+pub(crate) unsafe fn c_dsignrank(a: SEXP, b: SEXP, i: SEXP) -> SEXP {
     signrank::evaluate(a, b, i, R_NilValue(), signrank::Kind::Density)
 }
 
 macro_rules! wrap3 {
     ($c:ident, $helper:ident, $kernel:expr) => {
-        unsafe extern "C-unwind" fn $c(a: SEXP, b: SEXP, c: SEXP) -> SEXP {
+        unsafe fn $c(a: SEXP, b: SEXP, c: SEXP) -> SEXP {
             $helper(a, b, c, $kernel)
         }
     };
 }
 macro_rules! wrap4 {
     ($c:ident, $helper:ident, $kernel:expr) => {
-        unsafe extern "C-unwind" fn $c(a: SEXP, b: SEXP, c: SEXP, d: SEXP) -> SEXP {
+        unsafe fn $c(a: SEXP, b: SEXP, c: SEXP, d: SEXP) -> SEXP {
             $helper(a, b, c, d, $kernel)
         }
     };
 }
 macro_rules! wrap5 {
     ($c:ident, $helper:ident, $kernel:expr) => {
-        unsafe extern "C-unwind" fn $c(a: SEXP, b: SEXP, c: SEXP, d: SEXP, e: SEXP) -> SEXP {
+        unsafe fn $c(a: SEXP, b: SEXP, c: SEXP, d: SEXP, e: SEXP) -> SEXP {
             $helper(a, b, c, d, e, $kernel)
         }
     };
 }
 macro_rules! wrap6 {
     ($c:ident, $helper:ident, $kernel:expr) => {
-        unsafe extern "C-unwind" fn $c(
+        unsafe fn $c(
             a: SEXP,
             b: SEXP,
             c: SEXP,

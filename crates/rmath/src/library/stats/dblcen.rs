@@ -55,7 +55,7 @@ pub fn DoubleCentre(A: SEXP) -> SEXP {
 
     A
 }
-pub unsafe extern "C-unwind" fn c_double_centre(a: SEXP) -> SEXP {
+pub unsafe fn c_double_centre(a: SEXP) -> SEXP {
     DoubleCentre(a)
 }
 

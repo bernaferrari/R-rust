@@ -16,14 +16,14 @@ use libm::*;
 // =====================================================================
 
 /// Objective function type: fn(n, x, ex) -> f64
-pub type OptimFn = unsafe extern "C-unwind" fn(
+pub type OptimFn = unsafe fn(
     n: std::os::raw::c_int,
     x: *mut f64,
     ex: *mut std::ffi::c_void,
 ) -> f64;
 
 /// Gradient function type: fn(n, x, g, ex)
-pub type OptimGr = unsafe extern "C-unwind" fn(
+pub type OptimGr = unsafe fn(
     n: std::os::raw::c_int,
     x: *mut f64,
     g: *mut f64,
@@ -622,7 +622,7 @@ pub unsafe fn cgmin(
 mod tests {
     use super::*;
 
-    unsafe extern "C-unwind" fn rosenbrock(
+    unsafe fn rosenbrock(
         n: std::os::raw::c_int,
         point: *mut f64,
         _state: *mut std::ffi::c_void,
@@ -635,7 +635,7 @@ mod tests {
         100.0 * (residual * residual) + distance * distance
     }
 
-    unsafe extern "C-unwind" fn rosenbrock_gradient(
+    unsafe fn rosenbrock_gradient(
         n: std::os::raw::c_int,
         point: *mut f64,
         gradient: *mut f64,

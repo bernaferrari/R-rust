@@ -213,11 +213,11 @@ struct HandlerBytes {
     calls: Cell<usize>,
 }
 const BARE: &[u8] = b"invalid input 'a\xff' in 'utf8towcs'";
-unsafe extern "C-unwind" fn raise_byte_diagnostic(data: *mut c_void) -> SEXP {
+unsafe fn raise_byte_diagnostic(data: *mut c_void) -> SEXP {
     let data = unsafe { &*data.cast::<HandlerBytes>() };
     unsafe { crate::mainutils::character::case_entry(data.args.as_raw(), true) }
 }
-unsafe extern "C-unwind" fn observe_calling_bytes(condition: SEXP, data: *mut c_void) -> SEXP {
+unsafe fn observe_calling_bytes(condition: SEXP, data: *mut c_void) -> SEXP {
     let data = unsafe { &*data.cast::<HandlerBytes>() };
     assert_eq!(
         &state::error_buffer_snapshot().into_array()[..BARE.len()],
@@ -238,7 +238,7 @@ unsafe extern "C-unwind" fn observe_calling_bytes(condition: SEXP, data: *mut c_
     R_SetErrmessage("mutated by calling handler");
     condition.as_raw()
 }
-unsafe extern "C-unwind" fn inner_calling_bytes(data: *mut c_void) -> SEXP {
+unsafe fn inner_calling_bytes(data: *mut c_void) -> SEXP {
     unsafe {
         R_withCallingErrorHandler(
             Some(raise_byte_diagnostic),
@@ -248,7 +248,7 @@ unsafe extern "C-unwind" fn inner_calling_bytes(data: *mut c_void) -> SEXP {
         )
     }
 }
-unsafe extern "C-unwind" fn outer_calling_bytes(data: *mut c_void) -> SEXP {
+unsafe fn outer_calling_bytes(data: *mut c_void) -> SEXP {
     unsafe {
         R_withCallingErrorHandler(
             Some(inner_calling_bytes),

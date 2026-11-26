@@ -19,16 +19,16 @@ mod stubs;
 #[cfg(feature = "renderplot-device")]
 pub(crate) mod target;
 
-extern "C-unwind" fn c_pdf(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+fn c_pdf(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devps::PDF(args)
 }
-extern "C-unwind" fn c_postscript(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+fn c_postscript(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devps::PostScript(args)
 }
-extern "C-unwind" fn c_cairo_props(which: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+fn c_cairo_props(which: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     init::cairoProps(which)
 }
-extern "C-unwind" fn c_dev_ask_new_page(
+fn c_dev_ask_new_page(
     call: crate::sexp::ffi::SEXP,
     op: crate::sexp::ffi::SEXP,
     args: crate::sexp::ffi::SEXP,
@@ -36,49 +36,49 @@ extern "C-unwind" fn c_dev_ask_new_page(
 ) -> crate::sexp::ffi::SEXP {
     stubs::devAskNewPage(call, op, args, env)
 }
-extern "C-unwind" fn c_devholdflush(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+fn c_devholdflush(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devholdflush(args)
 }
-extern "C-unwind" fn c_devcur(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+fn c_devcur(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devcur(args)
 }
-extern "C-unwind" fn c_devoff(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+fn c_devoff(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devoff(args)
 }
-extern "C-unwind" fn c_devset(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+fn c_devset(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devset(args)
 }
-extern "C-unwind" fn c_devcontrol(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+fn c_devcontrol(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devcontrol(args)
 }
-extern "C-unwind" fn c_devdisplaylist(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+fn c_devdisplaylist(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devdisplaylist(args)
 }
-extern "C-unwind" fn c_devcap(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+fn c_devcap(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devcap(args)
 }
-extern "C-unwind" fn c_devsize(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+fn c_devsize(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devsize(args)
 }
-extern "C-unwind" fn c_devnext(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+fn c_devnext(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devnext(args)
 }
-extern "C-unwind" fn c_devprev(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+fn c_devprev(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devprev(args)
 }
-extern "C-unwind" fn c_palette(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+fn c_palette(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     colors::do_palette(args)
 }
-extern "C-unwind" fn c_palette2(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+fn c_palette2(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     colors::do_palette2(args)
 }
-extern "C-unwind" fn c_col2rgb(
+fn c_col2rgb(
     colors: crate::sexp::ffi::SEXP,
     alpha: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
     self::colors::do_col2rgb(colors, alpha)
 }
-extern "C-unwind" fn c_create_at(
+fn c_create_at(
     axp: crate::sexp::ffi::SEXP,
     usr: crate::sexp::ffi::SEXP,
     nint: crate::sexp::ffi::SEXP,
@@ -86,20 +86,20 @@ extern "C-unwind" fn c_create_at(
 ) -> crate::sexp::ffi::SEXP {
     axis_scales::R_CreateAtVector(axp, usr, nint, is_log)
 }
-extern "C-unwind" fn c_g_axis_pars(
+fn c_g_axis_pars(
     usr: crate::sexp::ffi::SEXP,
     is_log: crate::sexp::ffi::SEXP,
     nint: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
     axis_scales::R_GAxisPars(usr, is_log, nint)
 }
-extern "C-unwind" fn c_gray(
+fn c_gray(
     lev: crate::sexp::ffi::SEXP,
     alpha: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
     colors::do_gray(lev, alpha)
 }
-extern "C-unwind" fn c_hsv(
+fn c_hsv(
     h: crate::sexp::ffi::SEXP,
     s: crate::sexp::ffi::SEXP,
     v: crate::sexp::ffi::SEXP,
@@ -107,7 +107,7 @@ extern "C-unwind" fn c_hsv(
 ) -> crate::sexp::ffi::SEXP {
     colors::do_hsv(h, s, v, a)
 }
-extern "C-unwind" fn c_hcl(
+fn c_hcl(
     h: crate::sexp::ffi::SEXP,
     c: crate::sexp::ffi::SEXP,
     l: crate::sexp::ffi::SEXP,
@@ -116,7 +116,7 @@ extern "C-unwind" fn c_hcl(
 ) -> crate::sexp::ffi::SEXP {
     colors::do_hcl(h, c, l, a, fixup)
 }
-extern "C-unwind" fn c_rgb(
+fn c_rgb(
     r: crate::sexp::ffi::SEXP,
     g: crate::sexp::ffi::SEXP,
     b: crate::sexp::ffi::SEXP,

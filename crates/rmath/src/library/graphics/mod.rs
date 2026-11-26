@@ -14,7 +14,7 @@ pub(crate) mod text_metrics;
 pub(crate) mod xspline;
 use crate::sexp::ffi::SEXP;
 
-extern "C-unwind" fn c_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+fn c_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     par::C_par(call, op, crate::sexp::accessors::CDR(args), rho)
 }
 
@@ -212,7 +212,7 @@ fn draw_portable_plot_xy(args: SEXP) -> SEXP {
     }
 }
 
-extern "C-unwind" fn c_plot_new(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+fn c_plot_new(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     {
         #[cfg(feature = "renderplot-device")]
         if renderplot_backend_active() {
@@ -228,7 +228,7 @@ extern "C-unwind" fn c_plot_new(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
         plot::C_plot_new(call, op, args, rho)
     }
 }
-extern "C-unwind" fn c_plot_window(args: SEXP) -> SEXP {
+fn c_plot_window(args: SEXP) -> SEXP {
     crate::mainutils::essentials::do_plot_window(
         crate::sexp::globals::R_NilValue(),
         crate::sexp::globals::R_NilValue(),
@@ -238,7 +238,7 @@ extern "C-unwind" fn c_plot_window(args: SEXP) -> SEXP {
 }
 
 #[cfg(feature = "renderplot-device")]
-extern "C-unwind" fn c_plot_xy(args: SEXP) -> SEXP {
+fn c_plot_xy(args: SEXP) -> SEXP {
     if renderplot_backend_active() {
         let name = external_routine_name(args);
         let bare = name.strip_prefix("C_").unwrap_or(name.as_str());
@@ -275,13 +275,13 @@ extern "C-unwind" fn c_plot_xy(args: SEXP) -> SEXP {
 /// C_abline/C_arrows all start with `GCheckState`. Without a backend the
 /// contract is the plot frame itself.
 #[cfg(not(feature = "renderplot-device"))]
-extern "C-unwind" fn c_plot_xy(_args: SEXP) -> SEXP {
+fn c_plot_xy(_args: SEXP) -> SEXP {
     null_device_draw()
 }
 
 /// GNU `clip` passes four user coordinates after the routine name.
 #[cfg(feature = "renderplot-device")]
-extern "C-unwind" fn c_clip(args: SEXP) -> SEXP {
+fn c_clip(args: SEXP) -> SEXP {
     if renderplot_backend_active() {
         return crate::mainutils::portable_plot::native_clip(crate::sexp::accessors::CDR(args));
     }
@@ -294,17 +294,17 @@ extern "C-unwind" fn c_clip(args: SEXP) -> SEXP {
 /// GNU C_clip converts and stores a clip rectangle; it does not require an
 /// established plot frame, so the device-less form only discards the box.
 #[cfg(not(feature = "renderplot-device"))]
-extern "C-unwind" fn c_clip(_args: SEXP) -> SEXP {
+fn c_clip(_args: SEXP) -> SEXP {
     crate::sexp::globals::R_NilValue()
 }
 
 /// GNU `grconvertX` passes the values plus one-based unit indices.
-extern "C-unwind" fn c_convert_x(args: SEXP) -> SEXP {
+fn c_convert_x(args: SEXP) -> SEXP {
     convert_locations(args, false)
 }
 
 /// GNU `grconvertY` passes the values plus one-based unit indices.
-extern "C-unwind" fn c_convert_y(args: SEXP) -> SEXP {
+fn c_convert_y(args: SEXP) -> SEXP {
     convert_locations(args, true)
 }
 
@@ -331,7 +331,7 @@ fn convert_locations(args: SEXP, _vertical: bool) -> SEXP {
         ))
     }
 }
-extern "C-unwind" fn c_axis(args: SEXP) -> SEXP {
+fn c_axis(args: SEXP) -> SEXP {
     crate::mainutils::essentials::do_axis(
         crate::sexp::globals::R_NilValue(),
         crate::sexp::globals::R_NilValue(),
@@ -340,32 +340,32 @@ extern "C-unwind" fn c_axis(args: SEXP) -> SEXP {
         crate::sexp::globals::R_GlobalEnv(),
     )
 }
-extern "C-unwind" fn c_bin_count(x: SEXP, breaks: SEXP, right: SEXP, lowest: SEXP) -> SEXP {
+fn c_bin_count(x: SEXP, breaks: SEXP, right: SEXP, lowest: SEXP) -> SEXP {
     stem::C_BinCount(x, breaks, right, lowest)
 }
-extern "C-unwind" fn c_str_width(args: SEXP) -> SEXP {
+fn c_str_width(args: SEXP) -> SEXP {
     text_metrics::measure(args, false)
 }
-extern "C-unwind" fn c_str_height(args: SEXP) -> SEXP {
+fn c_str_height(args: SEXP) -> SEXP {
     text_metrics::measure(args, true)
 }
-extern "C-unwind" fn c_stem_leaf(x: SEXP, scale: SEXP, width: SEXP, atom: SEXP) -> SEXP {
+fn c_stem_leaf(x: SEXP, scale: SEXP, width: SEXP, atom: SEXP) -> SEXP {
     stem::C_StemLeaf(x, scale, width, atom)
 }
 
-extern "C-unwind" fn c_contour_def() -> SEXP {
+fn c_contour_def() -> SEXP {
     plot3d::C_contourDef()
 }
-extern "C-unwind" fn c_contour(args: SEXP) -> SEXP {
+fn c_contour(args: SEXP) -> SEXP {
     plot3d::C_contour(args)
 }
-extern "C-unwind" fn c_image(args: SEXP) -> SEXP {
+fn c_image(args: SEXP) -> SEXP {
     plot3d::C_image(args)
 }
-extern "C-unwind" fn c_layout(args: SEXP) -> SEXP {
+fn c_layout(args: SEXP) -> SEXP {
     par::C_layout(args)
 }
-extern "C-unwind" fn c_unsupported_graphics(args: SEXP) -> SEXP {
+fn c_unsupported_graphics(args: SEXP) -> SEXP {
     crate::mainutils::essentials::base_error(format!(
         "native graphics operation '{}' is not implemented",
         external_routine_name(args),
@@ -373,7 +373,7 @@ extern "C-unwind" fn c_unsupported_graphics(args: SEXP) -> SEXP {
 }
 
 #[cfg(feature = "renderplot-device")]
-extern "C-unwind" fn c_raster(args: SEXP) -> SEXP {
+fn c_raster(args: SEXP) -> SEXP {
     {
         if renderplot_backend_active() {
             return draw_portable_positional(
@@ -399,26 +399,26 @@ extern "C-unwind" fn c_raster(args: SEXP) -> SEXP {
 
 /// GNU C_raster requires a plot frame (`GCheckState`) before blitting.
 #[cfg(not(feature = "renderplot-device"))]
-extern "C-unwind" fn c_raster(_args: SEXP) -> SEXP {
+fn c_raster(_args: SEXP) -> SEXP {
     null_device_draw()
 }
 
 /// GNU `persp` — validation and the viewing transformation live in the
 /// plot3d port; the drawing half runs only with a live renderplot backend,
 /// so the device-less profile matches GNU's null device (matrix, no draw).
-extern "C-unwind" fn c_persp(args: SEXP) -> SEXP {
+fn c_persp(args: SEXP) -> SEXP {
     plot3d::C_persp(args)
 }
 
 /// GNU `filledcontour` — plot.new is required (GCheckState); the colored
 /// bands are drawn through the portable engine when a backend is live.
-extern "C-unwind" fn c_filledcontour(args: SEXP) -> SEXP {
+fn c_filledcontour(args: SEXP) -> SEXP {
     plot3d::C_filledcontour(args)
 }
 
 /// GNU `path` (polypath) — requires a plot frame.
 #[cfg(feature = "renderplot-device")]
-extern "C-unwind" fn c_path(args: SEXP) -> SEXP {
+fn c_path(args: SEXP) -> SEXP {
     {
         if renderplot_backend_active() {
             return draw_portable_positional(
@@ -435,13 +435,13 @@ extern "C-unwind" fn c_path(args: SEXP) -> SEXP {
 }
 
 #[cfg(not(feature = "renderplot-device"))]
-extern "C-unwind" fn c_path(_args: SEXP) -> SEXP {
+fn c_path(_args: SEXP) -> SEXP {
     null_device_draw()
 }
 
 /// GNU `symbols` — requires a plot frame.
 #[cfg(feature = "renderplot-device")]
-extern "C-unwind" fn c_symbols(args: SEXP) -> SEXP {
+fn c_symbols(args: SEXP) -> SEXP {
     {
         if renderplot_backend_active() {
             return draw_portable_positional(
@@ -458,13 +458,13 @@ extern "C-unwind" fn c_symbols(args: SEXP) -> SEXP {
 }
 
 #[cfg(not(feature = "renderplot-device"))]
-extern "C-unwind" fn c_symbols(_args: SEXP) -> SEXP {
+fn c_symbols(_args: SEXP) -> SEXP {
     null_device_draw()
 }
 
 /// GNU `xspline` — requires a plot frame.
 #[cfg(feature = "renderplot-device")]
-extern "C-unwind" fn c_xspline(args: SEXP) -> SEXP {
+fn c_xspline(args: SEXP) -> SEXP {
     {
         if renderplot_backend_active() {
             return draw_portable_positional(
@@ -481,13 +481,13 @@ extern "C-unwind" fn c_xspline(args: SEXP) -> SEXP {
 }
 
 #[cfg(not(feature = "renderplot-device"))]
-extern "C-unwind" fn c_xspline(_args: SEXP) -> SEXP {
+fn c_xspline(_args: SEXP) -> SEXP {
     null_device_draw()
 }
 
 /// GNU `erase` — no plot frame required; the transparent default makes the
 /// device-less form a silent no-op.
-extern "C-unwind" fn c_erase(args: SEXP) -> SEXP {
+fn c_erase(args: SEXP) -> SEXP {
     #[cfg(feature = "renderplot-device")]
     {
         if renderplot_backend_active() {
@@ -499,7 +499,7 @@ extern "C-unwind" fn c_erase(args: SEXP) -> SEXP {
 
 /// GNU `dend` — requires a plot frame.
 #[cfg(feature = "renderplot-device")]
-extern "C-unwind" fn c_dend(args: SEXP) -> SEXP {
+fn c_dend(args: SEXP) -> SEXP {
     {
         if renderplot_backend_active() {
             return draw_portable_positional(
@@ -516,13 +516,13 @@ extern "C-unwind" fn c_dend(args: SEXP) -> SEXP {
 }
 
 #[cfg(not(feature = "renderplot-device"))]
-extern "C-unwind" fn c_dend(_args: SEXP) -> SEXP {
+fn c_dend(_args: SEXP) -> SEXP {
     null_device_draw()
 }
 
 /// GNU `dendwindow` — requires a plot frame.
 #[cfg(feature = "renderplot-device")]
-extern "C-unwind" fn c_dendwindow(args: SEXP) -> SEXP {
+fn c_dendwindow(args: SEXP) -> SEXP {
     {
         if renderplot_backend_active() {
             return draw_portable_positional(
@@ -539,14 +539,14 @@ extern "C-unwind" fn c_dendwindow(args: SEXP) -> SEXP {
 }
 
 #[cfg(not(feature = "renderplot-device"))]
-extern "C-unwind" fn c_dendwindow(_args: SEXP) -> SEXP {
+fn c_dendwindow(_args: SEXP) -> SEXP {
     null_device_draw()
 }
 
 /// GNU `locator` — `.External2(C_locator, n, type)`. The scene device has
 /// no locator callback, so GLocator fails on the first click: the wrapper
 /// observes zero points and `locator()` returns NULL.
-extern "C-unwind" fn c_locator(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+fn c_locator(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         #[cfg(feature = "renderplot-device")]
         {
@@ -573,7 +573,7 @@ fn null_device_locator(args: SEXP) -> SEXP {
 
 /// GNU `identify` — `.External2(C_identify, ...)`. Zero clicks identifies
 /// nothing: the all-zero result reduces to integer(0) in the wrapper.
-extern "C-unwind" fn c_identify(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+fn c_identify(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         #[cfg(feature = "renderplot-device")]
         {
@@ -742,13 +742,13 @@ pub(crate) fn identify_result(args: SEXP) -> SEXP {
 
 /// GNU `recordPlot` is `.External2(C_getSnapshot)` in the grDevices namespace.
 #[cfg(feature = "renderplot-device")]
-unsafe extern "C-unwind" fn c_get_snapshot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+unsafe fn c_get_snapshot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::mainutils::graphics_recording::record(call, op, args, rho) }
 }
 
 /// `.External2(C_playSnapshot, x)` puts the routine name in the first cell.
 #[cfg(feature = "renderplot-device")]
-unsafe extern "C-unwind" fn c_play_snapshot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+unsafe fn c_play_snapshot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::graphics_recording::replay(
             call,

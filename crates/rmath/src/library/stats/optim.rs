@@ -270,7 +270,7 @@ fn gradient(os: &OptStruct<'_>, p: &[c_double], df: &mut [c_double]) {
 // fminfn / fmingr -- ABI trampolines registered with the appl kernels
 // ---------------------------------------------------------------------------
 
-unsafe extern "C-unwind" fn fminfn(
+unsafe fn fminfn(
     n: c_int,
     p: *mut c_double,
     ex: *mut std::ffi::c_void,
@@ -287,7 +287,7 @@ unsafe extern "C-unwind" fn fminfn(
     objective(os, p)
 }
 
-unsafe extern "C-unwind" fn fmingr(
+unsafe fn fmingr(
     n: c_int,
     p: *mut c_double,
     df: *mut c_double,
@@ -943,11 +943,11 @@ pub fn optimhess(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     ans
 }
 
-pub unsafe extern "C-unwind" fn c_optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn c_optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     optim(call, op, args, rho)
 }
 
-pub unsafe extern "C-unwind" fn c_optimhess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn c_optimhess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     optimhess(call, op, args, rho)
 }
 

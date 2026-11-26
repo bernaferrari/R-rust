@@ -306,7 +306,7 @@ pub fn lowess(x: SEXP, y: SEXP, sf: SEXP, siter: SEXP, sdelta: SEXP) -> SEXP {
     super::checked::set_reals(ans, &ys);
     ans
 }
-pub unsafe extern "C-unwind" fn c_lowess(
+pub unsafe fn c_lowess(
     x: SEXP,
     y: SEXP,
     f: SEXP,

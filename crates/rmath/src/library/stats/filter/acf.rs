@@ -84,10 +84,10 @@ pub fn acf(x: SEXP, lmax: SEXP, sCor: SEXP) -> SEXP {
 
     ans
 }
-pub unsafe extern "C-unwind" fn c_acf(x: SEXP, lmax: SEXP, sCor: SEXP) -> SEXP {
+pub unsafe fn c_acf(x: SEXP, lmax: SEXP, sCor: SEXP) -> SEXP {
     acf(x, lmax, sCor)
 }
-pub unsafe extern "C-unwind" fn c_pacf1(acf: SEXP, lmax: SEXP) -> SEXP {
+pub unsafe fn c_pacf1(acf: SEXP, lmax: SEXP) -> SEXP {
     let lagmax = as_integer(lmax);
     if lagmax < 1 {
         return Rf_allocVector(SEXPTYPE::REALSXP, 0);

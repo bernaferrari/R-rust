@@ -59,7 +59,7 @@ macro_rules! call_routines {
     ($($variant:ident($arity:literal; $($argument:ident),*)),* $(,)?) => {
         #[derive(Clone, Copy)]
         pub(crate) enum CallRoutine {
-            $($variant(unsafe extern "C-unwind" fn($(call_routines!(@type $argument)),*) -> SEXP)),*
+            $($variant(unsafe fn($(call_routines!(@type $argument)),*) -> SEXP)),*
         }
 
         impl CallRoutine {
@@ -110,9 +110,9 @@ pub(crate) enum PayloadArity {
 #[derive(Clone, Copy)]
 pub(crate) enum NativeRoutine {
     Call(CallRoutine),
-    External1(unsafe extern "C-unwind" fn(SEXP) -> SEXP, PayloadArity),
+    External1(unsafe fn(SEXP) -> SEXP, PayloadArity),
     External2(
-        unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        unsafe fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
         PayloadArity,
     ),
 }
@@ -217,17 +217,17 @@ mod tests {
         static INVOCATIONS: Cell<usize> = const { Cell::new(0) };
     }
 
-    extern "C-unwind" fn call_two(_a: SEXP, _b: SEXP) -> SEXP {
+    fn call_two(_a: SEXP, _b: SEXP) -> SEXP {
         INVOCATIONS.with(|count| count.set(count.get() + 1));
         std::ptr::null_mut()
     }
 
-    extern "C-unwind" fn external_one(_arguments: SEXP) -> SEXP {
+    fn external_one(_arguments: SEXP) -> SEXP {
         INVOCATIONS.with(|count| count.set(count.get() + 1));
         std::ptr::null_mut()
     }
 
-    extern "C-unwind" fn external_two(
+    fn external_two(
         _call: SEXP,
         _operator: SEXP,
         _arguments: SEXP,

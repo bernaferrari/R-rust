@@ -391,7 +391,7 @@ pub unsafe fn runmed(
     }
 }
 
-pub unsafe extern "C-unwind" fn c_runmed(
+pub unsafe fn c_runmed(
     sx: SEXP,
     stype: SEXP,
     sk: SEXP,

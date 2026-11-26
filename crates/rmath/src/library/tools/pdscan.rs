@@ -94,7 +94,7 @@ fn scan(access: &RuntimeAccess, input: &Sexp<'static>) -> SexpResult<Sexp<'stati
     Ok(result.freeze())
 }
 
-pub(super) unsafe extern "C-unwind" fn package_dependencies_scan(input: SEXP) -> SEXP {
+pub(super) unsafe fn package_dependencies_scan(input: SEXP) -> SEXP {
     let result = (|| {
         OwnerToken::with_current(|owner| {
             let value = owner.sexp(input)?.into_owned()?;

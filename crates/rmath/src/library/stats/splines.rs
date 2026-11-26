@@ -551,11 +551,11 @@ pub fn do_spline_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     SplineEval(v, z)
 }
 
-pub unsafe extern "C-unwind" fn c_spline_coef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
+pub unsafe fn c_spline_coef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
     SplineCoef(method, x, y)
 }
 
-pub unsafe extern "C-unwind" fn c_spline_eval(xout: SEXP, z: SEXP) -> SEXP {
+pub unsafe fn c_spline_eval(xout: SEXP, z: SEXP) -> SEXP {
     SplineEval(xout, z)
 }
 

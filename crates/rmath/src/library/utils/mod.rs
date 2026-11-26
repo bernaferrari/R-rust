@@ -74,7 +74,7 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
     }
 }
 
-unsafe extern "C-unwind" fn c_char_class(
+unsafe fn c_char_class(
     x: crate::sexp::ffi::SEXP,
     class: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
@@ -127,7 +127,7 @@ unsafe extern "C-unwind" fn c_char_class(
     .unwrap_or_else(|e| r_error(e.to_string()))
 }
 
-unsafe extern "C-unwind" fn c_rprof(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+unsafe fn c_rprof(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     {
         crate::sexp::owner::OwnerToken::with_current(|owner| {
             let _pin = owner
@@ -153,34 +153,34 @@ unsafe extern "C-unwind" fn c_rprof(args: crate::sexp::ffi::SEXP) -> crate::sexp
     }
 }
 
-unsafe extern "C-unwind" fn c_countfields(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+unsafe fn c_countfields(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     io::countfields(args)
 }
 
-unsafe extern "C-unwind" fn c_flushconsole() -> crate::sexp::ffi::SEXP {
+unsafe fn c_flushconsole() -> crate::sexp::ffi::SEXP {
     stubs::flushconsole()
 }
 
-unsafe extern "C-unwind" fn c_tzcode_type() -> crate::sexp::ffi::SEXP {
+unsafe fn c_tzcode_type() -> crate::sexp::ffi::SEXP {
     stubs::tzcode_type()
 }
 
-unsafe extern "C-unwind" fn c_readtablehead(
+unsafe fn c_readtablehead(
     args: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
     io::readtablehead(args)
 }
-unsafe extern "C-unwind" fn c_crc64(in_: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+unsafe fn c_crc64(in_: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     stubs::crc64(in_)
 }
-unsafe extern "C-unwind" fn c_octsize(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+unsafe fn c_octsize(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     stubs::octsize(args)
 }
-unsafe extern "C-unwind" fn c_object_size(x: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+unsafe fn c_object_size(x: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     size::objectSize(x)
 }
 
-unsafe extern "C-unwind" fn c_typeconvert(
+unsafe fn c_typeconvert(
     call: crate::sexp::ffi::SEXP,
     op: crate::sexp::ffi::SEXP,
     args: crate::sexp::ffi::SEXP,
@@ -188,7 +188,7 @@ unsafe extern "C-unwind" fn c_typeconvert(
 ) -> crate::sexp::ffi::SEXP {
     io::typeconvert(call, op, args, env)
 }
-unsafe extern "C-unwind" fn c_writetable(
+unsafe fn c_writetable(
     call: crate::sexp::ffi::SEXP,
     op: crate::sexp::ffi::SEXP,
     args: crate::sexp::ffi::SEXP,
@@ -196,7 +196,7 @@ unsafe extern "C-unwind" fn c_writetable(
 ) -> crate::sexp::ffi::SEXP {
     io::writetable(call, op, args, env)
 }
-unsafe extern "C-unwind" fn c_edit(
+unsafe fn c_edit(
     call: crate::sexp::ffi::SEXP,
     op: crate::sexp::ffi::SEXP,
     args: crate::sexp::ffi::SEXP,

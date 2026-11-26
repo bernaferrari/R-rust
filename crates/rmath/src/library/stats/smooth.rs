@@ -413,6 +413,6 @@ pub fn do_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     );
     y
 }
-pub unsafe extern "C-unwind" fn c_rsm(x: SEXP, stype: SEXP, send: SEXP) -> SEXP {
+pub unsafe fn c_rsm(x: SEXP, stype: SEXP, send: SEXP) -> SEXP {
     Rsm(x, stype, send)
 }

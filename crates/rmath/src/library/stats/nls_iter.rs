@@ -101,7 +101,7 @@ fn conv_info(msg: &str, iter: i32, why: i32, conv_new: f64) -> SEXP {
     ans
 }
 
-pub unsafe extern "C-unwind" fn c_nls_iter(m: SEXP, control: SEXP, do_trace_arg: SEXP) -> SEXP {
+pub unsafe fn c_nls_iter(m: SEXP, control: SEXP, do_trace_arg: SEXP) -> SEXP {
     let do_trace = crate::main::coerce::asLogical(do_trace_arg) == 1;
     if crate::sexp::accessors::TYPEOF(control) != SEXPTYPE::VECSXP {
         crate::mainutils::errors::errorcall_str(std::ptr::null_mut(), "'control' must be a list");

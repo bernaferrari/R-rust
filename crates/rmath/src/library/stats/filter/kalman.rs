@@ -358,12 +358,12 @@ pub fn do_kalman_forecast(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
     result
 }
-pub unsafe extern "C-unwind" fn c_kalman_fore(n_ahead: SEXP, model: SEXP, _update: SEXP) -> SEXP {
+pub unsafe fn c_kalman_fore(n_ahead: SEXP, model: SEXP, _update: SEXP) -> SEXP {
     let args = crate::sexp::constructors::Rf_cons(model, R_NilValue());
     let args = crate::sexp::constructors::Rf_cons(n_ahead, args);
     do_kalman_forecast(R_NilValue(), R_NilValue(), args, R_NilValue())
 }
-pub unsafe extern "C-unwind" fn c_kalman_like(
+pub unsafe fn c_kalman_like(
     y: SEXP,
     model: SEXP,
     s_up: SEXP,
@@ -425,7 +425,7 @@ pub unsafe extern "C-unwind" fn c_kalman_like(
     result
 }
 
-pub unsafe extern "C-unwind" fn c_kalman_smooth(y: SEXP, model: SEXP, nit: SEXP) -> SEXP {
+pub unsafe fn c_kalman_smooth(y: SEXP, model: SEXP, nit: SEXP) -> SEXP {
     let args = crate::sexp::constructors::Rf_cons(nit, R_NilValue());
     let args = crate::sexp::constructors::Rf_cons(model, args);
     let args = crate::sexp::constructors::Rf_cons(y, args);

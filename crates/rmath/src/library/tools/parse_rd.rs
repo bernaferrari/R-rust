@@ -6,7 +6,7 @@ use crate::sexp::constructors::Rf_allocVector3;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::protect::protect;
 
-pub unsafe extern "C-unwind" fn c_parse_rd(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn c_parse_rd(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let arg = CAR(CDR(args));
     let text = if TYPEOF(arg) == SEXPTYPE::STRSXP {
         let ch = crate::sexp::accessors::STRING_ELT(arg, 0);

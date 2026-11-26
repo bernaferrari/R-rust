@@ -192,6 +192,6 @@ pub fn do_rWishart_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     rWishart(n, nu, scal)
 }
 
-pub unsafe extern "C-unwind" fn c_rWishart(n: SEXP, df: SEXP, sigma: SEXP) -> SEXP {
+pub unsafe fn c_rWishart(n: SEXP, df: SEXP, sigma: SEXP) -> SEXP {
     rWishart(n, df, sigma)
 }

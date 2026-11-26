@@ -15,9 +15,9 @@ use std::{
     rc::Rc,
 };
 
-pub type NativeBody = unsafe extern "C-unwind" fn(*mut c_void) -> SEXP;
-pub type NativeHandler = unsafe extern "C-unwind" fn(SEXP, *mut c_void) -> SEXP;
-pub type NativeFinally = unsafe extern "C-unwind" fn(*mut c_void);
+pub type NativeBody = unsafe fn(*mut c_void) -> SEXP;
+pub type NativeHandler = unsafe fn(SEXP, *mut c_void) -> SEXP;
+pub type NativeFinally = unsafe fn(*mut c_void);
 
 fn checked<T>(result: SexpResult<T>) -> T {
     result.unwrap_or_else(|e| context::r_error(e.to_string()))
@@ -483,10 +483,10 @@ mod tests {
             pin.token().unwrap().full_gc().unwrap();
         }
     }
-    extern "C-unwind" fn body_error(_: *mut c_void) -> SEXP {
+    fn body_error(_: *mut c_void) -> SEXP {
         context::r_error("native body error")
     }
-    extern "C-unwind" fn body_rendered_error(_: *mut c_void) -> SEXP {
+    fn body_rendered_error(_: *mut c_void) -> SEXP {
         unsafe {
             super::super::errorcall_cstr(
                 crate::sexp::globals::R_NilValue(),
@@ -498,7 +498,7 @@ mod tests {
     /// # Safety
     ///
     /// `data` must point to a live `Trace`.
-    unsafe extern "C-unwind" fn handler_collects(condition: SEXP, data: *mut c_void) -> SEXP {
+    unsafe fn handler_collects(condition: SEXP, data: *mut c_void) -> SEXP {
         let condition = unsafe { context::own_control_value(condition) };
         let message = condition
             .try_vector_elt(0)
@@ -525,7 +525,7 @@ mod tests {
     /// # Safety
     ///
     /// `data` must point to a live `Trace`.
-    unsafe extern "C-unwind" fn finally_collects(data: *mut c_void) {
+    unsafe fn finally_collects(data: *mut c_void) {
         unsafe { &*data.cast::<Trace>() }.collect("finally");
     }
     fn trace(session: &RSession) -> Trace {
@@ -667,7 +667,7 @@ mod tests {
     /// # Safety
     ///
     /// `data` must point to a live `TypedTrace`.
-    unsafe extern "C-unwind" fn body_typed_error(data: *mut c_void) -> SEXP {
+    unsafe fn body_typed_error(data: *mut c_void) -> SEXP {
         unsafe {
             let factory = OwnerToken::current().unwrap().node_factory();
             let condition = context::own_control_value(super::super::R_makeErrorCondition(
@@ -729,26 +729,26 @@ mod tests {
     /// # Safety
     ///
     /// `data` must point to a live `TypedTrace`.
-    unsafe extern "C-unwind" fn typed_calling(condition: SEXP, data: *mut c_void) -> SEXP {
+    unsafe fn typed_calling(condition: SEXP, data: *mut c_void) -> SEXP {
         // SAFETY: forwarded under this callback's `# Safety` contract.
         unsafe { check_typed_condition(condition, data, "calling") }
     }
     /// # Safety
     ///
     /// `data` must point to a live `TypedTrace`.
-    unsafe extern "C-unwind" fn typed_exiting(condition: SEXP, data: *mut c_void) -> SEXP {
+    unsafe fn typed_exiting(condition: SEXP, data: *mut c_void) -> SEXP {
         // SAFETY: forwarded under this callback's `# Safety` contract.
         unsafe { check_typed_condition(condition, data, "exiting") }
     }
     /// # Safety
     ///
     /// `data` must point to a live `TypedTrace`.
-    unsafe extern "C-unwind" fn typed_finally(data: *mut c_void) {
+    unsafe fn typed_finally(data: *mut c_void) {
         unsafe { &*data.cast::<TypedTrace>() }
             .trace
             .collect("finally");
     }
-    extern "C-unwind" fn body_calling_typed(data: *mut c_void) -> SEXP {
+    fn body_calling_typed(data: *mut c_void) -> SEXP {
         unsafe {
             super::super::R_withCallingErrorHandler(
                 Some(body_typed_error),
@@ -868,7 +868,7 @@ mod tests {
     /// # Safety
     ///
     /// `data` must point to a live `RefCell<Option<Sexp<'static>>>`.
-    unsafe extern "C-unwind" fn capture_calling_handler(data: *mut c_void) -> SEXP {
+    unsafe fn capture_calling_handler(data: *mut c_void) -> SEXP {
         let handler = unsafe {
             super::super::conditions::ENTRY_HANDLER(crate::sexp::accessors::CAR(
                 super::super::handler_stack(),
@@ -912,7 +912,7 @@ mod tests {
     /// # Safety
     ///
     /// `data` must point to a live, readable `SEXP`.
-    unsafe extern "C-unwind" fn body_return(data: *mut c_void) -> SEXP {
+    unsafe fn body_return(data: *mut c_void) -> SEXP {
         let value = unsafe { *data.cast::<SEXP>() };
         let ticket = unsafe { context::return_transfer(std::ptr::null_mut(), value) };
         std::panic::panic_any(RSignal::Return(ticket));

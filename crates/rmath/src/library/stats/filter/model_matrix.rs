@@ -1569,7 +1569,7 @@ pub fn do_C(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `C_ar2ma(ar, npsi)` — MA(∞) coefficients from an AR polynomial.
-pub unsafe extern "C-unwind" fn c_ar2ma(ar: SEXP, npsi: SEXP) -> SEXP {
+pub unsafe fn c_ar2ma(ar: SEXP, npsi: SEXP) -> SEXP {
     let p = XLENGTH(ar) as usize;
     let ns = if TYPEOF(npsi) == SEXPTYPE::INTSXP {
         INTEGER_ELT(npsi, 0)

@@ -212,18 +212,18 @@ pub fn binomial_dev_resids(y: SEXP, mu: SEXP, wt: SEXP) -> SEXP {
     ans
 }
 
-pub unsafe extern "C-unwind" fn c_logit_link(mu: SEXP) -> SEXP {
+pub unsafe fn c_logit_link(mu: SEXP) -> SEXP {
     logit_link(mu)
 }
 
-pub unsafe extern "C-unwind" fn c_logit_linkinv(eta: SEXP) -> SEXP {
+pub unsafe fn c_logit_linkinv(eta: SEXP) -> SEXP {
     logit_linkinv(eta)
 }
 
-pub unsafe extern "C-unwind" fn c_logit_mu_eta(eta: SEXP) -> SEXP {
+pub unsafe fn c_logit_mu_eta(eta: SEXP) -> SEXP {
     logit_mu_eta(eta)
 }
 
-pub unsafe extern "C-unwind" fn c_binomial_dev_resids(y: SEXP, mu: SEXP, wt: SEXP) -> SEXP {
+pub unsafe fn c_binomial_dev_resids(y: SEXP, mu: SEXP, wt: SEXP) -> SEXP {
     binomial_dev_resids(y, mu, wt)
 }

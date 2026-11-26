@@ -292,36 +292,36 @@ pub fn bw_den_binned(sx: SEXP) -> SEXP {
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee owns argument validation.
-pub unsafe extern "C-unwind" fn c_bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
+pub unsafe fn c_bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
     bw_den(nbin, sx)
 }
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee owns argument validation.
-pub unsafe extern "C-unwind" fn c_bw_den_binned(sx: SEXP) -> SEXP {
+pub unsafe fn c_bw_den_binned(sx: SEXP) -> SEXP {
     bw_den_binned(sx)
 }
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee owns argument validation.
-pub unsafe extern "C-unwind" fn c_bw_ucv(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
+pub unsafe fn c_bw_ucv(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
     bw_ucv(sn, sd, cnt, sh)
 }
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee owns argument validation.
-pub unsafe extern "C-unwind" fn c_bw_bcv(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
+pub unsafe fn c_bw_bcv(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
     bw_bcv(sn, sd, cnt, sh)
 }
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee owns argument validation.
-pub unsafe extern "C-unwind" fn c_bw_phi4(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
+pub unsafe fn c_bw_phi4(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
     bw_phi4(sn, sd, cnt, sh)
 }
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee owns argument validation.
-pub unsafe extern "C-unwind" fn c_bw_phi6(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
+pub unsafe fn c_bw_phi6(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
     bw_phi6(sn, sd, cnt, sh)
 }

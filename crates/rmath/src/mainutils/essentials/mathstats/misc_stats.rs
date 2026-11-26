@@ -906,7 +906,7 @@ fn psmirnov_uniq(q: f64, m: i32, n: i32, two: bool, lower: bool) -> f64 {
     u[n as usize]
 }
 
-pub unsafe extern "C-unwind" fn c_psmirnov_exact(
+pub unsafe fn c_psmirnov_exact(
     sq: SEXP,
     sm: SEXP,
     sn: SEXP,

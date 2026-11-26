@@ -31,7 +31,7 @@ const TOOLS_CALL_NAMES: &[&str] = &[
     "C_parseLatex",
 ];
 
-unsafe extern "C-unwind" fn c_parse_latex(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+unsafe fn c_parse_latex(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let arg = crate::sexp::accessors::CAR(crate::sexp::accessors::CDR(args));
     let mut text = if TYPEOF(arg) == SEXPTYPE::STRSXP {
         let ch = crate::sexp::accessors::STRING_ELT(arg, 0);
@@ -78,22 +78,22 @@ unsafe extern "C-unwind" fn c_parse_latex(_call: SEXP, _op: SEXP, args: SEXP, _e
     out
 }
 
-unsafe extern "C-unwind" fn c_do_tab_expand(strings: SEXP, starts: SEXP) -> SEXP {
+unsafe fn c_do_tab_expand(strings: SEXP, starts: SEXP) -> SEXP {
     doTabExpand(strings, starts)
 }
 
-unsafe extern "C-unwind" fn c_non_ascii(text: SEXP) -> SEXP {
+unsafe fn c_non_ascii(text: SEXP) -> SEXP {
     nonASCII(text)
 }
 
-unsafe extern "C-unwind" fn c_delim_match(x: SEXP, delims: SEXP) -> SEXP {
+unsafe fn c_delim_match(x: SEXP, delims: SEXP) -> SEXP {
     delim_match(x, delims)
 }
-unsafe extern "C-unwind" fn c_split_string(string: SEXP, delims: SEXP) -> SEXP {
+unsafe fn c_split_string(string: SEXP, delims: SEXP) -> SEXP {
     splitString(string, delims)
 }
 
-unsafe extern "C-unwind" fn c_deparse_rd(element: SEXP, state: SEXP) -> SEXP {
+unsafe fn c_deparse_rd(element: SEXP, state: SEXP) -> SEXP {
     let text = if TYPEOF(element) == SEXPTYPE::STRSXP {
         element
     } else {

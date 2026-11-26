@@ -1349,7 +1349,7 @@ fn update_device_names(name: &std::ffi::CStr, device_label: c_int, current_label
 /// registry key; engine code validates it through [`with_device_mut`] before
 /// touching any descriptor field, so handing it out is safe.
 #[unsafe(export_name = "rmath_GEcurrentDevice")]
-pub extern "C-unwind" fn GEcurrentDevice() -> pGEDevDesc {
+pub fn GEcurrentDevice() -> pGEDevDesc {
     if NoDevices() != 0 {
         if renderplot_scene_is_device() {
             // The scene is already the device. options("device") is pdf(),

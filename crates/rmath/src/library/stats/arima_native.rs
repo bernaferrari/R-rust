@@ -73,7 +73,7 @@ fn list_elt(list: SEXP, name: &str) -> SEXP {
     R_NilValue()
 }
 
-pub unsafe extern "C-unwind" fn c_arima_trans_pars(sin: SEXP, sarma: SEXP, strans: SEXP) -> SEXP {
+pub unsafe fn c_arima_trans_pars(sin: SEXP, sarma: SEXP, strans: SEXP) -> SEXP {
     let trans = crate::mainutils::coerce::asLogical(strans) != 0;
     let mp = INTEGER_ELT(sarma, 0) as usize;
     let mq = INTEGER_ELT(sarma, 1) as usize;
@@ -157,11 +157,11 @@ pub unsafe extern "C-unwind" fn c_arima_trans_pars(sin: SEXP, sarma: SEXP, stran
     res
 }
 
-pub unsafe extern "C-unwind" fn c_arima_undo_pars(sin: SEXP, sarma: SEXP) -> SEXP {
+pub unsafe fn c_arima_undo_pars(sin: SEXP, sarma: SEXP) -> SEXP {
     transform_ar_blocks(sin, sarma, true)
 }
 
-pub unsafe extern "C-unwind" fn c_arima_invtrans(sin: SEXP, sarma: SEXP) -> SEXP {
+pub unsafe fn c_arima_invtrans(sin: SEXP, sarma: SEXP) -> SEXP {
     transform_ar_blocks(sin, sarma, false)
 }
 
@@ -195,7 +195,7 @@ fn transform_ar_blocks(sin: SEXP, sarma: SEXP, forward: bool) -> SEXP {
     y
 }
 
-pub unsafe extern "C-unwind" fn c_arima_gradtrans(sin: SEXP, sarma: SEXP) -> SEXP {
+pub unsafe fn c_arima_gradtrans(sin: SEXP, sarma: SEXP) -> SEXP {
     let mp = INTEGER_ELT(sarma, 0) as usize;
     let mq = INTEGER_ELT(sarma, 1) as usize;
     let msp = INTEGER_ELT(sarma, 2) as usize;
@@ -248,7 +248,7 @@ pub unsafe extern "C-unwind" fn c_arima_gradtrans(sin: SEXP, sarma: SEXP) -> SEX
     y
 }
 
-pub unsafe extern "C-unwind" fn c_tsconv(a: SEXP, b: SEXP) -> SEXP {
+pub unsafe fn c_tsconv(a: SEXP, b: SEXP) -> SEXP {
     let a = crate::main::coerce::coerceVector(a, SEXPTYPE::REALSXP.as_c_int());
     let b = crate::main::coerce::coerceVector(b, SEXPTYPE::REALSXP.as_c_int());
     let _a = protect(a);
@@ -274,7 +274,7 @@ pub unsafe extern "C-unwind" fn c_tsconv(a: SEXP, b: SEXP) -> SEXP {
     ab
 }
 
-pub unsafe extern "C-unwind" fn c_arima_css(
+pub unsafe fn c_arima_css(
     sy: SEXP,
     sarma: SEXP,
     sphi: SEXP,
@@ -352,7 +352,7 @@ pub unsafe extern "C-unwind" fn c_arima_css(
     }
 }
 
-pub unsafe extern "C-unwind" fn c_arima_like(
+pub unsafe fn c_arima_like(
     sy: SEXP,
     model: SEXP,
     sup: SEXP,
@@ -617,7 +617,7 @@ fn inclu2(
     }
 }
 
-pub unsafe extern "C-unwind" fn c_get_q0(sphi: SEXP, stheta: SEXP) -> SEXP {
+pub unsafe fn c_get_q0(sphi: SEXP, stheta: SEXP) -> SEXP {
     let p = XLENGTH(sphi) as usize;
     let q = XLENGTH(stheta) as usize;
     let phi = if p > 0 {

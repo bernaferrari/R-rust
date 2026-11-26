@@ -166,7 +166,7 @@ fn bridge(operation: impl FnOnce(&RuntimeAccess) -> SexpResult<Sexp<'static>>) -
     .as_raw()
 }
 
-pub(crate) unsafe extern "C-unwind" fn add(
+pub(crate) unsafe fn add(
     fun: SEXP,
     data: SEXP,
     use_data: SEXP,
@@ -229,7 +229,7 @@ pub(super) fn name_position(
     Ok(None)
 }
 
-pub(crate) unsafe extern "C-unwind" fn remove(which: SEXP) -> SEXP {
+pub(crate) unsafe fn remove(which: SEXP) -> SEXP {
     bridge(|access| {
         let which = access.domain().wrap(which)?.into_owned()?;
         // Only the original character handle is retained. No copied name or
@@ -285,7 +285,7 @@ struct NamesSnapshot {
     _ticket: WorkspaceReservation,
 }
 
-pub(crate) unsafe extern "C-unwind" fn names() -> SEXP {
+pub(crate) unsafe fn names() -> SEXP {
     bridge(|access| {
         let count = access.with_native(|owner| {
             Ok(unsafe { (*owner.as_ptr()).main_state.task_callbacks.len() })
@@ -387,7 +387,7 @@ pub(crate) fn install(base_env: SEXP) {
     .unwrap_or_else(|e| main_error(e.to_string()))
 }
 
-unsafe extern "C-unwind" fn materialize(index: SEXP) -> SEXP {
+unsafe fn materialize(index: SEXP) -> SEXP {
     use crate::mainutils::{
         native_routines::{CallRoutine, NativeRoutine},
         native_symbols,

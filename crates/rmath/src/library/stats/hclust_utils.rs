@@ -137,7 +137,7 @@ pub fn cutree(merge: SEXP, which: SEXP) -> SEXP {
     checked(owner.require_active());
     ans.as_raw()
 }
-pub unsafe extern "C-unwind" fn c_cutree(merge: SEXP, which: SEXP) -> SEXP {
+pub unsafe fn c_cutree(merge: SEXP, which: SEXP) -> SEXP {
     cutree(merge, which)
 }
 
@@ -283,7 +283,7 @@ pub fn do_cutree(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     out
 }
 
-pub unsafe extern "C-unwind" fn c_mono_fc_m(m: SEXP, sx: SEXP) -> SEXP {
+pub unsafe fn c_mono_fc_m(m: SEXP, sx: SEXP) -> SEXP {
     let n = crate::sexp::accessors::XLENGTH(m);
     if n < 2 {
         crate::main::errors::Rf_error_cstr(c"length(m) must be at least two");

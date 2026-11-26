@@ -1029,7 +1029,7 @@ pub unsafe fn do_nlm(
         result
     }
 }
-pub unsafe extern "C-unwind" fn c_nlm(
+pub unsafe fn c_nlm(
     call: crate::sexp::ffi::SEXP,
     op: crate::sexp::ffi::SEXP,
     args: crate::sexp::ffi::SEXP,

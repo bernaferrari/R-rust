@@ -375,7 +375,7 @@ pub unsafe fn R_init_splines(_dll: *mut c_void) {
 
 const SPLINE_CALL_NAMES: &[&str] = &["C_spline_basis", "C_spline_value"];
 
-unsafe extern "C-unwind" fn c_spline_basis(
+unsafe fn c_spline_basis(
     knots: SEXP,
     order: SEXP,
     xvals: SEXP,
@@ -384,7 +384,7 @@ unsafe extern "C-unwind" fn c_spline_basis(
     unsafe { spline_basis(knots, order, xvals, derivs) }
 }
 
-unsafe extern "C-unwind" fn c_spline_value(
+unsafe fn c_spline_value(
     knots: SEXP,
     coeff: SEXP,
     order: SEXP,

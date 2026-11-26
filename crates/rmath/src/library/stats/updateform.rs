@@ -162,6 +162,6 @@ pub fn updateform(old: SEXP, new: SEXP) -> SEXP {
     new
 }
 
-pub unsafe extern "C-unwind" fn c_updateform(old: SEXP, new: SEXP) -> SEXP {
+pub unsafe fn c_updateform(old: SEXP, new: SEXP) -> SEXP {
     updateform(old, new)
 }

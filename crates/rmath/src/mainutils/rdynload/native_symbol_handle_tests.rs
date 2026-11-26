@@ -192,11 +192,11 @@ fn typed_native_symbol_metadata_denial_precedes_allocation() {
 }
 
 thread_local! { static INVOCATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
-unsafe extern "C-unwind" fn counted_call(_: SEXP) -> SEXP {
+unsafe fn counted_call(_: SEXP) -> SEXP {
     INVOCATIONS.with(|n| n.set(n.get() + 1));
     unsafe { crate::sexp::globals::R_NilValue() }
 }
-unsafe extern "C-unwind" fn counted_external(_: SEXP) -> SEXP {
+unsafe fn counted_external(_: SEXP) -> SEXP {
     INVOCATIONS.with(|n| n.set(n.get() + 1));
     unsafe { crate::sexp::globals::R_NilValue() }
 }

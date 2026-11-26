@@ -284,7 +284,7 @@ pub(crate) fn duplicate(x: SEXP) -> SEXP {
     crate::main::duplicate::Rf_duplicate(x)
 }
 
-extern "C-unwind" fn c_pretty2(scale: SEXP, n: SEXP) -> SEXP {
+fn c_pretty2(scale: SEXP, n: SEXP) -> SEXP {
     grid::L_pretty2(scale, n)
 }
 

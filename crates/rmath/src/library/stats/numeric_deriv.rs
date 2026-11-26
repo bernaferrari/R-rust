@@ -10,7 +10,7 @@ use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NilValue, R_UnboundValue};
 use crate::sexp::protect::protect;
 
-pub unsafe extern "C-unwind" fn c_numeric_deriv(
+pub unsafe fn c_numeric_deriv(
     expr: SEXP,
     theta: SEXP,
     rho: SEXP,

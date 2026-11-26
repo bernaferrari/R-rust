@@ -28,7 +28,7 @@ macro_rules! call_trampoline {
     ($name:ident, ($($arg:ident),*) => $handler:expr) => {
         // SAFETY: this is a registered .Call routine; the interpreter holds the
         // runtime lock across dispatch and the callee owns argument validation.
-        unsafe extern "C-unwind" fn $name($($arg: SEXP),*) -> SEXP {
+        unsafe fn $name($($arg: SEXP),*) -> SEXP {
             $handler
         }
     };

@@ -198,7 +198,7 @@ pub fn ksmooth(x: SEXP, y: SEXP, xp: SEXP, skrn: SEXP, sbw: SEXP) -> SEXP {
     ans
 }
 
-pub unsafe extern "C-unwind" fn c_ksmooth(
+pub unsafe fn c_ksmooth(
     x: SEXP,
     y: SEXP,
     xp: SEXP,

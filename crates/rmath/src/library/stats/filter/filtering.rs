@@ -98,7 +98,7 @@ pub fn cfilter(sx: SEXP, sfilter: SEXP, ssides: SEXP, scircular: SEXP) -> SEXP {
     ans
 }
 
-pub unsafe extern "C-unwind" fn c_cfilter(
+pub unsafe fn c_cfilter(
     sx: SEXP,
     sfilter: SEXP,
     ssides: SEXP,
@@ -173,6 +173,6 @@ pub fn rfilter(x: SEXP, filter: SEXP, out: SEXP) -> SEXP {
     out
 }
 
-pub unsafe extern "C-unwind" fn c_rfilter(x: SEXP, filter: SEXP, out: SEXP) -> SEXP {
+pub unsafe fn c_rfilter(x: SEXP, filter: SEXP, out: SEXP) -> SEXP {
     rfilter(x, filter, out)
 }

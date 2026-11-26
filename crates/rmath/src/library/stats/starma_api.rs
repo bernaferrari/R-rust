@@ -303,7 +303,7 @@ fn dotrans(orders: [usize; 4], m: usize, raw: &[f64], new: &mut [f64], trans: i3
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
-pub unsafe extern "C-unwind" fn c_setup_starma(
+pub unsafe fn c_setup_starma(
     na: SEXP,
     x: SEXP,
     pn: SEXP,
@@ -397,7 +397,7 @@ pub unsafe extern "C-unwind" fn c_setup_starma(
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
-pub unsafe extern "C-unwind" fn c_free_starma(pg: SEXP) -> SEXP {
+pub unsafe fn c_free_starma(pg: SEXP) -> SEXP {
     let (_, token) = crate::sexp::memory::checked_projection(pg)
         .unwrap_or_else(|| starma_error("bad starma pointer"));
     let heap = token.heap_identity();
@@ -427,7 +427,7 @@ pub unsafe extern "C-unwind" fn c_free_starma(pg: SEXP) -> SEXP {
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
-pub unsafe extern "C-unwind" fn c_starma_method(pg: SEXP, method: SEXP) -> SEXP {
+pub unsafe fn c_starma_method(pg: SEXP, method: SEXP) -> SEXP {
     let state = starma_state(pg);
     let method = as_i32(method);
     state.state.borrow_mut().method = method;
@@ -436,7 +436,7 @@ pub unsafe extern "C-unwind" fn c_starma_method(pg: SEXP, method: SEXP) -> SEXP 
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
-pub unsafe extern "C-unwind" fn c_set_trans(pg: SEXP, ptrans: SEXP) -> SEXP {
+pub unsafe fn c_set_trans(pg: SEXP, ptrans: SEXP) -> SEXP {
     let state = starma_state(pg);
     let trans = as_i32(ptrans);
     state.state.borrow_mut().trans = trans;
@@ -445,7 +445,7 @@ pub unsafe extern "C-unwind" fn c_set_trans(pg: SEXP, ptrans: SEXP) -> SEXP {
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
-pub unsafe extern "C-unwind" fn c_arma0fa(pg: SEXP, inparams: SEXP) -> SEXP {
+pub unsafe fn c_arma0fa(pg: SEXP, inparams: SEXP) -> SEXP {
     let state = starma_state(pg);
     let npar = {
         let g = state.state.borrow();
@@ -564,7 +564,7 @@ pub unsafe extern "C-unwind" fn c_arma0fa(pg: SEXP, inparams: SEXP) -> SEXP {
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
-pub unsafe extern "C-unwind" fn c_get_s2(pg: SEXP) -> SEXP {
+pub unsafe fn c_get_s2(pg: SEXP) -> SEXP {
     let state = starma_state(pg);
     let s2 = state.state.borrow().s2;
     scalar_result(s2)
@@ -572,7 +572,7 @@ pub unsafe extern "C-unwind" fn c_get_s2(pg: SEXP) -> SEXP {
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
-pub unsafe extern "C-unwind" fn c_get_resid(pg: SEXP) -> SEXP {
+pub unsafe fn c_get_resid(pg: SEXP) -> SEXP {
     let state = starma_state(pg);
     let values = {
         let g = state.state.borrow();
@@ -587,7 +587,7 @@ pub unsafe extern "C-unwind" fn c_get_resid(pg: SEXP) -> SEXP {
 /// Forecast `n_ahead` steps. Returns a list of mean and variance.
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
-pub unsafe extern "C-unwind" fn c_arma0_kfore(pg: SEXP, pd: SEXP, psd: SEXP, nahead: SEXP) -> SEXP {
+pub unsafe fn c_arma0_kfore(pg: SEXP, pd: SEXP, psd: SEXP, nahead: SEXP) -> SEXP {
     let state = starma_state(pg);
     let dd = dimension(pd, "difference count");
     let sd = dimension(psd, "seasonal difference count");
@@ -654,7 +654,7 @@ pub unsafe extern "C-unwind" fn c_arma0_kfore(pg: SEXP, pd: SEXP, psd: SEXP, nah
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
-pub unsafe extern "C-unwind" fn c_dotrans(pg: SEXP, x: SEXP) -> SEXP {
+pub unsafe fn c_dotrans(pg: SEXP, x: SEXP) -> SEXP {
     let state = starma_state(pg);
     let n = XLENGTH(x).max(0);
     let input = if n > 0 && TYPEOF(x) == SEXPTYPE::REALSXP {
@@ -679,7 +679,7 @@ pub unsafe extern "C-unwind" fn c_dotrans(pg: SEXP, x: SEXP) -> SEXP {
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
-pub unsafe extern "C-unwind" fn c_invtrans(pg: SEXP, x: SEXP) -> SEXP {
+pub unsafe fn c_invtrans(pg: SEXP, x: SEXP) -> SEXP {
     let state = starma_state(pg);
     let n = XLENGTH(x).max(0);
     let input = if n > 0 && TYPEOF(x) == SEXPTYPE::REALSXP {
@@ -755,7 +755,7 @@ fn transform_jacobian(
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
-pub unsafe extern "C-unwind" fn c_gradtrans(pg: SEXP, x: SEXP) -> SEXP {
+pub unsafe fn c_gradtrans(pg: SEXP, x: SEXP) -> SEXP {
     let state = starma_state(pg);
     let (orders, m) = {
         let model = state.state.borrow();
@@ -790,7 +790,7 @@ pub unsafe extern "C-unwind" fn c_gradtrans(pg: SEXP, x: SEXP) -> SEXP {
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
-pub unsafe extern "C-unwind" fn c_fexact(x: SEXP, pars: SEXP, work: SEXP, smult: SEXP) -> SEXP {
+pub unsafe fn c_fexact(x: SEXP, pars: SEXP, work: SEXP, smult: SEXP) -> SEXP {
     // SAFETY: forwards the validated raw SEXP ABI contract of the registered
     // fexact routine unchanged.
     super::fexact::Fexact(x, pars, work, smult)

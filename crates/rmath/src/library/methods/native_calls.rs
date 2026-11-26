@@ -67,15 +67,15 @@ const METHODS_CALL_NAMES: &[&str] = &[
     "new_object",
 ];
 
-unsafe extern "C-unwind" fn c_r_get_generic(name: SEXP, must: SEXP, env: SEXP, pkg: SEXP) -> SEXP {
+unsafe fn c_r_get_generic(name: SEXP, must: SEXP, env: SEXP, pkg: SEXP) -> SEXP {
     super::methods_list_dispatch::R_getGeneric(name, must, env, pkg)
 }
 
-unsafe extern "C-unwind" fn c_r_ident_c(e1: SEXP, e2: SEXP) -> SEXP {
+unsafe fn c_r_ident_c(e1: SEXP, e2: SEXP) -> SEXP {
     super::methods_list_dispatch::R_identC(e1, e2)
 }
 
-unsafe extern "C-unwind" fn c_r_methods_package_meta_name(
+unsafe fn c_r_methods_package_meta_name(
     prefix: SEXP,
     name: SEXP,
     pkg: SEXP,
@@ -83,39 +83,39 @@ unsafe extern "C-unwind" fn c_r_methods_package_meta_name(
     super::methods_list_dispatch::R_methodsPackageMetaName(prefix, name, pkg)
 }
 
-unsafe extern "C-unwind" fn c_r_el_named(object: SEXP, what: SEXP) -> SEXP {
+unsafe fn c_r_el_named(object: SEXP, what: SEXP) -> SEXP {
     super::methods_list_dispatch::R_el_named(object, what)
 }
 
-unsafe extern "C-unwind" fn c_r_set_el_named(object: SEXP, what: SEXP, value: SEXP) -> SEXP {
+unsafe fn c_r_set_el_named(object: SEXP, what: SEXP, value: SEXP) -> SEXP {
     super::methods_list_dispatch::R_set_el_named(object, what, value)
 }
 
-unsafe extern "C-unwind" fn c_r_missing_arg(symbol: SEXP, ev: SEXP) -> SEXP {
+unsafe fn c_r_missing_arg(symbol: SEXP, ev: SEXP) -> SEXP {
     super::methods_list_dispatch::R_missingArg(symbol, ev)
 }
 
-unsafe extern "C-unwind" fn c_r_get_slot(obj: SEXP, name: SEXP) -> SEXP {
+unsafe fn c_r_get_slot(obj: SEXP, name: SEXP) -> SEXP {
     crate::mainutils::essentials::R_do_slot(obj, name)
 }
 
-unsafe extern "C-unwind" fn c_r_set_slot(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
+unsafe fn c_r_set_slot(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
     crate::mainutils::essentials::R_do_slot_assign(obj, name, value)
 }
 
-unsafe extern "C-unwind" fn c_r_has_slot(obj: SEXP, name: SEXP) -> SEXP {
+unsafe fn c_r_has_slot(obj: SEXP, name: SEXP) -> SEXP {
     crate::mainutils::essentials::R_has_slot(obj, name)
 }
 
-unsafe extern "C-unwind" fn c_r_init_method_dispatch(envir: SEXP) -> SEXP {
+unsafe fn c_r_init_method_dispatch(envir: SEXP) -> SEXP {
     super::methods_list_dispatch::R_initMethodDispatch(envir)
 }
 
-unsafe extern "C-unwind" fn c_r_standard_generic(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
+unsafe fn c_r_standard_generic(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
     unsafe { super::methods_list_dispatch::R_standardGeneric(fname, ev, fdef) }
 }
 
-unsafe extern "C-unwind" fn c_r_select_method(
+unsafe fn c_r_select_method(
     fname: SEXP,
     ev: SEXP,
     mlist: SEXP,
@@ -124,19 +124,19 @@ unsafe extern "C-unwind" fn c_r_select_method(
     super::methods_list_dispatch::R_selectMethod(fname, ev, mlist, eval_args)
 }
 
-unsafe extern "C-unwind" fn c_r_get_class_from_cache(class: SEXP, table: SEXP) -> SEXP {
+unsafe fn c_r_get_class_from_cache(class: SEXP, table: SEXP) -> SEXP {
     super::methods_list_dispatch::R_getClassFromCache(class, table)
 }
 
-unsafe extern "C-unwind" fn c_r_quick_method_check(args: SEXP, mlist: SEXP, fdef: SEXP) -> SEXP {
+unsafe fn c_r_quick_method_check(args: SEXP, mlist: SEXP, fdef: SEXP) -> SEXP {
     super::methods_list_dispatch::R_quick_method_check(args, mlist, fdef)
 }
 
-unsafe extern "C-unwind" fn c_r_next_method_call(matched_call: SEXP, ev: SEXP) -> SEXP {
+unsafe fn c_r_next_method_call(matched_call: SEXP, ev: SEXP) -> SEXP {
     super::methods_list_dispatch::R_nextMethodCall(matched_call, ev)
 }
 
-unsafe extern "C-unwind" fn c_r_m_set_primitive_methods(
+unsafe fn c_r_m_set_primitive_methods(
     fname: SEXP,
     op: SEXP,
     code_vec: SEXP,
@@ -146,43 +146,43 @@ unsafe extern "C-unwind" fn c_r_m_set_primitive_methods(
     super::methods_list_dispatch::R_M_setPrimitiveMethods(fname, op, code_vec, fundef, mlist)
 }
 
-unsafe extern "C-unwind" fn c_do_substitute_direct(f: SEXP, env: SEXP) -> SEXP {
+unsafe fn c_do_substitute_direct(f: SEXP, env: SEXP) -> SEXP {
     super::do_substitute_direct::do_substitute_direct(f, env)
 }
 
-unsafe extern "C-unwind" fn c_r_get_primname(object: SEXP) -> SEXP {
+unsafe fn c_r_get_primname(object: SEXP) -> SEXP {
     super::class_support::R_get_primname(object)
 }
 
-unsafe extern "C-unwind" fn c_new_object(class_def: SEXP) -> SEXP {
+unsafe fn c_new_object(class_def: SEXP) -> SEXP {
     super::class_support::new_object(class_def)
 }
 
-unsafe extern "C-unwind" fn c_methods_make_class(name: SEXP) -> SEXP {
+unsafe fn c_methods_make_class(name: SEXP) -> SEXP {
     super::utils_methods::R_methods_test_MAKE_CLASS(name)
 }
 
-unsafe extern "C-unwind" fn c_methods_new(name: SEXP) -> SEXP {
+unsafe fn c_methods_new(name: SEXP) -> SEXP {
     super::utils_methods::R_methods_test_NEW(name)
 }
 
-unsafe extern "C-unwind" fn c_rf_alloc_s4_object() -> SEXP {
+unsafe fn c_rf_alloc_s4_object() -> SEXP {
     super::class_support::Rf_allocS4Object()
 }
 
-unsafe extern "C-unwind" fn c_r_externalptr_prototype_object() -> SEXP {
+unsafe fn c_r_externalptr_prototype_object() -> SEXP {
     super::tests::R_externalptr_prototype_object()
 }
 
-unsafe extern "C-unwind" fn c_r_dummy_extern_place() -> SEXP {
+unsafe fn c_r_dummy_extern_place() -> SEXP {
     super::tests::R_dummy_extern_place()
 }
 
-unsafe extern "C-unwind" fn c_r_clear_method_selection() -> SEXP {
+unsafe fn c_r_clear_method_selection() -> SEXP {
     super::methods_list_dispatch::R_clear_method_selection()
 }
 
-unsafe extern "C-unwind" fn c_r_set_method_dispatch(on_off: SEXP) -> SEXP {
+unsafe fn c_r_set_method_dispatch(on_off: SEXP) -> SEXP {
     super::methods_list_dispatch::R_set_method_dispatch(on_off)
 }
 
