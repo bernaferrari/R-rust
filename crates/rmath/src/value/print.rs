@@ -156,17 +156,21 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
                 _ => None,
             })
             .unwrap_or_else(|| "UTC".to_string());
+        // GNU drops the time component only when every finite element is
+        /// exactly midnight — a single non-midnight renders all times
+        /// exactly as format.POSIXct's collective omission rule.
+        let all_midnight = secs
+            .iter()
+            .filter(|s| s.is_finite())
+            .all(|&s| (s as i64).rem_euclid(86400) == 0);
         let elements: Vec<String> = secs
             .iter()
             .map(|&s| {
                 if s.is_nan() {
                     "NA".to_string()
                 } else {
-                    // GNU drops the midnight time component — a datetime at
-                    /// exactly 00:00:00 prints as the bare date exactly as
-                    /// format.POSIXct's time omission.
                     let full = super::civil::format_iso_datetime(s as i64);
-                    let rendered = if full.ends_with(" 00:00:00") {
+                    let rendered = if all_midnight && full.ends_with(" 00:00:00") {
                         full[..10].to_string()
                     } else {
                         full

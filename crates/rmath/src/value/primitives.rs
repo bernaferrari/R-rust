@@ -1848,6 +1848,12 @@ fn arithmetic(
     let arity = raw_args(heap, args).len();
     if matches!(op, ADD | SUB) && arity == 1 {
         if let Ok(unary) = eval_args(heap, interner, args, caller_env, 1) {
+            // Unary negation of a classed timespan keeps the chain —
+            /// -difftime negates the value and preserves units exactly as
+            /// GNU's unary method.
+            let classed = is_difftime_classed(heap, interner, unary[0])
+                || is_date_classed(heap, interner, unary[0])
+                || is_posixct_classed(heap, interner, unary[0]);
             let operand = numeric_operands(heap, unary[0]).map_err(RSignal::from)?;
             return match operand {
                 Numeric::Integer(values) => {
@@ -1861,61 +1867,96 @@ fn arithmetic(
                             }
                         })
                         .collect();
-                    Ok(heap.alloc(RObject::Integer(folded)))
+                    let bare = heap.alloc(RObject::Integer(folded));
+                    if classed {
+                        Ok(propagate_attributes(heap, unary[0], unary[0], bare))
+                    } else {
+                        Ok(bare)
+                    }
                 }
                 Numeric::Real(values) => {
                     let folded = values
                         .into_iter()
                         .map(|v| if op == ADD { v } else { -v })
                         .collect();
-                    Ok(heap.alloc(RObject::Real(folded)))
+                    let bare = heap.alloc(RObject::Real(folded));
+                    if classed {
+                        Ok(propagate_attributes(heap, unary[0], unary[0], bare))
+                    } else {
+                        Ok(bare)
+                    }
                 }
             };
         }
     }
     let operands = eval_args(heap, interner, args, caller_env, 2)?;
-    // difftime operands in +/- against a Date rescale into days and shed
-    /// their class before the fold — the Date side's chain then wins
-    /// propagation exactly as GNU's arithmetic methods arrange.
-    let scale_difftime = |heap: &mut Heap, interner: &mut SymbolInterner, v: ValueId| -> ValueId {
-        let classed = get_attrib(heap, interner, v, "class")
-            .and_then(|id| match heap.object(id) {
-                Some(RObject::String(vals)) => Some(vals.iter().any(|x| interner.string_text(*x) == "difftime")),
-                _ => None,
-            })
-            .unwrap_or(false);
-        if !classed {
-            return v;
-        }
-        let units = get_attrib(heap, interner, v, "units")
-            .and_then(|id| match heap.object(id) {
-                Some(RObject::String(vals)) if !vals.is_empty() => Some(interner.string_text(vals[0]).to_string()),
-                _ => None,
-            })
-            .unwrap_or_else(|| "days".to_string());
-        let scale = match units.as_str() {
-            "secs" => 1.0 / 86400.0,
-            "mins" => 1.0 / 1440.0,
-            "hours" => 1.0 / 24.0,
-            "weeks" => 7.0,
-            _ => 1.0,
-        };
+    // The datetime operand lattice: difftime operands rescale into the
+    /// target unit of the operation — seconds against POSIXct, days
+    /// against Dates — and difftime-difftime pairs convert into their
+    /// finer unit, shedding class so the fold sees bare numerics exactly
+    /// as GNU's arithmetic methods arrange.
+    let left_date = is_date_classed(heap, interner, operands[0]);
+    let right_date = is_date_classed(heap, interner, operands[1]);
+    let left_posix = is_posixct_classed(heap, interner, operands[0]);
+    let right_posix = is_posixct_classed(heap, interner, operands[1]);
+    let left_dt = is_difftime_classed(heap, interner, operands[0]);
+    let right_dt = is_difftime_classed(heap, interner, operands[1]);
+    let left_dt_units = if left_dt { difftime_units(heap, interner, operands[0]) } else { "secs".to_string() };
+    let right_dt_units = if right_dt { difftime_units(heap, interner, operands[1]) } else { "secs".to_string() };
+    // Convert a difftime operand into the given unit count, as a bare
+    /// numeric — the class sheds exactly as the method dispatch does.
+    let convert_difftime = |heap: &mut Heap, interner: &SymbolInterner, v: ValueId, target_secs: f64| -> ValueId {
+        let units = difftime_units(heap, interner, v);
+        let factor = unit_seconds(&units) / target_secs;
         let scaled: Vec<f64> = match heap.object(v) {
-            Some(RObject::Real(vals)) => vals.iter().map(|x| x * scale).collect(),
-            Some(RObject::Integer(vals)) => vals.iter().map(|&x| x as f64 * scale).collect(),
+            Some(RObject::Real(vals)) => vals.iter().map(|x| x * factor).collect(),
+            Some(RObject::Integer(vals)) => vals.iter().map(|&x| x as f64 * factor).collect(),
             _ => return v,
         };
         heap.alloc(RObject::Real(scaled))
     };
-    let left_date = is_date_classed(heap, interner, operands[0]);
-    let right_date = is_date_classed(heap, interner, operands[1]);
-    let operands = if matches!(op, ADD | SUB) && (left_date || right_date) {
-        vec![
-            scale_difftime(heap, interner, operands[0]),
-            scale_difftime(heap, interner, operands[1]),
-        ]
+    let dt_pair = left_dt && right_dt && matches!(op, ADD | SUB);
+    let dt_pair_units = if dt_pair {
+        // The finer unit wins — the smaller seconds-per-unit exactly as
+        /// GNU's mixed-unit conversion.
+        if unit_seconds(&left_dt_units) <= unit_seconds(&right_dt_units) {
+            left_dt_units.clone()
+        } else {
+            right_dt_units.clone()
+        }
     } else {
-        operands
+        "secs".to_string()
+    };
+    let operands = {
+        let mut ops = operands;
+        if matches!(op, ADD | SUB) {
+            if left_posix || right_posix {
+                if left_dt {
+                    let c = convert_difftime(heap, interner, ops[0], 1.0);
+                    ops[0] = c;
+                }
+                if right_dt {
+                    let c = convert_difftime(heap, interner, ops[1], 1.0);
+                    ops[1] = c;
+                }
+            } else if left_date || right_date {
+                if left_dt {
+                    let c = convert_difftime(heap, interner, ops[0], 86400.0);
+                    ops[0] = c;
+                }
+                if right_dt {
+                    let c = convert_difftime(heap, interner, ops[1], 86400.0);
+                    ops[1] = c;
+                }
+            } else if dt_pair {
+                let target = unit_seconds(&dt_pair_units);
+                let c0 = convert_difftime(heap, interner, ops[0], target);
+                ops[0] = c0;
+                let c1 = convert_difftime(heap, interner, ops[1], target);
+                ops[1] = c1;
+            }
+        }
+        ops
     };
     let left = numeric_operands(heap, operands[0]).map_err(RSignal::from)?;
     let right = numeric_operands(heap, operands[1]).map_err(RSignal::from)?;
@@ -1972,14 +2013,14 @@ fn arithmetic(
             })
             .map_err(RSignal::from)?;
             let result = heap.alloc(RObject::Real(folded));
-            // GNU's Date arithmetic discipline: the classed operand's
-            /// attribute chain wins regardless of position — Date +/-
-            /// numeric keeps Date; Date - Date yields difftime in days.
+            // GNU's datetime arithmetic discipline: the classed operand's
+            /// attribute chain wins regardless of position, and each class
+            /// pair follows its exact method matrix.
             let left_date = is_date_classed(heap, interner, operands[0]);
             let right_date = is_date_classed(heap, interner, operands[1]);
-            let result = if left_date && !right_date {
+            let result = if (left_date && !right_date) || (left_posix && !right_posix) {
                 propagate_attributes(heap, operands[0], operands[0], result)
-            } else if right_date && !left_date {
+            } else if (right_date && !left_date) || (right_posix && !left_posix) {
                 propagate_attributes(heap, operands[1], operands[1], result)
             } else {
                 propagate_attributes(heap, operands[0], operands[1], result)
@@ -1993,6 +2034,82 @@ fn arithmetic(
                 MOD => "%%",
                 _ => "op",
             };
+            // difftime arithmetic: pairs in +/- already folded in their
+            /// finer unit — stamp the class back with that unit. Scaling
+            /// by a plain number keeps the difftime and its units exactly
+            /// as GNU; difftime*difftime and division-by-difftime error.
+            if left_dt && right_dt && op == DIV {
+                return Err(EvalError::Condition(
+                    "second argument of / cannot be a \"difftime\" object".to_string(),
+                )
+                .into());
+            }
+            if left_dt && right_dt && op != ADD && op != SUB {
+                return Err(EvalError::Condition(format!(
+                    "both arguments of {op_text} cannot be \"difftime\" objects"
+                ))
+                .into());
+            }
+            if dt_pair {
+                let class = heap.alloc(RObject::String(vec![interner.intern_string("difftime")]));
+                let units = heap.alloc(RObject::String(vec![interner.intern_string(&dt_pair_units)]));
+                let stripped = strip_all_attributes(heap, result);
+                let with_class = copy_with_attrib(heap, interner, stripped, "class", class).map_err(RSignal::from)?;
+                return copy_with_attrib(heap, interner, with_class, "units", units).map_err(RSignal::from);
+            }
+            if (left_dt || right_dt) && matches!(op, MUL | DIV) {
+                let (units_text, _) = if left_dt {
+                    (left_dt_units.clone(), 0)
+                } else {
+                    (right_dt_units.clone(), 1)
+                };
+                let class = heap.alloc(RObject::String(vec![interner.intern_string("difftime")]));
+                let units = heap.alloc(RObject::String(vec![interner.intern_string(&units_text)]));
+                let stripped = strip_all_attributes(heap, result);
+                let with_class = copy_with_attrib(heap, interner, stripped, "class", class).map_err(RSignal::from)?;
+                return copy_with_attrib(heap, interner, with_class, "units", units).map_err(RSignal::from);
+            }
+            // POSIXct mirrors the Date matrix exactly, in seconds, with
+            /// POSIXt in the message text precisely as GNU's method.
+            if left_posix && right_posix && op != SUB {
+                return Err(EvalError::Condition(format!(
+                    "binary '{op_text}' is not defined for \"POSIXt\" objects"
+                ))
+                .into());
+            }
+            if left_posix && !right_posix && op != SUB && op != ADD {
+                return Err(EvalError::Condition(format!(
+                    "'{op_text}' not defined for \"POSIXt\" objects"
+                ))
+                .into());
+            }
+            if right_posix && !left_posix && op == SUB {
+                return Err(EvalError::Condition(
+                    "can only subtract from \"POSIXt\" objects".to_string(),
+                )
+                .into());
+            }
+            if left_posix && op == SUB && !right_posix {
+                let right_classed = get_attrib(heap, interner, operands[1], "class").is_some();
+                if right_classed && !right_dt {
+                    return Err(EvalError::Condition(
+                        "can only subtract numbers from \"POSIXt\" objects".to_string(),
+                    )
+                    .into());
+                }
+            }
+            if left_posix && right_posix && op == SUB {
+                // The difference is in seconds — GNU auto-selects the
+                /// coarsest unit dividing every finite value exactly.
+                let secs = numeric_vector(heap, result);
+                let (unit_name, divisor) = auto_difftime_units(&secs);
+                let scaled: Vec<f64> = secs.iter().map(|&s| if s.is_nan() { s } else { s / divisor }).collect();
+                let bare = heap.alloc(RObject::Real(scaled));
+                let class = heap.alloc(RObject::String(vec![interner.intern_string("difftime")]));
+                let units = heap.alloc(RObject::String(vec![interner.intern_string(unit_name)]));
+                let with_class = copy_with_attrib(heap, interner, bare, "class", class).map_err(RSignal::from)?;
+                return copy_with_attrib(heap, interner, with_class, "units", units).map_err(RSignal::from);
+            }
             // GNU's exact Date arithmetic error matrix: non-subtraction
             /// between Dates, multiplication of a Date by anything, and
             /// subtraction of a Date from a number all raise distinct
@@ -2020,12 +2137,7 @@ fn arithmetic(
             /// is not a number for arithmetic purposes in GNU.
             if left_date && op == SUB && !right_date {
                 let right_classed = get_attrib(heap, interner, operands[1], "class").is_some();
-                let right_difftime = get_attrib(heap, interner, operands[1], "class")
-                    .and_then(|id| match heap.object(id) {
-                        Some(RObject::String(vals)) => Some(vals.iter().any(|x| interner.string_text(*x) == "difftime")),
-                        _ => None,
-                    })
-                    .unwrap_or(false);
+                let right_difftime = is_difftime_classed(heap, interner, operands[1]);
                 if right_classed && !right_difftime {
                     return Err(EvalError::Condition(
                         "can only subtract numbers from \"Date\" objects".to_string(),
@@ -2276,6 +2388,25 @@ fn comparison(
     caller_env: ValueId,
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    // difftime operands compare through their seconds conversion —
+    /// magnitudes in mixed units order exactly as GNU's time lattice.
+    let operands = {
+        let mut ops = operands;
+        for i in 0..2 {
+            if is_difftime_classed(heap, interner, ops[i]) {
+                let factor = unit_seconds(&difftime_units(heap, interner, ops[i]));
+                let scaled: Vec<f64> = match heap.object(ops[i]) {
+                    Some(RObject::Real(vals)) => vals.iter().map(|x| x * factor).collect(),
+                    Some(RObject::Integer(vals)) => vals.iter().map(|&x| x as f64 * factor).collect(),
+                    _ => Vec::new(),
+                };
+                if !scaled.is_empty() {
+                    ops[i] = heap.alloc(RObject::Real(scaled));
+                }
+            }
+        }
+        ops
+    };
     // GNU character comparison: when either operand is character the other
     // coerces, equality is exact and ordering lexicographic, and NA or NaN
     // participation poisons the element to NA logical exactly as numerics.
@@ -2565,6 +2696,54 @@ fn concat_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
+    let result = concat_primitive_inner(heap, interner, args, caller_env)?;
+    // The datetime stamp rides the concatenated result — first operand's
+    /// class method governs exactly as GNU's dispatch.
+    let mut cursor = args;
+    let first = loop {
+        let (car, cdr, _) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break ValueId::NIL,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        break force_if_promise(heap, interner, evaluated)?;
+        #[allow(unreachable_code)]
+        {
+            cursor = cdr;
+        }
+    };
+    let _ = cursor;
+    if first != ValueId::NIL {
+        if is_posixct_classed(heap, interner, first) && !is_posixct_classed(heap, interner, result) {
+            let tz = get_attrib(heap, interner, first, "tzone");
+            let class = heap.alloc(RObject::String(vec![
+                interner.intern_string("POSIXct"),
+                interner.intern_string("POSIXt"),
+            ]));
+            let stamped = copy_with_attrib(heap, interner, result, "class", class).map_err(RSignal::from)?;
+            return if let Some(tzv) = tz {
+                copy_with_attrib(heap, interner, stamped, "tzone", tzv).map_err(RSignal::from)
+            } else {
+                Ok(stamped)
+            };
+        }
+        if is_date_classed(heap, interner, first)
+            && !is_posixct_classed(heap, interner, first)
+            && !is_date_classed(heap, interner, result)
+        {
+            let class = heap.alloc(RObject::String(vec![interner.intern_string("Date")]));
+            return copy_with_attrib(heap, interner, result, "class", class).map_err(RSignal::from);
+        }
+    }
+    Ok(result)
+}
+
+fn concat_primitive_inner(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
     // Variadic: evaluate and force every operand in the call, keeping each
     // operand's tag — tagged concatenation expands names across element
     // counts exactly as GNU.
@@ -2587,6 +2766,47 @@ fn concat_primitive(
             break;
         }
         cursor = cdr;
+    }
+
+    // GNU's datetime concatenation: the first operand's class method
+    /// governs — c.Date coerces POSIXct siblings down to days, c.POSIXct
+    /// lifts Date siblings to midnight seconds — and the result carries
+    /// the class exactly as the method dispatch arranges.
+    let first_date = operands.first().map(|v| is_date_classed(heap, interner, *v)).unwrap_or(false);
+    let first_posix = operands.first().map(|v| is_posixct_classed(heap, interner, *v)).unwrap_or(false);
+    let first_tzone = if first_posix {
+        get_attrib(heap, interner, operands[0], "tzone")
+            .and_then(|id| match heap.object(id) {
+                Some(RObject::String(vals)) if !vals.is_empty() => Some(interner.string_text(vals[0]).to_string()),
+                _ => None,
+            })
+            .unwrap_or_else(|| "UTC".to_string())
+    } else {
+        "UTC".to_string()
+    };
+    if first_date || first_posix {
+        operands = operands
+            .into_iter()
+            .map(|v| {
+                let posix = is_posixct_classed(heap, interner, v);
+                let date = is_date_classed(heap, interner, v);
+                if first_date && posix {
+                    let scaled: Vec<f64> = numeric_vector(heap, v)
+                        .iter()
+                        .map(|&x| if x.is_nan() { x } else { (x as i64).div_euclid(86400) as f64 })
+                        .collect();
+                    heap.alloc(RObject::Real(scaled))
+                } else if first_posix && date && !posix {
+                    let scaled: Vec<f64> = numeric_vector(heap, v)
+                        .iter()
+                        .map(|&x| if x.is_nan() { x } else { x * 86400.0 })
+                        .collect();
+                    heap.alloc(RObject::Real(scaled))
+                } else {
+                    v
+                }
+            })
+            .collect();
     }
 
     enum Flat {
@@ -5350,6 +5570,41 @@ fn rep_dispatch(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
+    let result = rep_dispatch_inner(heap, interner, args, caller_env)?;
+    // GNU's rep methods for datetime classes keep the chain — class and
+    /// tzone replicate across the repeated payload exactly.
+    if let Ok(operands) = eval_args(heap, interner, args, caller_env, 1) {
+        let source = operands[0];
+        if is_posixct_classed(heap, interner, source) && !is_posixct_classed(heap, interner, result) {
+            let tz = get_attrib(heap, interner, source, "tzone");
+            let class = heap.alloc(RObject::String(vec![
+                interner.intern_string("POSIXct"),
+                interner.intern_string("POSIXt"),
+            ]));
+            let stamped = copy_with_attrib(heap, interner, result, "class", class).map_err(RSignal::from)?;
+            return if let Some(tzv) = tz {
+                copy_with_attrib(heap, interner, stamped, "tzone", tzv).map_err(RSignal::from)
+            } else {
+                Ok(stamped)
+            };
+        }
+        if is_date_classed(heap, interner, source)
+            && !is_posixct_classed(heap, interner, source)
+            && !is_date_classed(heap, interner, result)
+        {
+            let class = heap.alloc(RObject::String(vec![interner.intern_string("Date")]));
+            return copy_with_attrib(heap, interner, result, "class", class).map_err(RSignal::from);
+        }
+    }
+    Ok(result)
+}
+
+fn rep_dispatch_inner(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
     let mut positional: Vec<ValueId> = Vec::new();
     let mut named: Vec<(String, ValueId)> = Vec::new();
     let mut cursor = args;
@@ -7780,4 +8035,59 @@ pub(crate) fn is_posixct_classed(heap: &Heap, interner: &SymbolInterner, value: 
             _ => None,
         })
         .unwrap_or(false)
+}
+
+/// Whether the object carries the difftime class.
+pub(crate) fn is_difftime_classed(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
+    get_attrib(heap, interner, value, "class")
+        .and_then(|id| match heap.object(id) {
+            Some(RObject::String(vals)) => Some(vals.iter().any(|v| interner.string_text(*v) == "difftime")),
+            _ => None,
+        })
+        .unwrap_or(false)
+}
+
+/// The difftime units attribute — seconds per unit in the lattice exactly
+/// as GNU: secs 1, mins 60, hours 3600, days 86400, weeks 604800.
+pub(crate) fn difftime_units(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String {
+    get_attrib(heap, interner, value, "units")
+        .and_then(|id| match heap.object(id) {
+            Some(RObject::String(vals)) if !vals.is_empty() => Some(interner.string_text(vals[0]).to_string()),
+            _ => None,
+        })
+        .unwrap_or_else(|| "secs".to_string())
+}
+
+/// Seconds per difftime unit exactly as GNU's conversion lattice.
+pub(crate) fn unit_seconds(units: &str) -> f64 {
+    match units {
+        "mins" => 60.0,
+        "hours" => 3600.0,
+        "days" => 86400.0,
+        "weeks" => 604800.0,
+        _ => 1.0,
+    }
+}
+
+/// GNU's auto unit selection for second-valued differences: the coarsest
+/// unit dividing every finite value exactly, defaulting to secs exactly as
+/// difftime's "auto" discipline.
+fn auto_difftime_units(secs: &[f64]) -> (&'static str, f64) {
+    let finite: Vec<f64> = secs.iter().filter(|v| v.is_finite()).copied().collect();
+    for (name, divisor) in [("weeks", 604800.0), ("days", 86400.0), ("hours", 3600.0), ("mins", 60.0)] {
+        if !finite.is_empty() && finite.iter().all(|v| v % divisor == 0.0) {
+            return (name, divisor);
+        }
+    }
+    ("secs", 1.0)
+}
+
+/// Allocate a copy of the object's payload with no attribute chain — the
+/// stamping operations rebuild class-bearing objects from bare numerics.
+fn strip_all_attributes(heap: &mut Heap, value: ValueId) -> ValueId {
+    let body = match heap.object(value) {
+        Some(obj) => obj.clone(),
+        None => return value,
+    };
+    heap.alloc(body)
 }
