@@ -833,7 +833,7 @@ fn format_factor(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Stri
 /// print.language — infix operators render infix, calls parenthesize
 /// comma-space-separated arguments, missing arguments print empty, and
 /// atomic literals carry their literal form.
-pub(crate) fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String {
+pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String {
     match heap.object(value) {
         Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
         Some(RObject::Language { car, cdr, .. }) => {
@@ -910,6 +910,47 @@ pub(crate) fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) ->
             format!("\"{}\"", text)
         }
         Some(RObject::Nil) => "NULL".to_string(),
+        // Multi-element atomic vectors deparse to their c() construction
+        /// exactly as GNU — each element rendering through the scalar forms.
+        Some(RObject::Real(vals)) if !vals.is_empty() => {
+            let parts: Vec<String> = vals.iter().map(|v| format_real(*v)).collect();
+            format!("c({})", parts.join(", "))
+        }
+        Some(RObject::Integer(vals)) if !vals.is_empty() => {
+            let parts: Vec<String> = vals
+                .iter()
+                .map(|&v| {
+                    if v == crate::value::object::NA_INTEGER {
+                        "NA_integer_".to_string()
+                    } else {
+                        format!("{}L", v)
+                    }
+                })
+                .collect();
+            format!("c({})", parts.join(", "))
+        }
+        Some(RObject::Logical(vals)) if !vals.is_empty() => {
+            let parts: Vec<String> = vals
+                .iter()
+                .map(|&v| {
+                    if v == crate::value::object::NA_INTEGER {
+                        "NA".to_string()
+                    } else if v != 0 {
+                        "TRUE".to_string()
+                    } else {
+                        "FALSE".to_string()
+                    }
+                })
+                .collect();
+            format!("c({})", parts.join(", "))
+        }
+        Some(RObject::String(vals)) if !vals.is_empty() => {
+            let parts: Vec<String> = vals
+                .iter()
+                .map(|v| format!("\"{}\"", interner.string_text(*v)))
+                .collect();
+            format!("c({})", parts.join(", "))
+        }
         _ => "?".to_string(),
     }
 }
