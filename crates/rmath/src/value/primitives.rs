@@ -4345,7 +4345,9 @@ fn structure_primitive(
         Some(v) => *v,
         None => return Err(EvalError::TypeError("structure requires input").into()),
     };
-    for (name, value) in tagged {
+    // copy_with_attrib prepends, so reverse application leaves the chain
+    /// in argument order exactly as GNU prints it.
+    for (name, value) in tagged.into_iter().rev() {
         object = copy_with_attrib(heap, interner, object, &name, value).map_err(RSignal::from)?;
     }
     Ok(object)
@@ -5681,6 +5683,7 @@ fn grep_primitive(
     let mut value_mode = false;
     let mut invert = false;
     let mut ignore_case = false;
+    let mut fixed = false;
     let mut positional = 0usize;
     let mut cursor = args;
     loop {
@@ -5704,6 +5707,11 @@ fn grep_primitive(
             Some("invert") => {
                 if let Some(RObject::Logical(vals)) = heap.object(v) {
                     invert = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
+                }
+            }
+            Some("fixed") => {
+                if let Some(RObject::Logical(vals)) = heap.object(v) {
+                    fixed = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
                 }
             }
             Some("ignore.case") => {
@@ -5737,7 +5745,13 @@ fn grep_primitive(
                 invert
             } else {
                 let haystack = if ignore_case { text.to_lowercase() } else { text.clone() };
-                super::regex::regex_search(&pattern, &haystack).is_some() != invert
+                // fixed=TRUE is literal substring matching — no metacharacters.
+                let found = if fixed {
+                    haystack.contains(&pattern)
+                } else {
+                    super::regex::regex_search(&pattern, &haystack).is_some()
+                };
+                found != invert
             }
         })
         .collect();
@@ -5790,7 +5804,14 @@ fn regexpr_primitive(
             }
         }
     }
+    // copy_with_attrib prepends, so the application order is the reverse
+    /// of GNU's printed order — match.length must apply last to head the
+    /// chain exactly as print order requires.
+    let use_bytes = heap.alloc(RObject::Logical(vec![1]));
     let result = heap.alloc(RObject::Integer(positions));
+    let result = copy_with_attrib(heap, interner, result, "useBytes", use_bytes).map_err(RSignal::from)?;
+    let index_type = heap.alloc(RObject::String(vec![interner.intern_string("chars")]));
+    let result = copy_with_attrib(heap, interner, result, "index.type", index_type).map_err(RSignal::from)?;
     let length_obj = heap.alloc(RObject::Integer(lengths));
     copy_with_attrib(heap, interner, result, "match.length", length_obj).map_err(RSignal::from)
 }

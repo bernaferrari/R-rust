@@ -240,11 +240,88 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         })
         .collect();
     let width = elements.iter().map(|e| e.len()).max().unwrap_or(0);
-    let mut out = String::from("[1]");
-    for element in &elements {
-        out.push(' ');
-        out.push_str(&" ".repeat(width - element.len()));
-        out.push_str(element);
+    // GNU named-vector layout: the names print as a header row over the
+    /// values, each column right-justified to the wider of name and value,
+    /// with no [1] tags — the two-row reading is the tell.
+    let names_id = super::primitives::get_attrib(heap, interner, value, "names");
+    let names_vec: Option<Vec<String>> = names_id.and_then(|id| match heap.object(id) {
+        Some(RObject::String(values)) if values.len() == length => Some(
+            values
+                .iter()
+                .map(|v| interner.string_text(*v).to_string())
+                .collect(),
+        ),
+        _ => None,
+    });
+    let mut out = String::new();
+    match names_vec {
+        Some(names) => {
+            let col_widths: Vec<usize> = elements
+                .iter()
+                .zip(names.iter())
+                .map(|(e, n)| e.len().max(n.len()))
+                .collect();
+            for (i, name) in names.iter().enumerate() {
+                if i > 0 {
+                    out.push(' ');
+                }
+                out.push_str(&" ".repeat(col_widths[i] - name.len()));
+                out.push_str(name);
+            }
+            out.push('\n');
+            for (i, element) in elements.iter().enumerate() {
+                if i > 0 {
+                    out.push(' ');
+                }
+                out.push_str(&" ".repeat(col_widths[i] - element.len()));
+                out.push_str(element);
+            }
+        }
+        None => {
+            out.push_str("[1]");
+            for element in &elements {
+                out.push(' ');
+                out.push_str(&" ".repeat(width - element.len()));
+                out.push_str(element);
+            }
+        }
+    }
+    // GNU attribute blocks: every attribute the layout itself did not
+    /// consume prints as attr(,"name") followed by its own formatted body.
+    out.push_str(&format_attribute_blocks(heap, interner, value));
+    out
+}
+
+/// The trailing attr(,) blocks of a printed object — the attribute chain in
+/// order, skipping the attributes the value layout consumes structurally
+/// (names/dim/dimnames, and class/levels on factors).
+fn format_attribute_blocks(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String {
+    let chain = heap.get(value).map(|slot| slot.attrib).unwrap_or(ValueId::NIL);
+    if chain == ValueId::NIL {
+        return String::new();
+    }
+    let factor = is_factor(heap, interner, value);
+    let mut out = String::new();
+    let mut cursor = chain;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        let name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+            _ => String::new(),
+        };
+        let consumed = matches!(name.as_str(), "names" | "dim" | "dimnames")
+            || (factor && matches!(name.as_str(), "class" | "levels"));
+        if !consumed && !name.is_empty() {
+            out.push_str(&format!("\nattr(,\"{name}\")\n"));
+            out.push_str(&format_value(heap, interner, car));
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
     }
     out
 }
