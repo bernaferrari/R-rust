@@ -12,6 +12,7 @@
 //! - `symbol` submodule: symbol table and interning
 
 pub(crate) mod accessors;
+pub(crate) mod value_bridge;
 pub mod altrep;
 pub(crate) mod altseq;
 pub(crate) mod atomic_counter;
