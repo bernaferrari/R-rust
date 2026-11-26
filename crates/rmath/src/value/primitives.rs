@@ -310,7 +310,10 @@ pub(crate) fn call_primitive(
     /// the central discipline must not override what the wrapped call set.
     // eval propagates the evaluated expression's own visibility exactly
     /// as .Internal does — the inner answer decides, not the wrapper.
-    if result.is_ok() && id.0 != INTERNAL && id.0 != EVAL_FN {
+    // Braces and parens propagate the final inner visibility exactly as
+    /// GNU — `{ invisible(1) }` returns invisibly — so they join .Internal
+    /// and eval in the propagation exceptions.
+    if result.is_ok() && id.0 != INTERNAL && id.0 != EVAL_FN && id.0 != BRACE && id.0 != PAREN {
         heap.visible = !matches!(
             id.0,
             ASSIGN | SUPERASSIGN | PRINT | CAT | INVISIBLE | WHILE | REPEAT | FOR
