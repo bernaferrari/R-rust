@@ -131,6 +131,16 @@ fn format_element(heap: &Heap, interner: &SymbolInterner, value: &RObject, index
 /// elements, one line. Multi-line width wrapping is outside the slice;
 /// conformance vectors are short enough that the single-line shape covers
 /// them.
+/// table class membership exactly as the factor helper.
+fn is_table(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
+    match super::primitives::get_attrib(heap, interner, value, "class") {
+        Some(class_id) => super::primitives::string_vec_pub(heap, interner, class_id)
+            .iter()
+            .any(|c| c == "table"),
+        None => false,
+    }
+}
+
 pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String {
     let object = match heap.object(value) {
         Some(o) => o,
@@ -157,6 +167,37 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     /// unquoted, with the Levels line trailing exactly as print.factor.
     if matches!(object, RObject::Integer(_)) && is_factor(heap, interner, value) {
         return format_factor(heap, interner, value);
+    }
+    // table printing: the category header row above the count row, columns
+    /// right-aligned to the wider of the two exactly as print.table.
+    if matches!(object, RObject::Integer(_)) && is_table(heap, interner, value) {
+        let counts: Vec<i32> = match object {
+            RObject::Integer(vals) => vals.clone(),
+            _ => Vec::new(),
+        };
+        let categories: Vec<String> = match super::primitives::get_attrib(heap, interner, value, "dimnames")
+            .and_then(|dn| match heap.object(dn) {
+                Some(RObject::List(items)) => items.first().copied(),
+                _ => None,
+            })
+            .map(|cats| super::primitives::string_vec_pub(heap, interner, cats))
+        {
+            Some(c) if !c.is_empty() => c,
+            _ => match super::primitives::get_attrib(heap, interner, value, "names") {
+                Some(n) => super::primitives::string_vec_pub(heap, interner, n),
+                None => Vec::new(),
+            },
+        };
+        let mut header: Vec<String> = Vec::new();
+        let mut body: Vec<String> = Vec::new();
+        for (index, count) in counts.iter().enumerate() {
+            let cat = categories.get(index).cloned().unwrap_or_default();
+            let num = count.to_string();
+            let width = cat.len().max(num.len());
+            header.push(format!("{:>width$}", cat, width = width));
+            body.push(format!("{:>width$}", num, width = width));
+        }
+        return format!("{}\n{}", header.join(" "), body.join(" "));
     }
     // POSIXct printing: classed epoch seconds display as quoted datetimes
     /// carrying the tzone suffix exactly as print.POSIXct.

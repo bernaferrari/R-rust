@@ -310,6 +310,11 @@ pub mod primitive_ids {
     pub const FLUSH_FN: u32 = 292;
     pub const WRITECHAR: u32 = 293;
     pub const READCHAR: u32 = 294;
+    pub const UNION: u32 = 295;
+    pub const INTERSECT: u32 = 296;
+    pub const SETDIFF: u32 = 297;
+    pub const SETEQUAL: u32 = 298;
+    pub const TABLE: u32 = 299;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -340,7 +345,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -1159,6 +1164,11 @@ fn call_primitive_inner(
         }
         WRITECHAR => writechar_primitive(heap, interner, args, caller_env),
         READCHAR => readchar_primitive(heap, interner, args, caller_env),
+        UNION => setop_primitive(heap, interner, args, caller_env, SetOp::Union),
+        INTERSECT => setop_primitive(heap, interner, args, caller_env, SetOp::Intersect),
+        SETDIFF => setop_primitive(heap, interner, args, caller_env, SetOp::Diff),
+        SETEQUAL => setop_primitive(heap, interner, args, caller_env, SetOp::Equal),
+        TABLE => table_primitive(heap, interner, args, caller_env),
         USEMETHOD => usemethod_primitive(heap, interner, args, caller_env),
         NEXTMETHOD => nextmethod_primitive(heap, interner, caller_env),
         GETS3METHOD => {
@@ -3392,7 +3402,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom", "message", "missing", "parent.env", "order", "rank", "ordered", "is.ordered", "is.factor", "na.omit", "na.exclude", "pbeta", "dbeta", "qbeta", "find", "UseMethod", "NextMethod", "getS3method", "emptyenv", "as.integer", "as.numeric", "as.double", "stopifnot", "sequence", "rep.int", "rep_len", "dt", "pt", "qt", "sample", "sample.int", "builtins", "regexec", "df", "pf", "qf", "substr", "file", "isOpen", "close", "flush", "writeChar", "readChar",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom", "message", "missing", "parent.env", "order", "rank", "ordered", "is.ordered", "is.factor", "na.omit", "na.exclude", "pbeta", "dbeta", "qbeta", "find", "UseMethod", "NextMethod", "getS3method", "emptyenv", "as.integer", "as.numeric", "as.double", "stopifnot", "sequence", "rep.int", "rep_len", "dt", "pt", "qt", "sample", "sample.int", "builtins", "regexec", "df", "pf", "qf", "substr", "file", "isOpen", "close", "flush", "writeChar", "readChar", "union", "intersect", "setdiff", "setequal", "table",
     ]
 }
 
@@ -3675,6 +3685,11 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "flush" => Some(FLUSH_FN),
         "writeChar" => Some(WRITECHAR),
         "readChar" => Some(READCHAR),
+        "union" => Some(UNION),
+        "intersect" => Some(INTERSECT),
+        "setdiff" => Some(SETDIFF),
+        "setequal" => Some(SETEQUAL),
+        "table" => Some(TABLE),
         _ => None,
     }
 }
@@ -7433,6 +7448,11 @@ fn string_operand(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Opt
     }
 }
 
+/// print.rs reaches the same extraction through this crate-visible alias.
+pub(crate) fn string_vec_pub(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<String> {
+    string_vec(heap, interner, value)
+}
+
 fn string_vec(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<String> {
     match heap.object(value) {
         Some(RObject::String(values)) => values
@@ -10937,6 +10957,215 @@ fn readchar_primitive(
         return Ok(heap.alloc(RObject::String(vec![interner.intern_string(&text)])));
     }
     Err(EvalError::TypeError("invalid connection").into())
+}
+
+
+/// Set-op flavor — the four GNU operations share the element lattice.
+pub enum SetOp {
+    Union,
+    Intersect,
+    Diff,
+    Equal,
+}
+
+/// Elements of a vector as comparable keys — strings verbatim with the NA
+/// sentinel distinct, numerics by bits so NaN/NA dedupe exactly as GNU's
+/// bitwise set membership, logicals/integer lifted through their values.
+fn element_keys(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<String> {
+    match heap.object(value) {
+        Some(RObject::String(vals)) => vals.iter().map(|v| format!("s:{}", interner.string_text(*v))).collect(),
+        Some(RObject::Real(vals)) => vals.iter().map(|v| format!("r:{}", v.to_bits())).collect(),
+        Some(RObject::Integer(vals)) => vals.iter().map(|v| format!("i:{v}")).collect(),
+        Some(RObject::Logical(vals)) => vals.iter().map(|v| format!("l:{v}")).collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// union/intersect/setdiff/setequal — GNU's ordering contract exactly:
+/// union takes x's unique values in x-order then y's not-yet-seen in
+/// y-order; intersect and setdiff filter x's unique values in x-order;
+/// setequal compares deduplicated membership both directions.
+fn setop_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+    op: SetOp,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    let x_keys = element_keys(heap, interner, operands[0]);
+    let y_keys = element_keys(heap, interner, operands[1]);
+    let dedup = |keys: &[String]| -> Vec<String> {
+        let mut seen: Vec<String> = Vec::new();
+        for k in keys {
+            if !seen.contains(k) {
+                seen.push(k.clone());
+            }
+        }
+        seen
+    };
+    let xu = dedup(&x_keys);
+    let yu = dedup(&y_keys);
+    let result_keys: Vec<String> = match op {
+        SetOp::Union => {
+            let mut out = xu.clone();
+            for k in &yu {
+                if !out.contains(k) {
+                    out.push(k.clone());
+                }
+            }
+            out
+        }
+        SetOp::Intersect => xu.iter().filter(|k| yu.contains(k)).cloned().collect(),
+        SetOp::Diff => xu.iter().filter(|k| !yu.contains(k)).cloned().collect(),
+        SetOp::Equal => {
+            let xy = xu.iter().all(|k| yu.contains(k));
+            let yx = yu.iter().all(|k| xu.contains(k));
+            return Ok(heap.alloc(RObject::Logical(vec![(xy && yx) as i32])));
+        }
+    };
+    // Rebuild in the dominant type — character when either side is
+    /// character, numeric otherwise, keys parsing back exactly.
+    let stringly = matches!(heap.object(operands[0]), Some(RObject::String(_)))
+        || matches!(heap.object(operands[1]), Some(RObject::String(_)));
+    if stringly {
+        let out: Vec<super::intern::InternedStr> = result_keys
+            .iter()
+            .map(|k| interner.intern_string(k.strip_prefix("s:").unwrap_or(k)))
+            .collect();
+        Ok(heap.alloc(RObject::String(out)))
+    } else if matches!(heap.object(operands[0]), Some(RObject::Real(_)) | Some(RObject::Integer(_)) | Some(RObject::Logical(_)))
+        && matches!(heap.object(operands[1]), Some(RObject::Real(_)) | Some(RObject::Integer(_)) | Some(RObject::Logical(_)))
+    {
+        let out: Vec<f64> = result_keys
+            .iter()
+            .filter_map(|k| {
+                if let Some(bits) = k.strip_prefix("r:") {
+                    bits.parse::<u64>().ok().map(f64::from_bits)
+                } else if let Some(iv) = k.strip_prefix("i:") {
+                    iv.parse::<i32>().ok().map(|v| {
+                        if v == crate::value::object::NA_INTEGER {
+                            f64::from_bits(crate::value::object::NA_REAL_BITS)
+                        } else {
+                            v as f64
+                        }
+                    })
+                } else if let Some(lv) = k.strip_prefix("l:") {
+                    lv.parse::<i32>().ok().map(|v| v as f64)
+                } else {
+                    k.strip_prefix("s:").and_then(|s| s.parse::<f64>().ok())
+                }
+            })
+            .collect();
+        // Preserve integer type when both inputs are integer/logical —
+        /// exactly as GNU's type-faithful set ops.
+        let both_int = matches!(heap.object(operands[0]), Some(RObject::Integer(_)) | Some(RObject::Logical(_)))
+            && matches!(heap.object(operands[1]), Some(RObject::Integer(_)) | Some(RObject::Logical(_)));
+        if both_int {
+            let ints: Vec<i32> = out
+                .iter()
+                .map(|v| {
+                    if v.is_nan() {
+                        crate::value::object::NA_INTEGER
+                    } else {
+                        *v as i32
+                    }
+                })
+                .collect();
+            return Ok(heap.alloc(RObject::Integer(ints)));
+        }
+        Ok(heap.alloc(RObject::Real(out)))
+    } else {
+        Ok(heap.alloc(RObject::Integer(Vec::new())))
+    }
+}
+
+/// table(...) — count occurrences into GNU's classed frequency structure:
+/// integer counts carrying dim, dimnames (named by the argument tag),
+/// and class "table". Factors use level order, characters sort exactly
+/// as GNU's factor coercion.
+fn table_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    // The single-argument slice — multi-way tables are outside the
+    /// conformance surface. The dimension name comes from the tag exactly
+    /// as GNU's dnn default.
+    let mut dim_name = String::new();
+    let mut input = ValueId::NIL;
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        if let Some(RObject::Symbol { name, .. }) = heap.object(tag) {
+            dim_name = interner.symbol_name(*name).to_string();
+        }
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        input = force_if_promise(heap, interner, evaluated)?;
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    // Categories: factor levels in order when classed, sorted unique
+    /// otherwise — GNU's exactly. Factor values are integer codes needing
+    // the level-label mapping; character vectors arrive verbatim.
+    let factored = is_factor(heap, interner, input);
+    let levels: Vec<String> = if factored {
+        match get_attrib(heap, interner, input, "levels") {
+            Some(levels_id) => string_vec(heap, interner, levels_id),
+            None => Vec::new(),
+        }
+    } else {
+        Vec::new()
+    };
+    let values: Vec<String> = if factored {
+        match heap.object(input) {
+            Some(RObject::Integer(codes)) => codes
+                .iter()
+                .map(|c| {
+                    if *c == crate::value::object::NA_INTEGER || *c < 1 {
+                        "\0NA".to_string()
+                    } else {
+                        levels.get((*c as usize).saturating_sub(1)).cloned().unwrap_or_default()
+                    }
+                })
+                .collect(),
+            _ => Vec::new(),
+        }
+    } else {
+        string_vec(heap, interner, input)
+    };
+    let categories: Vec<String> = if factored {
+        levels.clone()
+    } else {
+        let mut cats: Vec<String> = values.iter().filter(|v| *v != "\0NA").cloned().collect();
+        cats.sort();
+        cats.dedup();
+        cats
+    };
+    let counts: Vec<i32> = categories
+        .iter()
+        .map(|cat| values.iter().filter(|v| *v == cat).count() as i32)
+        .collect();
+    let mut result = heap.alloc(RObject::Integer(counts));
+    // Structure: dim, dimnames with the tag-derived dimension name, names
+    /// mirroring the single dimension exactly as GNU's 1-D table, class.
+    let dim_obj = heap.alloc(RObject::Integer(vec![categories.len() as i32]));
+    result = copy_with_attrib(heap, interner, result, "dim", dim_obj).map_err(RSignal::from)?;
+    let cat_obj = heap.alloc(RObject::String(categories.iter().map(|c| interner.intern_string(c)).collect()));
+    let dimnames_list = heap.alloc(RObject::List(vec![cat_obj]));
+    let dnn = heap.alloc(RObject::String(vec![interner.intern_string(&dim_name)]));
+    let dimnames_list = copy_with_attrib(heap, interner, dimnames_list, "names", dnn).map_err(RSignal::from)?;
+    result = copy_with_attrib(heap, interner, result, "dimnames", dimnames_list).map_err(RSignal::from)?;
+    let names_obj = heap.alloc(RObject::String(categories.iter().map(|c| interner.intern_string(c)).collect()));
+    result = copy_with_attrib(heap, interner, result, "names", names_obj).map_err(RSignal::from)?;
+    let class_obj = heap.alloc(RObject::String(vec![interner.intern_string("table")]));
+    copy_with_attrib(heap, interner, result, "class", class_obj).map_err(RSignal::from)
 }
 
 /// class vector membership — the shared predicate behind is.factor/is.ordered.
