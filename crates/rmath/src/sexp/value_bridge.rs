@@ -1858,6 +1858,12 @@ mod tests {
             "{ x <- 1:10; means <- rep(0, 5); for (i in 1:5) { idx <- ((i * 3 + 1:5) %% 10) + 1; means[i] <- mean(x[idx]) }; means }",
             // Capstone: grouped aggregation through sapply and unique keys.
             "{ keys <- c(1, 2, 1, 2, 1); vals <- c(10, 20, 30, 40, 50); sapply(unique(keys), function(k) sum(vals[keys == k])) }",
+            "{ x <- 5; exists('x') }",
+            "{ x <- 5; exists('nothere') }",
+            "{ e <- new.env(); e$a <- 10; exists('a', e) }",
+            "{ e <- new.env(); e$a <- 7; e$a }",
+            "{ x <- list(a=1); x$b <- 20; x$a + x$b }",
+            "{ x <- list(a=1); x$a <- 99; x$a }",
         ];
         // One session, one parse pass: expression objects stay valid for the
         // session's lifetime, so batching avoids per-program bootstrap cost.

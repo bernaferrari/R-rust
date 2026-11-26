@@ -100,6 +100,12 @@ pub mod primitive_ids {
     pub const STOP: u32 = 91;
     pub const IN: u32 = 92;
     pub const MATCH: u32 = 93;
+    /// Environment primitives — user-level creation and introspection.
+    pub const NEW_ENV: u32 = 94;
+    pub const EXISTS: u32 = 95;
+    pub const LS: u32 = 96;
+    /// Dollar replacement — `$<-` assigns by name.
+    pub const DOLLAR_ASSIGN: u32 = 97;
     /// Attribute access — names getter and replacement, dollar extraction.
     pub const NAMES: u32 = 69;
     pub const NAMES_ASSIGN: u32 = 70;
@@ -116,7 +122,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -217,6 +223,18 @@ pub(crate) fn call_primitive(
             let operands = eval_args(heap, interner, args, caller_env, 2)?;
             match_primitive(heap, operands[0], operands[1])
         }
+        NEW_ENV => {
+            // GNU's parent defaults to the calling environment; hash and
+            /// size are performance hints outside the slice.
+            let _ = eval_args(heap, interner, args, caller_env, 0);
+            Ok(crate::value::env::new_environment(heap, caller_env))
+        }
+        EXISTS => exists_primitive(heap, interner, args, caller_env),
+        LS => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            ls_primitive(heap, interner, operands[0])
+        }
+        DOLLAR_ASSIGN => dollar_assign_primitive(heap, interner, args, caller_env),
         PASTE => paste_primitive(heap, interner, args, caller_env, " "),
         PASTE0 => paste_primitive(heap, interner, args, caller_env, ""),
         NCHAR => nchar_primitive(heap, interner, args, caller_env),
@@ -732,7 +750,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-",
     ]
 }
 
@@ -815,6 +833,10 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "stop" => Some(STOP),
         "%in%" => Some(IN),
         "match" => Some(MATCH),
+        "new.env" => Some(NEW_ENV),
+        "exists" => Some(EXISTS),
+        "ls" => Some(LS),
+        "$<-" => Some(DOLLAR_ASSIGN),
         _ => None,
     }
 }
@@ -1816,6 +1838,35 @@ fn assign_replacement(
             .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("replacement define")))?;
         return Ok(value);
     }
+    if head_name == "$" {
+        if call_args.len() != 2 {
+            return Err(EvalError::UnsupportedForm("dollar replacement arity").into());
+        }
+        // Build the synthetic `$<-(object, name, value)` argument chain —
+        /// object and name pass unevaluated exactly as the parser emits them,
+        /// the rhs attaches as the final argument.
+        let value_node = heap.alloc(RObject::Pairlist {
+            car: rhs,
+            cdr: ValueId::NIL,
+            tag: ValueId::NIL,
+        });
+        let name_node = heap.alloc(RObject::Pairlist {
+            car: call_args[1],
+            cdr: value_node,
+            tag: ValueId::NIL,
+        });
+        let object_node = heap.alloc(RObject::Pairlist {
+            car: call_args[0],
+            cdr: name_node,
+            tag: ValueId::NIL,
+        });
+        let replaced = dollar_assign_primitive(heap, interner, object_node, caller_env)?;
+        crate::value::env::define(heap, caller_env, sym, replaced)
+            .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("replacement define")))?;
+        // Replacement assignments evaluate to the right-hand value in GNU.
+        let value = eval(heap, interner, rhs, caller_env)?;
+        return force_if_promise(heap, interner, value);
+    }
     Err(EvalError::TypeError("unsupported replacement target").into())
 }
 
@@ -2147,9 +2198,20 @@ fn dollar_primitive(
         Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
         _ => return Err(EvalError::TypeError("$ name must be a symbol").into()),
     };
-    let names = get_attrib(heap, interner, object, "names")
-        .ok_or(EvalError::TypeError("object has no names attribute"))
-        .map_err(RSignal::from)?;
+    // Environments extract frame-only, exactly GNU: no enclosure chain,
+    /// missing bindings are NULL rather than an error.
+    if matches!(heap.object(object), Some(RObject::Environment { .. })) {
+        let sym = interner.intern_symbol(&wanted);
+        return match crate::value::env::lookup_in_frame(heap, object, sym) {
+            Some(binding) => Ok(binding.value),
+            None => Ok(ValueId::NIL),
+        };
+    }
+    let names = match get_attrib(heap, interner, object, "names") {
+        Some(n) => n,
+        // GNU: dollar on a nameless object is NULL, not an error.
+        None => return Ok(ValueId::NIL),
+    };
     let position = match heap.object(names) {
         Some(RObject::String(values)) => values
             .iter()
@@ -2756,4 +2818,144 @@ fn match_primitive(heap: &mut Heap, left: ValueId, right: ValueId) -> EvalResult
         })
         .collect();
     Ok(heap.alloc(RObject::Integer(out)))
+}
+
+/// `exists(name, envir)` — GNU's chain lookup by default: the binding may
+/// live in the environment or any enclosure. The name arrives as a
+/// one-element character vector exactly as GNU's interface.
+fn exists_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    let name = match heap.object(operands[0]) {
+        Some(RObject::String(values)) if !values.is_empty() => {
+            interner.string_text(values[0]).to_string()
+        }
+        _ => return Err(EvalError::TypeError("exists requires a character name").into()),
+    };
+    // Optional second argument: the environment to inspect. eval_args with
+    /// count 1 consumed only the name; re-walk raw args for the second.
+    let env = match raw_args(heap, args).get(1).copied() {
+        Some(env_expr) => {
+            let evaluated = eval(heap, interner, env_expr, caller_env)?;
+            force_if_promise(heap, interner, evaluated)?
+        }
+        None => caller_env,
+    };
+    let sym = interner.intern_symbol(&name);
+    let found = crate::value::env::lookup(heap, env, sym).is_some();
+    Ok(heap.alloc(RObject::Logical(vec![found as i32])))
+}
+
+/// `ls(envir)` — sorted binding names of the frame, GNU's ordering. List
+/// frames enumerate; hash frames are outside the object model's slice.
+fn ls_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    env: ValueId,
+) -> EvalResult {
+    let mut names: Vec<String> = Vec::new();
+    if let Some(RObject::Environment { frame, .. }) = heap.object(env) {
+        if let crate::value::object::EnvFrame::List(bindings) = frame {
+            for (sym, _) in bindings {
+                names.push(interner.symbol_name(*sym).to_string());
+            }
+        }
+    }
+    names.sort();
+    let interned: Vec<super::intern::InternedStr> = names
+        .iter()
+        .map(|n| interner.intern_string(n))
+        .collect();
+    Ok(heap.alloc(RObject::String(interned)))
+}
+
+/// `$<-(x, name, value)` — GNU's split discipline: environments are
+/// reference semantics, the binding defines in place and the same object
+/// returns; lists are copy-on-write value semantics exactly like vector
+/// replacement — the element replaces or appends with the names attribute
+/// extended.
+fn dollar_assign_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    // The name operand arrives UNEVALUATED as a symbol exactly as `$` —
+    /// evaluate operands selectively: object and value yes, name no.
+    let raw = raw_args(heap, args);
+    if raw.len() < 3 {
+        return Err(EvalError::TypeError("$<- requires object, name, value").into());
+    }
+    let object = eval(heap, interner, raw[0], caller_env)?;
+    let object = force_if_promise(heap, interner, object)?;
+    let name = match heap.object(raw[1]) {
+        Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+        _ => {
+            // Evaluated form: a one-element character vector.
+            let evaluated = eval(heap, interner, raw[1], caller_env)?;
+            let evaluated = force_if_promise(heap, interner, evaluated)?;
+            match heap.object(evaluated) {
+                Some(RObject::String(values)) if !values.is_empty() => {
+                    interner.string_text(values[0]).to_string()
+                }
+                _ => return Err(EvalError::TypeError("$<- name must be symbol or string").into()),
+            }
+        }
+    };
+    let value = eval(heap, interner, raw[2], caller_env)?;
+    let value = force_if_promise(heap, interner, value)?;
+    match heap.object(object) {
+        Some(RObject::Environment { .. }) => {
+            let sym = interner.intern_symbol(&name);
+            crate::value::env::define(heap, object, sym, value)
+                .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("env define")))?;
+            Ok(object)
+        }
+        Some(RObject::List(items)) => {
+            let items = items.clone();
+            let existing_names: Vec<String> =
+                match get_attrib(heap, interner, object, "names").and_then(|id| {
+                    match heap.object(id) {
+                        Some(RObject::String(entries)) => Some(
+                            entries
+                                .iter()
+                                .map(|e| interner.string_text(*e).to_string())
+                                .collect(),
+                        ),
+                        _ => None,
+                    }
+                }) {
+                    Some(n) => n,
+                    None => vec![String::new(); items.len()],
+                };
+            let mut new_items = items;
+            let mut new_names = existing_names;
+            if new_names.len() < new_items.len() {
+                new_names.resize(new_items.len(), String::new());
+            }
+            match new_names.iter().position(|n| n == &name) {
+                Some(position) => {
+                    new_items[position] = value;
+                }
+                None => {
+                    new_items.push(value);
+                    new_names.push(name);
+                }
+            }
+            let mut result = heap.alloc(RObject::List(new_items));
+            let interned: Vec<super::intern::InternedStr> = new_names
+                .iter()
+                .map(|n| interner.intern_string(n))
+                .collect();
+            let names_vec = heap.alloc(RObject::String(interned));
+            result = copy_with_attrib(heap, interner, result, "names", names_vec)
+                .map_err(RSignal::from)?;
+            Ok(result)
+        }
+        _ => Err(EvalError::TypeError("$<- requires environment or list").into()),
+    }
 }
