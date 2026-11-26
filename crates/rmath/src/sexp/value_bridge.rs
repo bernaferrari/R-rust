@@ -72,11 +72,25 @@ impl ValueBridge {
 
     /// Import an atomic vector or scalar object into the heap.
     ///
-    /// Handles NILSXP, LGLSXP, INTSXP, REALSXP, CPLXSXP, STRSXP, and RAWSXP.
-    /// Reference types (pairlists, closures, environments, ...) are rejected
-    /// for now; each migration slice extends this conversion as it lands.
+    /// Handles NILSXP, LGLSXP, INTSXP, REALSXP, CPLXSXP, STRSXP, RAWSXP,
+    /// LISTSXP, and LANGSXP. Closures, environments, and other reference
+    /// types are rejected until each migration slice extends the conversion.
     #[allow(dead_code)]
     pub(crate) fn import_atomic(
+        &mut self,
+        heap: &mut Heap,
+        interner: &mut SymbolInterner,
+        sexp: &Sexp<'_>,
+    ) -> Result<ValueId, ImportError> {
+        self.import(heap, interner, sexp)
+    }
+
+    /// Import any supported object, recursing through pairlist and language
+    /// node edges. Cyclic structures import correctly: the node's `ValueId`
+    /// is registered before its edges are converted, so a back-edge resolves
+    /// to the already-registered identity.
+    #[allow(dead_code)]
+    pub(crate) fn import(
         &mut self,
         heap: &mut Heap,
         interner: &mut SymbolInterner,
@@ -86,10 +100,65 @@ impl ValueBridge {
         if let Some(existing) = self.forward.get(&key) {
             return Ok(*existing);
         }
-        let body = convert_atomic(interner, sexp)?;
-        let id = heap.alloc(body);
-        self.forward.insert(key, id);
-        Ok(id)
+        match sexp.typeof_() {
+            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => {
+                // Pre-register with empty edges so cycles terminate, then
+                // convert the actual edges and patch the slot in place.
+                let is_language = sexp.typeof_() == SEXPTYPE::LANGSXP;
+                let placeholder = if is_language {
+                    RObject::Language {
+                        car: ValueId::NIL,
+                        cdr: ValueId::NIL,
+                        tag: ValueId::NIL,
+                    }
+                } else {
+                    RObject::Pairlist {
+                        car: ValueId::NIL,
+                        cdr: ValueId::NIL,
+                        tag: ValueId::NIL,
+                    }
+                };
+                let id = heap.alloc(placeholder);
+                self.forward.insert(key, id);
+
+                let car = self.import_edge(heap, interner, sexp.try_car().ok())?;
+                let cdr = self.import_edge(heap, interner, sexp.try_cdr().ok())?;
+                let tag = self.import_edge(heap, interner, sexp.try_tag().ok())?;
+
+                let patched = if is_language {
+                    RObject::Language { car, cdr, tag }
+                } else {
+                    RObject::Pairlist { car, cdr, tag }
+                };
+                match heap.object_mut(id) {
+                    Some(slot) => *slot = patched,
+                    None => return Err(ImportError::TruncatedPayload),
+                }
+                Ok(id)
+            }
+            _ => {
+                let body = convert_atomic(interner, sexp)?;
+                let id = heap.alloc(body);
+                self.forward.insert(key, id);
+                Ok(id)
+            }
+        }
+    }
+
+    /// Import one edge of a reference type. Missing edges (the end of a
+    /// pairlist chain, an untagged cell) map to `ValueId::NIL`.
+    fn import_edge(
+        &mut self,
+        heap: &mut Heap,
+        interner: &mut SymbolInterner,
+        edge: Option<Sexp<'_>>,
+    ) -> Result<ValueId, ImportError> {
+        match edge {
+            Some(target) if target.typeof_() != SEXPTYPE::NILSXP => {
+                self.import(heap, interner, &target)
+            }
+            _ => Ok(ValueId::NIL),
+        }
     }
 }
 
@@ -284,11 +353,11 @@ mod tests {
             let mut bridge = ValueBridge::new();
             let mut arena = crate::sexp::memory::RArena::new();
 
-            let raw = arena.alloc_node(SEXPTYPE::LISTSXP);
-            let sexp = Sexp::from_arena_raw(raw, &arena).expect("live pairlist");
+            let raw = arena.alloc_node(SEXPTYPE::CLOSXP);
+            let sexp = Sexp::from_arena_raw(raw, &arena).expect("live closure");
             match bridge.import_atomic(&mut heap, &mut interner, &sexp) {
-                Err(ImportError::UnsupportedType(SEXPTYPE::LISTSXP)) => {}
-                other => panic!("pairlists must be rejected for now, got {other:?}"),
+                Err(ImportError::UnsupportedType(SEXPTYPE::CLOSXP)) => {}
+                other => panic!("closures must be rejected for now, got {other:?}"),
             }
         });
     }
@@ -320,6 +389,107 @@ mod tests {
                 }
                 other => panic!("expected integer vector, got {other:?}"),
             }
+        });
+    }
+    #[test]
+    fn import_pairlist_chain_preserves_shape() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let mut heap = Heap::new();
+            let mut interner = SymbolInterner::new();
+            let mut bridge = ValueBridge::new();
+            let mut arena = crate::sexp::memory::RArena::new();
+
+            let chain = arena.alloc_list_chain(3);
+            let sexp = Sexp::from_arena_raw(chain, &arena).expect("live chain");
+            let id = bridge
+                .import(&mut heap, &mut interner, &sexp)
+                .expect("pairlist chains import");
+
+            // Walk the imported chain: three pairlist cells, then NIL.
+            let mut depth = 0;
+            let mut cursor = id;
+            loop {
+                match heap.object(cursor) {
+                    Some(RObject::Pairlist { cdr, .. }) if *cdr != ValueId::NIL => {
+                        depth += 1;
+                        cursor = *cdr;
+                    }
+                    Some(RObject::Pairlist { cdr, .. }) => {
+                        assert_eq!(*cdr, ValueId::NIL);
+                        depth += 1;
+                        break;
+                    }
+                    other => panic!("expected pairlist cell, got {other:?}"),
+                }
+            }
+            assert_eq!(depth, 3, "chain depth must survive the import");
+        });
+    }
+
+    #[test]
+    fn import_pairlist_cycle_terminates_and_preserves_backedge() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let mut heap = Heap::new();
+            let mut interner = SymbolInterner::new();
+            let mut bridge = ValueBridge::new();
+            let mut arena = crate::sexp::memory::RArena::new();
+
+            let chain = arena.alloc_list_chain(2);
+            // Close the cycle: second cell's cdr points back at the first.
+            let second = unsafe { crate::sexp::accessors::CDR(chain) };
+            assert!(!second.is_null());
+            unsafe { crate::sexp::accessors::SETCDR(second, chain) };
+
+            let sexp = Sexp::from_arena_raw(chain, &arena).expect("live cycle");
+            let id = bridge
+                .import(&mut heap, &mut interner, &sexp)
+                .expect("cyclic chains import without diverging");
+
+            let second_id = match heap.object(id) {
+                Some(RObject::Pairlist { cdr, .. }) => *cdr,
+                other => panic!("expected pairlist cell, got {other:?}"),
+            };
+            match heap.object(second_id) {
+                Some(RObject::Pairlist { cdr, .. }) => {
+                    assert_eq!(
+                        *cdr, id,
+                        "the back-edge must resolve to the first cell's identity"
+                    );
+                }
+                other => panic!("expected second pairlist cell, got {other:?}"),
+            }
+        });
+    }
+
+    #[test]
+    fn import_pairlist_with_vector_car_preserves_payload() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let mut heap = Heap::new();
+            let mut interner = SymbolInterner::new();
+            let mut bridge = ValueBridge::new();
+            let mut arena = crate::sexp::memory::RArena::new();
+
+            let vector_raw = arena.alloc_vector(SEXPTYPE::REALSXP, 1);
+            let chain = arena.alloc_list_chain(1);
+            unsafe { crate::sexp::accessors::SETCAR(chain, vector_raw) };
+            let vector = fill_real_vector(&arena, vector_raw, &[99.0]);
+            let sexp = Sexp::from_arena_raw(chain, &arena).expect("live chain");
+
+            let id = bridge
+                .import(&mut heap, &mut interner, &sexp)
+                .expect("chain imports");
+            let car_id = match heap.object(id) {
+                Some(RObject::Pairlist { car, .. }) => *car,
+                other => panic!("expected pairlist cell, got {other:?}"),
+            };
+            match heap.object(car_id) {
+                Some(RObject::Real(values)) => assert_eq!(values.as_slice(), &[99.0]),
+                other => panic!("expected real vector car, got {other:?}"),
+            }
+            drop(vector);
         });
     }
 }
