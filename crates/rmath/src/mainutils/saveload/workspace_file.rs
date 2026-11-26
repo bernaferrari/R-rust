@@ -109,12 +109,6 @@ pub(super) unsafe fn load(owner: OwnerToken<'_>, file: SEXP, envir: SEXP) -> SEX
         Some(b"RDA2\n" | b"RDA3\n") if body.starts_with(b"A\n") => {
             serialize::decode_workspace_snapshot(&owner, body, true).unwrap_or_else(fail)
         }
-        Some(b"RDA1\n" | b"RDA2\n" | b"RDA3\n") if body.first().is_some_and(u8::is_ascii_digit) => {
-            read_legacy_workspace(owner, body)
-                .unwrap_or_else(fail)
-                .into_owned()
-                .unwrap_or_else(fail)
-        }
         _ => crate::sexp::context::r_error(
             "bad restore file magic number (file may be corrupted) -- no data loaded",
         ),
