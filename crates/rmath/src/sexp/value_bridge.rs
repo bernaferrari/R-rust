@@ -1839,6 +1839,15 @@ mod tests {
             "{ x <- c(1, NA, 3); mean(x) }",
             "{ x <- c(1, NA, 3); mean(x, na.rm=TRUE) }",
             "{ x <- c(2, 8, 4); c(mean(x), var(x), median(x)) }",
+            "sort(c(5, 2, 8, 1))",
+            "rev(1:5)",
+            "unique(c(1, 2, 1, 3, 2))",
+            "which(c(TRUE, FALSE, TRUE))",
+            "{ x <- c(3, 1, 4, 1, 5); x[which(x > 2)] }",
+            "c(any(c(FALSE, TRUE)), all(c(TRUE, TRUE)), any(c(FALSE, FALSE)))",
+            "ifelse(c(TRUE, FALSE), 1, 0)",
+            "{ x <- 1:6; ifelse(x %% 2 == 0, x, -x) }",
+            "{ x <- c(5, 3, 8); sum(sort(x)[1:2]) }",
         ];
         // One session, one parse pass: expression objects stay valid for the
         // session's lifetime, so batching avoids per-program bootstrap cost.

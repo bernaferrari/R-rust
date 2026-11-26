@@ -60,6 +60,8 @@ pub mod primitive_ids {
     pub const MAX: u32 = 53;
     /// Power — always real-valued in GNU, even for integer operands.
     pub const POW: u32 = 58;
+    /// Modulo — integer-preserving like the other arithmetic operators.
+    pub const MOD: u32 = 90;
     /// Elementwise math — real-valued unary functions.
     pub const SQRT: u32 = 54;
     /// Exact extraction — `x[[i]]` unboxes a single element.
@@ -86,6 +88,14 @@ pub mod primitive_ids {
     pub const SD: u32 = 80;
     pub const MEDIAN: u32 = 81;
     pub const IS_NA: u32 = 82;
+    /// Vector utilities — ordering, selection, vectorized conditional.
+    pub const SORT: u32 = 83;
+    pub const REV: u32 = 84;
+    pub const UNIQUE: u32 = 85;
+    pub const WHICH: u32 = 86;
+    pub const ANY: u32 = 87;
+    pub const ALL: u32 = 88;
+    pub const IFELSE: u32 = 89;
     /// Attribute access — names getter and replacement, dollar extraction.
     pub const NAMES: u32 = 69;
     pub const NAMES_ASSIGN: u32 = 70;
@@ -102,7 +112,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -114,7 +124,7 @@ pub(crate) fn call_primitive(
     caller_env: ValueId,
 ) -> EvalResult {
     match id.0 {
-        ADD | SUB | MUL | DIV | POW => arithmetic(heap, interner, id.0, args, caller_env),
+        ADD | SUB | MUL | DIV | POW | MOD => arithmetic(heap, interner, id.0, args, caller_env),
         IF => if_form(heap, interner, args, caller_env),
         BRACE => brace_form(heap, interner, args, caller_env),
         ASSIGN => assign_form(heap, interner, args, caller_env, false),
@@ -172,6 +182,16 @@ pub(crate) fn call_primitive(
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             is_na_primitive(heap, operands[0])
         }
+        SORT | REV | UNIQUE => ordering_primitive(heap, interner, id.0, args, caller_env),
+        WHICH => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            which_primitive(heap, operands[0])
+        }
+        ANY | ALL => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            quantifier_primitive(heap, id.0, operands[0])
+        }
+        IFELSE => ifelse_primitive(heap, interner, args, caller_env),
         PASTE => paste_primitive(heap, interner, args, caller_env, " "),
         PASTE0 => paste_primitive(heap, interner, args, caller_env, ""),
         NCHAR => nchar_primitive(heap, interner, args, caller_env),
@@ -409,6 +429,14 @@ fn arithmetic(
             let folded = fold_numeric(a, b, op, |x, y| match op {
                 ADD => x.wrapping_add(y),
                 SUB => x.wrapping_sub(y),
+                MOD => {
+                    // GNU: integer modulo, division by zero yields NA.
+                    if y == 0 || x == crate::value::object::NA_INTEGER || y == crate::value::object::NA_INTEGER {
+                        crate::value::object::NA_INTEGER
+                    } else {
+                        x % y
+                    }
+                }
                 _ => x.wrapping_mul(y),
             })
             .map_err(RSignal::from)?;
@@ -422,6 +450,14 @@ fn arithmetic(
                 SUB => x - y,
                 MUL => x * y,
                 POW => x.powf(y),
+                MOD => {
+                    if y == 0.0 {
+                        f64::NAN
+                    } else {
+                        // GNU's fmod semantics: sign follows the dividend.
+                        x - y * (x / y).trunc()
+                    }
+                }
                 _ => x / y,
             })
             .map_err(RSignal::from)?;
@@ -671,7 +707,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%",
     ]
 }
 
@@ -682,6 +718,7 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "+" => Some(ADD),
         "-" => Some(SUB),
         "*" => Some(MUL),
+        "%%" => Some(MOD),
         "/" => Some(DIV),
         "if" => Some(IF),
         "{" => Some(BRACE),
@@ -743,6 +780,13 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "sd" => Some(SD),
         "median" => Some(MEDIAN),
         "is.na" => Some(IS_NA),
+        "sort" => Some(SORT),
+        "rev" => Some(REV),
+        "unique" => Some(UNIQUE),
+        "which" => Some(WHICH),
+        "any" => Some(ANY),
+        "all" => Some(ALL),
+        "ifelse" => Some(IFELSE),
         _ => None,
     }
 }
@@ -2524,4 +2568,124 @@ fn is_na_primitive(heap: &mut Heap, value: ValueId) -> EvalResult {
         _ => return Err(EvalError::TypeError("is.na requires a vector").into()),
     };
     Ok(heap.alloc(RObject::Logical(out)))
+}
+
+/// `sort`/`rev`/`unique` — ordering and deduplication over atomic vectors.
+/// GNU's sort drops NAs by default (na.last=NA); the slice follows that.
+fn ordering_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    op: u32,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    let value = operands[0];
+    macro_rules! per_type {
+        ($variant:ident, $ord:expr) => {
+            match heap.object(value) {
+                Some(RObject::$variant(values)) => {
+                    let mut out = values.clone();
+                    match op {
+                        SORT => {
+                            out.retain(|v| !$ord(*v));
+                            out.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                        }
+                        REV => out.reverse(),
+                        _ => {
+                            let mut seen: Vec<_> = Vec::new();
+                            out.retain(|v| {
+                                if seen.iter().any(|s| s == v) {
+                                    false
+                                } else {
+                                    seen.push(*v);
+                                    true
+                                }
+                            });
+                        }
+                    }
+                    return Ok(heap.alloc(RObject::$variant(out)));
+                }
+                _ => {}
+            }
+        };
+    }
+    let is_na_int = |v: i32| v == crate::value::object::NA_INTEGER;
+    let is_na_real = |v: f64| v.is_nan();
+    per_type!(Integer, is_na_int);
+    per_type!(Real, is_na_real);
+    per_type!(Logical, is_na_int);
+    Err(EvalError::TypeError("ordering requires a numeric vector").into())
+}
+
+/// `which(x)` — 1-based positions of TRUE entries, GNU exactly; NA
+/// positions drop out.
+fn which_primitive(heap: &mut Heap, value: ValueId) -> EvalResult {
+    match heap.object(value) {
+        Some(RObject::Logical(values)) => {
+            let out: Vec<i32> = values
+                .iter()
+                .enumerate()
+                .filter(|(_, v)| **v != 0 && **v != crate::value::object::NA_INTEGER)
+                .map(|(i, _)| (i + 1) as i32)
+                .collect();
+            Ok(heap.alloc(RObject::Integer(out)))
+        }
+        _ => Err(EvalError::TypeError("which requires logical").into()),
+    }
+}
+
+/// `any(x)`/`all(x)` — GNU's quantifier NA semantics: any is TRUE if any
+/// entry is TRUE, NA if none TRUE but some NA, FALSE otherwise; all
+/// mirrors.
+fn quantifier_primitive(heap: &mut Heap, op: u32, value: ValueId) -> EvalResult {
+    let values = logicals_of_value(heap, value).map_err(RSignal::from)?;
+    let na = crate::value::object::NA_INTEGER;
+    let trues = values.iter().filter(|v| **v != 0 && **v != na).count();
+    let falses = values.iter().filter(|v| **v == 0).count();
+    let nas = values.len() - trues - falses;
+    let result = if op == ANY {
+        if trues > 0 {
+            1
+        } else if nas > 0 {
+            na
+        } else {
+            0
+        }
+    } else if falses > 0 {
+        0
+    } else if nas > 0 {
+        na
+    } else {
+        1
+    };
+    Ok(heap.alloc(RObject::Logical(vec![result])))
+}
+
+/// `ifelse(test, yes, no)` — GNU's vectorized conditional: elementwise
+/// selection with yes/no recycling. The slice covers numeric both-sides;
+/// NA test positions yield NA.
+fn ifelse_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 3)?;
+    let tests = logicals_of_value(heap, operands[0]).map_err(RSignal::from)?;
+    let yes = numerics_of(heap, operands[1]).map_err(RSignal::from)?;
+    let no = numerics_of(heap, operands[2]).map_err(RSignal::from)?;
+    let na_int = crate::value::object::NA_INTEGER;
+    let na_real = f64::from_bits(crate::value::object::NA_REAL_BITS);
+    let mut out = Vec::with_capacity(tests.len());
+    for (i, test) in tests.iter().enumerate() {
+        if *test == na_int {
+            out.push(na_real);
+        } else if *test != 0 {
+            out.push(yes[i % yes.len().max(1)]);
+        } else {
+            out.push(no[i % no.len().max(1)]);
+        }
+    }
+    Ok(heap.alloc(RObject::Real(out)))
 }
