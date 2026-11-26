@@ -1217,6 +1217,93 @@ mod tests {
         expect_reals(&heap, result, &[3.5]);
     }
 
+    /// Extract a numeric vector's elements from the legacy world as doubles,
+    /// NA-pattern-preserving so cross-world comparison is bit-exact.
+    fn legacy_as_doubles(sexp: &Sexp<'_>) -> Vec<f64> {
+        let n = sexp.len();
+        let mut out = Vec::new();
+        for i in 0..n {
+            let v = if let Ok(x) = sexp.try_real_elt(i) {
+                x
+            } else if let Ok(x) = sexp.try_integer_elt(i) {
+                if x == crate::value::object::NA_INTEGER {
+                    f64::from_bits(crate::value::object::NA_REAL_BITS)
+                } else {
+                    x as f64
+                }
+            } else if let Ok(x) = sexp.try_logical_elt(i) {
+                x as f64
+            } else {
+                panic!("legacy element {i} is not numeric");
+            };
+            out.push(v);
+        }
+        out
+    }
+
+    /// Extract a numeric vector's elements from the new world as doubles.
+    fn new_world_as_doubles(heap: &Heap, result: crate::value::eval::EvalResult) -> Vec<f64> {
+        match result {
+            Ok(value) => match heap.object(value) {
+                Some(RObject::Real(values)) => values.clone(),
+                Some(RObject::Integer(values)) => values
+                    .iter()
+                    .map(|v| {
+                        if *v == crate::value::object::NA_INTEGER {
+                            f64::from_bits(crate::value::object::NA_REAL_BITS)
+                        } else {
+                            *v as f64
+                        }
+                    })
+                    .collect(),
+                Some(RObject::Logical(values)) => values.iter().map(|v| *v as f64).collect(),
+                other => panic!("new-world result is not numeric: {other:?}"),
+            },
+            Err(error) => panic!("new-world evaluation failed: {error:?}"),
+        }
+    }
+
+    /// The cross-world oracle: identical source must evaluate to identical
+    /// values in the legacy SEXP world and the ValueId world.
+    fn oracle_agrees(session: &mut crate::sexp::session::RSession, source: &str) {
+        let (heap, _interner, result) = eval_in_new_world(source);
+        let new_world = new_world_as_doubles(&heap, result);
+        let (legacy, _output, _visible) = session.eval_code_with_output_capture(source);
+        let legacy = legacy.expect("legacy evaluation succeeds");
+        let legacy_world = legacy_as_doubles(&legacy);
+        assert_eq!(
+            new_world.len(),
+            legacy_world.len(),
+            "length mismatch for `{source}`: new {new_world:?} vs legacy {legacy_world:?}"
+        );
+        for (i, (a, b)) in new_world.iter().zip(legacy_world.iter()).enumerate() {
+            let both_na = a.is_nan() && b.is_nan();
+            assert!(
+                both_na || a == b,
+                "element {i} mismatch for `{source}`: new {a} vs legacy {b}"
+            );
+        }
+    }
+
+    #[test]
+    fn oracle_cross_world_numeric_programs() {
+        let mut session = crate::sexp::session::RSession::new();
+        for source in [
+            "{ x <- c(1, 2, 3); x[2] }",
+            "{ x <- 1:5; x[c(TRUE, FALSE)] }",
+            "{ x <- 1:5; x[-2] }",
+            "{ x <- 1:10; x[3] + x[7] }",
+            "c(1:3, 4.5)",
+            "{ total <- 0; x <- 1:100; for (i in 1:100) total <- total + x[i]; total }",
+            "{ fib <- function(n) if (n < 2) n else fib(n-1) + fib(n-2); fib(10) }",
+            "{ x <- 1:3; length(x) }",
+            "{ x <- c(2, 4, 8); x * 2 + 1 }",
+            "-(1:5)",
+        ] {
+            oracle_agrees(&mut session, source);
+        }
+    }
+
     #[test]
     fn convergence_loop_with_indexing() {
         // The data primitives compose with control flow: sum 1:100 by loop.

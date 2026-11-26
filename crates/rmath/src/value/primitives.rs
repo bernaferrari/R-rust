@@ -45,10 +45,12 @@ pub mod primitive_ids {
     pub const SUBSET: u32 = 31;
     pub const LENGTH: u32 = 32;
     pub const COLON: u32 = 33;
+    /// Grouping — `(x)` parses as a call to the parenthesis primitive.
+    pub const PAREN: u32 = 34;
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ADD, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LT, MUL, NE, NEXT, REPEAT, RETURN, SUB, SUBSET, SUPERASSIGN, WHILE};
+use primitive_ids::{ADD, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LT, MUL, NE, NEXT, PAREN, REPEAT, RETURN, SUB, SUBSET, SUPERASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -77,6 +79,11 @@ pub(crate) fn call_primitive(
         SUBSET => subset_primitive(heap, interner, args, caller_env),
         LENGTH => length_primitive(heap, interner, args, caller_env),
         COLON => colon_primitive(heap, interner, args, caller_env),
+        PAREN => {
+            // `(x)` — identity: evaluate the single grouped expression.
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            Ok(operands[0])
+        }
         _ => Err(EvalError::UnsupportedForm("unregistered primitive").into()),
     }
 }
@@ -520,7 +527,7 @@ pub fn primitive_names() -> &'static [&'static str] {
     &[
         "+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!=", "if", "{", "<-", "=",
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
-        "length", ":",
+        "length", ":", "(",
     ]
 }
 
@@ -553,6 +560,7 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "[" => Some(SUBSET),
         "length" => Some(LENGTH),
         ":" => Some(COLON),
+        "(" => Some(PAREN),
         _ => None,
     }
 }
