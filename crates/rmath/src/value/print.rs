@@ -167,7 +167,22 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
             return out.trim_end().to_string();
         }
         RObject::Closure { .. } => return "<function>".to_string(),
-        RObject::Environment { .. } => return "<environment>".to_string(),
+        RObject::Environment { .. } => {
+            // Named environments print their name exactly as GNU's
+            /// <environment: R_GlobalEnv> — the name rides the attribute
+            /// chain in the new world.
+            let name = super::primitives::get_attrib(heap, interner, value, "name")
+                .and_then(|id| match heap.object(id) {
+                    Some(RObject::String(values)) if !values.is_empty() => {
+                        Some(interner.string_text(values[0]).to_string())
+                    }
+                    _ => None,
+                });
+            return match name {
+                Some(n) if !n.is_empty() => format!("<environment: {n}>"),
+                _ => "<environment>".to_string(),
+            };
+        }
         _ => return "<object>".to_string(),
     };
     if length == 0 {

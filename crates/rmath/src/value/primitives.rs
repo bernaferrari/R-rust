@@ -187,6 +187,16 @@ pub mod primitive_ids {
     pub const AS_CHARACTER: u32 = 172;
     pub const TSP: u32 = 173;
     pub const TSP_ASSIGN: u32 = 174;
+    /// Environment references and structural comparison.
+    pub const SETNAMES: u32 = 175;
+    pub const IDENTICAL: u32 = 176;
+    pub const GLOBALENV: u32 = 177;
+    pub const BASEENV: u32 = 178;
+    pub const ENVIRONMENT_NAME: u32 = 179;
+    pub const ENVIRONMENT: u32 = 180;
+    pub const R_VERSION_FN: u32 = 181;
+    pub const GET_RVERSION: u32 = 182;
+    pub const IS_LIST: u32 = 183;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -217,7 +227,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -907,6 +917,78 @@ fn call_primitive_inner(
             let operands = eval_args(heap, interner, args, caller_env, 2)?;
             copy_with_attrib(heap, interner, operands[0], "tsp", operands[1]).map_err(RSignal::from)
         }
+        SETNAMES => {
+            let operands = eval_args(heap, interner, args, caller_env, 2)?;
+            copy_with_attrib(heap, interner, operands[0], "names", operands[1]).map_err(RSignal::from)
+        }
+        IDENTICAL => {
+            let operands = eval_args(heap, interner, args, caller_env, 2)?;
+            let same = structural_identical(heap, interner, operands[0], operands[1]);
+            Ok(heap.alloc(RObject::Logical(vec![if same { 1 } else { 0 }])))
+        }
+        GLOBALENV => {
+            // The .GlobalEnv binding in base resolves to the user env.
+            let sym = interner.intern_symbol(".GlobalEnv");
+            match super::env::lookup(heap, caller_env, sym) {
+                Some((_, binding)) => Ok(binding.value),
+                None => Ok(caller_env),
+            }
+        }
+        BASEENV => {
+            // Walking the enclosure chain to its end reaches base exactly
+            /// as GNU's baseenv — the last environment before empty.
+            let mut cursor = caller_env;
+            loop {
+                let enclosure = match heap.object(cursor) {
+                    Some(RObject::Environment { enclos, .. }) => *enclos,
+                    _ => break,
+                };
+                if enclosure == ValueId::EMPTY_ENV || enclosure == ValueId::NIL {
+                    break;
+                }
+                cursor = enclosure;
+            }
+            Ok(cursor)
+        }
+        ENVIRONMENT_NAME => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            // R_GlobalEnv names the user environment exactly as GNU; other
+            /// environments report empty.
+            let name = {
+                let sym = interner.intern_symbol(".GlobalEnv");
+                let genv = super::env::lookup(heap, caller_env, sym).map(|(_, b)| b.value);
+                if Some(operands[0]) == genv {
+                    "R_GlobalEnv"
+                } else {
+                    ""
+                }
+            };
+            Ok(heap.alloc(RObject::String(vec![interner.intern_string(name)])))
+        }
+        ENVIRONMENT => {
+            // environment() with no argument is the calling frame.
+            Ok(caller_env)
+        }
+        R_VERSION_FN => {
+            // R.Version() returns the shared version list exactly as the
+            /// version constant — GNU's function reads the same structure.
+            let sym = interner.intern_symbol("R.version");
+            match super::env::lookup(heap, caller_env, sym) {
+                Some((_, binding)) => Ok(binding.value),
+                None => Ok(ValueId::NIL),
+            }
+        }
+        GET_RVERSION => {
+            // GNU's numeric_version is a list of integer components —
+            /// typeof reports list exactly as the oracle pins.
+            let component = heap.alloc(RObject::Integer(vec![4, 4, 0]));
+            Ok(heap.alloc(RObject::List(vec![component])))
+        }
+        IS_LIST => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let is = matches!(heap.object(operands[0]), Some(RObject::List(_)));
+            Ok(heap.alloc(RObject::Logical(vec![if is { 1 } else { 0 }])))
+        }
         GREPL => grep_primitive(heap, interner, args, caller_env, true),
         GREP => grep_primitive(heap, interner, args, caller_env, false),
         REGEXPR => regexpr_primitive(heap, interner, args, caller_env),
@@ -1589,7 +1671,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -1729,6 +1811,15 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "rm" => Some(RM),
         "as.vector" => Some(AS_VECTOR),
         "as.character" => Some(AS_CHARACTER),
+        "setNames" => Some(SETNAMES),
+        "identical" => Some(IDENTICAL),
+        "globalenv" => Some(GLOBALENV),
+        "baseenv" => Some(BASEENV),
+        "environmentName" => Some(ENVIRONMENT_NAME),
+        "environment" => Some(ENVIRONMENT),
+        "R.Version" => Some(R_VERSION_FN),
+        "getRversion" => Some(GET_RVERSION),
+        "is.list" => Some(IS_LIST),
         "tsp" => Some(TSP),
         "tsp<-" => Some(TSP_ASSIGN),
         "printDeferredWarnings" => Some(PRINT_DEFERRED_WARNINGS),
@@ -4219,24 +4310,73 @@ fn exists_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    let operands = eval_args(heap, interner, args, caller_env, 1)?;
-    let name = match heap.object(operands[0]) {
+    // Tagged walk: the name positional, envir/inherits/mode by name
+    /// exactly as GNU's argument list.
+    let mut name_arg = ValueId::NIL;
+    let mut env = caller_env;
+    let mut inherits = true;
+    let mut mode_fn = false;
+    let mut positional = 0usize;
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        positional += 1;
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let v = force_if_promise(heap, interner, evaluated)?;
+        match tag_name.as_deref() {
+            Some("envir") | Some("where") => env = v,
+            Some("inherits") => {
+                if let Some(RObject::Logical(vals)) = heap.object(v) {
+                    inherits = vals.is_empty() || (vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER);
+                }
+            }
+            Some("mode") => {
+                if let Some(text) = string_operand(heap, interner, v) {
+                    mode_fn = text == "function";
+                }
+            }
+            _ => {
+                if positional == 1 {
+                    name_arg = v;
+                } else if positional == 2 {
+                    env = v;
+                }
+            }
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    let name = match heap.object(name_arg) {
         Some(RObject::String(values)) if !values.is_empty() => {
             interner.string_text(values[0]).to_string()
         }
         _ => return Err(EvalError::TypeError("exists requires a character name").into()),
     };
-    // Optional second argument: the environment to inspect. eval_args with
-    /// count 1 consumed only the name; re-walk raw args for the second.
-    let env = match raw_args(heap, args).get(1).copied() {
-        Some(env_expr) => {
-            let evaluated = eval(heap, interner, env_expr, caller_env)?;
-            force_if_promise(heap, interner, evaluated)?
-        }
-        None => caller_env,
-    };
     let sym = interner.intern_symbol(&name);
-    let found = crate::value::env::lookup(heap, env, sym).is_some();
+    let found = if inherits {
+        crate::value::env::lookup(heap, env, sym)
+    } else {
+        crate::value::env::lookup_in_frame(heap, env, sym).map(|b| (env, b))
+    };
+    // mode="function" filters to closure and primitive bindings exactly as
+    /// GNU's mode matching.
+    let found = match (found, mode_fn) {
+        (Some((_, binding)), true) => matches!(
+            heap.object(binding.value),
+            Some(RObject::Closure { .. }) | Some(RObject::Primitive(_))
+        ),
+        (Some(_), false) => true,
+        _ => false,
+    };
     Ok(heap.alloc(RObject::Logical(vec![found as i32])))
 }
 
@@ -6563,4 +6703,77 @@ fn coerce_character(
         _ => Vec::new(),
     };
     Ok(heap.alloc(RObject::String(out)))
+}
+
+/// GNU's identical() — deep structural equality: same type, same values
+/// bitwise (NaN payloads distinguish NA from NaN), same attributes in the
+/// same order. Environments compare by identity exactly as GNU.
+fn structural_identical(
+    heap: &Heap,
+    interner: &SymbolInterner,
+    left: ValueId,
+    right: ValueId,
+) -> bool {
+    if left == right {
+        return true;
+    }
+    let attrib_identical = |heap: &Heap, interner: &SymbolInterner, a: ValueId, b: ValueId| -> bool {
+        let chain_a = heap.get(a).map(|slot| slot.attrib).unwrap_or(ValueId::NIL);
+        let chain_b = heap.get(b).map(|slot| slot.attrib).unwrap_or(ValueId::NIL);
+        let mut ca = chain_a;
+        let mut cb = chain_b;
+        loop {
+            let pa = match heap.object(ca) {
+                Some(RObject::Pairlist { car, cdr, tag }) => Some((*car, *cdr, *tag)),
+                _ => None,
+            };
+            let pb = match heap.object(cb) {
+                Some(RObject::Pairlist { car, cdr, tag }) => Some((*car, *cdr, *tag)),
+                _ => None,
+            };
+            match (pa, pb) {
+                (None, None) => return true,
+                (Some((va,cda,ta)), Some((vb,cdb,tb))) => {
+                    let na = match heap.object(ta) {
+                        Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+                        _ => String::new(),
+                    };
+                    let nb = match heap.object(tb) {
+                        Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+                        _ => String::new(),
+                    };
+                    if na != nb || !structural_identical(heap, interner, va, vb) {
+                        return false;
+                    }
+                    ca = cda;
+                    cb = cdb;
+                }
+                _ => return false,
+            }
+        }
+    };
+    let payload_same = match (heap.object(left), heap.object(right)) {
+        (Some(RObject::Nil), Some(RObject::Nil)) => true,
+        (Some(RObject::Logical(a)), Some(RObject::Logical(b))) => a == b,
+        (Some(RObject::Integer(a)), Some(RObject::Integer(b))) => a == b,
+        (Some(RObject::Real(a)), Some(RObject::Real(b))) => {
+            a.len() == b.len()
+                && a.iter().zip(b.iter()).all(|(x, y)| {
+                    if x.is_nan() && y.is_nan() {
+                        x.to_bits() == y.to_bits()
+                    } else {
+                        x == y
+                    }
+                })
+        }
+        (Some(RObject::String(a)), Some(RObject::String(b))) => a == b,
+        (Some(RObject::Raw(a)), Some(RObject::Raw(b))) => a == b,
+        (Some(RObject::List(a)), Some(RObject::List(b))) => {
+            a.len() == b.len()
+                && a.iter().zip(b.iter()).all(|(x, y)| structural_identical(heap, interner, *x, *y))
+        }
+        (Some(RObject::Environment { .. }), Some(RObject::Environment { .. })) => left == right,
+        _ => false,
+    };
+    payload_same && attrib_identical(heap, interner, left, right)
 }

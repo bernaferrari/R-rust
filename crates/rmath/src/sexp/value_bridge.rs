@@ -1432,6 +1432,31 @@ mod tests {
         let user = env::new_environment(heap, base);
         let genv_sym = interner.intern_symbol(".GlobalEnv");
         env::define(heap, base, genv_sym, user).expect(".GlobalEnv");
+        // The global environment carries its printed name — GNU's
+        /// R_GlobalEnv exactly — through the slot attribute chain.
+        {
+            let name_sym = interner.intern_symbol("name");
+            let name_val = heap.alloc(RObject::String(vec![interner.intern_string("R_GlobalEnv")]));
+            let tag_obj = heap.alloc(RObject::Symbol { name: name_sym, value: ValueId::UNBOUND, internal: ValueId::NIL });
+            let chain = heap.alloc(RObject::Pairlist { car: name_val, cdr: ValueId::NIL, tag: tag_obj });
+            if let Some(slot) = heap.get_mut(user) {
+                slot.attrib = chain;
+            }
+        }
+        // version and R.version share one list object — identical() over
+        /// them is TRUE exactly as GNU's aliased constants.
+        {
+            let major = heap.alloc(RObject::String(vec![interner.intern_string("4")]));
+            let minor = heap.alloc(RObject::String(vec![interner.intern_string("4.0")]));
+            let version_list = heap.alloc(RObject::List(vec![major, minor]));
+            let vsym = interner.intern_symbol("version");
+            env::define(heap, base, vsym, version_list).expect("version");
+            let rsym = interner.intern_symbol("R.version");
+            env::define(heap, base, rsym, version_list).expect("R.version");
+            let version_string = heap.alloc(RObject::String(vec![interner.intern_string("R version 4.4.0 (rport)")]));
+            let vssym = interner.intern_symbol("R.version.string");
+            env::define(heap, base, vssym, version_string).expect("R.version.string");
+        }
         let na_str = heap.alloc(RObject::String(vec![interner.intern_string("\0NA")]));
         let sym = interner.intern_symbol("NA_character_");
         env::define(heap, base, sym, na_str).expect("NA_character_");
