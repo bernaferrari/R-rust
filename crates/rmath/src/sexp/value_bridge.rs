@@ -1829,6 +1829,16 @@ mod tests {
             "rep(c(1.5, 2.5), 3)",
             "{ x <- rep(0, 5); for (i in 1:5) x[i] <- i * i; x }",
             "sum(rep(2, 10))",
+            "mean(c(2, 4, 4, 4, 5, 5, 7, 9))",
+            "var(c(2, 4, 4, 4, 5, 5, 7, 9))",
+            "sd(c(2, 4, 4, 4, 5, 5, 7, 9))",
+            "median(c(1, 3, 2, 5, 4))",
+            "median(c(1, 2, 3, 4))",
+            "c(mean(1:10), sd(1:10))",
+            "is.na(c(1, NA, 3))",
+            "{ x <- c(1, NA, 3); mean(x) }",
+            "{ x <- c(1, NA, 3); mean(x, na.rm=TRUE) }",
+            "{ x <- c(2, 8, 4); c(mean(x), var(x), median(x)) }",
         ];
         // One session, one parse pass: expression objects stay valid for the
         // session's lifetime, so batching avoids per-program bootstrap cost.

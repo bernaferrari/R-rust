@@ -80,6 +80,12 @@ pub mod primitive_ids {
     pub const SEQ: u32 = 75;
     pub const SEQ_LEN: u32 = 76;
     pub const REP: u32 = 77;
+    /// Statistical reductions and NA predicates.
+    pub const MEAN: u32 = 78;
+    pub const VAR: u32 = 79;
+    pub const SD: u32 = 80;
+    pub const MEDIAN: u32 = 81;
+    pub const IS_NA: u32 = 82;
     /// Attribute access — names getter and replacement, dollar extraction.
     pub const NAMES: u32 = 69;
     pub const NAMES_ASSIGN: u32 = 70;
@@ -96,7 +102,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -160,6 +166,11 @@ pub(crate) fn call_primitive(
         REP => {
             let operands = eval_args(heap, interner, args, caller_env, 2)?;
             rep_primitive(heap, operands[0], operands[1])
+        }
+        MEAN | VAR | SD | MEDIAN => stat_primitive(heap, interner, id.0, args, caller_env),
+        IS_NA => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            is_na_primitive(heap, operands[0])
         }
         PASTE => paste_primitive(heap, interner, args, caller_env, " "),
         PASTE0 => paste_primitive(heap, interner, args, caller_env, ""),
@@ -660,7 +671,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na",
     ]
 }
 
@@ -727,6 +738,11 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "seq" => Some(SEQ),
         "seq_len" => Some(SEQ_LEN),
         "rep" => Some(REP),
+        "mean" => Some(MEAN),
+        "var" => Some(VAR),
+        "sd" => Some(SD),
+        "median" => Some(MEDIAN),
+        "is.na" => Some(IS_NA),
         _ => None,
     }
 }
@@ -2381,4 +2397,131 @@ fn rep_primitive(heap: &mut Heap, source: ValueId, times: ValueId) -> EvalResult
         }
         _ => Err(EvalError::TypeError("rep requires a vector").into()),
     }
+}
+
+/// Numeric contents of a vector as doubles — the extraction the statistics
+/// share. Logicals and integers coerce up exactly as GNU's as-double.
+fn numerics_of(heap: &Heap, value: ValueId) -> Result<Vec<f64>, EvalError> {
+    let na = f64::from_bits(crate::value::object::NA_REAL_BITS);
+    match heap.object(value) {
+        Some(RObject::Real(v)) => Ok(v.clone()),
+        Some(RObject::Integer(v)) => Ok(v
+            .iter()
+            .map(|x| {
+                if *x == crate::value::object::NA_INTEGER {
+                    na
+                } else {
+                    *x as f64
+                }
+            })
+            .collect()),
+        Some(RObject::Logical(v)) => Ok(v
+            .iter()
+            .map(|x| {
+                if *x == crate::value::object::NA_INTEGER {
+                    na
+                } else {
+                    *x as f64
+                }
+            })
+            .collect()),
+        _ => Err(EvalError::TypeError("statistic requires numeric")),
+    }
+}
+
+/// `mean`/`var`/`sd`/`median` with GNU's na.rm handling: absent or FALSE,
+/// any NA poisons the result to NA; TRUE drops NA positions first. The
+/// na.rm argument resolves tagged or positional.
+fn stat_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    op: u32,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let mut positional: Vec<ValueId> = Vec::new();
+    let mut named: Vec<(String, ValueId)> = Vec::new();
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let value = force_if_promise(heap, interner, evaluated)?;
+        match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => {
+                named.push((interner.symbol_name(*name).to_string(), value));
+            }
+            _ => positional.push(value),
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    let input = positional
+        .first()
+        .copied()
+        .ok_or(EvalError::TypeError("statistic requires input"))?;
+    let na_rm = match named
+        .iter()
+        .find(|(n, _)| n == "na.rm")
+        .map(|(_, v)| *v)
+        .or_else(|| positional.get(1).copied())
+    {
+        Some(flag) => matches!(
+            heap.object(flag),
+            Some(RObject::Logical(v)) if !v.is_empty() && v[0] != 0 && v[0] != crate::value::object::NA_INTEGER
+        ),
+        None => false,
+    };
+    let mut xs = numerics_of(heap, input).map_err(RSignal::from)?;
+    let na_real = f64::from_bits(crate::value::object::NA_REAL_BITS);
+    let any_na = xs.iter().any(|v| v.is_nan());
+    if any_na && !na_rm {
+        return Ok(heap.alloc(RObject::Real(vec![na_real])));
+    }
+    xs.retain(|v| !v.is_nan());
+    if xs.is_empty() {
+        return Ok(heap.alloc(RObject::Real(vec![na_real])));
+    }
+    let result = match op {
+        MEAN => xs.iter().sum::<f64>() / xs.len() as f64,
+        VAR => {
+            // GNU's sample variance with the mean-centered two-pass form.
+            let mean = xs.iter().sum::<f64>() / xs.len() as f64;
+            xs.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / (xs.len() as f64 - 1.0)
+        }
+        SD => {
+            let mean = xs.iter().sum::<f64>() / xs.len() as f64;
+            (xs.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / (xs.len() as f64 - 1.0))
+                .sqrt()
+        }
+        _ => {
+            // GNU's median: mean of the two central order statistics for
+            // even lengths.
+            xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let n = xs.len();
+            if n % 2 == 1 {
+                xs[n / 2]
+            } else {
+                (xs[n / 2 - 1] + xs[n / 2]) / 2.0
+            }
+        }
+    };
+    Ok(heap.alloc(RObject::Real(vec![result])))
+}
+
+/// `is.na(x)` — elementwise NA detection across the atomic types.
+fn is_na_primitive(heap: &mut Heap, value: ValueId) -> EvalResult {
+    let na_int = crate::value::object::NA_INTEGER;
+    let out: Vec<i32> = match heap.object(value) {
+        Some(RObject::Logical(v)) => v.iter().map(|x| (*x == na_int) as i32).collect(),
+        Some(RObject::Integer(v)) => v.iter().map(|x| (*x == na_int) as i32).collect(),
+        Some(RObject::Real(v)) => v.iter().map(|x| x.is_nan() as i32).collect(),
+        Some(RObject::String(v)) => v.iter().map(|_| 0).collect(),
+        _ => return Err(EvalError::TypeError("is.na requires a vector").into()),
+    };
+    Ok(heap.alloc(RObject::Logical(out)))
 }
