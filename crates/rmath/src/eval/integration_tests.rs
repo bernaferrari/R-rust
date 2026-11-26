@@ -737,19 +737,19 @@ fn test_session_eval_parsed_exprs() {
     let _session = crate::sexp::session::RSession::new();
     let mut session = crate::host::RSession::new().unwrap();
 
-    let r1 = session.eval("42");
+    let r1 = session.eval_engine("42");
     assert!(r1.output.contains("42"));
 
-    let r2 = session.eval("3.14");
+    let r2 = session.eval_engine("3.14");
     assert!(r2.output.contains("3.14"));
 
-    let r3 = session.eval("\"hello\"");
+    let r3 = session.eval_engine("\"hello\"");
     assert!(r3.output.contains("hello"));
 
-    let r4 = session.eval("TRUE");
+    let r4 = session.eval_engine("TRUE");
     assert!(r4.output.contains("TRUE") || r4.output.contains('1'));
 
-    let r5 = session.eval("NULL");
+    let r5 = session.eval_engine("NULL");
     // Rscript terminates each printed value with a newline.
     assert_eq!(r5.output, "NULL\n");
 }

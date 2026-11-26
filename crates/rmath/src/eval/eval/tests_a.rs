@@ -84,7 +84,7 @@ mod tests_a {
         let env = session.global_env().expect("global env should exist");
 
         let result = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ EvalContext::new(env)
-            .eval(expr) }
+            .eval_engine(expr) }
             .expect("self-evaluating scalar should evaluate");
 
         assert_eq!(result.integer_elt(0), Some(123));
@@ -167,7 +167,7 @@ mod tests_a {
         owner.set_jit_settings(settings).unwrap();
 
         let err = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ EvalContext::new(env)
-            .eval(bcode) }
+            .eval_engine(bcode) }
             .expect_err("disabled bytecode should not execute");
         assert!(err.contains("bytecode evaluation is disabled"));
     }
@@ -182,7 +182,7 @@ mod tests_a {
         let env = session.global_env().expect("global env should exist");
 
         let err = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ EvalContext::new(env)
-            .eval(expr) }
+            .eval_engine(expr) }
             .expect_err("unowned expression should be rejected");
         assert!(err.contains("expression is not owner-scoped"));
     }

@@ -487,6 +487,12 @@ impl RSession {
         self.eval_sexp_raw(expr).map(|value| value.as_raw())
     }
 
+    /// Alias kept uniform with the host-session engine entry renamed in the
+    /// facade merge — identical semantics to `eval`.
+    pub(crate) fn eval_engine(&self, expr: SEXP) -> RResult<SEXP> {
+        self.eval(expr)
+    }
+
     /// Evaluate a raw expression pointer after proving it belongs to this session.
     pub(crate) fn eval_sexp_raw(&self, expr: SEXP) -> RResult<Sexp<'_>> {
         let expr = expr_or_nil(expr);

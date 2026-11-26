@@ -200,7 +200,7 @@ fn real_r_finalizer_call_survives_torture_before_evaluation() {
         );
         assert_eq!(
             session
-                .eval(observation)
+                .eval_engine(observation)
                 .expect("R finalizer body did not execute"),
             key
         );

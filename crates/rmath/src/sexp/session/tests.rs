@@ -966,7 +966,7 @@ fn test_session_cancellation_token_is_session_owned() {
 fn test_session_eval_closed() {
     let mut session = RSession::new();
     session.close();
-    let result = session.eval(ptr::null_mut());
+    let result = session.eval_engine(ptr::null_mut());
     assert!(result.is_err());
 }
 

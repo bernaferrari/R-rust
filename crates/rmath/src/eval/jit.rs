@@ -1588,17 +1588,17 @@ mod tests {
     fn exec_and_tailcall_special_forms_evaluate_target_calls() {
         let mut session = crate::host::RSession::new().unwrap();
 
-        let exec = session.eval("x <- 6\nExec(quote(identity(x)))");
+        let exec = session.eval_engine("x <- 6\nExec(quote(identity(x)))");
         assert_eq!(exec.output, "[1] 6\n");
 
-        let tailcall = session.eval("f <- function(x) Tailcall(identity, x + 1)\nf(5)");
+        let tailcall = session.eval_engine("f <- function(x) Tailcall(identity, x + 1)\nf(5)");
         assert_eq!(tailcall.output, "[1] 6\n");
     }
 
     #[test]
     fn tailcall_recursion_uses_exec_continuations_in_tail_position() {
         let mut session = crate::host::RSession::new().unwrap();
-        let result = session.eval(
+        let result = session.eval_engine(
             "countdown <- function(n) if (n <= 0) 0 else Tailcall(countdown, n - 1)\ncountdown(5)",
         );
         assert_eq!(result.output, "[1] 0\n");
@@ -1608,17 +1608,17 @@ mod tests {
     fn exec_and_tailcall_are_registered_as_primitives() {
         let mut session = crate::host::RSession::new().unwrap();
 
-        let exec = session.eval("is.primitive(Exec)");
+        let exec = session.eval_engine("is.primitive(Exec)");
         assert_eq!(exec.output, "[1] TRUE\n");
 
-        let tailcall = session.eval("is.primitive(Tailcall)");
+        let tailcall = session.eval_engine("is.primitive(Tailcall)");
         assert_eq!(tailcall.output, "[1] TRUE\n");
     }
 
     #[test]
     fn tailcall_at_top_level_evaluates_in_place() {
         let mut session = crate::host::RSession::new().unwrap();
-        let result = session.eval(
+        let result = session.eval_engine(
             "x <- structure(pi, class = \"testit\")\n\
              top <- Tailcall(identity, 1)\n\
              via <- eval(substitute(Tailcall(identity, 1)))\n\

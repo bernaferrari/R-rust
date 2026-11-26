@@ -114,6 +114,14 @@ impl<'a> EvalContext<'a> {
             eval_expr(expr, self.env)
         }
     }
+
+    /// Alias kept uniform with the host-session engine entry renamed in the
+    /// facade merge — identical semantics to `eval`.
+    /// # Safety
+    /// Same owner, rooting and payload-loan contract as `eval`.
+    pub unsafe fn eval_engine(self, expr: Sexp<'a>) -> Result<Sexp<'a>, String> {
+        unsafe { self.eval(expr) }
+    }
 }
 
 mod builtins;

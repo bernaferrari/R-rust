@@ -1767,13 +1767,13 @@ mod tests {
         let mut session = crate::host::RSession::new().unwrap();
 
         // setGeneric rebinds `show` to a generic closure carrying the
-        let a = session.eval("setGeneric(\"show\", function(object) standardGeneric(\"show\"))");
+        let a = session.eval_engine("setGeneric(\"show\", function(object) standardGeneric(\"show\"))");
         println!("step1 setGeneric => {:?}", a.output);
-        let b = session.eval("typeof(show)");
+        let b = session.eval_engine("typeof(show)");
         println!("step2 typeof(show) => {:?}", b.output);
-        let c = session.eval("setMethod(\"show\", \"numeric\", function(object) 42)");
+        let c = session.eval_engine("setMethod(\"show\", \"numeric\", function(object) 42)");
         println!("step3 setMethod => {:?}", c.output);
-        let d = session.eval("show(1.5)");
+        let d = session.eval_engine("show(1.5)");
         println!("step4 call => {:?}", d.output);
         // Top-level output now ends with the console newline, as in GNU R.
         assert_eq!(d.output.trim_end(), "[1] 42");
@@ -1783,10 +1783,10 @@ mod tests {
     fn extends_and_method_dispatch_integration_via_session_eval() {
         let mut session = crate::host::RSession::new().unwrap();
 
-        let extends = session.eval("extends(\"integer\", \"vector\")");
+        let extends = session.eval_engine("extends(\"integer\", \"vector\")");
         assert_eq!(extends.output.trim_end(), "[1] TRUE");
 
-        let tables = session.eval(
+        let tables = session.eval_engine(
             "generic <- setGeneric(\"show\", function(object) standardGeneric(\"show\"))\n\
              setMethod(\"show\", \"numeric\", function(object) 42)\n\
              identical(show(1.5), 42)",

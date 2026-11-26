@@ -106,6 +106,12 @@ impl<'s> AltrepContext<'s> {
             self.owner.sexp(value.as_raw())
         })
     }
+
+    /// Alias kept uniform with the host-session engine entry renamed in the
+    /// facade merge — identical semantics to `eval`.
+    pub fn eval_engine(&self, expression: Sexp<'s>, environment: Sexp<'s>) -> SexpResult<Sexp<'s>> {
+        self.eval(expression, environment)
+    }
     fn active<T>(&self, f: impl FnOnce() -> SexpResult<T>) -> SexpResult<T> {
         storage::invoke_provider(&self.owner, f)
     }

@@ -2000,8 +2000,8 @@ mod tests {
         let mut right = crate::host::RSession::new().unwrap();
 
         let left_result =
-            left.eval("par(mar = c(1, 2, 3, 4)); cat(paste(par('mar'), collapse=','))");
-        let right_result = right.eval("cat(paste(par('mar'), collapse=','))");
+            left.eval_engine("par(mar = c(1, 2, 3, 4)); cat(paste(par('mar'), collapse=','))");
+        let right_result = right.eval_engine("cat(paste(par('mar'), collapse=','))");
 
         assert_eq!(left_result.output.trim(), "1,2,3,4");
         assert_eq!(right_result.output.trim(), "5.1,4.1,4.1,2.1");
@@ -2010,7 +2010,7 @@ mod tests {
     #[test]
     fn par_reports_full_and_writable_parameter_sets() {
         let mut session = crate::host::RSession::new().unwrap();
-        let result = session.eval("cat(length(par()), length(par(no.readonly = TRUE)))");
+        let result = session.eval_engine("cat(length(par()), length(par(no.readonly = TRUE)))");
         assert_eq!(result.output.trim(), "72 66");
     }
 
@@ -2072,7 +2072,7 @@ mod tests {
     #[test]
     fn layout_updates_session_local_par_state() {
         let mut session = crate::host::RSession::new().unwrap();
-        let result = session.eval(
+        let result = session.eval_engine(
             "layout(matrix(1:4, 2, 2)); cat(layout(matrix(1:9, 3, 3)), paste(par('mfg'), collapse=','), par('cex'), par('mex'))",
         );
         assert_eq!(result.output.trim(), "9 3,3,3,3 0.66 1");
