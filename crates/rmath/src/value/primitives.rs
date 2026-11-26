@@ -219,6 +219,7 @@ pub mod primitive_ids {
     pub const TILDE: u32 = 201;
     pub const IS_CALL: u32 = 202;
     pub const IS_ENVIRONMENT: u32 = 203;
+    pub const XTABS: u32 = 204;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -249,7 +250,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -1574,6 +1575,7 @@ fn call_primitive_inner(
             let is = matches!(heap.object(operands[0]), Some(RObject::Environment { .. }));
             Ok(heap.alloc(RObject::Logical(vec![is as i32])))
         }
+        XTABS => xtabs_primitive(heap, interner, args, caller_env),
         FORMAT => {
             // format() on Date-classed input renders ISO exactly as the
             /// print path; other input coerces to character.
@@ -2544,7 +2546,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -2713,6 +2715,7 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "~" => Some(TILDE),
         "is.call" => Some(IS_CALL),
         "is.environment" => Some(IS_ENVIRONMENT),
+        "xtabs" => Some(XTABS),
         "tsp" => Some(TSP),
         "tsp<-" => Some(TSP_ASSIGN),
         "printDeferredWarnings" => Some(PRINT_DEFERRED_WARNINGS),
@@ -8220,4 +8223,236 @@ fn strip_all_attributes(heap: &mut Heap, value: ValueId) -> ValueId {
         None => return value,
     };
     heap.alloc(body)
+}
+
+/// `xtabs(formula)` — tabulate counts over the formula's terms. The
+/// one-sided formula's terms evaluate in the calling environment, counts
+/// tabulate per sorted-unique level combination column-major exactly as
+/// table semantics, and the result carries the xtabs/table class pair
+/// with dimnames named by the deparsed term text exactly as GNU.
+fn xtabs_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let mut formula = ValueId::NIL;
+    let mut data = ValueId::NIL;
+    {
+        let mut cursor = args;
+        for _ in 0..100_000 {
+            if cursor == ValueId::NIL {
+                break;
+            }
+            let (car, tag, next) = match heap.object(cursor) {
+                Some(RObject::Pairlist { car, tag, cdr, .. }) => (*car, *tag, *cdr),
+                _ => break,
+            };
+            let value = eval(heap, interner, car, caller_env)?;
+            let tag_name = if tag == ValueId::NIL {
+                None
+            } else {
+                match heap.object(tag) {
+                    Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+                    _ => None,
+                }
+            };
+            match tag_name.as_deref() {
+                Some("data") => data = value,
+                _ => {
+                    if formula == ValueId::NIL {
+                        formula = value;
+                    }
+                }
+            }
+            cursor = next;
+        }
+    }
+    // The formula's right-hand side: the second element of the tilde call
+    /// for one-sided form; terms split across the plus chain exactly as
+    /// GNU's terms.object decomposition.
+    let rhs = match heap.object(formula) {
+        Some(RObject::Language { cdr, .. }) => match heap.object(*cdr) {
+            Some(RObject::Pairlist { car, .. }) => *car,
+            _ => return Err(EvalError::TypeError("xtabs requires a formula").into()),
+        },
+        _ => return Err(EvalError::TypeError("xtabs requires a formula").into()),
+    };
+    // Split the plus chain into terms.
+    let mut terms: Vec<ValueId> = Vec::new();
+    let mut stack = vec![rhs];
+    while let Some(term) = stack.pop() {
+        let is_plus = match heap.object(term) {
+            Some(RObject::Language { car, .. }) => match heap.object(*car) {
+                Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name) == "+",
+                _ => false,
+            },
+            _ => false,
+        };
+        if is_plus {
+            if let Some(RObject::Language { cdr, .. }) = heap.object(term) {
+                let mut parts = Vec::new();
+                let mut cursor = *cdr;
+                for _ in 0..100_000 {
+                    if cursor == ValueId::NIL {
+                        break;
+                    }
+                    if let Some(RObject::Pairlist { car, cdr: next, .. }) = heap.object(cursor) {
+                        parts.push((*car, *next));
+                        cursor = *next;
+                    } else {
+                        break;
+                    }
+                }
+                if parts.len() == 2 {
+                    stack.push(parts[1].0);
+                    stack.push(parts[0].0);
+                    continue;
+                }
+            }
+            terms.push(term);
+        } else {
+            terms.push(term);
+        }
+    }
+    // Evaluate each term in the caller environment; tabulate combinations.
+    let mut columns: Vec<Vec<String>> = Vec::new();
+    let mut term_names: Vec<String> = Vec::new();
+    for term in &terms {
+        let value = if data != ValueId::NIL {
+            let column = match heap.object(*term) {
+                Some(RObject::Symbol { name, .. }) => {
+                    let want = interner.symbol_name(*name).to_string();
+                    // data frames are lists with a names attribute; find
+                    /// the column positionally exactly as GNU's model frame.
+                    let cols = match heap.object(data) {
+                        Some(RObject::List(items)) => Some(items.clone()),
+                        _ => None,
+                    };
+                    let mut found = ValueId::NIL;
+                    if let Some(items) = cols {
+                        if let Some(names_id) = get_attrib(heap, interner, data, "names") {
+                            if let Some(RObject::String(names)) = heap.object(names_id) {
+                                for (i, nm) in names.iter().enumerate() {
+                                    if interner.string_text(*nm) == want && i < items.len() {
+                                        found = items[i];
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    found
+                }
+                _ => ValueId::NIL,
+            };
+            if column != ValueId::NIL {
+                column
+            } else {
+                eval(heap, interner, *term, caller_env)?
+            }
+        } else {
+            eval(heap, interner, *term, caller_env)?
+        };
+        let texts = match heap.object(value) {
+            Some(RObject::String(vals)) => vals
+                .iter()
+                .map(|v| interner.string_text(*v).to_string())
+                .collect(),
+            Some(RObject::Integer(vals)) => vals.iter().map(|v| v.to_string()).collect(),
+            Some(RObject::Real(vals)) => vals.iter().map(|v| crate::value::print::format_real(*v)).collect(),
+            Some(RObject::Logical(vals)) => vals
+                .iter()
+                .map(|&v| {
+                    if v == crate::value::object::NA_INTEGER {
+                        "NA".to_string()
+                    } else if v != 0 {
+                        "TRUE".to_string()
+                    } else {
+                        "FALSE".to_string()
+                    }
+                })
+                .collect(),
+            _ => return Err(EvalError::TypeError("xtabs terms must be vectors").into()),
+        };
+        columns.push(texts);
+        term_names.push(crate::value::print::deparse(heap, interner, *term));
+    }
+    if columns.is_empty() {
+        return Err(EvalError::TypeError("xtabs requires terms").into());
+    }
+    let n = columns[0].len();
+    // Per-column sorted-unique levels.
+    let levels: Vec<Vec<String>> = columns
+        .iter()
+        .map(|col| {
+            let mut lv: Vec<String> = col.clone();
+            lv.sort();
+            lv.dedup();
+            lv
+        })
+        .collect();
+    let dims: Vec<usize> = levels.iter().map(|l| l.len()).collect();
+    let total: usize = dims.iter().product();
+    let mut counts = vec![0i32; total];
+    for row in 0..n {
+        let mut flat = 0usize;
+        let mut stride = 1usize;
+        let mut valid = true;
+        for (j, col) in columns.iter().enumerate() {
+            let text = &col[row];
+            match levels[j].iter().position(|l| l == text) {
+                Some(idx) => {
+                    flat += idx * stride;
+                    stride *= dims[j].max(1);
+                }
+                None => {
+                    valid = false;
+                    break;
+                }
+            }
+        }
+        if valid && flat < total {
+            counts[flat] += 1;
+        }
+    }
+    let values = heap.alloc(RObject::Integer(counts));
+    let dim_vec = heap.alloc(RObject::Integer(dims.iter().map(|&d| d as i32).collect()));
+    // dimnames: one character vector per term, the list named by the
+    /// deparsed term text exactly as GNU.
+    let dn_inners: Vec<ValueId> = levels
+        .iter()
+        .map(|lv| {
+            let interned: Vec<super::intern::InternedStr> = lv
+                .iter()
+                .map(|s| interner.intern_string(s))
+                .collect();
+            heap.alloc(RObject::String(interned))
+        })
+        .collect();
+    let dn_list = heap.alloc(RObject::List(dn_inners));
+    let term_interned: Vec<super::intern::InternedStr> = term_names
+        .iter()
+        .map(|s| interner.intern_string(s))
+        .collect();
+    let dn_names = heap.alloc(RObject::String(term_interned));
+    let dn_list = copy_with_attrib(heap, interner, dn_list, "names", dn_names).map_err(RSignal::from)?;
+    let class = heap.alloc(RObject::String(vec![
+        interner.intern_string("xtabs"),
+        interner.intern_string("table"),
+    ]));
+    let names_vec = heap.alloc(RObject::String(
+        levels[0]
+            .iter()
+            .map(|s| interner.intern_string(s))
+            .collect(),
+    ));
+    let with_dim = copy_with_attrib(heap, interner, values, "dim", dim_vec).map_err(RSignal::from)?;
+    let with_dn = copy_with_attrib(heap, interner, with_dim, "dimnames", dn_list).map_err(RSignal::from)?;
+    let with_class = copy_with_attrib(heap, interner, with_dn, "class", class).map_err(RSignal::from)?;
+    if dims.len() == 1 {
+        copy_with_attrib(heap, interner, with_class, "names", names_vec).map_err(RSignal::from)
+    } else {
+        Ok(with_class)
+    }
 }
