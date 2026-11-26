@@ -216,13 +216,30 @@ impl RSession {
             // that order and stats sits just under .GlobalEnv.
             let mut stats_loaded = false;
             for package in ["methods", "datasets", "utils", "grDevices", "graphics", "stats"] {
-                // The authenticated builtin datasets image owns the
-                // datasets namespace even when a library tree is visible:
-                // the builtin lazydata promises back `datasets::` lookups.
+                // The authenticated builtin images own these namespaces even
+                // when a library tree is visible: they are this runtime's own
+                // RBG1-serialized implementation of the base-recommended
+                // packages. A host library copy would be GNU R's build in a
+                // serialization format this runtime no longer reads.
                 if package == "datasets" {
                     crate::library::datasets::attach().unwrap_or_else(|message| {
                         std::panic::panic_any(crate::sexp::context::RError { message })
                     });
+                    continue;
+                }
+                if package == "methods" {
+                    crate::library::methods::portable::attach().unwrap_or_else(|message| {
+                        std::panic::panic_any(crate::sexp::context::RError { message })
+                    });
+                    continue;
+                }
+                if let Some(image) = crate::library::portable_package::image(package) {
+                    image.attach().unwrap_or_else(|message| {
+                        std::panic::panic_any(crate::sexp::context::RError { message })
+                    });
+                    if package == "stats" {
+                        stats_loaded = true;
+                    }
                     continue;
                 }
                 let path = crate::mainutils::essentials::find_package_path(package);
@@ -235,18 +252,6 @@ impl RSession {
                     if package == "stats" {
                         stats_loaded = loaded;
                     }
-                } else if package == "methods" {
-                    crate::library::methods::portable::attach().unwrap_or_else(|message| {
-                        std::panic::panic_any(crate::sexp::context::RError { message })
-                    });
-                } else if let Some(image) = crate::library::portable_package::image(package) {
-                    image.attach().unwrap_or_else(|message| {
-                        std::panic::panic_any(crate::sexp::context::RError { message })
-                    });
-                } else if package == "datasets" {
-                    crate::library::datasets::attach().unwrap_or_else(|message| {
-                        std::panic::panic_any(crate::sexp::context::RError { message })
-                    });
                 }
             }
             if stats_loaded && let Ok(exprs) = crate::sexp::memory::with_arena(|arena| {

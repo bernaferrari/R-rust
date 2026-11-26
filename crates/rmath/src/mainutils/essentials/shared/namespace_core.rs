@@ -251,8 +251,10 @@ pub(crate) fn package_arg_values(package_arg: SEXP) -> Vec<String> {
 
 pub(crate) fn list_package_data_sets(packages: &[String]) -> Vec<String> {
     let mut names = Vec::<String>::new();
-    if find_package_path("datasets").is_empty()
-        && (packages.is_empty() || packages.iter().any(|package| package == "datasets"))
+    // The builtin datasets image owns the datasets data even when a library
+    // tree is visible: a host copy is GNU R's build in a serialization format
+    // this runtime no longer reads.
+    if packages.is_empty() || packages.iter().any(|package| package == "datasets")
     {
         names.extend(crate::library::datasets::topics());
     }
@@ -291,11 +293,15 @@ pub(crate) fn data_package_dirs(packages: &[String]) -> Vec<PathBuf> {
                 .filter_map(|library| std::fs::read_dir(library).ok())
                 .flat_map(|entries| entries.filter_map(Result::ok).map(|entry| entry.path()))
                 .filter(|path| path.join("DESCRIPTION").is_file())
+                .filter(|path| {
+                    path.file_name().and_then(|name| name.to_str()) != Some("datasets")
+                })
                 .collect();
         }
 
         packages
             .iter()
+            .filter(|package| package.as_str() != "datasets")
             .filter_map(|package| (*inst).path_policy.find_package_path(package))
             .collect()
     })
@@ -356,8 +362,7 @@ pub(crate) fn load_package_data_set(
                 return Ok(true);
             }
         }
-        if find_package_path("datasets").is_empty()
-            && (packages.is_empty() || packages.iter().any(|package| package == "datasets"))
+        if packages.is_empty() || packages.iter().any(|package| package == "datasets")
         {
             let owner = current_owner().map_err(|e| e.to_string())?;
             let target = owner

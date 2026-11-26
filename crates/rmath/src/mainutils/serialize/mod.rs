@@ -250,7 +250,6 @@ fn parse_swapped_len_prefix(data: &[u8]) -> Option<usize> {
 mod api;
 
 #[doc(hidden)]
-mod ascii_numbers;
 mod compress;
 pub(crate) mod core;
 pub(crate) mod lazyload;
@@ -269,9 +268,6 @@ pub use self::lazyload::*;
 pub(crate) use self::raw_codecs::DecodeError as LazyRecordDecodeError;
 #[cfg(test)]
 mod tests;
-
-#[cfg(test)]
-mod logical_scalar_tests;
 
 #[cfg(test)]
 mod ascii_numeric_tests;

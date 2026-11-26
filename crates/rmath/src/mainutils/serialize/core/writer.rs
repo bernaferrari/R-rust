@@ -95,36 +95,15 @@ impl BinaryWriter {
     }
 
     pub fn write_i32(&mut self, val: i32) {
-        if self.ascii_body {
-            self.buf
-                .extend_from_slice(super::ascii_numbers::integer(val).as_bytes());
-            self.buf.push(b'\n');
-        } else if self.xdr_body {
-            self.buf.extend_from_slice(&val.to_be_bytes());
-        } else {
-            self.buf.extend_from_slice(&val.to_ne_bytes());
-        }
+        self.buf.extend_from_slice(&val.to_be_bytes());
     }
 
     pub fn write_f64(&mut self, val: f64) {
-        if self.ascii_body {
-            self.buf
-                .extend_from_slice(super::ascii_numbers::real(val, self.ascii_hex).as_bytes());
-            self.buf.push(b'\n');
-        } else if self.xdr_body {
-            self.buf.extend_from_slice(&val.to_be_bytes());
-        } else {
-            self.buf.extend_from_slice(&val.to_ne_bytes());
-        }
+        self.buf.extend_from_slice(&val.to_be_bytes());
     }
 
     pub fn write_byte(&mut self, val: u8) {
-        if self.ascii_body {
-            self.buf.extend_from_slice(format!("{val:02x}").as_bytes());
-            self.buf.push(b'\n');
-        } else {
-            self.buf.push(val);
-        }
+        self.buf.push(val);
     }
 
     pub fn write_bytes(&mut self, data: &[u8]) {
@@ -132,31 +111,7 @@ impl BinaryWriter {
     }
 
     pub fn write_string_bytes(&mut self, bytes: &[u8]) {
-        if self.ascii_body {
-            for &byte in bytes {
-                match byte {
-                    b'\n' => self.buf.extend_from_slice(b"\\n"),
-                    b'\t' => self.buf.extend_from_slice(b"\\t"),
-                    0x0b => self.buf.extend_from_slice(b"\\v"),
-                    0x08 => self.buf.extend_from_slice(b"\\b"),
-                    b'\r' => self.buf.extend_from_slice(b"\\r"),
-                    0x0c => self.buf.extend_from_slice(b"\\f"),
-                    0x07 => self.buf.extend_from_slice(b"\\a"),
-                    b'\\' => self.buf.extend_from_slice(b"\\\\"),
-                    b'?' => self.buf.extend_from_slice(b"\\?"),
-                    b'\'' => self.buf.extend_from_slice(b"\\'"),
-                    b'"' => self.buf.extend_from_slice(b"\\\""),
-                    0..=32 | 127..=255 => {
-                        self.buf
-                            .extend_from_slice(format!("\\{byte:03o}").as_bytes());
-                    }
-                    _ => self.buf.push(byte),
-                }
-            }
-            self.buf.push(b'\n');
-        } else {
-            self.buf.extend_from_slice(bytes);
-        }
+        self.buf.extend_from_slice(bytes);
     }
 
     pub fn into_output(self) -> SerializedBytes {

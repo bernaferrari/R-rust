@@ -1,9 +1,5 @@
 use super::*;
 
-#[cfg(test)]
-#[path = "raw_codec_tests.rs"]
-mod workspace_tests;
-
 // Raw entry points retain only an original operation pin and checked native
 // snapshots. All codec allocation and framing lives in the safe Rust module.
 pub(super) fn raw_snapshot(

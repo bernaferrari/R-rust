@@ -4,22 +4,9 @@ use super::*;
 // Reference index packing/unpacking
 // ---------------------------------------------------------------------------
 
-pub fn InRefIndex(flags: c_int, reader: &mut BinaryReader) -> Result<c_int, String> {
-    let i = flags >> 8;
-    if i == 0 { reader.read_i32() } else { Ok(i) }
-}
-
 // ---------------------------------------------------------------------------
 // Version decoding
 // ---------------------------------------------------------------------------
-
-pub fn DecodeVersion(packed: c_int, v: &mut c_int, p: &mut c_int, s: &mut c_int) {
-    *v = packed / 65536;
-    let mut rem = packed % 65536;
-    *p = rem / 256;
-    rem %= 256;
-    *s = rem;
-}
 
 // ---------------------------------------------------------------------------
 // Attribute / tag presence helpers

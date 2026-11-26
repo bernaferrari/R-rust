@@ -125,12 +125,13 @@ pub(crate) fn find_package_path(package: &str) -> String {
 /// Public package discovery includes the shipped datasets image. Internal
 /// loader decisions continue to distinguish installed and portable storage.
 pub(crate) fn public_package_path(package: &str) -> String {
-    let path = find_package_path(package);
-    if path.is_empty() && package == "datasets" {
-        crate::library::datasets::PACKAGE_DIRECTORY.into()
-    } else {
-        path
+    // The builtin datasets image owns the public datasets path even when a
+    // library tree is visible: a host copy is GNU R's build in a serialization
+    // format this runtime no longer reads.
+    if package == "datasets" {
+        return crate::library::datasets::PACKAGE_DIRECTORY.into();
     }
+    find_package_path(package)
 }
 
 pub(crate) fn package_description_fields(
@@ -282,14 +283,19 @@ pub(crate) fn load_package_namespace_checked(
         if package == "datasets" {
             return crate::library::datasets::namespace().map(|namespace| namespace.as_raw());
         }
+        // The baked portable images own their namespaces even when a library
+        // tree is visible: they are this runtime's own implementation of the
+        // base-recommended packages, serialized in the native RBG1 format. A
+        // host library copy would be GNU R's build — foreign content in a
+        // format this runtime no longer reads.
+        if package == "methods" {
+            return crate::library::methods::portable::namespace()
+                .map(|namespace| namespace.as_raw());
+        }
+        if let Some(image) = crate::library::portable_package::image(package) {
+            return image.namespace().map(|namespace| namespace.as_raw());
+        }
         let Some(package_dir) = package_path else {
-            if package == "methods" {
-                return crate::library::methods::portable::namespace()
-                    .map(|namespace| namespace.as_raw());
-            }
-            if let Some(image) = crate::library::portable_package::image(package) {
-                return image.namespace().map(|namespace| namespace.as_raw());
-            }
             return Err(format!("there is no package called '{package}'"));
         };
         let mut loading = vec![package.to_string()];

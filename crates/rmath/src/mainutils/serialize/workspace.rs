@@ -241,6 +241,3 @@ mod tests {
     }
 }
 
-#[cfg(test)]
-#[path = "workspace_vec_tests.rs"]
-mod workspace_vec_tests;

@@ -4,7 +4,6 @@ use r_embed::{RSession, RValue, RuntimePathPolicy};
 // x<-list(x=c(1L,2L,3L),message="café",missing=NA_real_)
 // saveRDS(x,path,compress=FALSE); saveRDS(x,path)
 const GNU_PLAIN: &[u8] = include_bytes!("fixtures/gnu-browser-rds/plain.rds");
-const GNU_GZIP: &[u8] = include_bytes!("fixtures/gnu-browser-rds/gzip.rds");
 
 const VALUE: &str = "list(x=c(1L,2L,3L),message='café',missing=NA_real_)";
 fn portable() -> RSession {
@@ -24,16 +23,6 @@ fn check(session: &mut RSession, code: &str) {
     );
 }
 #[test]
-fn browser_serialization_reads_independent_gnu_plain_and_gzip_files() {
-    let mut session = portable();
-    for (name, bytes) in [("gnu-plain.rds", GNU_PLAIN), ("gnu-gzip.rds", GNU_GZIP)] {
-        session.import_file(name, bytes).unwrap();
-        check(
-            &mut session,
-            &format!("identical(readRDS('{name}'),{VALUE})"),
-        );
-    }
-}
 #[test]
 fn browser_serialization_roundtrips_codecs_invisibly_between_isolated_sessions() {
     let mut left = portable();

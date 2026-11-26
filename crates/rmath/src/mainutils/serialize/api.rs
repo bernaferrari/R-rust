@@ -70,65 +70,33 @@ pub(crate) fn serialize_workspace_snapshot(
 /// Unserialize an R object from a raw vector.
 pub fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
     {
-        if !fun.is_null() && fun != R_NilValue() && TYPEOF(fun) == SEXPTYPE::ENVSXP {
-            let owner = current_owner();
-            let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
-            owner
-                .require_active()
-                .unwrap_or_else(|e| error(&e.to_string()));
-            let data = owner
-                .sexp(fun)
-                .and_then(|s| s.into_owned())
-                .unwrap_or_else(|e| error(&e.to_string()));
-            unserialize_raw(icon, R_NilValue(), Some(LazyLoadRestore { data }))
+        let owner = current_owner();
+        let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| error(&e.to_string()));
+        let bytes = raw_to_bytes(icon);
+        let _fun_guard = protect(fun);
+        let hook = if !fun.is_null() && TYPEOF(fun) == SEXPTYPE::CLOSXP {
+            fun
         } else {
-            unserialize_raw(icon, fun, None)
-        }
-    }
-}
-
-/// The runtime's lazy-load hook is Rust control flow with an actual owning
-/// environment.
-#[derive(Clone)]
-pub(crate) struct LazyLoadRestore {
-    data: crate::sexp::object::Sexp<'static>,
-}
-
-impl LazyLoadRestore {
-    pub(super) fn restore(&self, names: SEXP) -> Result<SEXP, String> {
-        use crate::sexp::{
-            object::SexpError,
-            owner::{OwnerToken, StoredOwner},
+            R_NilValue()
         };
-        let authority = StoredOwner::from_value(&self.data).map_err(|e| e.to_string())?;
-        authority
-            .with_projection(|pointer| {
-                // This original operation pin retains cleanup storage through unwind.
-                // SAFETY: `pointer` is the projected owner of the stored
-                // authority, valid for the duration of the projection.
-                let owner = unsafe { OwnerToken::from_raw(pointer) };
-                owner.require_active()?;
-                if crate::sexp::memory::is_arena_lent(pointer) {
-                    return Err(SexpError::OwnerNotActive);
-                }
-                let names = owner.sexp(names)?;
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-                    // SAFETY: `pointer` is the projected owner whose instance
-                    // is activated only inside this pinned callback scope.
-                    crate::sexp::session::with_instance_active(pointer, || {
-                        let raw = persist_restore_inner(names.as_raw(), self.data.as_raw(), owner);
-                        owner.require_active()?;
-                        owner.sexp(raw)?.into_owned()
-                    })
-                }));
-                // Revoked authority cannot publish a value or a callback panic.
-                owner.require_active()?;
-                match result {
-                    Ok(value) => value.map(|value| value.as_raw()),
-                    Err(payload) => std::panic::resume_unwind(payload),
-                }
-            })
-            .map_err(|e| e.to_string())
+        // Compressed inputs expand transparently, as in GNU readRDS/unserialize.
+        let expanded = super::owned_input::expand(&bytes, |size| {
+            owner
+                .with_arena(|arena| arena.reserve_workspace(size))
+                .map_err(|e| std::io::Error::other(e.to_string()))?
+                .ok_or_else(super::owned_input::memory_error)
+        })
+        .unwrap_or_else(|_| error("unserialize exceeds session memory limit"));
+        let plain: &[u8] = expanded.as_deref().unwrap_or(&bytes);
+        let value = crate::mainutils::rbg1::read_object_hooked(plain, hook)
+            .unwrap_or_else(|failure| error(&failure));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| error(&e.to_string()));
+        value
     }
 }
 
@@ -213,351 +181,6 @@ impl Drop for PendingPersistEnvironment<'_> {
         }
     }
 }
-
-fn persist_restore_inner(
-    names: SEXP,
-    data: SEXP,
-    owner: crate::sexp::owner::OwnerToken<'_>,
-) -> SEXP {
-    {
-        if data.is_null() || TYPEOF(data) != SEXPTYPE::ENVSXP {
-            return R_NilValue();
-        }
-        let name = if TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) > 0 {
-            let elt = STRING_ELT(names, 0);
-            if elt.is_null() {
-                String::new()
-            } else {
-                String::from_utf8_lossy(&charsxp_as_utf8(elt)).into_owned()
-            }
-        } else {
-            String::new()
-        };
-        if name.is_empty() {
-            return R_NilValue();
-        }
-        let name_sym = install_str(&name);
-
-        let cache_sym = install_str("cache");
-        let cache = R_findVarInFrame(data, cache_sym);
-        if !cache.is_null() && cache != R_UnboundValue() && TYPEOF(cache) == SEXPTYPE::ENVSXP {
-            let hit = R_findVarInFrame(cache, name_sym);
-            if !hit.is_null() && hit != R_UnboundValue() {
-                return hit;
-            }
-        }
-        // GNU package/namespace persist: reuse the live namespace so
-        // lazy-loaded closures keep `standardGeneric` and other ns bindings.
-        let package = name.strip_prefix("package:").unwrap_or(name.as_str());
-        if let Some(live) = crate::mainutils::essentials::cached_namespace_by_name(package) {
-            if !cache.is_null() && cache != R_UnboundValue() && TYPEOF(cache) == SEXPTYPE::ENVSXP {
-                crate::sexp::envir::defineVar(name_sym, live, cache);
-            }
-            return live;
-        }
-
-        let factory = owner.node_factory();
-        let environment = factory
-            .wrap(crate::sexp::memory_ext::NewEnvironment(
-                R_NilValue(),
-                R_EmptyEnv(),
-                R_NilValue(),
-            ))
-            .unwrap_or_else(|e| error(&e.to_string()));
-        let env_raw = environment.as_raw();
-        let mut pending =
-            if !cache.is_null() && cache != R_UnboundValue() && TYPEOF(cache) == SEXPTYPE::ENVSXP {
-                let cache = factory
-                    .wrap(cache)
-                    .unwrap_or_else(|e| error(&e.to_string()));
-                let symbol = factory
-                    .wrap(name_sym)
-                    .unwrap_or_else(|e| error(&e.to_string()));
-                Some(PendingPersistEnvironment {
-                    cache,
-                    symbol,
-                    environment: environment.clone(),
-                    owner,
-                    _pin: owner.pin().unwrap_or_else(|e| error(&e.to_string())),
-                    committed: false,
-                })
-            } else {
-                None
-            };
-        if let Some(pending) = &pending {
-            crate::sexp::envir::define_var_safe(
-                pending.symbol.clone(),
-                environment.clone(),
-                pending.cache.clone(),
-            );
-        }
-        let env = env_raw;
-        let refs_sym = install_str("refs");
-        let refs = R_findVarInFrame(data, refs_sym);
-        let mut key = R_NilValue();
-        if !refs.is_null() && refs != R_UnboundValue() {
-            if TYPEOF(refs) == SEXPTYPE::ENVSXP {
-                key = R_findVarInFrame(refs, name_sym);
-            } else if TYPEOF(refs) == SEXPTYPE::VECSXP {
-                let nm = crate::sexp::attrib_core::getAttrib(
-                    refs,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                );
-                if TYPEOF(nm) == SEXPTYPE::STRSXP {
-                    for i in 0..XLENGTH(nm) {
-                        let raw = STRING_ELT(nm, i);
-                        if !raw.is_null()
-                            && String::from_utf8_lossy(&charsxp_as_utf8(raw)) == name.as_str()
-                        {
-                            key = VECTOR_ELT(refs, i);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        if key.is_null() || key == R_UnboundValue() || key == R_NilValue() {
-            error(&format!("lazy-load reference '{name}' has no payload"));
-        }
-        if TYPEOF(key) == SEXPTYPE::VECSXP {
-            let kn =
-                crate::sexp::attrib_core::getAttrib(key, crate::sexp::attrib_core::R_NamesSymbol());
-            if TYPEOF(kn) == SEXPTYPE::STRSXP {
-                for i in 0..XLENGTH(kn) {
-                    let raw = STRING_ELT(kn, i);
-                    if !raw.is_null()
-                        && String::from_utf8_lossy(&charsxp_as_utf8(raw)) == "eagerKey"
-                    {
-                        key = VECTOR_ELT(key, i);
-                        break;
-                    }
-                }
-            }
-        }
-        let datafile = R_findVarInFrame(data, install_str("datafile"));
-        let compressed = R_findVarInFrame(data, install_str("compressed"));
-        if datafile.is_null()
-            || datafile == R_UnboundValue()
-            || compressed.is_null()
-            || compressed == R_UnboundValue()
-        {
-            error("lazy-load reference lacks its database path or compression mode");
-        }
-        let fields = [key, datafile, compressed, data]
-            .map(|raw| factory.wrap(raw).unwrap_or_else(|e| error(&e.to_string())));
-        let mut args = factory.nil();
-        for field in fields.iter().rev() {
-            args = factory
-                .pairlist_cell(field, &args, &factory.nil())
-                .unwrap_or_else(|e| error(&e.to_string()));
-        }
-        let fetched = factory
-            .wrap(do_lazyLoadDBfetch(
-                R_NilValue(),
-                R_NilValue(),
-                args.as_raw(),
-                R_NilValue(),
-            ))
-            .unwrap_or_else(|e| error(&e.to_string()));
-        owner
-            .require_active()
-            .unwrap_or_else(|e| error(&e.to_string()));
-        let fetched_raw = fetched.as_raw();
-        if TYPEOF(fetched_raw) != SEXPTYPE::VECSXP {
-            error("invalid lazy-load environment payload");
-        }
-        let fetched = fetched_raw;
-        if TYPEOF(fetched) == SEXPTYPE::VECSXP {
-            let fnames = crate::sexp::attrib_core::getAttrib(
-                fetched,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-            );
-            if TYPEOF(fnames) != SEXPTYPE::STRSXP {
-                error("lazy-load environment payload has no field names");
-            }
-            let mut fields = Vec::new();
-            for i in 0..XLENGTH(fnames) {
-                let label = factory
-                    .wrap(STRING_ELT(fnames, i))
-                    .unwrap_or_else(|e| error(&e.to_string()))
-                    .as_string()
-                    .unwrap_or_default();
-                let value = factory
-                    .wrap(VECTOR_ELT(fetched, i))
-                    .unwrap_or_else(|e| error(&e.to_string()));
-                fields.push((label, value));
-            }
-            {
-                for (label, value) in fields {
-                    let elt = value.as_raw();
-                    match label.as_str() {
-                        "enclos" => {
-                            if TYPEOF(elt) != SEXPTYPE::ENVSXP {
-                                error("invalid lazy-load environment enclosure");
-                            }
-                            crate::sexp::accessors::SET_ENCLOS(env, elt);
-                        }
-                        "bindings" => {
-                            if TYPEOF(elt) != SEXPTYPE::VECSXP {
-                                error("invalid lazy-load environment bindings");
-                            }
-                            let tail = factory
-                                .pairlist_cell(&environment, &factory.nil(), &factory.nil())
-                                .unwrap_or_else(|e| error(&e.to_string()));
-                            let call = factory
-                                .pairlist_cell(&value, &tail, &factory.nil())
-                                .unwrap_or_else(|e| error(&e.to_string()));
-                            crate::mainutils::essentials::do_list2env(
-                                R_NilValue(),
-                                R_NilValue(),
-                                call.as_raw(),
-                                R_NilValue(),
-                            );
-                        }
-                        "attributes" if elt != R_NilValue() => {
-                            crate::sexp::accessors::SET_ATTRIB(env, elt);
-                        }
-                        "locked"
-                            if TYPEOF(elt) == SEXPTYPE::LGLSXP
-                                && XLENGTH(elt) > 0
-                                && value.try_logical_elt(0).unwrap_or(0) != 0 =>
-                        {
-                            crate::sexp::envir::lock_environment_raw(env);
-                        }
-                        _ => {}
-                    }
-                    owner
-                        .require_active()
-                        .unwrap_or_else(|e| error(&e.to_string()));
-                }
-            }
-        }
-        owner
-            .require_active()
-            .unwrap_or_else(|e| error(&e.to_string()));
-        if let Some(pending) = pending.as_mut() {
-            pending.committed = true;
-        }
-        env
-    }
-}
-
-fn unserialize_raw(
-    icon: SEXP,
-    hook_data: SEXP,
-    lazy_restore: Option<LazyLoadRestore>,
-) -> SEXP {
-    {
-        if icon.is_null() {
-            error("read error");
-        }
-
-        let owner = current_owner();
-        let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
-        owner
-            .require_active()
-            .unwrap_or_else(|e| error(&e.to_string()));
-        let input = owner
-            .sexp(icon)
-            .and_then(|value| value.into_owned())
-            .unwrap_or_else(|e| error(&e.to_string()));
-        let _hook = if hook_data.is_null() {
-            None
-        } else {
-            Some(
-                owner
-                    .sexp(hook_data)
-                    .and_then(|value| value.into_owned())
-                    .unwrap_or_else(|e| error(&e.to_string())),
-            )
-        };
-        // Must be RAWSXP
-        let stype = TYPEOF(icon);
-        if stype != SEXPTYPE::RAWSXP {
-            error("not a proper raw vector");
-        }
-
-        if ALTREP(input.as_raw()) != 0 {
-            input
-                .materialize_compact_payload_for_raw()
-                .unwrap_or_else(|e| error(&e.to_string()));
-        }
-        owner
-            .require_active()
-            .unwrap_or_else(|e| error(&e.to_string()));
-        let header = input.header();
-        let len = usize::try_from(input.len()).unwrap_or_else(|_| error("read error"));
-        if len == 0 {
-            error("read error");
-        }
-        let lease = header
-            .payload_lease()
-            .unwrap_or_else(|| error("raw input has no initialized payload"));
-        // Copy canonical cells before any restoration callback. The reader
-        // cannot alias an R payload that reentrant code may resize or mutate.
-        let reserve = |bytes| {
-            owner
-                .with_arena(|arena| arena.reserve_workspace(bytes))
-                .map_err(|error| std::io::Error::other(error.to_string()))?
-                .ok_or_else(super::owned_input::memory_error)
-        };
-        let reservation = reserve(len).unwrap_or_else(|failure| error(&failure.to_string()));
-        let mut data = super::owned_input::InputBytes::new(reservation, len)
-            .unwrap_or_else(|failure| error(&failure.to_string()));
-        for index in 0..len {
-            std::io::Write::write_all(
-                &mut data,
-                &[lease
-                    .byte_elt(index)
-                    .unwrap_or_else(|| error("invalid raw input payload"))],
-            )
-            .unwrap_or_else(|failure| error(&failure.to_string()));
-        }
-        unserialize_owned_input(&owner, &data, hook_data, lazy_restore)
-    }
-}
-
-/// Decode an already admitted immutable native snapshot. Callers retain the
-/// original hook graph across restoration callbacks; no borrowed R payload or
-/// interpreter field loan may span this operation.
-fn unserialize_owned_input(
-    owner: &crate::sexp::owner::OwnerToken<'_>,
-    data: &[u8],
-    hook_data: SEXP,
-    lazy_restore: Option<LazyLoadRestore>,
-) -> SEXP {
-    {
-        let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
-        owner
-            .require_active()
-            .unwrap_or_else(|e| error(&e.to_string()));
-        if data.is_empty() {
-            error("read error");
-        }
-        let reserve = |bytes| {
-            owner
-                .with_arena(|arena| arena.reserve_workspace(bytes))
-                .map_err(|error| std::io::Error::other(error.to_string()))?
-                .ok_or_else(super::owned_input::memory_error)
-        };
-        let decompressed = super::owned_input::expand(data, reserve).unwrap_or_else(|failure| {
-            if failure.kind() == std::io::ErrorKind::OutOfMemory {
-                error(&failure.to_string());
-            }
-            error("read error")
-        });
-        let payload = decompressed.as_deref().unwrap_or(data);
-        if payload.starts_with(crate::mainutils::rbg1::MAGIC) {
-            return crate::mainutils::rbg1::read_object_hooked(payload, hook_data)
-                .unwrap_or_else(|failure| error(&failure));
-        }
-        let mut reader = BinaryReader::new(payload);
-        reader.lazy_restore = lazy_restore;
-        reader.set_persist_hook(hook_data);
-        decode_stream_object(owner, &mut reader)
-    }
-}
-
 /// Decode a caller-owned immutable native snapshot without copying it into R.
 /// The caller keeps its admitted backing storage alive and unchanged through
 /// restoration callbacks. A checked hook and operation pin retain the original
@@ -570,13 +193,7 @@ pub(crate) fn unserialize_native_snapshot(
     let _pin = owner.pin()?;
     owner.require_active()?;
     let hook = owner.sexp(hook.as_raw())?.into_owned()?;
-    let lazy_restore =
-        (hook.typeof_() == SEXPTYPE::ENVSXP).then(|| LazyLoadRestore { data: hook.clone() });
-    let hook_data = if lazy_restore.is_some() {
-        R_NilValue()
-    } else {
-        hook.as_raw()
-    };
+    let hook_data = hook.as_raw();
     // RBG1 frames materialize through the graph reader; anything else is a
     // legacy GNU stream during the migration.
     if data.len() >= 4 && data[..4] == *crate::mainutils::rbg1::MAGIC {
@@ -591,11 +208,9 @@ pub(crate) fn unserialize_native_snapshot(
         owner.require_active()?;
         return owner.sexp(value)?.into_owned();
     }
-    // SAFETY: the native slice is immutable and its caller owns its complete
-    // backing across callbacks. The original hook graph is owned above.
-    let result = { unserialize_owned_input(owner, data, hook_data, lazy_restore) };
-    owner.require_active()?;
-    owner.sexp(result)?.into_owned()
+    Err(crate::sexp::object::SexpError::EvaluationFailed {
+        message: "not an RBG1 serialized object".to_string(),
+    })
 }
 
 /// Expand a complete workspace before parsing its magic and serialized body.
@@ -627,98 +242,10 @@ pub(crate) fn decode_workspace_snapshot(
         }
         return owner.sexp(decoded)?.into_owned();
     }
-    let mut reader = BinaryReader::new(body);
-    // SAFETY: the caller keeps the complete, admitted body alive through
-    // decoding; no R payload loan is live.
-    let decoded = { decode_stream_object(owner, &mut reader) };
-    owner.require_active()?;
-    let trailing = &body[reader.pos..];
-    if !(trailing.is_empty() || ascii && trailing.iter().all(u8::is_ascii_whitespace)) {
-        crate::sexp::context::r_error("unexpected data after workspace");
-    }
-    owner.sexp(decoded)?.into_owned()
+    Err(crate::sexp::object::SexpError::EvaluationFailed {
+        message: "not an RBG1 workspace body".to_string(),
+    })
 }
-
-/// Parse the stream header (format, versions, native encoding) and decode the
-/// single object that follows. The reader's byte source — slice or pull —
-/// determines how many input bytes this consumes.
-fn decode_stream_object(
-    owner: &crate::sexp::owner::OwnerToken<'_>,
-    reader: &mut BinaryReader<'_>,
-) -> SEXP {
-    {
-        // Read format header: two bytes (`A\n`, `B\n`, or `X\n`).
-        let mut fmt1 = reader.read_byte().unwrap_or(0);
-        let mut fmt2 = reader.read_byte().unwrap_or(0);
-        // GNU InFormat accepts exactly the newline left by an ASCII string,
-        // followed by the next ASCII header. Other leading whitespace and
-        // newlines before binary/XDR headers remain invalid.
-        if fmt1 == b'\n' && fmt2 == b'A' {
-            fmt1 = b'A';
-            fmt2 = reader.read_byte().unwrap_or(0);
-        }
-        if (fmt1 != b'A' && fmt1 != b'B' && fmt1 != b'X') || fmt2 != b'\n' {
-            error("unknown input format");
-        }
-        reader.set_ascii_body(fmt1 == b'A');
-        reader.set_xdr_body(fmt1 == b'X');
-
-        // Read version
-        let version = reader.read_i32().unwrap_or(0);
-        if version != 2 && version != 3 {
-            error("version not supported");
-        }
-
-        // Read writer_version and min_reader_version
-        let _writer_version = reader.read_i32().unwrap_or(0);
-        let _min_reader_version = reader.read_i32().unwrap_or(0);
-
-        // Read native encoding length (version 3)
-        if version == 3 {
-            let nelen = reader.read_i32().unwrap_or(0);
-            if nelen > 0 {
-                // Skip encoding bytes
-                let _ = reader.read_bytes(nelen as usize);
-            }
-        }
-
-        // No partially decoded graph exists yet. At pressure, collect only
-        // after actual growth since the previous collection. A large live
-        // namespace otherwise triggers a full trace before every tiny lazy
-        // record, even when the preceding trace reclaimed nothing. Admission
-        // caps still apply to every allocation; input and restoration hooks
-        // remain owning roots across collection callbacks.
-        let collect = owner
-            .with_arena(|arena| {
-                arena.budget_pressure_warrants_full_gc() && arena.growth_warrants_gc()
-            })
-            .unwrap_or_else(|e| error(&e.to_string()));
-        if collect {
-            owner.full_gc().unwrap_or_else(|e| error(&e.to_string()));
-            owner
-                .require_active()
-                .unwrap_or_else(|e| error(&e.to_string()));
-        }
-
-        // Read the object
-        let mut ref_table = ReadRefTable::for_owner(&owner);
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            ReadItemInternal(reader, &mut ref_table)
-        }));
-        owner
-            .require_active()
-            .unwrap_or_else(|e| error(&e.to_string()));
-        match outcome {
-            Ok(Ok(s)) => owner
-                .sexp(s)
-                .unwrap_or_else(|e| error(&e.to_string()))
-                .as_raw(),
-            Ok(Err(message)) => error(&message),
-            Err(payload) => std::panic::resume_unwind(payload),
-        }
-    }
-}
-
 /// `unserialize(connection)`: decode exactly one serialized object from the
 /// connection, pulling bytes on demand (GNU `R_InitConnInPStream` /
 /// `ConnReadChar` data flow). Trailing bytes stay unread in the connection.
@@ -736,8 +263,14 @@ fn R_unserialize_from_conn(index: std::os::raw::c_int, hook: SEXP) -> SEXP {
             .unwrap_or_else(|e| error(&e.to_string()));
         let token = crate::mainutils::connections::connection_token(index)
             .unwrap_or_else(|message| error(&message));
-        let mut fill = |buf: &mut super::owned_input::InputBytes, need: usize| -> bool {
-            // Validate even if the reader already has the requested bytes.
+        let reservation = owner
+            .with_arena(|a| a.reserve_workspace(0))
+            .unwrap_or_else(|e| error(&e.to_string()))
+            .unwrap_or_else(|| error("unserialize exceeds session memory limit"));
+        let mut buf = super::owned_input::InputBytes::new(reservation, 0)
+            .unwrap_or_else(|_| error("unserialize exceeds session memory limit"));
+        let fill = |buf: &mut super::owned_input::InputBytes, need: usize| -> bool {
+            // Validate even if the buffer already holds the requested bytes.
             // A restoration hook can close/reuse a slot between reads.
             owner
                 .require_active()
@@ -759,63 +292,38 @@ fn R_unserialize_from_conn(index: std::os::raw::c_int, hook: SEXP) -> SEXP {
             true
         };
         // Compression belongs to the connection (gzfile/gzcon), as in GNU.
-        // Sniffing and buffering a gzip payload here consumed later objects
-        // and made hook-observed cursor positions describe the wrong stream.
-        let mut reader = BinaryReader::new_pull(&owner, &mut fill);
-        // RBG1 frames are self-delimiting. Detection happens inside the
-        // reader's own pull buffer: bytes are fetched through the same
-        // accounting the GNU decoder would use, so nothing is ever lost —
-        // even when decoding fails mid-stream.
-        let is_rbg1 = {
-            let pull = reader.pull.as_mut().unwrap_or_else(|| error("pull missing"));
-            (pull.fill)(&mut pull.buf, 4)
-                && pull.buf.len() >= 4
-                && pull.buf[0] == b'R'
-                && pull.buf[1] == b'B'
-                && pull.buf[2] == b'G'
-                && pull.buf[3] == b'1'
-        };
-        if is_rbg1 {
-            let header_len = crate::mainutils::rbg1::HEADER_LEN;
-            let total = {
-                let pull = reader.pull.as_mut().unwrap_or_else(|| error("pull missing"));
-                if !(pull.fill)(&mut pull.buf, header_len) {
-                    error("truncated RBG1 stream header");
-                }
-                let compressed_len =
-                    u64::from_le_bytes(pull.buf[17..25].try_into().unwrap()) as usize;
-                let total = header_len + compressed_len;
-                if !(pull.fill)(&mut pull.buf, total) {
-                    error("truncated RBG1 stream frame");
-                }
-                total
-            };
-            let frame = reader
-                .read_bytes(total)
-                .map(|slice| slice.to_vec())
-                .unwrap_or_else(|failure| error(&failure));
-            owner
-                .require_active()
-                .unwrap_or_else(|e| error(&e.to_string()));
-            let value = crate::mainutils::rbg1::read_object_hooked(&frame, hook.as_raw())
-                .unwrap_or_else(|failure| error(&failure));
-            let result = owner.sexp(value).unwrap_or_else(|e| error(&e.to_string()));
-            let leftover = reader.leftover();
-            if !leftover.is_empty() {
-                owner
-                    .require_active()
-                    .unwrap_or_else(|e| error(&e.to_string()));
-                let index = token
-                    .require_current()
-                    .unwrap_or_else(|message| error(&message));
-                crate::mainutils::connections::connection_pushback(index, leftover);
+        // RBG1 frames are self-delimiting: probe bytes stay in this buffer
+        // through the same accounting, so nothing is ever lost — even when
+        // decoding fails mid-stream.
+        let header_len = crate::mainutils::rbg1::HEADER_LEN;
+        let total = {
+            if !fill(&mut buf, header_len) {
+                error("truncated RBG1 stream header");
             }
-            return result.as_raw();
-        }
-        configure_conn_hooks(&owner, &mut reader, hook.as_raw());
-        let result = decode_stream_object(&owner, &mut reader);
-        let result = owner.sexp(result).unwrap_or_else(|e| error(&e.to_string()));
-        let leftover = reader.leftover();
+            if buf.len() < 4
+                || buf[0] != b'R'
+                || buf[1] != b'B'
+                || buf[2] != b'G'
+                || buf[3] != b'1'
+            {
+                error("not an RBG1 serialization stream");
+            }
+            let compressed_len =
+                u64::from_le_bytes(buf[17..25].try_into().unwrap()) as usize;
+            let total = header_len + compressed_len;
+            if !fill(&mut buf, total) {
+                error("truncated RBG1 stream frame");
+            }
+            total
+        };
+        let frame = buf[..total].to_vec();
+        owner
+            .require_active()
+            .unwrap_or_else(|e| error(&e.to_string()));
+        let value = crate::mainutils::rbg1::read_object_hooked(&frame, hook.as_raw())
+            .unwrap_or_else(|failure| error(&failure));
+        let result = owner.sexp(value).unwrap_or_else(|e| error(&e.to_string()));
+        let leftover = &buf[total..];
         if !leftover.is_empty() {
             owner
                 .require_active()
@@ -827,28 +335,7 @@ fn R_unserialize_from_conn(index: std::os::raw::c_int, hook: SEXP) -> SEXP {
         }
         result.as_raw()
     }
-}
-
-/// Apply the `refhook` argument of `unserialize(connection, refhook)`.
-fn configure_conn_hooks(
-    owner: &crate::sexp::owner::OwnerToken<'_>,
-    reader: &mut BinaryReader<'_>,
-    hook: SEXP,
-) {
-    {
-        if !hook.is_null() && hook != R_NilValue() && TYPEOF(hook) == SEXPTYPE::ENVSXP {
-            let data = owner
-                .sexp(hook)
-                .and_then(|s| s.into_owned())
-                .unwrap_or_else(|e| error(&e.to_string()));
-            reader.lazy_restore = Some(LazyLoadRestore { data });
-        } else {
-            reader.set_persist_hook(hook);
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
+}// ---------------------------------------------------------------------------
 // R_serializeb
 // ---------------------------------------------------------------------------
 
@@ -1184,10 +671,3 @@ pub fn do_lazyLoadDBinsertValue(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
     }
 }
 
-#[cfg(test)]
-#[path = "persistence_tests.rs"]
-mod persistence_tests;
-
-#[cfg(test)]
-#[path = "connection_stream_tests.rs"]
-mod connection_stream_tests;
