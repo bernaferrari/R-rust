@@ -2221,6 +2221,7 @@ fn call_primitive_inner(
                     _ => (0.0, None),
                 }
             };
+            let pairlist_names = iteration_names(heap, interner, x);
             let names = get_attrib(heap, interner, x, "names");
             let combined: ValueId = match heap.object(template) {
                 Some(RObject::String(_)) => {
@@ -2252,7 +2253,11 @@ fn call_primitive_inner(
                     heap.alloc(RObject::Real(out))
                 }
             };
-            if let Some(nm) = names {
+            if !pairlist_names.is_empty() && matches!(heap.object(x), Some(RObject::Pairlist { .. })) {
+                let interned: Vec<_> = pairlist_names.iter().map(|n| interner.intern_string(n)).collect();
+                let names_obj = heap.alloc(RObject::String(interned));
+                copy_with_attrib(heap, interner, combined, "names", names_obj).map_err(RSignal::from)
+            } else if let Some(nm) = names {
                 copy_with_attrib(heap, interner, combined, "names", nm).map_err(RSignal::from)
             } else {
                 Ok(combined)
@@ -3729,6 +3734,25 @@ fn sequence_elements(heap: &mut Heap, seq: ValueId) -> Result<Vec<ValueId>, RSig
             .map(|v| RObject::Logical(vec![*v]))
             .collect(),
         Some(RObject::List(elements)) => return Ok(elements.clone()),
+        // Pairlist chains iterate their node cars exactly as apply over
+        // formals does in GNU.
+        Some(RObject::Pairlist { .. }) => {
+            let mut out = Vec::new();
+            let mut cursor = seq;
+            loop {
+                match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, cdr, .. }) => {
+                        out.push(*car);
+                        if *cdr == ValueId::NIL {
+                            break;
+                        }
+                        cursor = *cdr;
+                    }
+                    _ => break,
+                }
+            }
+            return Ok(out);
+        }
         _ => {
             return Err(EvalError::TypeError("for sequence must be a vector").into());
         }
@@ -5764,10 +5788,15 @@ fn paste_primitive(
         }
         return Ok(heap.alloc(RObject::String(Vec::new())));
     }
-    // Coerce and recycle elementwise.
+    // Coerce and recycle elementwise — NULL operands contribute empty
+    // columns exactly as GNU's paste(NULL) yields character(0).
     let mut columns = Vec::new();
     for operand in operands {
-        columns.push(strings_of_value(heap, interner, operand).map_err(RSignal::from)?);
+        if operand == ValueId::NIL || matches!(heap.object(operand), Some(RObject::Nil)) {
+            columns.push(Vec::new());
+        } else {
+            columns.push(strings_of_value(heap, interner, operand).map_err(RSignal::from)?);
+        }
     }
     // GNU paste coercion renders NA_character_ as the text "NA" — the
     /// conversion lives here, not in shared string coercion, so nchar and
@@ -6416,12 +6445,32 @@ fn apply_family(
             results.push(apply_fun_to(heap, interner, fun, element, caller_env)?);
         }
     }
+    // Iteration names ride the output exactly as GNU's apply family —
+    // pairlist inputs contribute their tags.
+    let iter_names = iteration_names(heap, interner, operands[0]);
+    let stamp_names = |heap: &mut Heap, interner: &mut SymbolInterner, result: ValueId| -> EvalResult {
+        if !iter_names.is_empty() {
+            let interned: Vec<_> = iter_names.iter().map(|n| interner.intern_string(n)).collect();
+            let names_obj = heap.alloc(RObject::String(interned));
+            return copy_with_attrib(heap, interner, result, "names", names_obj).map_err(Into::into);
+        }
+        Ok(result)
+    };
     if op == LAPPLY {
-        return Ok(heap.alloc(RObject::List(results)));
+        let list = heap.alloc(RObject::List(results));
+        return stamp_names(heap, interner, list);
     }
     // sapply simplification: homogeneous length-one atomic results unbox
     // into a single vector of the common type; anything else stays a list.
-    simplify_sapply(heap, results)
+    let simplified = simplify_sapply(heap, results)?;
+    // GNU carries input names onto the simplified output whenever the
+    // lengths align — vector names and pairlist tags alike.
+    let out_len = vector_length(heap, simplified).unwrap_or(0);
+    if !iter_names.is_empty() && iter_names.len() == out_len {
+        stamp_names(heap, interner, simplified)
+    } else {
+        Ok(simplified)
+    }
 }
 
 /// GNU's simplification rule shape: every result a length-one atomic vector
@@ -8758,9 +8807,9 @@ fn length_assign_primitive(
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 2)?;
     let target = match heap.object(operands[1]) {
-        Some(RObject::Real(v)) if !v.is_empty() => v[0] as usize,
-        Some(RObject::Integer(v)) if !v.is_empty() => v[0] as usize,
-        _ => return Err(EvalError::TypeError("length replacement must be numeric").into()),
+        Some(RObject::Real(v)) if !v.is_empty() && !v[0].is_nan() && v[0] >= 0.0 => v[0] as usize,
+        Some(RObject::Integer(v)) if !v.is_empty() && v[0] != crate::value::object::NA_INTEGER && v[0] >= 0 => v[0] as usize,
+        _ => return Err(EvalError::Condition("invalid value".to_string()).into()),
     };
     let object = heap.object(operands[0]).cloned()
         .ok_or(EvalError::TypeError("length target missing"))?;
@@ -8786,14 +8835,38 @@ fn length_assign_primitive(
             v.resize(target, ValueId::NIL);
             RObject::List(v)
         }
+        RObject::Complex(mut v) => {
+            v.resize(target, crate::value::object::RComplex {
+                r: f64::from_bits(crate::value::object::NA_REAL_BITS),
+                i: f64::from_bits(crate::value::object::NA_REAL_BITS),
+            });
+            RObject::Complex(v)
+        }
+        RObject::Raw(mut v) => {
+            v.resize(target, 0u8);
+            RObject::Raw(v)
+        }
         _ => return Err(EvalError::TypeError("length replacement target").into()),
     };
-    // The attribute chain survives the resize — GNU drops dim but keeps
-    /// names for extension; the slice copies the chain wholesale.
+    // GNU drops dim/dimnames on resize; names survive and pad with empty
+    // strings when the vector extends.
     let chain = heap.get(operands[0]).map(|slot| slot.attrib).unwrap_or(ValueId::NIL);
     let id = heap.alloc(resized);
     if let Some(slot) = heap.get_mut(id) {
         slot.attrib = chain;
+    }
+    let id = remove_attrib(heap, interner, id, "dim").map_err(RSignal::from)?;
+    let id = remove_attrib(heap, interner, id, "dimnames").map_err(RSignal::from)?;
+    if let Some(names_id) = get_attrib(heap, interner, id, "names") {
+        if let Some(RObject::String(vals)) = heap.object(names_id) {
+            let mut vals = vals.clone();
+            if vals.len() != target {
+                let empty = interner.intern_string("");
+                vals.resize(target, empty);
+                let names_obj = heap.alloc(RObject::String(vals));
+                return copy_with_attrib(heap, interner, id, "names", names_obj).map_err(Into::into);
+            }
+        }
     }
     Ok(id)
 }
@@ -14297,5 +14370,36 @@ fn reverse_value(heap: &mut Heap, interner: &mut SymbolInterner, value: ValueId)
             names_rev(heap, interner, result, value)
         }
         _ => Ok(value),
+    }
+}
+
+/// Names for apply iteration exactly as GNU: pairlist inputs carry their
+/// node tags, vectors their names attribute.
+fn iteration_names(heap: &Heap, interner: &SymbolInterner, x: ValueId) -> Vec<String> {
+    if matches!(heap.object(x), Some(RObject::Pairlist { .. })) {
+        let mut out = Vec::new();
+        let mut cursor = x;
+        loop {
+            match heap.object(cursor) {
+                Some(RObject::Pairlist { cdr, tag, .. }) => {
+                    match heap.object(*tag) {
+                        Some(RObject::Symbol { name, .. }) => {
+                            out.push(interner.symbol_name(*name).to_string());
+                        }
+                        _ => out.push(String::new()),
+                    }
+                    if *cdr == ValueId::NIL {
+                        break;
+                    }
+                    cursor = *cdr;
+                }
+                _ => break,
+            }
+        }
+        return out;
+    }
+    match get_attrib(heap, interner, x, "names") {
+        Some(n) => string_vec(heap, interner, n),
+        None => Vec::new(),
     }
 }
