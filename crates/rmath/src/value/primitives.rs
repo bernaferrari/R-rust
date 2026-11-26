@@ -2141,6 +2141,13 @@ fn call_primitive_inner(
                     }
                     _ => None,
                 };
+                if car == ValueId::MISSING {
+                    return Err(EvalError::Condition(format!(
+                        "argument {} is empty",
+                        items.len() + 1
+                    ))
+                    .into());
+                }
                 let evaluated = eval(heap, interner, car, caller_env)?;
                 items.push(force_if_promise(heap, interner, evaluated)?);
                 tags.push(tag_name);
@@ -2686,6 +2693,15 @@ fn eval_args(
             Some(RObject::Pairlist { car, cdr, .. }) => (*car, *cdr),
             _ => break,
         };
+        // Empty actual arguments error with their 1-based call position
+        /// exactly as GNU's argument forcing reports them.
+        if car == ValueId::MISSING {
+            return Err(EvalError::Condition(format!(
+                "argument {} is empty",
+                operands.len() + 1
+            ))
+            .into());
+        }
         let evaluated = eval(heap, interner, car, caller_env)?;
         operands.push(force_if_promise(heap, interner, evaluated)?);
         if cdr == ValueId::NIL {
@@ -3283,6 +3299,13 @@ fn concat_primitive_inner(
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
             _ => None,
         };
+        if car == ValueId::MISSING {
+            return Err(EvalError::Condition(format!(
+                "argument {} is empty",
+                operands.len() + 1
+            ))
+            .into());
+        }
         let evaluated = eval(heap, interner, car, caller_env)?;
         operands.push(force_if_promise(heap, interner, evaluated)?);
         tags.push(tag_name);
@@ -4220,6 +4243,13 @@ fn reduction(
             Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
             _ => break,
         };
+        if car == ValueId::MISSING {
+            return Err(EvalError::Condition(format!(
+                "argument {} is empty",
+                inputs.len() + 1
+            ))
+            .into());
+        }
         let evaluated = eval(heap, interner, car, caller_env)?;
         let value = force_if_promise(heap, interner, evaluated)?;
         let tag_name = match heap.object(tag) {
