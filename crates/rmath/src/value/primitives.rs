@@ -4468,14 +4468,52 @@ fn writelines_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    let operands = eval_args(heap, interner, args, caller_env, 2)?;
-    let lines = string_vec(heap, interner, operands[0]);
-    let path = string_operand(heap, interner, operands[1])
+    // Tagged-argument walk: text positional first, con and sep by name or
+    /// position exactly as GNU's argument matching.
+    let mut text_arg = ValueId::NIL;
+    let mut con_arg = ValueId::NIL;
+    let mut sep = "\n".to_string();
+    let mut positional = 0usize;
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        positional += 1;
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let v = force_if_promise(heap, interner, evaluated)?;
+        match tag_name.as_deref() {
+            Some("con") => con_arg = v,
+            Some("sep") => {
+                if let Some(s) = string_operand(heap, interner, v) {
+                    sep = s;
+                }
+            }
+            _ => {
+                if positional == 1 {
+                    text_arg = v;
+                } else if positional == 2 {
+                    con_arg = v;
+                }
+            }
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    let lines = string_vec(heap, interner, text_arg);
+    let path = string_operand(heap, interner, con_arg)
         .ok_or(EvalError::TypeError("writeLines connection must be a filename"))?;
     let mut content = String::new();
     for line in &lines {
         content.push_str(line);
-        content.push('\n');
+        content.push_str(&sep);
     }
     std::fs::write(&path, content)
         .map_err(|_| RSignal::Error(EvalError::TypeError("writeLines: cannot open file")))?;
@@ -4490,14 +4528,60 @@ fn readlines_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    let operands = eval_args(heap, interner, args, caller_env, 1)?;
-    let path = string_operand(heap, interner, operands[0])
+    // Tagged-argument walk: con positional, n limits lines, warn ignored
+    /// in the migration slice.
+    let mut con_arg = ValueId::NIL;
+    let mut n_limit: Option<usize> = None;
+    let mut positional = 0usize;
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        positional += 1;
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let v = force_if_promise(heap, interner, evaluated)?;
+        match tag_name.as_deref() {
+            Some("n") => {
+                if let Some(RObject::Real(vals)) = heap.object(v) {
+                    if !vals.is_empty() {
+                        n_limit = Some(vals[0] as usize);
+                    }
+                }
+            }
+            Some("warn") => {}
+            _ => {
+                if positional == 1 {
+                    con_arg = v;
+                } else if positional == 2 && n_limit.is_none() {
+                    if let Some(RObject::Real(vals)) = heap.object(v) {
+                        if !vals.is_empty() {
+                            n_limit = Some(vals[0] as usize);
+                        }
+                    }
+                }
+            }
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    let path = string_operand(heap, interner, con_arg)
         .ok_or(EvalError::TypeError("readLines connection must be a filename"))?;
     let content = std::fs::read_to_string(&path)
         .map_err(|_| RSignal::Error(EvalError::TypeError("readLines: cannot open file")))?;
     let mut lines: Vec<&str> = content.split('\n').collect();
     if lines.last() == Some(&"") {
         lines.pop();
+    }
+    if let Some(n) = n_limit {
+        lines.truncate(n);
     }
     let interned: Vec<super::intern::InternedStr> = lines
         .iter()
