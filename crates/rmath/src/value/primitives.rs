@@ -304,6 +304,12 @@ pub mod primitive_ids {
     pub const PF: u32 = 286;
     pub const QF: u32 = 287;
     pub const SUBSTR: u32 = 288;
+    pub const FILE_FN: u32 = 289;
+    pub const ISOPEN: u32 = 290;
+    pub const CLOSE_FN: u32 = 291;
+    pub const FLUSH_FN: u32 = 292;
+    pub const WRITECHAR: u32 = 293;
+    pub const READCHAR: u32 = 294;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -334,7 +340,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -362,7 +368,7 @@ pub(crate) fn call_primitive(
             ASSIGN | SUPERASSIGN | PRINT | CAT | INVISIBLE | WHILE | REPEAT | FOR
                 | WRITELINES | ASSIGN_FN | FILE_REMOVE | FILE_COPY | FILE_RENAME
                 | SYS_SETENV | SYS_UNSETENV | UNLINK | DIR_CREATE | SAVE | RM | DPUT
-                | WARNING | MESSAGE_FN
+                | WARNING | MESSAGE_FN | CLOSE_FN | FLUSH_FN | WRITECHAR
         );
     }
     result
@@ -1142,6 +1148,17 @@ fn call_primitive_inner(
             }
             Ok(heap.alloc(RObject::String(out)))
         }
+        FILE_FN => file_primitive(heap, interner, args, caller_env),
+        ISOPEN => isopen_primitive(heap, interner, args, caller_env),
+        CLOSE_FN => close_primitive(heap, interner, args, caller_env),
+        FLUSH_FN => {
+            // Write-through connections mean flush is observationally a
+            // no-op — invisible NULL exactly as GNU.
+            heap.visible = false;
+            Ok(ValueId::NIL)
+        }
+        WRITECHAR => writechar_primitive(heap, interner, args, caller_env),
+        READCHAR => readchar_primitive(heap, interner, args, caller_env),
         USEMETHOD => usemethod_primitive(heap, interner, args, caller_env),
         NEXTMETHOD => nextmethod_primitive(heap, interner, caller_env),
         GETS3METHOD => {
@@ -3375,7 +3392,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom", "message", "missing", "parent.env", "order", "rank", "ordered", "is.ordered", "is.factor", "na.omit", "na.exclude", "pbeta", "dbeta", "qbeta", "find", "UseMethod", "NextMethod", "getS3method", "emptyenv", "as.integer", "as.numeric", "as.double", "stopifnot", "sequence", "rep.int", "rep_len", "dt", "pt", "qt", "sample", "sample.int", "builtins", "regexec", "df", "pf", "qf", "substr",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom", "message", "missing", "parent.env", "order", "rank", "ordered", "is.ordered", "is.factor", "na.omit", "na.exclude", "pbeta", "dbeta", "qbeta", "find", "UseMethod", "NextMethod", "getS3method", "emptyenv", "as.integer", "as.numeric", "as.double", "stopifnot", "sequence", "rep.int", "rep_len", "dt", "pt", "qt", "sample", "sample.int", "builtins", "regexec", "df", "pf", "qf", "substr", "file", "isOpen", "close", "flush", "writeChar", "readChar",
     ]
 }
 
@@ -3652,6 +3669,12 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "pf" => Some(PF),
         "qf" => Some(QF),
         "substr" => Some(SUBSTR),
+        "file" => Some(FILE_FN),
+        "isOpen" => Some(ISOPEN),
+        "close" => Some(CLOSE_FN),
+        "flush" => Some(FLUSH_FN),
+        "writeChar" => Some(WRITECHAR),
+        "readChar" => Some(READCHAR),
         _ => None,
     }
 }
@@ -7148,6 +7171,7 @@ fn trycatch_primitive(
             };
             let message = match &error {
                 EvalError::Condition(text) => text.clone(),
+                EvalError::TypeError(text) => text.to_string(),
                 EvalError::UnboundVariable(name) => format!("object '{name}' not found"),
                 other => format!("{other:?}"),
             };
@@ -7529,15 +7553,23 @@ fn writelines_primitive(
         cursor = cdr;
     }
     let lines = string_vec(heap, interner, text_arg);
-    let path = string_operand(heap, interner, con_arg)
-        .ok_or(EvalError::TypeError("writeLines connection must be a filename"))?;
     let mut content = String::new();
     for line in &lines {
         content.push_str(line);
         content.push_str(&sep);
     }
-    std::fs::write(&path, content)
-        .map_err(|_| RSignal::Error(EvalError::TypeError("writeLines: cannot open file")))?;
+    // Connection objects write through the shared state; path strings
+    /// truncate-write exactly as the pre-connection behavior. GNU's
+    /// writeLines returns invisible NULL either way.
+    if is_connection(heap, con_arg) {
+        connection_write(heap, con_arg, content.as_bytes()).map_err(RSignal::from)?;
+    } else {
+        let path = string_operand(heap, interner, con_arg)
+            .ok_or(EvalError::TypeError("writeLines connection must be a filename"))?;
+        std::fs::write(&path, content)
+            .map_err(|_| RSignal::Error(EvalError::TypeError("writeLines: cannot open file")))?;
+    }
+    heap.visible = false;
     Ok(ValueId::NIL)
 }
 
@@ -10704,6 +10736,207 @@ fn regexec_primitive(
         entries.push(entry);
     }
     Ok(heap.alloc(RObject::List(entries)))
+}
+
+
+/// Connection state — the write-through design: write modes append bytes
+/// to the real file on every write call so flush is observationally exact,
+/// read modes snapshot the file at open and track the cursor position.
+/// Mutation flows through RefCell interior mutability inside the shared
+/// External Rc — every alias of the connection observes the same state.
+pub struct ConnCell(pub std::cell::RefCell<ConnState>);
+
+pub struct ConnState {
+    pub path: String,
+    pub open: bool,
+    pub read_buf: Vec<u8>,
+    pub cursor: usize,
+}
+
+/// Scoped access to the connection state through the shared cell — the
+/// downcast reference is enough because RefCell provides the mutation.
+fn with_conn<R>(heap: &Heap, value: ValueId, f: impl FnOnce(&mut ConnState) -> R) -> Option<R> {
+    match heap.object(value) {
+        Some(RObject::External(any)) => any
+            .downcast_ref::<ConnCell>()
+            .map(|cell| f(&mut cell.0.borrow_mut())),
+        _ => None,
+    }
+}
+
+fn is_connection(heap: &Heap, value: ValueId) -> bool {
+    matches!(heap.object(value), Some(RObject::External(any)) if any.downcast_ref::<ConnCell>().is_some())
+}
+
+/// file(path, mode) — create the connection exactly as GNU: write modes
+/// truncate the target immediately, read modes snapshot at open.
+fn file_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    let path = string_operand(heap, interner, operands[0])
+        .ok_or(EvalError::TypeError("file requires a path"))?;
+    let mode = string_operand(heap, interner, operands[1]).unwrap_or_else(|| "r".to_string());
+    let readable = mode.starts_with('r');
+    let read_buf = if readable {
+        std::fs::read(&path).unwrap_or_default()
+    } else {
+        let _ = std::fs::write(&path, b"");
+        Vec::new()
+    };
+    let state = ConnState { path, open: true, read_buf, cursor: 0 };
+    let cell = std::rc::Rc::new(ConnCell(std::cell::RefCell::new(state)));
+    Ok(heap.alloc(RObject::External(cell)))
+}
+
+/// isOpen(con) — GNU errors "invalid connection" on closed connections
+/// because close drops the registration; open connections report TRUE.
+fn isopen_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    match with_conn(heap, operands[0], |state| state.open) {
+        Some(true) => Ok(heap.alloc(RObject::Logical(vec![1]))),
+        _ => Err(EvalError::TypeError("invalid connection").into()),
+    }
+}
+
+/// close(con) — mark closed through the shared cell; the write-through
+/// file is already byte-exact on disk.
+fn close_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    match with_conn(heap, operands[0], |state| {
+        state.open = false;
+    }) {
+        Some(()) => {
+            heap.visible = false;
+            Ok(ValueId::NIL)
+        }
+        None => Err(EvalError::TypeError("invalid connection").into()),
+    }
+}
+
+/// Append bytes through a write connection — write-through to disk.
+fn connection_write(heap: &Heap, con: ValueId, bytes: &[u8]) -> Result<(), EvalError> {
+    match with_conn(heap, con, |state| {
+        if state.open {
+            use std::io::Write;
+            let _ = std::fs::OpenOptions::new()
+                .append(true)
+                .open(&state.path)
+                .and_then(|mut f| f.write_all(bytes));
+            true
+        } else {
+            false
+        }
+    }) {
+        Some(true) => Ok(()),
+        _ => Err(EvalError::TypeError("invalid connection")),
+    }
+}
+
+/// writeChar(object, con, nchars, eos) — raw bytes through the connection
+/// exactly as GNU's binary write, nchars truncating the text.
+fn writechar_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let mut positional: Vec<ValueId> = Vec::new();
+    let mut nchars: Option<usize> = None;
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let v = force_if_promise(heap, interner, evaluated)?;
+        match tag_name.as_deref() {
+            Some("nchars") => {
+                nchars = match heap.object(v) {
+                    Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals.first().copied().map(|x| x as usize),
+                    Some(RObject::Real(vals)) => vals.first().copied().map(|x| x as usize),
+                    _ => None,
+                };
+            }
+            Some("eos") | Some("useBytes") => {}
+            _ => positional.push(v),
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    if positional.len() >= 2 {
+        let text = string_vec(heap, interner, positional[0]).join("");
+        let bytes: Vec<u8> = match nchars {
+            Some(n) => text.bytes().take(n).collect(),
+            None => text.bytes().collect(),
+        };
+        connection_write(heap, positional[1], &bytes).map_err(RSignal::from)?;
+    }
+    heap.visible = false;
+    Ok(ValueId::NIL)
+}
+
+/// readChar(con, nchars, useBytes) — n raw bytes from the cursor as one
+/// string advancing exactly as GNU's binary read; the path form reads
+/// the file head directly.
+fn readchar_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    let n = match heap.object(operands[1]) {
+        Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals.first().copied().unwrap_or(0) as usize,
+        Some(RObject::Real(vals)) => vals.first().copied().unwrap_or(0.0) as usize,
+        _ => 0,
+    };
+    if is_connection(heap, operands[0]) {
+        let outcome = with_conn(heap, operands[0], |state| {
+            if !state.open {
+                return None;
+            }
+            let start = state.cursor;
+            let end = (start + n).min(state.read_buf.len());
+            let slice = state.read_buf[start..end].to_vec();
+            state.cursor = end;
+            Some(slice)
+        });
+        return match outcome {
+            Some(Some(slice)) => {
+                let text: String = slice.iter().map(|b| *b as char).collect();
+                Ok(heap.alloc(RObject::String(vec![interner.intern_string(&text)])))
+            }
+            _ => Err(EvalError::TypeError("invalid connection").into()),
+        };
+    }
+    if let Some(path) = string_operand(heap, interner, operands[0]) {
+        let bytes = std::fs::read(&path).unwrap_or_default();
+        let slice: Vec<u8> = bytes.into_iter().take(n).collect();
+        let text: String = slice.iter().map(|b| *b as char).collect();
+        return Ok(heap.alloc(RObject::String(vec![interner.intern_string(&text)])));
+    }
+    Err(EvalError::TypeError("invalid connection").into())
 }
 
 /// class vector membership — the shared predicate behind is.factor/is.ordered.
