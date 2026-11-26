@@ -698,7 +698,6 @@ fn delete_dll(path: &CStr) -> bool {
 /// cdynload); the loaded library can execute arbitrary native code during
 /// `R_init_` and later calls.
 unsafe fn AddDLL(path: &CStr, as_local: c_int, now: c_int) -> Option<Rc<LoadedDll>> {
-    crate::mainutils::registration::retain_native_registration_exports();
     // Check if already loaded — if so, move to end of list (most recent)
     let already_loaded = with_dynload_state(|state| {
         let index = state
