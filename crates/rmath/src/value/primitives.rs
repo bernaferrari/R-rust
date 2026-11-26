@@ -241,6 +241,8 @@ pub mod primitive_ids {
     pub const RAW_CTOR: u32 = 223;
     pub const VECTOR_FN: u32 = 224;
     pub const IDENTITY_FN: u32 = 225;
+    pub const PARSE_FN: u32 = 226;
+    pub const EVAL_FN: u32 = 227;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -271,7 +273,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -288,7 +290,9 @@ pub(crate) fn call_primitive(
     let result = call_primitive_inner(heap, interner, id, args, caller_env);
     // .Internal propagates the inner evaluation's visibility exactly —
     /// the central discipline must not override what the wrapped call set.
-    if result.is_ok() && id.0 != INTERNAL {
+    // eval propagates the evaluated expression's own visibility exactly
+    /// as .Internal does — the inner answer decides, not the wrapper.
+    if result.is_ok() && id.0 != INTERNAL && id.0 != EVAL_FN {
         heap.visible = !matches!(
             id.0,
             ASSIGN | SUPERASSIGN | PRINT | CAT | INVISIBLE | WHILE | REPEAT | FOR
@@ -1868,6 +1872,24 @@ fn call_primitive_inner(
             let raw = raw_args(heap, args);
             Ok(heap.alloc(RObject::Expression(raw)))
         }
+        PARSE_FN => parse_primitive(heap, interner, args, caller_env),
+        EVAL_FN => {
+            // eval of an expression vector evaluates every element in
+            /// order and yields the last value exactly as GNU; a bare
+            /// language object evaluates directly.
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            match heap.object(operands[0]) {
+                Some(RObject::Expression(items)) => {
+                    let items = items.clone();
+                    let mut last = ValueId::NIL;
+                    for item in items {
+                        last = crate::value::eval::eval(heap, interner, item, caller_env)?;
+                    }
+                    Ok(last)
+                }
+                _ => crate::value::eval::eval(heap, interner, operands[0], caller_env),
+            }
+        }
         XTABS => xtabs_primitive(heap, interner, args, caller_env),
         FORMAT => {
             // format() on Date-classed input renders ISO exactly as the
@@ -2859,7 +2881,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -3050,6 +3072,8 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "raw" => Some(RAW_CTOR),
         "vector" => Some(VECTOR_FN),
         "identity" => Some(IDENTITY_FN),
+        "parse" => Some(PARSE_FN),
+        "eval" => Some(EVAL_FN),
         "tsp" => Some(TSP),
         "tsp<-" => Some(TSP_ASSIGN),
         "printDeferredWarnings" => Some(PRINT_DEFERRED_WARNINGS),
@@ -3464,6 +3488,7 @@ fn length_primitive(
         Some(RObject::String(v)) => v.len(),
         Some(RObject::Raw(v)) => v.len(),
         Some(RObject::List(v)) => v.len(),
+        Some(RObject::Expression(v)) => v.len(),
         Some(RObject::Nil) => 0,
         // GNU: length of a call counts the operator plus every argument.
         Some(RObject::Language { cdr, .. }) => {
@@ -3839,7 +3864,9 @@ fn vector_length(heap: &Heap, value: ValueId) -> Option<usize> {
         Some(RObject::Real(v)) => Some(v.len()),
         Some(RObject::String(v)) => Some(v.len()),
         Some(RObject::Raw(v)) => Some(v.len()),
+        Some(RObject::Complex(v)) => Some(v.len()),
         Some(RObject::List(v)) => Some(v.len()),
+        Some(RObject::Expression(v)) => Some(v.len()),
         // GNU: length of a call counts the operator plus every argument
         /// exactly as the pairlist chain encodes.
         Some(RObject::Language { cdr, .. }) => {
@@ -4308,12 +4335,20 @@ fn extract_primitive(
     extract_scalar!(Integer);
     extract_scalar!(Real);
     extract_scalar!(Raw);
+    extract_scalar!(Complex);
     match heap.object(operands[0]) {
         Some(RObject::String(values)) => {
             if position >= values.len() {
                 return Err(EvalError::TypeError("subscript out of bounds").into());
             }
             Ok(heap.alloc(RObject::String(vec![values[position]])))
+        }
+        Some(RObject::Expression(items)) => {
+            // Expression extraction unboxes exactly as list extraction.
+            if position >= items.len() {
+                return Err(EvalError::TypeError("subscript out of bounds").into());
+            }
+            Ok(items[position])
         }
         Some(RObject::List(items)) => {
             // List extraction unboxes: the element itself, exactly GNU.
@@ -9112,4 +9147,89 @@ fn logical_scalar(heap: &Heap, value: ValueId) -> bool {
         Some(RObject::Real(vals)) => vals.first().copied().unwrap_or(0.0) != 0.0,
         _ => false,
     }
+}
+
+/// `parse(text=, file=)` — source text parses through the legacy parser
+/// inside a thread-local session, each top-level expression importing
+/// into the new heap exactly as the sweep harness's upfront import does.
+/// The dependency on the legacy parser is a migration bridge: the parse
+/// tree crosses into ValueId form immediately, so evaluation stays
+/// entirely in the new world.
+fn parse_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    use std::cell::RefCell;
+    thread_local! {
+        static PARSE_SESSION: RefCell<Option<crate::sexp::session::RSession>> = const { RefCell::new(None) };
+    }
+    let mut text_source: Option<String> = None;
+    let mut file_path: Option<String> = None;
+    let mut cursor = args;
+    for _ in 0..100_000 {
+        if cursor == ValueId::NIL {
+            break;
+        }
+        let (car, tag, next) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, tag, cdr, .. }) => (*car, *tag, *cdr),
+            _ => break,
+        };
+        let value = eval(heap, interner, car, caller_env)?;
+        let tag_name = if tag == ValueId::NIL {
+            None
+        } else {
+            match heap.object(tag) {
+                Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+                _ => None,
+            }
+        };
+        let texts = match heap.object(value) {
+            Some(RObject::String(vals)) => vals
+                .iter()
+                .map(|v| interner.string_text(*v).to_string())
+                .collect::<Vec<_>>(),
+            _ => Vec::new(),
+        };
+        match tag_name.as_deref() {
+            Some("file") => file_path = texts.first().cloned(),
+            Some("text") => text_source = Some(texts.join("\n")),
+            _ => {
+                if text_source.is_none() && file_path.is_none() {
+                    text_source = Some(texts.join("\n"));
+                }
+            }
+        }
+        cursor = next;
+    }
+    let source = if let Some(path) = file_path {
+        std::fs::read_to_string(&path)
+            .map_err(|e| RSignal::from(EvalError::TypeError(Box::leak(format!("cannot open file '{path}': {e}").into_boxed_str()))))?
+    } else {
+        text_source.unwrap_or_default()
+    };
+    // Empty source parses to the empty expression vector exactly as GNU.
+    if source.trim().is_empty() {
+        return Ok(heap.alloc(RObject::Expression(Vec::new())));
+    }
+    let imported = PARSE_SESSION.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        if slot.is_none() {
+            *slot = Some(crate::sexp::session::RSession::new());
+        }
+        let session = slot.as_ref().expect("session initialized");
+        let expressions = session.with_active(|| {
+            crate::eval::parser::parse_active_expressions(&source).unwrap_or_default()
+        });
+        let mut bridge = crate::sexp::value_bridge::ValueBridge::new();
+        let mut out = Vec::new();
+        for expr in &expressions {
+            if let Ok(id) = bridge.import(heap, interner, expr) {
+                out.push(id);
+            }
+        }
+        out
+    });
+    Ok(heap.alloc(RObject::Expression(imported)))
 }

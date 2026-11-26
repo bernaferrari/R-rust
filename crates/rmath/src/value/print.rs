@@ -141,6 +141,18 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     if matches!(object, RObject::Language { .. } | RObject::Symbol { .. }) {
         return deparse(heap, interner, value);
     }
+    // Expression vectors print inside the expression() wrapper with each
+    /// element deparsed comma-separated exactly as GNU's print.expression.
+    if let RObject::Expression(items) = object {
+        if items.is_empty() {
+            return "expression()".to_string();
+        }
+        let parts: Vec<String> = items
+            .iter()
+            .map(|item| deparse(heap, interner, *item))
+            .collect();
+        return format!("expression({})", parts.join(", "));
+    }
     // factor printing: classed integer codes display as their level labels
     /// unquoted, with the Levels line trailing exactly as print.factor.
     if matches!(object, RObject::Integer(_)) && is_factor(heap, interner, value) {
