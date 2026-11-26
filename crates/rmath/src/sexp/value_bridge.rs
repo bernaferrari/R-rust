@@ -557,8 +557,34 @@ impl ExportBridge {
     }
 
     /// Export any supported object into the legacy world. The result is a
-    /// raw SEXP owned by the legacy instance heap.
+    /// raw SEXP owned by the legacy instance heap. The slot's attribute edge
+    /// crosses with the object: attributes carry names, dimensions, and
+    /// classes, so dropping them would silently corrupt round-trips.
     pub(crate) fn export(
+        &mut self,
+        heap: &Heap,
+        interner: &SymbolInterner,
+        value: ValueId,
+    ) -> Result<SEXP, ExportError> {
+        // Memoized re-export: attributes were attached on the first crossing.
+        if self.reverse.contains_key(&value) {
+            return self.export_inner(heap, interner, value);
+        }
+        let sexp = self.export_inner(heap, interner, value)?;
+        let attrib = heap
+            .get(value)
+            .map(|slot| slot.attrib)
+            .unwrap_or(ValueId::NIL);
+        if attrib != ValueId::NIL {
+            let exported_attrib = self.export(heap, interner, attrib)?;
+            crate::sexp::accessors::SET_ATTRIB(sexp, exported_attrib);
+        }
+        Ok(sexp)
+    }
+
+    /// The type-dispatching export body — object identity and structure,
+    /// without the attribute edge the public entry wraps around it.
+    fn export_inner(
         &mut self,
         heap: &Heap,
         interner: &SymbolInterner,
@@ -1844,6 +1870,46 @@ mod tests {
                 assert_eq!(sexp.try_integer_elt(0).expect("first"), 3);
                 assert_eq!(sexp.try_integer_elt(1).expect("second"), 7);
                 assert_eq!(sexp.try_integer_elt(2).expect("third"), 21);
+            });
+        });
+    }
+
+    #[test]
+    fn export_attributes_round_trip_names() {
+        // Attributes carry the object's metadata — names here. The crossing
+        // must preserve them in both directions or data silently corrupts.
+        let mut session = crate::sexp::session::RSession::new();
+        let mut heap = Heap::new();
+        let mut interner = SymbolInterner::new();
+        let mut bridge = ValueBridge::new();
+        let expressions = session.with_active(|| {
+            crate::eval::parser::parse_active_expressions("c(a=1, b=2)").expect("source parses")
+        });
+        // The call itself isn't what we import — evaluate it in the legacy
+        // world so a real attributed vector exists, then import that.
+        let (legacy, _output, _visible) = session.eval_code_with_output_capture("c(a=1, b=2)");
+        let legacy = legacy.expect("legacy evaluation succeeds");
+        let _ = expressions;
+        let imported = bridge
+            .import(&mut heap, &mut interner, &legacy)
+            .expect("attributed vector imports");
+        assert_ne!(
+            heap.get(imported).map(|slot| slot.attrib).unwrap_or(ValueId::NIL),
+            ValueId::NIL,
+            "import must attach the names attribute edge"
+        );
+        session.with_active(|| {
+            let mut exporter = ExportBridge::new();
+            let raw = exporter
+                .export(&heap, &interner, imported)
+                .expect("export succeeds");
+            Sexp::with_registered_raw(raw, |sexp| {
+                let attrib = sexp.try_attrib().expect("attributes survive the crossing");
+                assert_ne!(
+                    attrib.typeof_(),
+                    SEXPTYPE::NILSXP,
+                    "names attribute must survive the round-trip"
+                );
             });
         });
     }
