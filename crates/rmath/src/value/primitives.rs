@@ -160,6 +160,15 @@ pub mod primitive_ids {
     pub const TEMPDIR: u32 = 141;
     /// C-style string formatting.
     pub const SPRINTF: u32 = 142;
+    /// System environment and file removal.
+    pub const SYS_SETENV: u32 = 143;
+    pub const SYS_GETENV: u32 = 144;
+    pub const SYS_UNSETENV: u32 = 145;
+    pub const UNLINK: u32 = 146;
+    /// Pattern matching — the pure-Rust regex surface.
+    pub const GREPL: u32 = 147;
+    pub const GREP: u32 = 148;
+    pub const REGEXPR: u32 = 149;
     /// Matrix construction and dimension introspection.
     pub const MATRIX: u32 = 100;
     pub const DIM: u32 = 101;
@@ -181,7 +190,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -267,7 +276,7 @@ fn call_primitive_inner(
         MEAN | VAR | SD | MEDIAN => stat_primitive(heap, interner, id.0, args, caller_env),
         IS_NA => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
-            is_na_primitive(heap, operands[0])
+            is_na_primitive(heap, interner, operands[0])
         }
         SORT | REV | UNIQUE => ordering_primitive(heap, interner, id.0, args, caller_env),
         WHICH => {
@@ -490,6 +499,103 @@ fn call_primitive_inner(
             copy_with_attrib(heap, interner, operands[0], "class", ValueId::NIL).map_err(RSignal::from)
         }
         SPRINTF => sprintf_primitive(heap, interner, args, caller_env),
+        SYS_SETENV => {
+            // Tagged pairs name = value exactly as GNU.
+            let mut cursor = args;
+            loop {
+                let (car, cdr, tag) = match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+                    _ => break,
+                };
+                let name = match heap.object(tag) {
+                    Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+                    _ => None,
+                };
+                let evaluated = eval(heap, interner, car, caller_env)?;
+                let v = force_if_promise(heap, interner, evaluated)?;
+                if let (Some(n), Some(val)) = (name, string_operand(heap, interner, v)) {
+                    heap.env_vars.insert(n, Some(val));
+                }
+                if cdr == ValueId::NIL {
+                    break;
+                }
+                cursor = cdr;
+            }
+            Ok(heap.alloc(RObject::Logical(vec![1])))
+        }
+        SYS_GETENV => {
+            // Tagged walk — the `unset` argument supplies the value GNU
+            // returns for variables that are not set at all.
+            let mut names_arg = ValueId::NIL;
+            let mut unset_arg = ValueId::NIL;
+            let mut positional = 0usize;
+            let mut cursor = args;
+            loop {
+                let (car, cdr, tag) = match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+                    _ => break,
+                };
+                positional += 1;
+                let tag_name = match heap.object(tag) {
+                    Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+                    _ => None,
+                };
+                let evaluated = eval(heap, interner, car, caller_env)?;
+                let v = force_if_promise(heap, interner, evaluated)?;
+                if tag_name.as_deref() == Some("unset") {
+                    unset_arg = v;
+                } else if positional == 1 {
+                    names_arg = v;
+                }
+                if cdr == ValueId::NIL {
+                    break;
+                }
+                cursor = cdr;
+            }
+            let unset_text = string_operand(heap, interner, unset_arg);
+            let names = string_vec(heap, interner, names_arg);
+            let out: Vec<super::intern::InternedStr> = names
+                .iter()
+                .map(|n| {
+                    // Session overrides first, the genuine process
+                    // environment as the fallback. Variables absent
+                    // everywhere resolve to unset exactly as GNU.
+                    let resolved: Option<String> = match heap.env_vars.get(n) {
+                        Some(Some(v)) => Some(v.clone()),
+                        Some(None) => None,
+                        None => std::env::var(n).ok(),
+                    };
+                    let text = match resolved {
+                        Some(v) => v,
+                        None => unset_text.clone().unwrap_or_default(),
+                    };
+                    interner.intern_string(&text)
+                })
+                .collect();
+            Ok(heap.alloc(RObject::String(out)))
+        }
+        SYS_UNSETENV => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            for name in string_vec(heap, interner, operands[0]) {
+                heap.env_vars.insert(name, None);
+            }
+            Ok(heap.alloc(RObject::Logical(vec![1])))
+        }
+        UNLINK => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            for path in string_vec(heap, interner, operands[0]) {
+                let p = std::path::Path::new(&path);
+                if p.is_dir() {
+                    let _ = std::fs::remove_dir_all(p);
+                } else {
+                    let _ = std::fs::remove_file(p);
+                }
+            }
+            Ok(heap.alloc(RObject::Integer(vec![0])))
+        }
+        GREPL => grep_primitive(heap, interner, args, caller_env, true),
+        GREP => grep_primitive(heap, interner, args, caller_env, false),
+        REGEXPR => regexpr_primitive(heap, interner, args, caller_env),
         TEMPDIR => {
             let text = interner.intern_string(&std::env::temp_dir().to_string_lossy());
             Ok(heap.alloc(RObject::String(vec![text])))
@@ -1096,6 +1202,41 @@ fn comparison(
     caller_env: ValueId,
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    // GNU character comparison: when either operand is character the other
+    // coerces, equality is exact and ordering lexicographic, and NA or NaN
+    // participation poisons the element to NA logical exactly as numerics.
+    let either_string = matches!(heap.object(operands[0]), Some(RObject::String(_)))
+        || matches!(heap.object(operands[1]), Some(RObject::String(_)));
+    if either_string {
+        let lefts = string_vec(heap, interner, operands[0]);
+        let rights = string_vec(heap, interner, operands[1]);
+        let len = lefts.len().max(rights.len());
+        if len == 0 {
+            return Ok(heap.alloc(RObject::Logical(vec![])));
+        }
+        let mut out: Vec<i32> = Vec::with_capacity(len);
+        for i in 0..len {
+            let a = &lefts[i % lefts.len().max(1)];
+            let b = &rights[i % rights.len().max(1)];
+            if lefts.is_empty() || rights.is_empty() {
+                return Err(EvalError::TypeError("comparison requires non-empty operands").into());
+            }
+            if a == "\0NA" || b == "\0NA" {
+                out.push(crate::value::object::NA_INTEGER);
+                continue;
+            }
+            let result = match op {
+                LT => a < b,
+                GT => a > b,
+                LE => a <= b,
+                GE => a >= b,
+                EQ => a == b,
+                _ => a != b,
+            };
+            out.push(if result { 1 } else { 0 });
+        }
+        return Ok(heap.alloc(RObject::Logical(out)));
+    }
     let left = numeric_operands(heap, operands[0]).map_err(RSignal::from)?;
     let right = numeric_operands(heap, operands[1]).map_err(RSignal::from)?;
     let a = as_reals(left);
@@ -1134,7 +1275,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -1251,6 +1392,13 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "levels<-" => Some(LEVELS_ASSIGN),
         "unclass" => Some(UNCLASS),
         "sprintf" => Some(SPRINTF),
+        "Sys.setenv" => Some(SYS_SETENV),
+        "Sys.getenv" => Some(SYS_GETENV),
+        "Sys.unsetenv" => Some(SYS_UNSETENV),
+        "unlink" => Some(UNLINK),
+        "grepl" => Some(GREPL),
+        "grep" => Some(GREP),
+        "regexpr" => Some(REGEXPR),
         "tempdir" => Some(TEMPDIR),
         "dimnames" => Some(DIMNAMES),
         "dimnames<-" => Some(DIMNAMES_ASSIGN),
@@ -3414,13 +3562,16 @@ fn stat_primitive(
 }
 
 /// `is.na(x)` — elementwise NA detection across the atomic types.
-fn is_na_primitive(heap: &mut Heap, value: ValueId) -> EvalResult {
+fn is_na_primitive(heap: &mut Heap, interner: &SymbolInterner, value: ValueId) -> EvalResult {
     let na_int = crate::value::object::NA_INTEGER;
     let out: Vec<i32> = match heap.object(value) {
         Some(RObject::Logical(v)) => v.iter().map(|x| (*x == na_int) as i32).collect(),
         Some(RObject::Integer(v)) => v.iter().map(|x| (*x == na_int) as i32).collect(),
         Some(RObject::Real(v)) => v.iter().map(|x| x.is_nan() as i32).collect(),
-        Some(RObject::String(v)) => v.iter().map(|_| 0).collect(),
+        Some(RObject::String(v)) => v
+            .iter()
+            .map(|x| (interner.string_text(*x) == "\0NA") as i32)
+            .collect(),
         _ => return Err(EvalError::TypeError("is.na requires a vector").into()),
     };
     Ok(heap.alloc(RObject::Logical(out)))
@@ -5510,4 +5661,137 @@ fn rebuild_factor(
     let fresh = copy_with_attrib(heap, interner, fresh, "levels", levels_obj).map_err(RSignal::from)?;
     let class_obj = heap.alloc(RObject::String(vec![interner.intern_string("factor")]));
     copy_with_attrib(heap, interner, fresh, "class", class_obj).map_err(RSignal::from)
+}
+
+/// `grep(pattern, x, value)` / `grepl(pattern, x)` — elementwise leftmost
+/// search through the pure-Rust regex engine. grepl returns the logical
+/// mask exactly as GNU; grep returns indices by default or the matching
+/// values with value=TRUE.
+fn grep_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+    logical: bool,
+) -> EvalResult {
+    // Tagged walk: pattern and x positional, value and invert by name.
+    let mut pattern_arg = ValueId::NIL;
+    let mut x_arg = ValueId::NIL;
+    let mut value_mode = false;
+    let mut invert = false;
+    let mut positional = 0usize;
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        positional += 1;
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let v = force_if_promise(heap, interner, evaluated)?;
+        match tag_name.as_deref() {
+            Some("value") => {
+                if let Some(RObject::Logical(vals)) = heap.object(v) {
+                    value_mode = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
+                }
+            }
+            Some("invert") => {
+                if let Some(RObject::Logical(vals)) = heap.object(v) {
+                    invert = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
+                }
+            }
+            _ => {
+                if positional == 1 {
+                    pattern_arg = v;
+                } else if positional == 2 {
+                    x_arg = v;
+                }
+            }
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    let pattern = string_operand(heap, interner, pattern_arg)
+        .ok_or(EvalError::TypeError("grep pattern must be character"))?;
+    let texts = string_vec(heap, interner, x_arg);
+    let matches: Vec<bool> = texts
+        .iter()
+        .map(|text| {
+            if text == "\0NA" {
+                false
+            } else {
+                super::regex::regex_search(&pattern, text).is_some() != invert
+            }
+        })
+        .collect();
+    if logical {
+        let out: Vec<i32> = texts
+            .iter()
+            .enumerate()
+            .map(|(i, _)| {
+                if texts[i] == "\0NA" {
+                    crate::value::object::NA_INTEGER
+                } else if matches[i] {
+                    1
+                } else {
+                    0
+                }
+            })
+            .collect();
+        return Ok(heap.alloc(RObject::Logical(out)));
+    }
+    if value_mode {
+        let out: Vec<super::intern::InternedStr> = texts
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| matches[*i])
+            .map(|(_, s)| interner.intern_string(s))
+            .collect();
+        return Ok(heap.alloc(RObject::String(out)));
+    }
+    let out: Vec<i32> = matches
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| **m)
+        .map(|(i, _)| i as i32 + 1)
+        .collect();
+    Ok(heap.alloc(RObject::Integer(out)))
+}
+
+/// `regexpr(pattern, x)` — match positions and lengths exactly as GNU:
+/// 1-based start positions with -1 for no match, carrying the match.length
+/// attribute.
+fn regexpr_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    let pattern = string_operand(heap, interner, operands[0])
+        .ok_or(EvalError::TypeError("regexpr pattern must be character"))?;
+    let texts = string_vec(heap, interner, operands[1]);
+    let mut positions: Vec<i32> = Vec::new();
+    let mut lengths: Vec<i32> = Vec::new();
+    for text in &texts {
+        match super::regex::regex_search(&pattern, text) {
+            Some((start, end)) => {
+                positions.push(start as i32 + 1);
+                lengths.push((end - start) as i32);
+            }
+            None => {
+                positions.push(-1);
+                lengths.push(-1);
+            }
+        }
+    }
+    let result = heap.alloc(RObject::Integer(positions));
+    let length_obj = heap.alloc(RObject::Integer(lengths));
+    copy_with_attrib(heap, interner, result, "match.length", length_obj).map_err(RSignal::from)
 }

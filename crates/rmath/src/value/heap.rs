@@ -29,6 +29,12 @@ pub struct Heap {
     pub(crate) next_gc_threshold: usize,
     allocations_since_gc: usize,
     pub interner: SymbolInterner,
+    /// Session environment overrides — the pure-safe answer to Sys.setenv
+    /// being process-global unsafe mutation in modern Rust. Writes land in
+    /// this map; reads check it first and fall back to the genuine process
+    /// environment, which is exactly GNU's session-visible behavior for
+    /// single-process use. None marks an explicit unset.
+    pub env_vars: std::collections::HashMap<String, Option<String>>,
     /// The visibility flag — GNU's R_Visible exactly. Evaluation sets it
     /// true; invisible-returning forms (assignment, loops, print/cat,
     /// invisible()) clear it after their inner evaluations complete, so the

@@ -1419,6 +1419,17 @@ mod tests {
             let object = heap.alloc(RObject::Primitive(BuiltinId(prim)));
             env::define(heap, base, sym, object).expect("define primitive");
         }
+        // GNU's reserved typed-NA constants — bindings in base exactly as
+        // GNU's base namespace carries them.
+        let na_int = heap.alloc(RObject::Integer(vec![crate::value::object::NA_INTEGER]));
+        let sym = interner.intern_symbol("NA_integer_");
+        env::define(heap, base, sym, na_int).expect("NA_integer_");
+        let na_real = heap.alloc(RObject::Real(vec![f64::from_bits(crate::value::object::NA_REAL_BITS)]));
+        let sym = interner.intern_symbol("NA_real_");
+        env::define(heap, base, sym, na_real).expect("NA_real_");
+        let na_str = heap.alloc(RObject::String(vec![interner.intern_string("\0NA")]));
+        let sym = interner.intern_symbol("NA_character_");
+        env::define(heap, base, sym, na_str).expect("NA_character_");
         env::new_environment(heap, base)
     }
 
@@ -2015,6 +2026,72 @@ mod tests {
     /// and the new-world output side by side for one conformance case.
     #[test]
     #[ignore]
+
+    #[test]
+    #[ignore]
+    fn trace_224_debug() {
+        let source = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests/conformance/cases/224_sys_getenv_setenv.R"),
+        )
+        .expect("case");
+        let mut session = crate::sexp::session::RSession::new();
+        let expressions: Vec<_> = session.with_active(|| {
+            crate::eval::parser::parse_active_expressions(&source).unwrap_or_default()
+        });
+        println!("parsed {} expressions", expressions.len());
+        let mut heap = Heap::new();
+        let mut interner = SymbolInterner::new();
+        let mut bridge = ValueBridge::new();
+        let env_id = bootstrap_env(&mut heap, &mut interner);
+        for (i, expr) in expressions.iter().enumerate() {
+            match bridge.import(&mut heap, &mut interner, expr) {
+                Ok(imported) => {
+                    match crate::value::eval::eval(&mut heap, &mut interner, imported, env_id) {
+                        Ok(v) => println!("expr {i}: ok visible={} out_so_far={:?}", heap.visible, heap.output),
+                        Err(e) => println!("expr {i}: EVAL ERROR {e:?}"),
+                    }
+                }
+                Err(e) => println!("expr {i}: IMPORT ERROR {e:?}"),
+            }
+        }
+    }
+
+
+    #[test]
+    #[ignore]
+    fn trace_getenv_unset_debug() {
+        let source = r#"x <- Sys.getenv("RPORT_DEFINITELY_UNSET_XYZ", unset = NA_character_)
+print(is.na(x))
+print(typeof(x))"#;
+        let mut session = crate::sexp::session::RSession::new();
+        let expressions: Vec<_> = session.with_active(|| {
+            crate::eval::parser::parse_active_expressions(source).unwrap_or_default()
+        });
+        let mut heap = Heap::new();
+        let mut interner = SymbolInterner::new();
+        let mut bridge = ValueBridge::new();
+        let env_id = bootstrap_env(&mut heap, &mut interner);
+        for expr in &expressions {
+            if let Ok(imported) = bridge.import(&mut heap, &mut interner, expr) {
+                match crate::value::eval::eval(&mut heap, &mut interner, imported, env_id) {
+                    Ok(v) => {
+                        if heap.visible {
+                            let text = crate::value::print::format_value(&heap, &interner, v);
+                            heap.output.push_str(&text);
+                            heap.output.push('\n');
+                        }
+                        println!("ok object={:?}", heap.object(v).map(|o| std::mem::discriminant(o)));
+                    }
+                    Err(e) => println!("ERR {e:?}"),
+                }
+            } else {
+                println!("import err");
+            }
+        }
+        println!("output={:?}", heap.output);
+    }
+
     fn sweep_case_diff_probe() {
         let name = std::env::var("RPORT_SWEEP_CASE").expect("RPORT_SWEEP_CASE");
         let stem = name.trim_end_matches(".R").to_string();
