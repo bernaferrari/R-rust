@@ -4431,6 +4431,28 @@ fn strings_of_value(
     interner: &mut SymbolInterner,
     value: ValueId,
 ) -> Result<Vec<super::intern::InternedStr>, EvalError> {
+    // Factor-classed input coerces through level labels exactly as GNU's
+    /// character coercion — the codes index the levels attribute.
+    if is_factor(heap, interner, value) {
+        if let Some(levels_id) = get_attrib(heap, interner, value, "levels") {
+            let levels = string_vec(heap, interner, levels_id);
+            if let Some(RObject::Integer(codes)) = heap.object(value) {
+                return Ok(codes
+                    .iter()
+                    .map(|&code| {
+                        if code == crate::value::object::NA_INTEGER
+                            || code < 1
+                            || code as usize > levels.len()
+                        {
+                            interner.intern_string("NA")
+                        } else {
+                            interner.intern_string(&levels[(code - 1) as usize])
+                        }
+                    })
+                    .collect());
+            }
+        }
+    }
     match heap.object(value) {
         Some(RObject::String(values)) => Ok(values.clone()),
         Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => {
@@ -7249,6 +7271,31 @@ fn aggregate_primitive(
     // Group keys: per-row concatenation of the first grouping column (the
     // slice supports one grouper; multi-grouper keys concatenate with a
     // separator exactly as GNU's interaction does).
+    // Factor groupers key by their level labels and order by level index
+    /// exactly as GNU; plain groupers key by element text alphabetically.
+    let grouper_levels: Vec<Option<Vec<String>>> = group_cols
+        .iter()
+        .map(|col| {
+            if is_factor(heap, interner, *col) {
+                get_attrib(heap, interner, *col, "levels").map(|id| string_vec(heap, interner, id))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let grouper_codes: Vec<Option<Vec<i32>>> = group_cols
+        .iter()
+        .map(|col| {
+            if is_factor(heap, interner, *col) {
+                match heap.object(*col) {
+                    Some(RObject::Integer(vals)) => Some(vals.clone()),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        })
+        .collect();
     let mut keys: Vec<String> = Vec::with_capacity(x_len);
     for i in 0..x_len {
         let mut key = String::new();
@@ -7256,7 +7303,18 @@ fn aggregate_primitive(
             if j > 0 {
                 key.push('\x01');
             }
-            key.push_str(&element_text(heap, interner, *col, i));
+            let text = match (&grouper_codes[j], &grouper_levels[j]) {
+                (Some(codes), Some(levels)) => {
+                    let code = codes.get(i).copied().unwrap_or(crate::value::object::NA_INTEGER);
+                    if code == crate::value::object::NA_INTEGER || code < 1 || code as usize > levels.len() {
+                        "NA".to_string()
+                    } else {
+                        levels[(code - 1) as usize].clone()
+                    }
+                }
+                _ => element_text(heap, interner, *col, i),
+            };
+            key.push_str(&text);
         }
         keys.push(key);
     }
@@ -7270,7 +7328,18 @@ fn aggregate_primitive(
         for j in (0..ac.len().max(bc.len())).rev() {
             let av = ac.get(j).copied().unwrap_or("");
             let bv = bc.get(j).copied().unwrap_or("");
-            match av.cmp(bv) {
+            // Factor columns compare by level position; anything absent
+            /// from the levels sorts past the end exactly as GNU's integer
+            /// code comparison would place it.
+            let ord = match &grouper_levels.get(j).cloned().flatten() {
+                Some(levels) => {
+                    let ai = levels.iter().position(|l| l == av).map(|p| p as i32).unwrap_or(i32::MAX);
+                    let bi = levels.iter().position(|l| l == bv).map(|p| p as i32).unwrap_or(i32::MAX);
+                    ai.cmp(&bi)
+                }
+                None => av.cmp(bv),
+            };
+            match ord {
                 std::cmp::Ordering::Equal => continue,
                 ord => return ord,
             }
@@ -7313,11 +7382,37 @@ fn aggregate_primitive(
             .iter()
             .map(|k| k.split('\x01').nth(j).unwrap_or("").to_string())
             .collect();
-        let interned: Vec<super::intern::InternedStr> = parts
-            .iter()
-            .map(|s| interner.intern_string(s))
-            .collect();
-        columns.push(heap.alloc(RObject::String(interned)));
+        // Factor groupers emit the coded factor column — integer indices
+        /// into the original levels with the class chain exactly as GNU's
+        /// aggregate data frame method preserves them.
+        if let Some(levels) = &grouper_levels.get(j).cloned().flatten() {
+            let codes: Vec<i32> = parts
+                .iter()
+                .map(|text| {
+                    levels
+                        .iter()
+                        .position(|l| l == text)
+                        .map(|pos| pos as i32 + 1)
+                        .unwrap_or(crate::value::object::NA_INTEGER)
+                })
+                .collect();
+            let mut col = heap.alloc(RObject::Integer(codes));
+            let level_interned: Vec<super::intern::InternedStr> = levels
+                .iter()
+                .map(|s| interner.intern_string(s))
+                .collect();
+            let levels_vec = heap.alloc(RObject::String(level_interned));
+            col = copy_with_attrib(heap, interner, col, "levels", levels_vec).map_err(RSignal::from)?;
+            let class_vec = heap.alloc(RObject::String(vec![interner.intern_string("factor")]));
+            col = copy_with_attrib(heap, interner, col, "class", class_vec).map_err(RSignal::from)?;
+            columns.push(col);
+        } else {
+            let interned: Vec<super::intern::InternedStr> = parts
+                .iter()
+                .map(|s| interner.intern_string(s))
+                .collect();
+            columns.push(heap.alloc(RObject::String(interned)));
+        }
         col_names.push(
             by_names
                 .get(j)
@@ -8325,6 +8420,30 @@ fn coerce_character(
     interner: &mut SymbolInterner,
     value: ValueId,
 ) -> EvalResult {
+    // Factor-classed input coerces through its level labels exactly as
+    /// as.character.factor — the integer codes index the levels, missing
+    /// codes yielding NA.
+    if is_factor(heap, interner, value) {
+        if let Some(levels_id) = get_attrib(heap, interner, value, "levels") {
+            let levels = string_vec(heap, interner, levels_id);
+            if let Some(RObject::Integer(codes)) = heap.object(value) {
+                let out: Vec<super::intern::InternedStr> = codes
+                    .iter()
+                    .map(|&code| {
+                        if code == crate::value::object::NA_INTEGER
+                            || code < 1
+                            || code as usize > levels.len()
+                        {
+                            interner.intern_string("\0NA")
+                        } else {
+                            interner.intern_string(&levels[(code - 1) as usize])
+                        }
+                    })
+                    .collect();
+                return Ok(heap.alloc(RObject::String(out)));
+            }
+        }
+    }
     // Symbols coerce to their print name exactly as as.character of a
     /// name object does in GNU.
     if let Some(RObject::Symbol { name, .. }) = heap.object(value) {
@@ -9301,4 +9420,18 @@ fn parse_source(heap: &mut Heap, interner: &mut SymbolInterner, source: &str) ->
         out
     });
     Ok(heap.alloc(RObject::Expression(imported)))
+}
+
+/// Is this object a classed factor — the class chain carrying "factor"
+/// exactly as GNU's inherits check.
+fn is_factor(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
+    match get_attrib(heap, interner, value, "class") {
+        Some(id) => match heap.object(id) {
+            Some(RObject::String(vals)) => vals
+                .iter()
+                .any(|v| interner.string_text(*v) == "factor"),
+            _ => false,
+        },
+        None => false,
+    }
 }
