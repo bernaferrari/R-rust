@@ -50,49 +50,35 @@ trait ZeroValid: Copy {}
 impl ZeroValid for c_double {}
 impl ZeroValid for c_int {}
 
-/// Budgeted transient scratch (GNU `vect`): `R_alloc` storage charged to the
-/// session's transient memory budget, released when `scope` drops.
-fn vect<'s, T: ZeroValid>(_scope: &'s TransientScope<'_>, n: usize) -> &'s mut [T] {
-    if n == 0 {
-        return &mut [];
-    }
-    // SAFETY: R_alloc returns a fresh, zero-filled, u64-aligned buffer of
-    // `n * size_of::<T>()` bytes (or raises an R error), and every `T` is
-    // valid when zeroed. The buffer is owned by the transient stack above
-    // `scope`'s mark, so it stays live and unaliased until `scope` drops,
-    // which the `'s` borrow prevents while the slice exists.
-    unsafe { std::slice::from_raw_parts_mut(R_alloc(size_of::<T>(), n).cast::<T>(), n) }
-}
-
 // ---------------------------------------------------------------------------
 // OptStruct -- optimization state
 // ---------------------------------------------------------------------------
 
-struct OptStruct<'s> {
+struct OptStruct {
     R_fcall: SEXP,
     R_gcall: SEXP,
     R_env: SEXP,
-    ndeps: &'s [c_double],
+    ndeps: Vec<c_double>,
     fnscale: c_double,
-    parscale: &'s [c_double],
+    parscale: Vec<c_double>,
     usebounds: c_int,
-    lower: &'s [c_double],
-    upper: &'s [c_double],
+    lower: Vec<c_double>,
+    upper: Vec<c_double>,
     names: SEXP,
 }
 
-impl<'s> OptStruct<'s> {
+impl OptStruct {
     fn new(rho: SEXP) -> Self {
         OptStruct {
             R_fcall: std::ptr::null_mut(),
             R_gcall: std::ptr::null_mut(),
             R_env: rho,
-            ndeps: &[],
+            ndeps: Vec::new(),
             fnscale: 1.0,
-            parscale: &[],
+            parscale: Vec::new(),
             usebounds: 0,
-            lower: &[],
-            upper: &[],
+            lower: Vec::new(),
+            upper: Vec::new(),
             names: R_NilValue(),
         }
     }
@@ -100,7 +86,7 @@ impl<'s> OptStruct<'s> {
     /// Opaque `ex` pointer handed to the appl kernels and back to the
     /// `fminfn`/`fmingr` trampolines.
     fn as_ex(&mut self) -> *mut std::ffi::c_void {
-        (self as *mut OptStruct<'s>).cast()
+        (self as *mut OptStruct).cast()
     }
 }
 
@@ -132,8 +118,8 @@ fn getListElement(list: SEXP, name: &str) -> SEXP {
 
 /// Copy a list option coerced to double into fresh scratch, as GNU's
 /// `vect(npar)` filled from `REAL(coerceVector(..))`.
-fn real_option<'s>(scope: &'s TransientScope<'_>, x: SEXP, npar: c_int) -> &'s [c_double] {
-    let out = vect(scope, npar.max(0) as usize);
+fn real_option(_scope: &TransientScope<'_>, x: SEXP, npar: c_int) -> Vec<c_double> {
+    let mut out = vec![0.0f64; npar.max(0) as usize];
     let x = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
     let _guard = protect(x);
     for (i, v) in out.iter_mut().enumerate() {
@@ -149,7 +135,7 @@ fn non_finite_par() -> ! {
 }
 
 /// Fill a fresh REALSXP with `p * parscale`, rejecting non-finite input.
-fn scaled_par(os: &OptStruct<'_>, p: &[c_double], check_finite: bool, names: bool) -> SEXP {
+fn scaled_par(os: &OptStruct, p: &[c_double], check_finite: bool, names: bool) -> SEXP {
     let n = p.len() as c_int;
     let x = Rf_allocVector(SEXPTYPE::REALSXP, n);
     let _x_guard = protect(x);
@@ -178,7 +164,7 @@ fn eval_first_real(call: SEXP, env: SEXP) -> c_double {
 // objective / gradient -- checked bodies of the optim callbacks
 // ---------------------------------------------------------------------------
 
-fn objective(os: &OptStruct<'_>, p: &[c_double]) -> c_double {
+fn objective(os: &OptStruct, p: &[c_double]) -> c_double {
     let x = scaled_par(os, p, true, Rf_isNull(os.names) == 0);
     let _x_guard = protect(x);
     SETCADR(os.R_fcall, x);
@@ -197,7 +183,7 @@ fn objective(os: &OptStruct<'_>, p: &[c_double]) -> c_double {
     REAL_ELT(s, 0) / os.fnscale
 }
 
-fn gradient(os: &OptStruct<'_>, p: &[c_double], df: &mut [c_double]) {
+fn gradient(os: &OptStruct, p: &[c_double], df: &mut [c_double]) {
     let n = p.len() as c_int;
     if Rf_isNull(os.R_gcall) == 0 {
         // Analytical derivatives
@@ -280,7 +266,7 @@ unsafe fn fminfn(
     // initialized doubles that stays live and unaliased for this call.
     let (os, p) = unsafe {
         (
-            &*(ex as *const OptStruct<'_>),
+            &*(ex as *const OptStruct),
             std::slice::from_raw_parts(p, n.max(0) as usize),
         )
     };
@@ -297,7 +283,7 @@ unsafe fn fmingr(
     // buffer of `n` doubles owned by the kernel for this call.
     let (os, p, df) = unsafe {
         (
-            &*(ex as *const OptStruct<'_>),
+            &*(ex as *const OptStruct),
             std::slice::from_raw_parts(p, n.max(0) as usize),
             std::slice::from_raw_parts_mut(df, n.max(0) as usize),
         )
@@ -360,7 +346,7 @@ use crate::nmath::dist::normal::norm_rand;
 // returns the function value.
 // ---------------------------------------------------------------------------
 
-fn genptry(x: &[f64], xp: &mut [f64], t: f64, os: &OptStruct<'_>) -> f64 {
+fn genptry(x: &[f64], xp: &mut [f64], t: f64, os: &OptStruct) -> f64 {
     const E1: f64 = 1.7182818; /* exp(1) - 1 */
 
     for i in 0..x.len() {
@@ -397,13 +383,14 @@ fn samin(
     tmax: c_int,
     temp: f64,
     trace: c_int,
-    os: &OptStruct<'_>,
+    os: &OptStruct,
     scope: &TransientScope<'_>,
 ) {
     const BIG: f64 = 1e30;
 
     /* Allocate a candidate point */
-    let xp: &mut [f64] = vect(scope, sb.len());
+    let mut xp_ws = vec![0.0f64; sb.len()];
+    let xp = xp_ws.as_mut_slice();
 
     let mut nacc = 0;
     let mut nfcnev = 0;
@@ -434,7 +421,7 @@ fn samin(
                 } else {
                     0.0
                 };
-                let u = norm_rand(); /* uniform in (0,1) approximately */
+                let u = crate::nmath::rng::unif_rand();
                 if u < p {
                     sb.copy_from_slice(xp);
                     *ybest = ytry;
@@ -466,9 +453,9 @@ fn samin(
 }
 
 /// Read and validate the `ndeps` option into `os.ndeps`.
-fn load_ndeps<'s>(
-    os: &mut OptStruct<'s>,
-    scope: &'s TransientScope<'_>,
+fn load_ndeps(
+    os: &mut OptStruct,
+    scope: &TransientScope<'_>,
     options: SEXP,
     npar: c_int,
 ) {
@@ -480,7 +467,7 @@ fn load_ndeps<'s>(
 }
 
 /// Install the gradient call (or R_NilValue) for gradient-using methods.
-fn load_gcall(os: &mut OptStruct<'_>, gr: SEXP) {
+fn load_gcall(os: &mut OptStruct, gr: SEXP) {
     if Rf_isNull(gr) == 0 {
         if !is_function(gr) {
             Rf_error_cstr(c"'gr' is not a function");
@@ -492,7 +479,7 @@ fn load_gcall(os: &mut OptStruct<'_>, gr: SEXP) {
 }
 
 /// Store `x * parscale` into the REALSXP `par`.
-fn store_par(par: SEXP, x: &[f64], os: &OptStruct<'_>) {
+fn store_par(par: SEXP, x: &[f64], os: &OptStruct) {
     for i in 0..x.len() {
         SET_REAL_ELT(par, i as c_int, x[i] * os.parscale[i]);
     }
@@ -533,8 +520,10 @@ pub fn optim(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let _par_guard = protect(par);
     let npar = LENGTH(par);
     let n_usize = npar.max(0) as usize;
-    let dpar: &mut [f64] = vect(&scratch, n_usize);
-    let opar: &mut [f64] = vect(&scratch, n_usize);
+    let mut dpar_ws = vec![0.0f64; n_usize];
+        let dpar = dpar_ws.as_mut_slice();
+    let mut opar_ws = vec![0.0f64; n_usize];
+        let opar = opar_ws.as_mut_slice();
 
     let trace = as_integer(getListElement(options, "trace"));
     os.fnscale = as_real(getListElement(options, "fnscale"));
@@ -635,7 +624,8 @@ pub fn optim(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             load_ndeps(&mut os, &scratch, options, npar);
         }
         let _gcall_guard = protect(os.R_gcall);
-        let mask: &mut [c_int] = vect(&scratch, n_usize);
+        let mut mask_ws = vec![0 as c_int; n_usize];
+        let mask = mask_ws.as_mut_slice();
         mask.fill(1);
         let ex = os.as_ex();
         // SAFETY: `dpar` and `mask` hold `npar` cells and `ex` is the live
@@ -713,9 +703,10 @@ pub fn optim(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         args = CDR(args);
         let supper = CAR(args);
 
-        let lower: &mut [f64] = vect(&scratch, n_usize);
-        let upper: &mut [f64] = vect(&scratch, n_usize);
-        let nbd: &mut [c_int] = vect(&scratch, n_usize);
+        let mut lower = vec![0.0f64; n_usize];
+        let mut upper = vec![0.0f64; n_usize];
+        let mut nbd_ws = vec![0 as c_int; n_usize];
+        let nbd = nbd_ws.as_mut_slice();
         for i in 0..n_usize {
             lower[i] = REAL_ELT(slower, i as c_int) / os.parscale[i];
             upper[i] = REAL_ELT(supper, i as c_int) / os.parscale[i];
@@ -730,9 +721,12 @@ pub fn optim(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         os.lower = lower;
         os.upper = upper;
 
-        let wa: &mut [f64] = vect(&scratch, wa_len.max(0) as usize);
-        let iwa: &mut [c_int] = vect(&scratch, iwa_len.max(0) as usize);
-        let g: &mut [f64] = vect(&scratch, n_usize);
+        let mut wa_ws = vec![0.0f64; wa_len.max(0) as usize];
+        let wa = wa_ws.as_mut_slice();
+        let mut iwa_ws = vec![0 as c_int; iwa_len.max(0) as usize];
+        let iwa = iwa_ws.as_mut_slice();
+        let mut g_ws = vec![0.0f64; n_usize];
+        let g = g_ws.as_mut_slice();
         let mut task: [c_char; 60] = [0; 60];
         let mut pgtol_val = pgtol;
         let mut isave: [c_int; 44] = [0; 44];
@@ -899,12 +893,15 @@ pub fn optimhess(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
     let ans = allocMatrix(SEXPTYPE::REALSXP.into(), npar, npar);
     let _ans_guard = protect(ans);
-    let dpar: &mut [f64] = vect(&scratch, n_usize);
+    let mut dpar_ws = vec![0.0f64; n_usize];
+        let dpar = dpar_ws.as_mut_slice();
     for i in 0..n_usize {
         dpar[i] = REAL_ELT(par, i as c_int) / os.parscale[i];
     }
-    let df1: &mut [f64] = vect(&scratch, n_usize);
-    let df2: &mut [f64] = vect(&scratch, n_usize);
+    let mut df1_ws = vec![0.0f64; n_usize];
+        let df1 = df1_ws.as_mut_slice();
+    let mut df2_ws = vec![0.0f64; n_usize];
+        let df2 = df2_ws.as_mut_slice();
     for i in 0..n_usize {
         let eps = os.ndeps[i] / os.parscale[i];
         dpar[i] += eps;

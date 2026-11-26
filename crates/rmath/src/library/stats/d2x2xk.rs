@@ -12,7 +12,6 @@ use crate::sexp::accessors::REAL;
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::SEXP;
 use crate::sexp::ffi::SEXPTYPE;
-use crate::sexp::memory_ext::R_alloc;
 use crate::sexp::protect::protect;
 
 /// Internal function: compute exact conditional distribution for
@@ -31,16 +30,14 @@ unsafe fn int_d2x2xk(
     unsafe {
         let k = K as usize;
 
-        // Allocate array of row pointers (K+1 entries)
-        let c = R_alloc(std::mem::size_of::<*mut c_double>(), k + 1) as *mut *mut c_double;
+        // Convolution rows as owned vectors: row 0 starts as the unit mass,
+        // each stratum appends a wider zeroed row convolved from its predecessor.
+        let mut rows: Vec<Vec<c_double>> = Vec::with_capacity(k + 1);
+        rows.push(vec![1.0]);
 
         let mut l: c_int = 0;
         let mut y: c_int = 0;
         let mut z: c_int = 0;
-
-        // c[0] has one element initialized to 1.0
-        *c = R_alloc(std::mem::size_of::<c_double>(), 1) as *mut c_double;
-        **c = 1.0;
 
         let mut m_ptr = m;
         let mut n_ptr = n;
@@ -49,21 +46,17 @@ unsafe fn int_d2x2xk(
         for i in 0..k {
             y = imax2(0, (*t_ptr - *n_ptr) as c_int);
             z = std::cmp::min(*m_ptr as c_int, *t_ptr as c_int);
-            *c.add(i + 1) =
-                R_alloc(std::mem::size_of::<c_double>(), (l + z - y + 1) as usize) as *mut c_double;
+            rows.push(vec![0.0; (l + z - y + 1) as usize]);
 
-            // Zero-initialize c[i+1][0..=l+z-y]
-            let c_next = *c.add(i + 1);
-            for j in 0..=(l + z - y) as usize {
-                *c_next.add(j) = 0.0;
-            }
-
-            // Convolution step
+            // Convolution step: split so the predecessor and the fresh row can
+            // be read and written in the same iteration.
+            let (before, after) = rows.split_at_mut(i + 1);
+            let c_prev = &before[i];
+            let c_next = &mut after[0];
             for j in 0..=(z - y) as usize {
                 let u = dhyper_inner((j as c_int + y) as f64, *m_ptr, *n_ptr, *t_ptr, false);
-                let c_prev = *c.add(i);
                 for w in 0..=l as usize {
-                    *c_next.add(w + j) += *c_prev.add(w) * u;
+                    c_next[w + j] += c_prev[w] * u;
                 }
             }
 
@@ -75,12 +68,12 @@ unsafe fn int_d2x2xk(
 
         // Normalize
         let mut u: c_double = 0.0;
-        let c_k = *c.add(k);
+        let c_k = &rows[k];
         for j in 0..=l as usize {
-            u += *c_k.add(j);
+            u += c_k[j];
         }
         for j in 0..=l as usize {
-            *d.add(j) = *c_k.add(j) / u;
+            *d.add(j) = c_k[j] / u;
         }
     }
 }
