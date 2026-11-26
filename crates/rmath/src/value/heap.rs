@@ -39,6 +39,9 @@ pub struct Heap {
     /// Active S3 dispatch entries — (generic, object, remaining classes) —
     /// pushed by UseMethod/NextMethod exactly as GNU's dispatch context.
     pub s3_dispatch: Vec<(String, crate::value::id::ValueId, Vec<String>)>,
+    /// S4 class registry — name → (ordered slots with types, contains
+    /// parent) exactly as GNU's class table.
+    pub s4_classes: std::collections::HashMap<String, (Vec<(String, String)>, Option<String>)>,
     /// Interrupt suspension flag — GNU's interruptsSuspended state.
     pub interrupts_suspended: bool,
     /// bindtextdomain registry — domain to translation directory.
