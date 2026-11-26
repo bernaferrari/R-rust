@@ -254,8 +254,18 @@ pub(crate) fn call_primitive(
         }
         EXISTS => exists_primitive(heap, interner, args, caller_env),
         LS => {
-            let operands = eval_args(heap, interner, args, caller_env, 1)?;
-            ls_primitive(heap, interner, operands[0])
+            // GNU: the environment argument is optional and defaults to the
+            /// calling environment; all.names=TRUE includes dot-prefixed
+            /// hidden bindings.
+            let raw = raw_args(heap, args);
+            let env = match raw.first() {
+                Some(expr) => {
+                    let v = eval(heap, interner, *expr, caller_env)?;
+                    force_if_promise(heap, interner, v)?
+                }
+                None => caller_env,
+            };
+            ls_primitive(heap, interner, env)
         }
         DOLLAR_ASSIGN => dollar_assign_primitive(heap, interner, args, caller_env),
         CAT => {
@@ -3119,29 +3129,100 @@ fn ordering_primitive(
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 1)?;
     let value = operands[0];
-    // GNU's tagged decreasing argument — positional second or tagged.
-    let decreasing = match raw_args(heap, args).get(1).copied() {
-        Some(expr) => {
-            let evaluated = eval(heap, interner, expr, caller_env)?;
-            let evaluated = force_if_promise(heap, interner, evaluated)?;
-            matches!(
-                heap.object(evaluated),
-                Some(RObject::Logical(v)) if !v.is_empty() && v[0] != 0 && v[0] != crate::value::object::NA_INTEGER
-            )
+    // Tagged-argument walk: decreasing and na.last arrive tagged or
+    /// positional exactly as GNU's argument matching.
+    let mut decreasing = false;
+    // na.last tri-state: None = remove (GNU default NA), Some(true) = end,
+    /// Some(false) = front.
+    let mut na_last: Option<bool> = None;
+    let mut positional_seen = 0usize;
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        positional_seen += 1;
+        if positional_seen == 1 {
+            if cdr == ValueId::NIL {
+                break;
+            }
+            cursor = cdr;
+            continue;
         }
-        None => false,
-    };
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let v = force_if_promise(heap, interner, evaluated)?;
+        let truthy = |id: ValueId| -> Option<bool> {
+            match heap.object(id) {
+                Some(RObject::Logical(vals)) if !vals.is_empty() => {
+                    if vals[0] == crate::value::object::NA_INTEGER {
+                        None
+                    } else {
+                        Some(vals[0] != 0)
+                    }
+                }
+                _ => None,
+            }
+        };
+        let is_na_value = matches!(
+            heap.object(v),
+            Some(RObject::Logical(vals)) if !vals.is_empty() && vals[0] == crate::value::object::NA_INTEGER
+        );
+        match tag_name.as_deref() {
+            Some("decreasing") => decreasing = truthy(v).unwrap_or(false),
+            Some("na.last") => {
+                na_last = if is_na_value {
+                    None
+                } else {
+                    match truthy(v) {
+                        Some(true) => Some(true),
+                        _ => Some(false),
+                    }
+                };
+            }
+            _ => {
+                if positional_seen == 2 {
+                    decreasing = truthy(v).unwrap_or(false);
+                }
+            }
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
     macro_rules! per_type {
-        ($variant:ident, $ord:expr) => {
+        ($variant:ident, $ord:expr, $na:expr) => {
             match heap.object(value) {
                 Some(RObject::$variant(values)) => {
                     let mut out = values.clone();
                     match op {
                         SORT => {
+                            let na_count = out.iter().filter(|v| $ord(**v)).count();
                             out.retain(|v| !$ord(*v));
                             out.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                             if decreasing {
                                 out.reverse();
+                            }
+                            // GNU na.last: absent/NA drops (already done);
+                            /// TRUE appends after the final order, FALSE
+                            /// prepends — placement ignores decreasing.
+                            match na_last {
+                                Some(true) => {
+                                    for _ in 0..na_count {
+                                        out.push($na);
+                                    }
+                                }
+                                Some(false) => {
+                                    for _ in 0..na_count {
+                                        out.insert(0, $na);
+                                    }
+                                }
+                                None => {}
                             }
                         }
                         REV => out.reverse(),
@@ -3165,9 +3246,9 @@ fn ordering_primitive(
     }
     let is_na_int = |v: i32| v == crate::value::object::NA_INTEGER;
     let is_na_real = |v: f64| v.is_nan();
-    per_type!(Integer, is_na_int);
-    per_type!(Real, is_na_real);
-    per_type!(Logical, is_na_int);
+    per_type!(Integer, is_na_int, crate::value::object::NA_INTEGER);
+    per_type!(Real, is_na_real, f64::from_bits(crate::value::object::NA_REAL_BITS));
+    per_type!(Logical, is_na_int, crate::value::object::NA_INTEGER);
     // Character vectors order lexicographically — GNU's C-locale byte order
     /// for the slice; the NA sentinel text sorts out exactly as numeric NA.
     match heap.object(value) {
@@ -3178,10 +3259,24 @@ fn ordering_primitive(
                 .collect();
             match op {
                 SORT => {
+                    let na_count = out.iter().filter(|v| *v == "\0NA").count();
                     out.retain(|v| v != "\0NA");
                     out.sort();
                     if decreasing {
                         out.reverse();
+                    }
+                    match na_last {
+                        Some(true) => {
+                            for _ in 0..na_count {
+                                out.push("\0NA".to_string());
+                            }
+                        }
+                        Some(false) => {
+                            for _ in 0..na_count {
+                                out.insert(0, "\0NA".to_string());
+                            }
+                        }
+                        None => {}
                     }
                 }
                 REV => out.reverse(),
@@ -3365,6 +3460,9 @@ fn ls_primitive(
             }
         }
     }
+    // GNU hides dot-prefixed bindings unless all.names=TRUE — the slice's
+    /// default exactly.
+    names.retain(|n| !n.starts_with('.'));
     names.sort();
     let interned: Vec<super::intern::InternedStr> = names
         .iter()

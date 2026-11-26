@@ -104,9 +104,28 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         RObject::List(items) => {
             // List printing in GNU is a recursive [[i]] layout — the slice
             // prints the flat element count shape for scalarness checks.
+            // Named elements print under `$name` headers; unnamed ones keep
+            /// the positional [[i]] form — GNU's mixed-header rule.
+            let names = super::primitives::get_attrib(heap, interner, value, "names");
+            let names_vec: Option<Vec<String>> = names.and_then(|id| match heap.object(id) {
+                Some(RObject::String(values)) => Some(
+                    values
+                        .iter()
+                        .map(|v| interner.string_text(*v).to_string())
+                        .collect(),
+                ),
+                _ => None,
+            });
             let mut out = String::new();
             for (i, item) in items.iter().enumerate() {
-                out.push_str(&format!("[[{}]]\n", i + 1));
+                let name = names_vec
+                    .as_ref()
+                    .and_then(|v| v.get(i))
+                    .filter(|n| !n.is_empty() && *n != "\0NA");
+                match name {
+                    Some(n) => out.push_str(&format!("${n}\n")),
+                    None => out.push_str(&format!("[[{}]]\n", i + 1)),
+                }
                 out.push_str(&format_value(heap, interner, *item));
                 // GNU separates list elements with a blank line.
                 out.push_str("\n\n");
