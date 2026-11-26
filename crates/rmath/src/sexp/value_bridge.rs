@@ -1989,6 +1989,60 @@ mod tests {
     /// `cargo test -p rmath conformance_sweep_cross_world -- --ignored`
     /// RPORT_SWEEP_LIMIT=n caps cases, RPORT_SWEEP_TO=999 raises the series
     /// ceiling, RPORT_SWEEP_FULL=1 disables series filtering.
+    /// Diagnostic probe: RPORT_SWEEP_CASE=027_list_print.R prints the golden
+    /// and the new-world output side by side for one conformance case.
+    #[test]
+    #[ignore]
+    fn sweep_case_diff_probe() {
+        let name = std::env::var("RPORT_SWEEP_CASE").expect("RPORT_SWEEP_CASE");
+        let stem = name.trim_end_matches(".R").to_string();
+        let cases_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/conformance/cases");
+        let golden_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/conformance/golden");
+        let source = std::fs::read_to_string(cases_dir.join(&name)).expect("case source");
+        let golden = std::fs::read_to_string(golden_dir.join(format!("{stem}.out"))).expect("golden");
+        let mut session = crate::sexp::session::RSession::new();
+        let expressions: Vec<_> = session.with_active(|| {
+            crate::eval::parser::parse_active_expressions(&source).unwrap_or_default()
+        });
+        let mut heap = Heap::new();
+        let mut interner = SymbolInterner::new();
+        let mut bridge = ValueBridge::new();
+        let imported: Vec<ValueId> = expressions
+            .iter()
+            .filter_map(|expr| bridge.import(&mut heap, &mut interner, expr).ok())
+            .collect();
+        let env_id = bootstrap_env(&mut heap, &mut interner);
+        let mut err = String::new();
+        for expr in &imported {
+            match crate::value::eval::eval(&mut heap, &mut interner, *expr, env_id) {
+                Ok(value) => {
+                    let invisible = match heap.object(*expr) {
+                        Some(RObject::Language { car, .. }) => match heap.object(*car) {
+                            Some(RObject::Symbol { name, .. }) => matches!(
+                                interner.symbol_name(*name),
+                                "<-" | "=" | "<<-" | "print" | "cat" | "invisible"
+                            ),
+                            _ => false,
+                        },
+                        _ => false,
+                    };
+                    if !invisible && value != ValueId::NIL {
+                        let text = crate::value::print::format_value(&heap, &interner, value);
+                        heap.output.push_str(&text);
+                        heap.output.push('\n');
+                    }
+                }
+                Err(e) => {
+                    err = format!("{e:?}");
+                    break;
+                }
+            }
+        }
+        println!("--- SOURCE ---\n{source}\n--- GOLDEN ---\n{golden}\n--- NEW OUTPUT ---\n{}\n--- ERROR ---\n{err}", heap.output);
+    }
+
     #[test]
     #[ignore]
     fn conformance_sweep_cross_world() {

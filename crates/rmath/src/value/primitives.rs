@@ -641,20 +641,34 @@ fn arithmetic(
         (a, b) => {
             let left_reals = as_reals(a);
             let right_reals = as_reals(b);
-            let folded = fold_numeric(left_reals, right_reals, op, |x, y| match op {
-                ADD => x + y,
-                SUB => x - y,
-                MUL => x * y,
-                POW => x.powf(y),
-                MOD => {
-                    if y == 0.0 {
-                        f64::NAN
-                    } else {
-                        // GNU's fmod semantics: sign follows the dividend.
-                        x - y * (x / y).trunc()
+            let folded = fold_numeric(left_reals, right_reals, op, |x, y| {
+                let result = match op {
+                    ADD => x + y,
+                    SUB => x - y,
+                    MUL => x * y,
+                    POW => x.powf(y),
+                    MOD => {
+                        if y == 0.0 {
+                            f64::NAN
+                        } else {
+                            // GNU's fmod semantics: sign follows the dividend.
+                            x - y * (x / y).trunc()
+                        }
                     }
+                    _ => x / y,
+                };
+                // Hardware NaN canonicalization destroys the NA payload, so
+                // GNU's NA survival is explicit: an NA operand poisons any
+                // NaN result back to NA; genuine NaN production (Inf-Inf,
+                // 0/0) keeps the canonical quiet NaN exactly as GNU does.
+                if result.is_nan()
+                    && (x.to_bits() == crate::value::object::NA_REAL_BITS
+                        || y.to_bits() == crate::value::object::NA_REAL_BITS)
+                {
+                    f64::from_bits(crate::value::object::NA_REAL_BITS)
+                } else {
+                    result
                 }
-                _ => x / y,
             })
             .map_err(RSignal::from)?;
             Ok(heap.alloc(RObject::Real(folded)))
@@ -875,6 +889,11 @@ fn comparison(
     let a = as_reals(left);
     let b = as_reals(right);
     let folded = fold_numeric(a, b, op, |x, y| {
+        // GNU: any NaN operand (NA or NaN) poisons the comparison to NA
+        /// logical — NaN comparisons are never simply false.
+        if x.is_nan() || y.is_nan() {
+            return crate::value::object::NA_INTEGER as f64;
+        }
         let result = match op {
             LT => x < y,
             GT => x > y,
@@ -2420,7 +2439,7 @@ fn vector_constructor(
 /// Read one named attribute off an object's slot attribute chain — the
 /// pairlist walk every attribute access shares. Attribute chains are
 /// pairlist nodes whose tags are the attribute name symbols.
-fn get_attrib(
+pub(crate) fn get_attrib(
     heap: &Heap,
     interner: &SymbolInterner,
     obj: ValueId,

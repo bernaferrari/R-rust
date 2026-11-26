@@ -108,7 +108,8 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
             for (i, item) in items.iter().enumerate() {
                 out.push_str(&format!("[[{}]]\n", i + 1));
                 out.push_str(&format_value(heap, interner, *item));
-                out.push('\n');
+                // GNU separates list elements with a blank line.
+                out.push_str("\n\n");
             }
             return out.trim_end().to_string();
         }
@@ -125,10 +126,83 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
             _ => "NULL".to_string(),
         };
     }
+    // Matrix layout: a two-length integer dim attribute lays the vector out
+    /// column-major under [,j] column headers and [i,] row labels exactly as
+    /// GNU's print.matrix does.
+    if let Some(dim) = dim_attribute(heap, interner, value) {
+        if dim.len() == 2 && dim[0] > 0 && dim[1] > 0 && dim[0] * dim[1] == length as i32 {
+            return format_matrix(heap, interner, object, dim[0] as usize, dim[1] as usize);
+        }
+    }
+    // GNU right-justifies every element to the widest element text so the
+    /// columnar reading holds — NA padding is the visible consequence.
+    let elements: Vec<String> = (0..length)
+        .map(|i| format_element(heap, interner, object, i))
+        .collect();
+    let width = elements.iter().map(|e| e.len()).max().unwrap_or(0);
     let mut out = String::from("[1]");
-    for i in 0..length {
+    for element in &elements {
         out.push(' ');
-        out.push_str(&format_element(heap, interner, object, i));
+        out.push_str(&" ".repeat(width - element.len()));
+        out.push_str(element);
+    }
+    out
+}
+
+/// The dim attribute of an object as integer extents, when present.
+fn dim_attribute(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Option<Vec<i32>> {
+    let dim_id = super::primitives::get_attrib(heap, interner, value, "dim")?;
+    match heap.object(dim_id) {
+        Some(RObject::Integer(values)) => Some(values.clone()),
+        Some(RObject::Real(values)) => Some(values.iter().map(|v| *v as i32).collect()),
+        _ => None,
+    }
+}
+
+/// Column-major matrix print: header line indented by the row-label width,
+/// every column right-justified to the wider of its widest element and its
+/// `[,j]` header — GNU's print.matrix layout for the atomic types.
+fn format_matrix(
+    heap: &Heap,
+    interner: &SymbolInterner,
+    object: &RObject,
+    nrow: usize,
+    ncol: usize,
+) -> String {
+    let element = |i: usize, j: usize| format_element(heap, interner, object, i + j * nrow);
+    let headers: Vec<String> = (0..ncol).map(|j| format!("[,{}]", j + 1)).collect();
+    let widths: Vec<usize> = (0..ncol)
+        .map(|j| {
+            let mut width = headers[j].len();
+            for i in 0..nrow {
+                width = width.max(element(i, j).len());
+            }
+            width
+        })
+        .collect();
+    let row_labels: Vec<String> = (0..nrow).map(|i| format!("[{},]", i + 1)).collect();
+    let label_width = row_labels.iter().map(|l| l.len()).max().unwrap_or(0);
+    let mut out = String::new();
+    out.push_str(&" ".repeat(label_width + 1));
+    for (j, header) in headers.iter().enumerate() {
+        if j > 0 {
+            out.push(' ');
+        }
+        out.push_str(&" ".repeat(widths[j] - header.len()));
+        out.push_str(header);
+    }
+    for i in 0..nrow {
+        out.push('\n');
+        out.push_str(&row_labels[i]);
+        out.push_str(&" ".repeat(label_width - row_labels[i].len() + 1));
+        for j in 0..ncol {
+            if j > 0 {
+                out.push(' ');
+            }
+            let text = element(i, j);
+            out.push_str(&" ".repeat(widths[j] - text.len()));
+            out.push_str(&text);
+        }
     }
     out
 }
