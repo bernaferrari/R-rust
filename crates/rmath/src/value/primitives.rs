@@ -377,7 +377,7 @@ pub(crate) fn call_primitive(
     // Braces and parens propagate the final inner visibility exactly as
     /// GNU — `{ invisible(1) }` returns invisibly — so they join .Internal
     /// and eval in the propagation exceptions.
-    if result.is_ok() && id.0 != INTERNAL && id.0 != EVAL_FN && id.0 != BRACE && id.0 != PAREN && id.0 != SUPPRESS_WARNINGS && id.0 != USEMETHOD && id.0 != NEXTMETHOD && id.0 != SYSTEM {
+    if result.is_ok() && id.0 != INTERNAL && id.0 != EVAL_FN && id.0 != BRACE && id.0 != PAREN && id.0 != SUPPRESS_WARNINGS && id.0 != USEMETHOD && id.0 != NEXTMETHOD && id.0 != SYSTEM && id.0 != OPTIONS_FN {
         heap.visible = !matches!(
             id.0,
             ASSIGN | SUPERASSIGN | PRINT | CAT | INVISIBLE | WHILE | REPEAT | FOR
@@ -1036,9 +1036,26 @@ fn call_primitive_inner(
             // GNU's .Internal evaluates its single argument as a direct
             /// internal call — in the new world the inner call evaluates
             /// exactly as written, the internal table being the primitives.
+            // Unknown inner function heads raise GNU's exact no-internal-
+            // function error rather than the unbound-variable fallback.
             let raw = raw_args(heap, args);
             match raw.first() {
-                Some(expr) => eval(heap, interner, *expr, caller_env),
+                Some(expr) => {
+                    if let Some(RObject::Language { car, .. }) = heap.object(*expr) {
+                        if let Some(RObject::Symbol { name, .. }) = heap.object(*car) {
+                            let head = interner.symbol_name(*name).to_string();
+                            if primitive_id_for_name(&head).is_none()
+                                && !matches!(head.as_str(), "builtins" | "eval" | "substitute" | "sys.calls" | "sys.frames" | "sys.function" | "sys.parent" | "browser" | "traceback" | "gc")
+                            {
+                                return Err(EvalError::Condition(format!(
+                                    "there is no .Internal function '{head}'"
+                                ))
+                                .into());
+                            }
+                        }
+                    }
+                    eval(heap, interner, *expr, caller_env)
+                }
                 None => Ok(ValueId::NIL),
             }
         }
@@ -11262,6 +11279,7 @@ pub struct ConnCell(pub std::cell::RefCell<ConnState>);
 pub struct ConnState {
     pub path: String,
     pub open: bool,
+    pub readable: bool,
     pub read_buf: Vec<u8>,
     pub cursor: usize,
 }
@@ -11300,7 +11318,7 @@ fn file_primitive(
         let _ = std::fs::write(&path, b"");
         Vec::new()
     };
-    let state = ConnState { path, open: true, read_buf, cursor: 0 };
+    let state = ConnState { path, open: true, readable, read_buf, cursor: 0 };
     let cell = std::rc::Rc::new(ConnCell(std::cell::RefCell::new(state)));
     Ok(heap.alloc(RObject::External(cell)))
 }
@@ -11313,9 +11331,28 @@ fn isopen_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    let operands = eval_args(heap, interner, args, caller_env, 1)?;
-    match with_conn(heap, operands[0], |state| state.open) {
-        Some(true) => Ok(heap.alloc(RObject::Logical(vec![1]))),
+    // GNU's mode argument filters the answer: "r"/"read" ask about the
+    // read direction, "w"/"write" the write direction — a connection open
+    // in the other direction reports FALSE rather than erroring.
+    let raw = raw_args(heap, args);
+    let mut positional: Vec<ValueId> = Vec::new();
+    for expr in &raw {
+        let v = eval(heap, interner, *expr, caller_env)?;
+        positional.push(force_if_promise(heap, interner, v)?);
+    }
+    if positional.is_empty() {
+        return Err(EvalError::TypeError("invalid connection").into());
+    }
+    let mode_query = positional.get(1).and_then(|v| string_operand(heap, interner, *v));
+    match with_conn(heap, positional[0], |state| (state.open, state.readable)) {
+        Some((true, readable)) => {
+            let answer = match mode_query.as_deref() {
+                Some("r") | Some("read") => readable,
+                Some("w") | Some("write") | Some("a") | Some("append") => !readable,
+                _ => true,
+            };
+            Ok(heap.alloc(RObject::Logical(vec![answer as i32])))
+        }
         _ => Err(EvalError::TypeError("invalid connection").into()),
     }
 }
@@ -12818,6 +12855,8 @@ fn options_primitive(
     /// pure query form returns visibly.
     if queried.is_empty() && !previous.is_empty() {
         heap.visible = false;
+    } else {
+        heap.visible = true;
     }
     let result_set = if !queried.is_empty() { queried } else { previous };
     let items: Vec<ValueId> = result_set.iter().map(|(_, v)| *v).collect();

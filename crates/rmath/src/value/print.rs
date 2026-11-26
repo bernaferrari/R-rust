@@ -141,6 +141,35 @@ fn is_table(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
     }
 }
 
+
+/// Render the attribute chain as GNU's attr(,"name") blocks — insertion
+/// order, each value formatted inline exactly as print.default does.
+fn format_attributes(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String {
+    let attrib = heap.get(value).map(|slot| slot.attrib).unwrap_or(crate::value::id::ValueId::NIL);
+    let mut out = String::new();
+    let mut cursor = attrib;
+    for _ in 0..1000 {
+        if cursor == crate::value::id::ValueId::NIL {
+            break;
+        }
+        match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => {
+                let name = match heap.object(*tag) {
+                    Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+                    _ => String::new(),
+                };
+                if !name.is_empty() && name != "names" {
+                    let rendered = format_value(heap, interner, *car);
+                    out.push_str(&format!("attr(,\"{}\")\n{}\n", name, rendered));
+                }
+                cursor = *cdr;
+            }
+            _ => break,
+        }
+    }
+    out.trim_end().to_string()
+}
+
 pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String {
     let object = match heap.object(value) {
         Some(o) => o,
@@ -398,15 +427,23 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         // attribute exactly as print.default's empty-shape rendering.
         let named = super::primitives::get_attrib(heap, interner, value, "names").is_some();
         let prefix = if named { "named " } else { "" };
-        return match object {
+        let base = match object {
             RObject::Real(_) => format!("{prefix}numeric(0)"),
             RObject::Integer(_) => format!("{prefix}integer(0)"),
-            RObject::Logical(_) => "logical(0)".to_string(),
-            RObject::String(_) => "character(0)".to_string(),
-            RObject::Complex(_) => "complex(0)".to_string(),
-            RObject::Raw(_) => "raw(0)".to_string(),
+            RObject::Logical(_) => format!("{prefix}logical(0)"),
+            RObject::String(_) => format!("{prefix}character(0)"),
+            RObject::Complex(_) => format!("{prefix}complex(0)"),
+            RObject::Raw(_) => format!("{prefix}raw(0)"),
+            RObject::List(_) => return "list()".to_string(),
             _ => "NULL".to_string(),
         };
+        // Attributes print after the empty shape exactly as GNU's
+        // attr-bearing vectors — the chain walks in insertion order.
+        let attrs = format_attributes(heap, interner, value);
+        if attrs.is_empty() {
+            return base;
+        }
+        return format!("{base}\n{attrs}");
     }
     // Matrix layout: a two-length integer dim attribute lays the vector out
     /// column-major under [,j] column headers and [i,] row labels exactly as
