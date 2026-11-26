@@ -29,7 +29,11 @@ use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NilValue, R_UnboundValue};
 use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::symbol::Rf_install;
-use crate::unix::dynload::{DL_FUNC, InitFunctionHashing};
+/// Function pointer type for registered native routines.
+///
+/// Historically this matched R's `DL_FUNC` process-loader type; in the
+/// pure-Rust runtime it only ever carries bundled Rust routine pointers.
+pub type DL_FUNC = Option<unsafe extern "C" fn()>;
 
 // ---------------------------------------------------------------------------
 // Local error helper
@@ -122,22 +126,6 @@ impl LoadedDll {
         ptr::from_ref(&self.info).cast_mut()
     }
 }
-impl Drop for LoadedDll {
-    fn drop(&mut self) {
-        let handle = self.info.handle;
-        if !handle.is_null() {
-            // SAFETY: `handle` is owned by this record and this is its final
-            // lease; no unload hook runs at drop.
-            #[cfg(not(target_arch = "wasm32"))]
-            unsafe {
-                dlclose(handle);
-            }
-            #[cfg(target_arch = "wasm32")]
-            crate::unix::dynload::dlclose(handle);
-        }
-    }
-}
-
 #[derive(Clone)]
 pub(crate) struct ResolvedForeignRoutine {
     function: DL_FUNC,
@@ -267,7 +255,6 @@ pub fn InitDynload() {
     init_loaded_dll();
     let base = add_dll(c"base", c"base");
     crate::mainutils::registration::R_init_base(base.pointer());
-    InitFunctionHashing();
 }
 
 // ---------------------------------------------------------------------------
@@ -298,33 +285,6 @@ fn add_dll(path: &CStr, name: &CStr) -> Rc<LoadedDll> {
 }
 
 // ---------------------------------------------------------------------------
-// Native loader FFI
-// ---------------------------------------------------------------------------
-
-#[cfg(not(target_arch = "wasm32"))]
-unsafe extern "C" {
-    fn dlopen(path: *const c_char, flag: c_int) -> *mut c_void;
-    fn dlclose(handle: *mut c_void) -> c_int;
-    fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
-    fn dlerror() -> *mut c_char;
-}
-
-/// Look up a raw symbol address in a loaded library.
-///
-/// # Safety
-/// `handle` must be a live `dlopen` handle for the call; `name` is a C string.
-unsafe fn lookup_address(handle: *mut c_void, name: &CStr) -> *mut c_void {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        // SAFETY: caller supplies live non-null handle, name is a C string.
-        unsafe { dlsym(handle, name.as_ptr()) }
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        crate::unix::dynload::dlsym(handle, name.as_ptr())
-    }
-}
-
 // ---------------------------------------------------------------------------
 // R_getDllInfo / R_getDllIndex
 // ---------------------------------------------------------------------------
@@ -472,19 +432,6 @@ pub unsafe fn R_registerRoutines(
 }
 
 
-/// Dynamic `dlsym` fallback after registered lookup misses.
-fn lookup_dynamic(info: &DllInfo, name: &CStr) -> DL_FUNC {
-    if !info.use_dynamic_lookup.get() || info.handle.is_null() {
-        return None;
-    }
-    // SAFETY: the DLL lease keeps the handle live and `name` is a C string.
-    let sym = unsafe { lookup_address(info.handle, name) };
-    if sym.is_null() {
-        return None;
-    }
-    // SAFETY: a POSIX `dlsym` address is used at the requested native ABI.
-    unsafe { std::mem::transmute::<*mut c_void, DL_FUNC>(sym) }
-}
 
 fn resolve_in_library(
     library: Rc<LoadedDll>,
@@ -495,8 +442,7 @@ fn resolve_in_library(
     let declaration = info.registrations.borrow().lookup(name, kind);
     let function = declaration
         .as_ref()
-        .and_then(|routine| routine.function)
-        .or_else(|| lookup_dynamic(info, name));
+        .and_then(|routine| routine.function);
     function.map(|_| ResolvedForeignRoutine {
         function,
         declaration,
@@ -564,7 +510,7 @@ pub unsafe fn R_dlsym(info: *mut DllInfo, name: *const c_char, sym_type: c_int) 
         .borrow()
         .lookup(name, sym_type)
         .and_then(|routine| routine.function);
-    registered.or_else(|| lookup_dynamic(info, name))
+    registered
 }
 
 // ---------------------------------------------------------------------------
@@ -622,7 +568,6 @@ pub unsafe fn R_FindSymbol(name: *const c_char, pkg: *const c_char, sym_type: c_
             .borrow()
             .lookup(name, sym_type)
             .and_then(|routine| routine.function);
-        let f = f.or_else(|| lookup_dynamic(&dll.info, name));
         if f.is_some() || !all {
             return f;
         }

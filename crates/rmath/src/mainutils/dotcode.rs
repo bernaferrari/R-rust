@@ -25,7 +25,7 @@ use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, Rcomplex, SEXP, SEXPTYPE, TR
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance;
 use crate::sexp::memory_ext::{R_alloc, vmaxget, vmaxset};
-use crate::unix::dynload::DL_FUNC;
+use crate::mainutils::rdynload::DL_FUNC;
 
 // ---------------------------------------------------------------------------
 // Constants

@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 //! Owned declarations; an erased address never determines its interface.
-use crate::unix::dynload::DL_FUNC;
+use crate::mainutils::rdynload::DL_FUNC;
 use std::ffi::{CStr, CString};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
