@@ -193,9 +193,9 @@ fn decode_object(
     };
 
     // Reattach the attribute chain in encoded order — copy_with_attrib
-    /// prepends, so reverse application preserves the written sequence.
+    /// appends, so forward application preserves the written sequence.
     let mut result = object;
-    for (name, attr_value) in attrs.into_iter().rev() {
+    for (name, attr_value) in attrs.into_iter() {
         result = super::primitives::copy_with_attrib(heap, interner, result, &name, attr_value)
             .ok()?;
     }

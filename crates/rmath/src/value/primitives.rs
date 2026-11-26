@@ -4014,7 +4014,9 @@ pub(crate) fn copy_with_attrib(
         }
     }
     if !found && attr_value != ValueId::NIL {
-        entries.insert(0, (sym_obj, attr_value));
+        // GNU appends new attributes at the chain's end — attributes()
+        /// enumerates in insertion order exactly as the oracle pins.
+        entries.push((sym_obj, attr_value));
     }
     // Rebuild the chain tail-to-head.
     let mut chain = ValueId::NIL;
@@ -5458,9 +5460,9 @@ fn structure_primitive(
         Some(v) => *v,
         None => return Err(EvalError::TypeError("structure requires input").into()),
     };
-    // copy_with_attrib prepends, so reverse application leaves the chain
+    // copy_with_attrib appends, so forward application leaves the chain
     /// in argument order exactly as GNU prints it.
-    for (name, value) in tagged.into_iter().rev() {
+    for (name, value) in tagged.into_iter() {
         object = copy_with_attrib(heap, interner, object, &name, value).map_err(RSignal::from)?;
     }
     Ok(object)
@@ -6051,9 +6053,9 @@ fn attributes_assign_primitive(
         None => Vec::new(),
     };
     if let Some(RObject::List(items)) = heap.object(operands[1]).cloned() {
-        // Reverse iteration: copy_with_attrib prepends, so list order is
+        // Forward iteration: copy_with_attrib appends, so list order is
         /// preserved in the final chain exactly as GNU's insertion order.
-        for (i, item) in items.iter().enumerate().rev() {
+        for (i, item) in items.iter().enumerate() {
             if let Some(name) = name_vec.get(i) {
                 object = copy_with_attrib(heap, interner, object, name, *item).map_err(RSignal::from)?;
             }
@@ -7025,16 +7027,15 @@ fn regexpr_primitive(
             }
         }
     }
-    // copy_with_attrib prepends, so the application order is the reverse
-    /// of GNU's printed order — match.length must apply last to head the
-    /// chain exactly as print order requires.
+    // copy_with_attrib appends, so the application order is GNU's printed
+    /// order exactly — match.length first, then index.type, then useBytes.
     let use_bytes = heap.alloc(RObject::Logical(vec![1]));
     let result = heap.alloc(RObject::Integer(positions));
-    let result = copy_with_attrib(heap, interner, result, "useBytes", use_bytes).map_err(RSignal::from)?;
+    let length_obj = heap.alloc(RObject::Integer(lengths));
+    let result = copy_with_attrib(heap, interner, result, "match.length", length_obj).map_err(RSignal::from)?;
     let index_type = heap.alloc(RObject::String(vec![interner.intern_string("chars")]));
     let result = copy_with_attrib(heap, interner, result, "index.type", index_type).map_err(RSignal::from)?;
-    let length_obj = heap.alloc(RObject::Integer(lengths));
-    copy_with_attrib(heap, interner, result, "match.length", length_obj).map_err(RSignal::from)
+    copy_with_attrib(heap, interner, result, "useBytes", use_bytes).map_err(RSignal::from)
 }
 
 /// `unique(x, incomparables, fromLast)` — GNU's deduplication exactly:
@@ -7505,7 +7506,7 @@ pub(crate) fn remove_attrib(
     }
     let stripped = heap.alloc(heap.object(value).cloned().unwrap_or(RObject::Nil));
     let mut result = stripped;
-    for (attr_name, attr_value) in kept.into_iter().rev() {
+    for (attr_name, attr_value) in kept.into_iter() {
         result = copy_with_attrib(heap, interner, result, &attr_name, attr_value)?;
     }
     Ok(result)
