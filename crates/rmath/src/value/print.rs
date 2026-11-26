@@ -56,6 +56,29 @@ fn trim_fixed(v: f64, decimals: usize) -> String {
     }
 }
 
+/// The decimals a fixed-notation element actually uses after trailing-zero
+/// trimming — the input to GNU's uniform-decimal computation.
+fn decimals_used(v: f64) -> Option<usize> {
+    if v.is_nan() || v.is_infinite() || v == 0.0 {
+        return Some(0);
+    }
+    let abs = v.abs();
+    let exponent = abs.log10().floor() as i32;
+    if exponent >= 7 || exponent < -4 {
+        return None;
+    }
+    let decimals = (6 - exponent).max(0) as usize;
+    let text = format!("{:.*}", decimals, v);
+    let trimmed = text.trim_end_matches('0').trim_end_matches('.');
+    Some(trimmed.split('.').nth(1).map(|s| s.len()).unwrap_or(0))
+}
+
+/// Fixed-notation formatting at an exact decimal count — no trimming,
+/// since uniformity is the point.
+fn fixed_exact(v: f64, decimals: usize) -> String {
+    format!("{:.*}", decimals, v)
+}
+
 /// One element's display text — the per-type shapes GNU's print uses.
 fn format_element(heap: &Heap, interner: &SymbolInterner, value: &RObject, index: usize) -> String {
     match value {
@@ -175,8 +198,46 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     }
     // GNU right-justifies every element to the widest element text so the
     /// columnar reading holds — NA padding is the visible consequence.
+    // Real vectors share one decimal count across all elements — GNU's
+    /// format.c uniformity rule: the maximum decimals any fixed-window
+    /// element needs applies to all, so 100.5 drags 200 into 200.0.
+    let uniform_decimals: Option<usize> = match object {
+        RObject::Real(values) => {
+            let mut max_dec = 0usize;
+            let mut all_fixed = true;
+            for v in values.iter() {
+                if v.is_nan() || v.is_infinite() {
+                    continue;
+                }
+                match decimals_used(*v) {
+                    Some(d) => max_dec = max_dec.max(d),
+                    None => {
+                        all_fixed = false;
+                        break;
+                    }
+                }
+            }
+            if all_fixed && max_dec > 0 {
+                Some(max_dec)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    };
     let elements: Vec<String> = (0..length)
-        .map(|i| format_element(heap, interner, object, i))
+        .map(|i| {
+            if let (Some(dec), RObject::Real(values)) = (uniform_decimals, object) {
+                let v = values[i];
+                if v.is_nan() || v.is_infinite() {
+                    format_real(v)
+                } else {
+                    fixed_exact(v, dec)
+                }
+            } else {
+                format_element(heap, interner, object, i)
+            }
+        })
         .collect();
     let width = elements.iter().map(|e| e.len()).max().unwrap_or(0);
     let mut out = String::from("[1]");

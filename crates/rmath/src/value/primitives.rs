@@ -2188,7 +2188,12 @@ fn math_unary(
         .collect();
     // GNU type fidelity: abs of an integer vector stays integer; the
     /// transcendental functions always produce real.
-    if op == ABS && matches!(heap.object(operands[0]), Some(RObject::Integer(_))) {
+    if op == ABS
+        && matches!(
+            heap.object(operands[0]),
+            Some(RObject::Integer(_)) | Some(RObject::Logical(_))
+        )
+    {
         let ints: Vec<i32> = out
             .iter()
             .map(|v| {
@@ -2269,7 +2274,20 @@ fn strings_of_value(
     value: ValueId,
 ) -> Result<Vec<super::intern::InternedStr>, EvalError> {
     match heap.object(value) {
-        Some(RObject::String(values)) => Ok(values.clone()),
+        Some(RObject::String(values)) => {
+            // GNU paste coercion renders NA_character_ as the text "NA" —
+            /// the sentinel never survives into concatenation.
+            Ok(values
+                .iter()
+                .map(|v| {
+                    if interner.string_text(*v) == "\0NA" {
+                        interner.intern_string("NA")
+                    } else {
+                        *v
+                    }
+                })
+                .collect())
+        }
         Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => {
             let logical = matches!(heap.object(value), Some(RObject::Logical(_)));
             Ok(values
