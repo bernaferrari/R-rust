@@ -60,7 +60,8 @@ pub fn det_ge_real(ain: SEXP, logarithm: SEXP) -> SEXP {
             ptr::copy_nonoverlapping(REAL(ain), a_copy.as_mut_ptr(), len);
         }
 
-        let ipiv = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
+        let mut ipiv_ws = vec![0 as c_int; n as usize];
+        let ipiv = ipiv_ws.as_mut_ptr();
         let mut info: c_int = 0;
         super::backend::dgetrf_(&n, &n, a_copy.as_mut_ptr(), &n, ipiv, &mut info);
         if info < 0 {

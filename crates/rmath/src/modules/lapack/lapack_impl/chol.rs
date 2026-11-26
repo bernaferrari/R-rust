@@ -70,7 +70,8 @@ pub fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
 
         if piv != 0 {
             // pivoted Cholesky: dpstrf
-            let piv_arr = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
+            let mut piv_arr_ws = vec![0 as c_int; n as usize];
+            let piv_arr = piv_arr_ws.as_mut_ptr();
             for i in 0..n as usize {
                 *piv_arr.add(i) = i as c_int + 1;
             }

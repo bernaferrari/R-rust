@@ -113,7 +113,8 @@ pub fn La_solve(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
             }
             if saw_nan { f64::NAN } else { max_col }
         };
-        let ipiv = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
+        let mut ipiv_ws = vec![0 as c_int; n as usize];
+        let ipiv = ipiv_ws.as_mut_ptr();
         let mut info: c_int = 0;
 
         super::backend::dgesv_(
@@ -284,7 +285,8 @@ pub fn La_solve_cmplx(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
             }
             if saw_nan { f64::NAN } else { max_col }
         };
-        let ipiv = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
+        let mut ipiv_ws = vec![0 as c_int; n as usize];
+        let ipiv = ipiv_ws.as_mut_ptr();
         let mut info: c_int = 0;
 
         super::backend::zgesv_(

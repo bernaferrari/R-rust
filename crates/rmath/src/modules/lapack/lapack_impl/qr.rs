@@ -563,7 +563,8 @@ pub fn qr_coef_cmplx(q: SEXP, bin: SEXP) -> SEXP {
             crate::sexp::context::r_error("invalid workspace size from Lapack routine 'zunmqr'");
         }
         lwork = tmp.r as c_int;
-        let work = R_alloc(lwork as usize, std::mem::size_of::<LapRcomplex>()) as *mut LapRcomplex;
+        let mut work_ws = vec![LapRcomplex::default(); lwork as usize];
+        let work = work_ws.as_mut_ptr();
         super::backend::zunmqr_(
             b"L".as_ptr(),
             b"C".as_ptr(),
@@ -739,7 +740,8 @@ pub fn qr_qy_real(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
         }
 
         lwork = tmp as c_int;
-        let work = R_alloc(lwork as usize, std::mem::size_of::<f64>()) as *mut f64;
+        let mut work_ws = vec![0.0f64; lwork as usize];
+        let work = work_ws.as_mut_ptr();
 
         super::backend::dormqr_(
             &side,
@@ -898,7 +900,8 @@ pub fn qr_qy_cmplx(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
         }
 
         lwork = tmp.r as c_int;
-        let work = R_alloc(lwork as usize, std::mem::size_of::<LapRcomplex>()) as *mut LapRcomplex;
+        let mut work_ws = vec![LapRcomplex::default(); lwork as usize];
+        let work = work_ws.as_mut_ptr();
 
         super::backend::zunmqr_(
             &side,
