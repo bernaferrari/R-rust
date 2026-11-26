@@ -95,6 +95,12 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         Some(o) => o,
         None => return "NULL".to_string(),
     };
+    // data.frame printing: classed lists lay out as tables — column names
+    /// right-justified over per-column widths, row names on the left,
+    /// character cells unquoted exactly as print.data.frame.
+    if matches!(object, RObject::List(_)) && is_data_frame(heap, interner, value) {
+        return format_data_frame(heap, interner, value);
+    }
     let length = match object {
         RObject::Real(v) => v.len(),
         RObject::Integer(v) => v.len(),
@@ -317,4 +323,112 @@ fn dimnames_of(
         }
     };
     (extract(0), extract(1))
+}
+
+/// The class attribute holds data.frame — the object shape test.
+fn is_data_frame(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
+    match super::primitives::get_attrib(heap, interner, value, "class") {
+        Some(id) => match heap.object(id) {
+            Some(RObject::String(values)) => values
+                .iter()
+                .any(|v| interner.string_text(*v) == "data.frame"),
+            _ => false,
+        },
+        None => false,
+    }
+}
+
+/// Unquoted cell text for one column element — print.data.frame's shape.
+fn format_cell(heap: &Heap, interner: &SymbolInterner, column: &RObject, index: usize) -> String {
+    match column {
+        RObject::String(values) => {
+            let text = interner.string_text(values[index]);
+            if text == "\0NA" {
+                "NA".to_string()
+            } else {
+                text.to_string()
+            }
+        }
+        _ => format_element(heap, interner, column, index),
+    }
+}
+
+/// Tabular layout: headers right-justified over per-column widths, row
+/// names leftmost — column-major cell extraction over the list shape.
+fn format_data_frame(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String {
+    let items = match heap.object(value) {
+        Some(RObject::List(items)) => items.clone(),
+        _ => return "<data.frame>".to_string(),
+    };
+    let col_names: Vec<String> = match super::primitives::get_attrib(heap, interner, value, "names") {
+        Some(id) => match heap.object(id) {
+            Some(RObject::String(values)) => values
+                .iter()
+                .map(|v| interner.string_text(*v).to_string())
+                .collect(),
+            _ => Vec::new(),
+        },
+        None => Vec::new(),
+    };
+    let row_names: Vec<String> = match super::primitives::get_attrib(heap, interner, value, "row.names") {
+        Some(id) => match heap.object(id) {
+            Some(RObject::String(values)) => values
+                .iter()
+                .map(|v| interner.string_text(*v).to_string())
+                .collect(),
+            Some(RObject::Integer(values)) => values.iter().map(|v| v.to_string()).collect(),
+            _ => Vec::new(),
+        },
+        None => Vec::new(),
+    };
+    let ncol = items.len();
+    let nrow = items
+        .first()
+        .and_then(|c| match heap.object(*c) {
+            Some(RObject::Real(v)) => Some(v.len()),
+            Some(RObject::Integer(v)) => Some(v.len()),
+            Some(RObject::Logical(v)) => Some(v.len()),
+            Some(RObject::String(v)) => Some(v.len()),
+            _ => None,
+        })
+        .unwrap_or(0);
+    // Per-column widths: widest of header and every cell.
+    let mut widths: Vec<usize> = Vec::new();
+    for (j, col) in items.iter().enumerate() {
+        let mut width = col_names.get(j).map(|n| n.len()).unwrap_or(0);
+        if let Some(column) = heap.object(*col) {
+            for i in 0..nrow {
+                width = width.max(format_cell(heap, interner, column, i).len());
+            }
+        }
+        widths.push(width);
+    }
+    let label_width = row_names.iter().map(|n| n.len()).max().unwrap_or(0);
+    let mut out = String::new();
+    out.push_str(&" ".repeat(label_width + 1));
+    for (j, name) in col_names.iter().enumerate() {
+        if j > 0 {
+            out.push(' ');
+        }
+        out.push_str(&" ".repeat(widths[j] - name.len()));
+        out.push_str(name);
+    }
+    for i in 0..nrow {
+        out.push('\n');
+        let label = row_names.get(i).cloned().unwrap_or_else(|| (i + 1).to_string());
+        out.push_str(&label);
+        out.push_str(&" ".repeat(label_width - label.len() + 1));
+        for (j, col) in items.iter().enumerate() {
+            if j > 0 {
+                out.push(' ');
+            }
+            let cell = match heap.object(*col) {
+                Some(column) => format_cell(heap, interner, column, i),
+                None => "?".to_string(),
+            };
+            out.push_str(&" ".repeat(widths[j] - cell.len()));
+            out.push_str(&cell);
+        }
+    }
+    out
 }

@@ -146,6 +146,11 @@ pub mod primitive_ids {
     pub const IS_NULL: u32 = 132;
     pub const LENGTH_ASSIGN: u32 = 133;
     pub const FILE_PATH: u32 = 134;
+    /// Data frame construction — the list-of-columns object shape GNU's
+    /// statistical surface is built on.
+    pub const DATA_FRAME: u32 = 135;
+    /// Split-apply-combine over grouped vectors.
+    pub const AGGREGATE: u32 = 136;
     /// Matrix construction and dimension introspection.
     pub const MATRIX: u32 = 100;
     pub const DIM: u32 = 101;
@@ -167,7 +172,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -420,6 +425,8 @@ pub(crate) fn call_primitive(
         }
         LENGTH_ASSIGN => length_assign_primitive(heap, interner, args, caller_env),
         FILE_PATH => file_path_primitive(heap, interner, args, caller_env),
+        DATA_FRAME => data_frame_primitive(heap, interner, args, caller_env),
+        AGGREGATE => aggregate_primitive(heap, interner, args, caller_env),
         DIMNAMES => attrib_getter(heap, interner, args, caller_env, "dimnames"),
         DIMNAMES_ASSIGN => attrib_replacement(heap, interner, args, caller_env, "dimnames"),
         CLASS => class_getter(heap, interner, args, caller_env),
@@ -462,6 +469,11 @@ pub(crate) fn call_primitive(
         MATRIX => matrix_primitive(heap, interner, args, caller_env),
         DIM => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            // data.frames synthesize dim from the column shape exactly as
+            /// GNU's implicit dims.
+            if let Some((nr, nc)) = data_frame_shape(heap, interner, operands[0]) {
+                return Ok(heap.alloc(RObject::Integer(vec![nr as i32, nc as i32])));
+            }
             match get_attrib(heap, interner, operands[0], "dim") {
                 Some(dim) => Ok(dim),
                 None => Ok(ValueId::NIL),
@@ -470,6 +482,14 @@ pub(crate) fn call_primitive(
         NROW | NCOL => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             let which = if id.0 == NROW { 0 } else { 1 };
+            // data.frames carry no dim attribute — the shape reads off the
+            // column list: ncol is the column count, nrow the shared column
+            // length exactly as GNU.
+            let df_shape = data_frame_shape(heap, interner, operands[0]);
+            if let Some((nr, nc)) = df_shape {
+                let extent = if id.0 == NROW { nr } else { nc };
+                return Ok(heap.alloc(RObject::Integer(vec![extent as i32])));
+            }
             let extent = match get_attrib(heap, interner, operands[0], "dim") {
                 Some(dim) => match heap.object(dim) {
                     Some(RObject::Integer(dims)) => dims.get(which).copied().unwrap_or(crate::value::object::NA_INTEGER),
@@ -1023,7 +1043,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -1133,6 +1153,8 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "is.null" => Some(IS_NULL),
         "length<-" => Some(LENGTH_ASSIGN),
         "file.path" => Some(FILE_PATH),
+        "data.frame" => Some(DATA_FRAME),
+        "aggregate" => Some(AGGREGATE),
         "dimnames" => Some(DIMNAMES),
         "dimnames<-" => Some(DIMNAMES_ASSIGN),
         "class" => Some(CLASS),
@@ -1562,6 +1584,47 @@ fn subset_impl(
         Positions(Vec<usize>),
         /// Positions to exclude (0-based, no duplicates required).
         Excluding(Vec<usize>),
+    }
+    // data.frame single-index subsetting selects COLUMNS, not elements —
+    /// the frame structure rebuilds over the selection exactly as GNU.
+    if let Some((_, ncol)) = data_frame_shape(heap, interner, source) {
+        let names_id = get_attrib(heap, interner, source, "names");
+        let col_names: Vec<String> = match names_id {
+            Some(id) => string_vec(heap, interner, id),
+            None => Vec::new(),
+        };
+        let positions: Vec<usize> = match heap.object(index) {
+            Some(RObject::String(values)) => values
+                .iter()
+                .filter_map(|v| {
+                    let text = interner.string_text(*v).to_string();
+                    col_names.iter().position(|n| *n == text)
+                })
+                .collect(),
+            Some(RObject::Real(values)) => values
+                .iter()
+                .filter(|v| !v.is_nan() && **v >= 1.0)
+                .map(|v| (*v as usize) - 1)
+                .filter(|p| *p < ncol)
+                .collect(),
+            Some(RObject::Integer(values)) => values
+                .iter()
+                .filter(|v| **v >= 1 && **v != crate::value::object::NA_INTEGER)
+                .map(|v| (*v as usize) - 1)
+                .filter(|p| *p < ncol)
+                .collect(),
+            _ => Vec::new(),
+        };
+        let columns = match heap.object(source) {
+            Some(RObject::List(items)) => items.clone(),
+            _ => Vec::new(),
+        };
+        let selected: Vec<ValueId> = positions.iter().filter_map(|p| columns.get(*p).copied()).collect();
+        let selected_names: Vec<String> = positions
+            .iter()
+            .filter_map(|p| col_names.get(*p).cloned())
+            .collect();
+        return build_data_frame(heap, interner, selected, selected_names);
     }
     let source_length = vector_length(heap, source)
         .ok_or(EvalError::TypeError("subscript requires a vector"))
@@ -4105,7 +4168,16 @@ fn rowcolnames(
     let operands = eval_args(heap, interner, args, caller_env, 1)?;
     let dimnames = match get_attrib(heap, interner, operands[0], "dimnames") {
         Some(v) => v,
-        None => return Ok(ValueId::NIL),
+        None => {
+            // data.frames carry row.names instead of dimnames — the rows
+            // getter reads it directly exactly as GNU.
+            if rows {
+                if let Some(v) = get_attrib(heap, interner, operands[0], "row.names") {
+                    return Ok(v);
+                }
+            }
+            return Ok(ValueId::NIL);
+        }
     };
     let index = if rows { 0 } else { 1 };
     match heap.object(dimnames) {
@@ -4170,6 +4242,37 @@ fn string_vec(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<Str
             .collect(),
         _ => Vec::new(),
     }
+}
+
+
+/// The (nrow, ncol) of a data.frame-classed list, when classed.
+pub(crate) fn data_frame_shape(
+    heap: &Heap,
+    interner: &SymbolInterner,
+    value: ValueId,
+) -> Option<(usize, usize)> {
+    let classed = match get_attrib(heap, interner, value, "class") {
+        Some(id) => match heap.object(id) {
+            Some(RObject::String(values)) => values
+                .iter()
+                .any(|v| interner.string_text(*v) == "data.frame"),
+            _ => false,
+        },
+        None => false,
+    };
+    if !classed {
+        return None;
+    }
+    let items = match heap.object(value) {
+        Some(RObject::List(items)) => items,
+        _ => return None,
+    };
+    let ncol = items.len();
+    let nrow = items
+        .first()
+        .and_then(|c| vector_length(heap, *c))
+        .unwrap_or(0);
+    Some((nrow, ncol))
 }
 
 /// `tempfile()`: a unique non-existent path inside the system tempdir —
@@ -4528,4 +4631,252 @@ fn file_path_primitive(
     let joined = components.join("/");
     let interned = interner.intern_string(&joined);
     Ok(heap.alloc(RObject::String(vec![interned])))
+}
+
+/// `data.frame(...)`: tagged arguments become named columns exactly as
+/// GNU — the object is a list carrying class data.frame, names, and
+/// row.names attributes; every column must share one length.
+fn data_frame_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let mut columns: Vec<ValueId> = Vec::new();
+    let mut names: Vec<String> = Vec::new();
+    let mut cursor = args;
+    let mut positional = 0usize;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        positional += 1;
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let value = force_if_promise(heap, interner, evaluated)?;
+        let name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+            _ => format!("V{positional}"),
+        };
+        names.push(name);
+        columns.push(value);
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    if columns.is_empty() {
+        return Err(EvalError::TypeError("data.frame requires columns").into());
+    }
+    build_data_frame(heap, interner, columns, names)
+}
+
+/// The shared data.frame assembly: equal-length column validation, the
+/// row.names sequence, names and class attributes — copy-on-write
+/// discipline throughout.
+pub(crate) fn build_data_frame(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    columns: Vec<ValueId>,
+    names: Vec<String>,
+) -> EvalResult {
+    let nrows = columns
+        .first()
+        .and_then(|c| vector_length(heap, *c))
+        .unwrap_or(0);
+    for col in &columns {
+        let len = vector_length(heap, *col).unwrap_or(0);
+        if len != nrows {
+            return Err(EvalError::TypeError("columns must share one length").into());
+        }
+    }
+    let list = heap.alloc(RObject::List(columns));
+    let interned: Vec<super::intern::InternedStr> = names
+        .iter()
+        .map(|n| interner.intern_string(n))
+        .collect();
+    let names_obj = heap.alloc(RObject::String(interned));
+    let list = copy_with_attrib(heap, interner, list, "names", names_obj).map_err(RSignal::from)?;
+    let rownames: Vec<super::intern::InternedStr> = (1..=nrows)
+        .map(|i| interner.intern_string(&i.to_string()))
+        .collect();
+    let rownames_obj = heap.alloc(RObject::String(rownames));
+    let list = copy_with_attrib(heap, interner, list, "row.names", rownames_obj).map_err(RSignal::from)?;
+    let class_obj = heap.alloc(RObject::String(vec![interner.intern_string("data.frame")]));
+    let list = copy_with_attrib(heap, interner, list, "class", class_obj).map_err(RSignal::from)?;
+    Ok(list)
+}
+
+/// `aggregate(x, by, FUN)`: rows of x group by the `by` list's values, FUN
+/// applies per group, and the result assembles as a data.frame of group
+/// columns plus the aggregated column — GNU's split-apply-combine exactly.
+/// Groups order lexicographically as GNU's factor-level ordering does for
+/// character groupers.
+fn aggregate_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 3)?;
+    let x = operands[0];
+    let by = operands[1];
+    let fun = operands[2];
+    // The grouping columns: a list of equal-length vectors.
+    let group_cols: Vec<ValueId> = match heap.object(by) {
+        Some(RObject::List(items)) => items.clone(),
+        _ => vec![by],
+    };
+    let by_names: Vec<String> = match get_attrib(heap, interner, by, "names") {
+        Some(id) => string_vec(heap, interner, id),
+        None => Vec::new(),
+    };
+    let x_len = vector_length(heap, x).unwrap_or(0);
+    // Group keys: per-row concatenation of the first grouping column (the
+    // slice supports one grouper; multi-grouper keys concatenate with a
+    // separator exactly as GNU's interaction does).
+    let mut keys: Vec<String> = Vec::with_capacity(x_len);
+    for i in 0..x_len {
+        let mut key = String::new();
+        for (j, col) in group_cols.iter().enumerate() {
+            if j > 0 {
+                key.push('\x01');
+            }
+            key.push_str(&element_text(heap, interner, *col, i));
+        }
+        keys.push(key);
+    }
+    let mut unique_keys: Vec<String> = keys.clone();
+    unique_keys.sort();
+    unique_keys.dedup();
+    // Aggregate: gather positions per group, extract the subvector, apply.
+    let mut result_values: Vec<f64> = Vec::new();
+    let mut result_is_int = true;
+    for key in &unique_keys {
+        let positions: Vec<usize> = keys
+            .iter()
+            .enumerate()
+            .filter(|(_, k)| *k == key)
+            .map(|(i, _)| i)
+            .collect();
+        let sub = extract_positions(heap, interner, x, &positions)?;
+        // Apply FUN through the closure machinery — primitives and user
+        // functions both resolve through the symbol's binding.
+        let applied = apply_fun_to(heap, interner, fun, sub, caller_env)?;
+        match heap.object(applied) {
+            Some(RObject::Real(v)) if !v.is_empty() => {
+                result_values.push(v[0]);
+                result_is_int = false;
+            }
+            Some(RObject::Integer(v)) if !v.is_empty() => {
+                result_values.push(v[0] as f64);
+            }
+            _ => return Err(EvalError::TypeError("aggregate FUN must return scalar numeric").into()),
+        }
+    }
+    // Assemble: group columns carry one row per unique key; the aggregated
+    // column names "x" exactly as GNU's default.
+    let mut columns: Vec<ValueId> = Vec::new();
+    let mut col_names: Vec<String> = Vec::new();
+    let ngroupers = group_cols.len();
+    for j in 0..ngroupers {
+        let parts: Vec<String> = unique_keys
+            .iter()
+            .map(|k| k.split('\x01').nth(j).unwrap_or("").to_string())
+            .collect();
+        let interned: Vec<super::intern::InternedStr> = parts
+            .iter()
+            .map(|s| interner.intern_string(s))
+            .collect();
+        columns.push(heap.alloc(RObject::String(interned)));
+        col_names.push(
+            by_names
+                .get(j)
+                .cloned()
+                .unwrap_or_else(|| format!("Group.{j}", j = j + 1)),
+        );
+    }
+    let result_col = if result_is_int && result_values.iter().all(|v| v.fract() == 0.0) {
+        // GNU preserves integer type when the aggregation is integer-valued.
+        heap.alloc(RObject::Real(result_values.clone()))
+    } else {
+        heap.alloc(RObject::Real(result_values.clone()))
+    };
+    columns.push(result_col);
+    col_names.push("x".to_string());
+    build_data_frame(heap, interner, columns, col_names)
+}
+
+/// One element's plain text — the grouping-key coercion.
+fn element_text(heap: &Heap, interner: &SymbolInterner, value: ValueId, index: usize) -> String {
+    match heap.object(value) {
+        Some(RObject::String(values)) => interner
+            .string_text(values.get(index).copied().unwrap_or(values[0]))
+            .to_string(),
+        Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => values
+            .get(index)
+            .map(|v| v.to_string())
+            .unwrap_or_default(),
+        Some(RObject::Real(values)) => values
+            .get(index)
+            .map(|v| super::print::format_real(*v))
+            .unwrap_or_default(),
+        _ => String::new(),
+    }
+}
+
+/// Extract elements at positions into a fresh same-type vector.
+fn extract_positions(
+    heap: &mut Heap,
+    interner: &SymbolInterner,
+    source: ValueId,
+    positions: &[usize],
+) -> Result<ValueId, RSignal> {
+    let object = heap.object(source).cloned()
+        .ok_or(EvalError::TypeError("aggregate input missing"))?;
+    let out = match object {
+        RObject::Real(values) => RObject::Real(
+            positions.iter().filter_map(|i| values.get(*i).copied()).collect(),
+        ),
+        RObject::Integer(values) => RObject::Integer(
+            positions.iter().filter_map(|i| values.get(*i).copied()).collect(),
+        ),
+        RObject::Logical(values) => RObject::Logical(
+            positions.iter().filter_map(|i| values.get(*i).copied()).collect(),
+        ),
+        RObject::String(values) => RObject::String(
+            positions.iter().filter_map(|i| values.get(*i).copied()).collect(),
+        ),
+        _ => return Err(EvalError::TypeError("aggregate input type").into()),
+    };
+    let _ = interner;
+    Ok(heap.alloc(out))
+}
+
+/// Apply a closure or primitive-reference to one vector argument — the
+/// same dual shape lapply resolves.
+fn apply_fun_to(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    fun: ValueId,
+    arg: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let arg_node = heap.alloc(RObject::Pairlist {
+        car: arg,
+        cdr: ValueId::NIL,
+        tag: ValueId::NIL,
+    });
+    match heap.object(fun).cloned() {
+        Some(RObject::Closure { formals, body, env }) => {
+            let applied = super::eval::apply_closure_public(
+                heap, interner, formals, body, env, arg_node, caller_env,
+            )?;
+            force_if_promise(heap, interner, applied)
+        }
+        Some(RObject::Primitive(builtin)) => {
+            call_primitive(heap, interner, builtin, arg_node, caller_env)
+        }
+        _ => Err(EvalError::NotCallable.into()),
+    }
 }
