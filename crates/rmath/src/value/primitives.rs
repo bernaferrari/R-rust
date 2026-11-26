@@ -62,13 +62,17 @@ pub mod primitive_ids {
     pub const POW: u32 = 58;
     /// Elementwise math — real-valued unary functions.
     pub const SQRT: u32 = 54;
+    /// Exact extraction — `x[[i]]` unboxes a single element.
+    pub const EXTRACT: u32 = 59;
+    /// List construction — variadic heterogeneous collection.
+    pub const LIST: u32 = 60;
     pub const EXP: u32 = 55;
     pub const LOG: u32 = 56;
     pub const ABS: u32 = 57;
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LOG, LT, MAX, MIN, MUL, NE, NEXT, NOT, OR, PAREN, POW, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUM, SUPERASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, NE, NEXT, NOT, OR, PAREN, POW, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUM, SUPERASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive.
@@ -106,6 +110,25 @@ pub(crate) fn call_primitive(
         NOT => logic_not(heap, interner, args, caller_env),
         SHORT_AND | SHORT_OR => logic_short_circuit(heap, interner, id.0, args, caller_env),
         SUM | PROD | MIN | MAX => reduction(heap, interner, id.0, args, caller_env),
+        EXTRACT => extract_primitive(heap, interner, args, caller_env),
+        LIST => {
+            // Variadic: every evaluated operand becomes one list element.
+            let mut items = Vec::new();
+            let mut cursor = args;
+            loop {
+                let (car, cdr) = match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, cdr, .. }) => (*car, *cdr),
+                    _ => break,
+                };
+                let evaluated = eval(heap, interner, car, caller_env)?;
+                items.push(force_if_promise(heap, interner, evaluated)?);
+                if cdr == ValueId::NIL {
+                    break;
+                }
+                cursor = cdr;
+            }
+            Ok(heap.alloc(RObject::List(items)))
+        }
         SQRT | EXP | LOG | ABS => math_unary(heap, interner, id.0, args, caller_env),
         _ => Err(EvalError::UnsupportedForm("unregistered primitive").into()),
     }
@@ -552,7 +575,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!=", "if", "{", "<-", "=",
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
-        "exp", "log", "abs", "^",
+        "exp", "log", "abs", "^", "[[", "list",
     ]
 }
 
@@ -600,6 +623,8 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "log" => Some(LOG),
         "abs" => Some(ABS),
         "^" => Some(POW),
+        "[[" => Some(EXTRACT),
+        "list" => Some(LIST),
         _ => None,
     }
 }
@@ -1238,4 +1263,61 @@ fn math_unary(
         })
         .collect();
     Ok(heap.alloc(RObject::Real(out)))
+}
+
+/// `x[[i]]` — exact extraction of a single element. Unlike `[`, extraction
+/// unboxes list elements (the element itself, not a length-one list) and
+/// out-of-range positive indices are errors in GNU, not NA padding.
+/// Negative indices count exclusion-invariant positions exactly as GNU's
+/// scalar negative subscript — the slice supports positive indices and
+/// documents the negative case as future work.
+fn extract_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    let index_value = match heap.object(operands[1]) {
+        Some(RObject::Real(v)) if !v.is_empty() => v[0] as i64,
+        Some(RObject::Integer(v)) if !v.is_empty() => v[0] as i64,
+        _ => return Err(EvalError::TypeError("extraction index must be scalar numeric").into()),
+    };
+    if index_value < 1 {
+        return Err(EvalError::TypeError("extraction requires positive indices").into());
+    }
+    let position = (index_value - 1) as usize;
+    macro_rules! extract_scalar {
+        ($variant:ident) => {
+            match heap.object(operands[0]) {
+                Some(RObject::$variant(values)) => {
+                    if position >= values.len() {
+                        return Err(EvalError::TypeError("subscript out of bounds").into());
+                    }
+                    return Ok(heap.alloc(RObject::$variant(vec![values[position]])));
+                }
+                _ => {}
+            }
+        };
+    }
+    extract_scalar!(Logical);
+    extract_scalar!(Integer);
+    extract_scalar!(Real);
+    extract_scalar!(Raw);
+    match heap.object(operands[0]) {
+        Some(RObject::String(values)) => {
+            if position >= values.len() {
+                return Err(EvalError::TypeError("subscript out of bounds").into());
+            }
+            Ok(heap.alloc(RObject::String(vec![values[position]])))
+        }
+        Some(RObject::List(items)) => {
+            // List extraction unboxes: the element itself, exactly GNU.
+            if position >= items.len() {
+                return Err(EvalError::TypeError("subscript out of bounds").into());
+            }
+            Ok(items[position])
+        }
+        _ => Err(EvalError::TypeError("extraction requires a vector").into()),
+    }
 }

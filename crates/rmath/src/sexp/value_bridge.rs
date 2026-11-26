@@ -1773,6 +1773,10 @@ mod tests {
             "log(exp(2))",
             "{ x <- 1:100; sum(x) / length(x) }",
             "{ x <- c(2, 4, 8); sqrt(sum(x^2)) }",
+            "{ x <- c(10, 20, 30); x[[2]] }",
+            "{ x <- 1:5; x[[3]] + x[[4]] }",
+            "{ x <- list(10, 20); x[[1]] + x[[2]] }",
+            "{ x <- list(1:3, c(4, 5)); sum(x[[1]]) + sum(x[[2]]) }",
         ];
         // One session, one parse pass: expression objects stay valid for the
         // session's lifetime, so batching avoids per-program bootstrap cost.
