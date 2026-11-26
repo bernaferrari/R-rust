@@ -1202,53 +1202,86 @@ fn call_primitive_inner(
             copy_with_attrib(heap, interner, operands[0], "row.names", operands[1]).map_err(RSignal::from)
         }
         TAPPLY => {
-            // Groups order by the index's factor levels exactly as GNU —
-            /// level order, not sorted-unique — and the result is a 1-D
-            /// array carrying dim, dimnames, and the array class.
+            // GNU tapply: the index is a vector or a list of vectors; each
+            /// contributes a dimension whose levels come from factor levels
+            /// or sorted-unique values. The result is an array filled
+            /// column-major over the level combinations; empty combinations
+            /// yield NA exactly as the oracle documents.
             let operands = eval_args(heap, interner, args, caller_env, 3)?;
             let x = operands[0];
             let index = operands[1];
             let fun = operands[2];
-            let levels: Vec<String> = match get_attrib(heap, interner, index, "levels") {
-                Some(id) => string_vec(heap, interner, id),
-                None => {
-                    let mut vals = string_vec(heap, interner, index);
-                    vals.sort();
-                    vals.dedup();
-                    vals
+            let (index_cols, index_names): (Vec<ValueId>, Vec<String>) = match heap.object(index) {
+                Some(RObject::List(items)) => {
+                    let names = match get_attrib(heap, interner, index, "names") {
+                        Some(id) => string_vec(heap, interner, id),
+                        None => Vec::new(),
+                    };
+                    (items.clone(), names)
                 }
+                _ => (vec![index], Vec::new()),
             };
-            // Factor indices are integer codes into levels; plain indices
-            /// match by their text exactly.
-            let index_is_factor = matches!(heap.object(index), Some(RObject::Integer(_)))
-                && get_attrib(heap, interner, index, "levels").is_some();
-            let index_text: Vec<String> = if index_is_factor {
-                match heap.object(index) {
-                    Some(RObject::Integer(codes)) => codes
-                        .iter()
-                        .map(|&c| {
-                            if c == crate::value::object::NA_INTEGER {
-                                "\0NA".to_string()
-                            } else {
-                                levels.get((c - 1) as usize).cloned().unwrap_or_default()
-                            }
-                        })
-                        .collect(),
-                    _ => Vec::new(),
-                }
-            } else {
-                string_vec(heap, interner, index)
-            };
+            // Per-column levels and per-row level text.
+            let mut col_levels: Vec<Vec<String>> = Vec::new();
+            let mut col_texts: Vec<Vec<String>> = Vec::new();
+            for col in &index_cols {
+                let levels: Vec<String> = match get_attrib(heap, interner, *col, "levels") {
+                    Some(id) => string_vec(heap, interner, id),
+                    None => {
+                        let mut vals = string_vec(heap, interner, *col);
+                        vals.retain(|s| s != "\0NA");
+                        vals.sort();
+                        vals.dedup();
+                        vals
+                    }
+                };
+                let is_factor = matches!(heap.object(*col), Some(RObject::Integer(_)))
+                    && get_attrib(heap, interner, *col, "levels").is_some();
+                let texts: Vec<String> = if is_factor {
+                    match heap.object(*col) {
+                        Some(RObject::Integer(codes)) => codes
+                            .iter()
+                            .map(|&c| {
+                                if c == crate::value::object::NA_INTEGER {
+                                    "\0NA".to_string()
+                                } else {
+                                    levels.get((c - 1) as usize).cloned().unwrap_or_default()
+                                }
+                            })
+                            .collect(),
+                        _ => Vec::new(),
+                    }
+                } else {
+                    string_vec(heap, interner, *col)
+                };
+                col_levels.push(levels);
+                col_texts.push(texts);
+            }
             let x_len = vector_length(heap, x).unwrap_or(0);
-            let mut result_values: Vec<f64> = Vec::new();
+            let dims: Vec<usize> = col_levels.iter().map(|l| l.len()).collect();
+            let total: usize = dims.iter().product();
+            let mut result_values: Vec<f64> = Vec::with_capacity(total);
             let mut result_int = true;
-            for level in &levels {
-                let positions: Vec<usize> = index_text
-                    .iter()
-                    .enumerate()
-                    .filter(|(i, t)| *i < x_len && *t == level)
-                    .map(|(i, _)| i)
+            for flat in 0..total {
+                // Decode the flat index column-major: first dimension fastest.
+                let mut rem = flat;
+                let mut combo: Vec<usize> = Vec::with_capacity(dims.len());
+                for &d in &dims {
+                    combo.push(rem % d.max(1));
+                    rem /= d.max(1);
+                }
+                let positions: Vec<usize> = (0..x_len)
+                    .filter(|&row| {
+                        col_texts.iter().enumerate().all(|(j, texts)| {
+                            texts.get(row).map(|t| t == &col_levels[j][combo[j]]).unwrap_or(false)
+                        })
+                    })
                     .collect();
+                if positions.is_empty() {
+                    result_values.push(f64::from_bits(crate::value::object::NA_REAL_BITS));
+                    result_int = false;
+                    continue;
+                }
                 let sub = extract_positions(heap, interner, x, &positions)?;
                 let applied = apply_fun_to(heap, interner, fun, sub, caller_env)?;
                 match heap.object(applied) {
@@ -1259,30 +1292,53 @@ fn call_primitive_inner(
                     Some(RObject::Integer(v)) if !v.is_empty() => {
                         result_values.push(v[0] as f64);
                     }
-                    Some(RObject::Real(_)) => {
-                        result_values.push(f64::from_bits(crate::value::object::NA_REAL_BITS));
-                        result_int = false;
-                    }
                     _ => return Err(EvalError::TypeError("tapply FUN must return scalar numeric").into()),
                 }
             }
-            let nlevels = levels.len();
             let values: ValueId = if result_int {
                 heap.alloc(RObject::Integer(result_values.iter().map(|&v| v as i32).collect()))
             } else {
                 heap.alloc(RObject::Real(result_values))
             };
-            let level_interned: Vec<super::intern::InternedStr> = levels
+            // dimnames: one character vector per dimension, the list itself
+            /// named by the index list's names exactly as GNU.
+            let dn_inners: Vec<ValueId> = col_levels
                 .iter()
-                .map(|s| interner.intern_string(s))
+                .map(|levels| {
+                    let interned: Vec<super::intern::InternedStr> = levels
+                        .iter()
+                        .map(|s| interner.intern_string(s))
+                        .collect();
+                    heap.alloc(RObject::String(interned))
+                })
                 .collect();
-            let names_vec = heap.alloc(RObject::String(level_interned.clone()));
-            let dim_vec = heap.alloc(RObject::Integer(vec![nlevels as i32]));
-            let dn_inner = heap.alloc(RObject::String(level_interned));
-            let dn_list = heap.alloc(RObject::List(vec![dn_inner]));
+            let dn_list = heap.alloc(RObject::List(dn_inners));
+            let dn_list = if !index_names.is_empty() {
+                let nm: Vec<super::intern::InternedStr> = index_names
+                    .iter()
+                    .map(|s| interner.intern_string(s))
+                    .collect();
+                let names_obj = heap.alloc(RObject::String(nm));
+                copy_with_attrib(heap, interner, dn_list, "names", names_obj).map_err(RSignal::from)?
+            } else {
+                dn_list
+            };
+            let dim_vec = heap.alloc(RObject::Integer(dims.iter().map(|&d| d as i32).collect()));
             let class_vec = heap.alloc(RObject::String(vec![interner.intern_string("array")]));
-            let with_names = copy_with_attrib(heap, interner, values, "names", names_vec).map_err(RSignal::from)?;
-            let with_dim = copy_with_attrib(heap, interner, with_names, "dim", dim_vec).map_err(RSignal::from)?;
+            // names() on the 1-D result surfaces dimnames[[1]] exactly as
+            /// GNU arrays; carry the explicit names attribute only in the
+            /// single-index case where GNU's object shows it.
+            let values = if dims.len() == 1 {
+                let first: Vec<super::intern::InternedStr> = col_levels[0]
+                    .iter()
+                    .map(|s| interner.intern_string(s))
+                    .collect();
+                let names_obj = heap.alloc(RObject::String(first));
+                copy_with_attrib(heap, interner, values, "names", names_obj).map_err(RSignal::from)?
+            } else {
+                values
+            };
+            let with_dim = copy_with_attrib(heap, interner, values, "dim", dim_vec).map_err(RSignal::from)?;
             let with_dn = copy_with_attrib(heap, interner, with_dim, "dimnames", dn_list).map_err(RSignal::from)?;
             copy_with_attrib(heap, interner, with_dn, "class", class_vec).map_err(RSignal::from)
         }
@@ -4697,18 +4753,42 @@ fn ifelse_primitive(
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 3)?;
     let tests = logicals_of_value(heap, operands[0]).map_err(RSignal::from)?;
+    let na_int = crate::value::object::NA_INTEGER;
+    let yes_is_str = matches!(heap.object(operands[1]), Some(RObject::String(_)));
+    let no_is_str = matches!(heap.object(operands[2]), Some(RObject::String(_)));
+    // GNU promotes to the common type of the branches — character wins,
+    /// then real, then integer — and NA tests yield the type's NA.
+    if yes_is_str || no_is_str {
+        let yes_id = coerce_character(heap, interner, operands[1])?;
+        let yes = string_vec(heap, interner, yes_id);
+        let no_id = coerce_character(heap, interner, operands[2])?;
+        let no = string_vec(heap, interner, no_id);
+        let mut out: Vec<super::intern::InternedStr> = Vec::with_capacity(tests.len());
+        for (i, test) in tests.iter().enumerate() {
+            let chosen = if *test == na_int {
+                "\0NA".to_string()
+            } else if *test != 0 {
+                if yes.is_empty() { "\0NA".to_string() } else { yes[i % yes.len()].clone() }
+            } else if no.is_empty() {
+                "\0NA".to_string()
+            } else {
+                no[i % no.len()].clone()
+            };
+            out.push(interner.intern_string(&chosen));
+        }
+        return Ok(heap.alloc(RObject::String(out)));
+    }
     let yes = numerics_of(heap, operands[1]).map_err(RSignal::from)?;
     let no = numerics_of(heap, operands[2]).map_err(RSignal::from)?;
-    let na_int = crate::value::object::NA_INTEGER;
     let na_real = f64::from_bits(crate::value::object::NA_REAL_BITS);
     let mut out = Vec::with_capacity(tests.len());
     for (i, test) in tests.iter().enumerate() {
         if *test == na_int {
             out.push(na_real);
         } else if *test != 0 {
-            out.push(yes[i % yes.len().max(1)]);
+            out.push(if yes.is_empty() { na_real } else { yes[i % yes.len()] });
         } else {
-            out.push(no[i % no.len().max(1)]);
+            out.push(if no.is_empty() { na_real } else { no[i % no.len()] });
         }
     }
     Ok(heap.alloc(RObject::Real(out)))
