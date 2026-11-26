@@ -86,7 +86,6 @@ pub mod random;
 pub mod raw;
 pub mod raw_heap;
 pub mod rdynload;
-pub mod registration;
 pub mod relop;
 pub mod rfile;
 pub mod rlocale;

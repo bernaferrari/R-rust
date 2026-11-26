@@ -4,5 +4,5 @@
 //! Currently a no-op stub; the actual grid functions (L_initGrid, L_killGrid, etc.)
 //! and the R_CallMethodDef table will be filled in when those functions are ported.
 
-use crate::mainutils::registration::DllInfo;
+use crate::mainutils::rdynload::DllInfo;
 

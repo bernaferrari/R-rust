@@ -253,8 +253,7 @@ fn init_loaded_dll() {
 /// Called at R startup to initialize dynamic loading.
 pub fn InitDynload() {
     init_loaded_dll();
-    let base = add_dll(c"base", c"base");
-    crate::mainutils::registration::R_init_base(base.pointer());
+    let _base = add_dll(c"base", c"base");
 }
 
 // ---------------------------------------------------------------------------
