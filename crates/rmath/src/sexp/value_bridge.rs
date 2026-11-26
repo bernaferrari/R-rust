@@ -513,6 +513,311 @@ fn primitive_name_of(sexp: &Sexp<'_>) -> Option<String> {
     }
 }
 
+use crate::sexp::ffi::SEXP;
+
+/// What the exporter found in the heap, for callers that need to distinguish
+/// an unmigratable object from a structural gap.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ExportError {
+    /// The object variant has no export conversion yet.
+    UnsupportedObject(&'static str),
+    /// A reference edge points at a missing heap slot.
+    DanglingEdge,
+}
+
+/// Stateful exporter from the `ValueId` heap back into the legacy SEXP world.
+///
+/// The reversed companion of [`ValueBridge`]: object identity survives
+/// through a `ValueId`-keyed memo, and reference types pre-register their
+/// skeleton before recursing so cyclic graphs terminate with correct
+/// back-edges — the mirror image of the import discipline.
+///
+/// # Session and protection contract
+///
+/// Every export allocates in the legacy instance heap, so calls must happen
+/// inside an active session. Objects under construction stay protected from
+/// allocation until they are patched into an already-protected parent; the
+/// returned root object is the caller's responsibility, exactly the contract
+/// every legacy constructor documents.
+pub(crate) struct ExportBridge {
+    reverse: HashMap<ValueId, SEXP>,
+}
+
+impl ExportBridge {
+    pub(crate) fn new() -> ExportBridge {
+        ExportBridge {
+            reverse: HashMap::new(),
+        }
+    }
+
+    /// Already-exported identity for a heap object, if any.
+    #[allow(dead_code)]
+    pub(crate) fn lookup(&self, value: ValueId) -> Option<SEXP> {
+        self.reverse.get(&value).copied()
+    }
+
+    /// Export any supported object into the legacy world. The result is a
+    /// raw SEXP owned by the legacy instance heap.
+    pub(crate) fn export(
+        &mut self,
+        heap: &Heap,
+        interner: &SymbolInterner,
+        value: ValueId,
+    ) -> Result<SEXP, ExportError> {
+        use crate::sexp::globals::{
+            R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_MissingArg, R_NilValue, R_UnboundValue,
+        };
+        // Legacy singletons round-trip exactly: the sentinel design reserves
+        // these identities in both worlds.
+        if value == ValueId::NIL {
+            return Ok(R_NilValue());
+        }
+        if value == ValueId::MISSING {
+            return Ok(R_MissingArg());
+        }
+        if value == ValueId::UNBOUND {
+            return Ok(R_UnboundValue());
+        }
+        if value == ValueId::EMPTY_ENV {
+            return Ok(R_EmptyEnv());
+        }
+        if value == ValueId::BASE_ENV {
+            return Ok(R_BaseEnv());
+        }
+        if value == ValueId::GLOBAL_ENV {
+            return Ok(R_GlobalEnv());
+        }
+        if let Some(existing) = self.reverse.get(&value) {
+            return Ok(*existing);
+        }
+        let object = heap.object(value).ok_or(ExportError::DanglingEdge)?;
+        match object {
+            RObject::Nil => Ok(R_NilValue()),
+            RObject::Logical(values) => {
+                let values = values.clone();
+                self.export_atomic(heap, value, SEXPTYPE::LGLSXP, values.len(), |sexp, i| {
+                    crate::sexp::accessors::SET_LOGICAL_ELT(sexp, i as i32, values[i]);
+                })
+            }
+            RObject::Integer(values) => {
+                let values = values.clone();
+                self.export_atomic(heap, value, SEXPTYPE::INTSXP, values.len(), |sexp, i| {
+                    crate::sexp::accessors::SET_INTEGER_ELT(sexp, i as i32, values[i]);
+                })
+            }
+            RObject::Real(values) => {
+                let values = values.clone();
+                self.export_atomic(heap, value, SEXPTYPE::REALSXP, values.len(), |sexp, i| {
+                    crate::sexp::accessors::SET_REAL_ELT(sexp, i as i32, values[i]);
+                })
+            }
+            RObject::Raw(values) => {
+                let values = values.clone();
+                self.export_atomic(heap, value, SEXPTYPE::RAWSXP, values.len(), |sexp, i| {
+                    crate::sexp::accessors::SET_RAW_ELT(sexp, i as i32, values[i]);
+                })
+            }
+            RObject::Complex(values) => {
+                let values = values.clone();
+                self.export_atomic(heap, value, SEXPTYPE::CPLXSXP, values.len(), |sexp, i| {
+                    crate::sexp::accessors::SET_COMPLEX_ELT(
+                        sexp,
+                        i as i32,
+                        crate::sexp::ffi::Rcomplex {
+                            r: values[i].r,
+                            i: values[i].i,
+                        },
+                    );
+                })
+            }
+            RObject::String(values) => {
+                let values = values.clone();
+                let vector = crate::sexp::constructors::Rf_allocVector(
+                    SEXPTYPE::STRSXP,
+                    values.len() as i32,
+                );
+                let guard = crate::sexp::protect::protect(vector);
+                self.reverse.insert(value, vector);
+                for (i, element) in values.iter().enumerate() {
+                    let text = interner.string_text(*element);
+                    // The NUL-prefixed sentinel reverses to the NA string —
+                    // exactly the collision-free encoding the importer chose.
+                    let charsxp = if let Some(rest) = text.strip_prefix('\0') {
+                        debug_assert_eq!(rest, "NA", "only the NA sentinel carries NUL");
+                        crate::sexp::globals::R_NaString()
+                    } else {
+                        crate::sexp::constructors::mk_char_str(text)
+                    };
+                    crate::sexp::accessors::SET_STRING_ELT(vector, i as i64, charsxp);
+                }
+                drop(guard);
+                Ok(vector)
+            }
+            RObject::List(items) => {
+                let items = items.clone();
+                let vector = crate::sexp::constructors::Rf_allocVector(
+                    SEXPTYPE::VECSXP,
+                    items.len() as i32,
+                );
+                let guard = crate::sexp::protect::protect(vector);
+                self.reverse.insert(value, vector);
+                for (i, item) in items.iter().enumerate() {
+                    let exported = self.export(heap, interner, *item)?;
+                    crate::sexp::accessors::SET_VECTOR_ELT(vector, i as i64, exported);
+                }
+                drop(guard);
+                Ok(vector)
+            }
+            RObject::Pairlist { .. } | RObject::Language { .. } => {
+                self.export_cons_chain(heap, interner, value)
+            }
+            RObject::Symbol { name, .. } => {
+                let symbol = crate::sexp::symbol::install_str(interner.symbol_name(*name));
+                self.reverse.insert(value, symbol);
+                Ok(symbol)
+            }
+            RObject::Environment { .. } => self.export_environment(heap, interner, value),
+            RObject::Closure { .. } => self.export_closure(heap, interner, value),
+            RObject::Promise { .. } => Err(ExportError::UnsupportedObject("promise")),
+            RObject::Primitive(_) => Err(ExportError::UnsupportedObject("primitive")),
+            _ => Err(ExportError::UnsupportedObject("unhandled variant")),
+        }
+    }
+
+    /// Allocate an atomic vector, memoize it, and populate elements through
+    /// the element setter — the shared spine of the atomic exports.
+    fn export_atomic(
+        &mut self,
+        heap: &Heap,
+        value: ValueId,
+        sexptype: SEXPTYPE,
+        len: usize,
+        fill: impl Fn(SEXP, usize),
+    ) -> Result<SEXP, ExportError> {
+        let _ = heap;
+        let vector = crate::sexp::constructors::Rf_allocVector(sexptype, len as i32);
+        // Population writes no references, so protection is unnecessary here —
+        // but the memo must be in place before any caller recurses back.
+        self.reverse.insert(value, vector);
+        for i in 0..len {
+            fill(vector, i);
+        }
+        Ok(vector)
+    }
+
+    /// Export a pairlist or language chain cell-by-cell. Each cons allocates
+    /// with NIL edges, enters the memo immediately, then patches — cyclic
+    /// chains terminate through the memo exactly as in the import direction.
+    fn export_cons_chain(
+        &mut self,
+        heap: &Heap,
+        interner: &SymbolInterner,
+        value: ValueId,
+    ) -> Result<SEXP, ExportError> {
+        use crate::sexp::accessors::{SETCAR, SETCDR, SETTAG, SET_TYPEOF};
+        use crate::sexp::globals::R_NilValue;
+        let is_language = matches!(heap.object(value), Some(RObject::Language { .. }));
+        let skeleton = crate::sexp::constructors::Rf_cons(R_NilValue(), R_NilValue());
+        let guard = crate::sexp::protect::protect(skeleton);
+        self.reverse.insert(value, skeleton);
+        if is_language {
+            SET_TYPEOF(skeleton, SEXPTYPE::LANGSXP.as_c_int());
+        }
+        let (car, cdr, tag) = match heap.object(value) {
+            Some(RObject::Pairlist { car, cdr, tag }) | Some(RObject::Language { car, cdr, tag }) => {
+                (*car, *cdr, *tag)
+            }
+            _ => return Err(ExportError::DanglingEdge),
+        };
+        if car != ValueId::NIL {
+            let exported = self.export(heap, interner, car)?;
+            SETCAR(skeleton, exported);
+        }
+        if tag != ValueId::NIL {
+            let exported = self.export(heap, interner, tag)?;
+            SETTAG(skeleton, exported);
+        }
+        if cdr != ValueId::NIL {
+            let exported = self.export(heap, interner, cdr)?;
+            SETCDR(skeleton, exported);
+        }
+        drop(guard);
+        Ok(skeleton)
+    }
+
+    /// Export an environment: enclosure first (GNU's acyclic enclosure
+    /// invariant makes plain recursion safe), then bindings via defineVar.
+    /// The environment enters the memo before its bindings export, so a
+    /// binding that references its own environment resolves correctly.
+    fn export_environment(
+        &mut self,
+        heap: &Heap,
+        interner: &SymbolInterner,
+        value: ValueId,
+    ) -> Result<SEXP, ExportError> {
+        use crate::sexp::globals::{R_EmptyEnv, R_NilValue};
+        let (frame, enclos) = match heap.object(value) {
+            Some(RObject::Environment { frame, enclos }) => (frame.clone(), *enclos),
+            _ => return Err(ExportError::DanglingEdge),
+        };
+        let enclosure = if enclos == ValueId::EMPTY_ENV || enclos == ValueId::NIL {
+            R_EmptyEnv()
+        } else {
+            self.export(heap, interner, enclos)?
+        };
+        let environment = crate::sexp::memory_ext::NewEnvironment(
+            R_NilValue(),
+            enclosure,
+            std::ptr::null_mut(),
+        );
+        let guard = crate::sexp::protect::protect(environment);
+        self.reverse.insert(value, environment);
+        if let crate::value::object::EnvFrame::List(bindings) = frame {
+            for (name, binding) in bindings {
+                let symbol = crate::sexp::symbol::install_str(interner.symbol_name(*name));
+                let exported = self.export(heap, interner, binding.value)?;
+                crate::sexp::envir::defineVar(symbol, exported, environment);
+            }
+        }
+        drop(guard);
+        Ok(environment)
+    }
+
+    /// Export a closure through skeleton-and-patch pre-registration. The
+    /// memo insertion happens before any edge exports because the canonical
+    /// recursion shape — a closure inside its own captured environment —
+    /// cycles back through the environment's bindings; without the early
+    /// memo the export infinite-loops on exactly the functions import
+    /// handles correctly.
+    fn export_closure(
+        &mut self,
+        heap: &Heap,
+        interner: &SymbolInterner,
+        value: ValueId,
+    ) -> Result<SEXP, ExportError> {
+        use crate::sexp::accessors::{SET_BODY, SET_CLOENV, SET_FORMALS};
+        use crate::sexp::globals::R_NilValue;
+        let (formals, body, env) = match heap.object(value) {
+            Some(RObject::Closure { formals, body, env }) => (*formals, *body, *env),
+            _ => return Err(ExportError::DanglingEdge),
+        };
+        let skeleton = crate::sexp::memory_ext::allocSExp(SEXPTYPE::CLOSXP);
+        let guard = crate::sexp::protect::protect(skeleton);
+        self.reverse.insert(value, skeleton);
+        SET_FORMALS(skeleton, R_NilValue());
+        SET_BODY(skeleton, R_NilValue());
+        SET_CLOENV(skeleton, R_NilValue());
+        let formals_sexp = self.export(heap, interner, formals)?;
+        SET_FORMALS(skeleton, formals_sexp);
+        let body_sexp = self.export(heap, interner, body)?;
+        SET_BODY(skeleton, body_sexp);
+        let env_sexp = self.export(heap, interner, env)?;
+        SET_CLOENV(skeleton, env_sexp);
+        drop(guard);
+        Ok(skeleton)
+    }
+}
+
 /// Stable identity key for a legacy object: its pointer identity, which is
 /// what object identity means everywhere in the legacy world.
 fn sexp_key(sexp: &Sexp<'_>) -> usize {
@@ -1358,6 +1663,189 @@ mod tests {
             },
             Err(error) => panic!("eval failed: {error:?}"),
         }
+    }
+
+    #[test]
+    fn export_atomic_vectors_round_trip() {
+        let mut session = crate::sexp::session::RSession::new();
+        session.with_active(|| {
+            let mut heap = Heap::new();
+            let mut exporter = ExportBridge::new();
+            let interner = SymbolInterner::new();
+            let id = heap.alloc(RObject::Real(vec![1.5, 2.5, f64::from_bits(crate::value::object::NA_REAL_BITS)]));
+            let raw = exporter.export(&heap, &interner, id).expect("reals export");
+            Sexp::with_registered_raw(raw, |sexp| {
+                assert_eq!(sexp.typeof_(), SEXPTYPE::REALSXP);
+                assert_eq!(sexp.len(), 3);
+                assert_eq!(sexp.try_real_elt(0).expect("elt"), 1.5);
+                assert_eq!(sexp.try_real_elt(1).expect("elt"), 2.5);
+                assert!(sexp.try_real_elt(2).expect("elt").is_nan());
+            });
+            let int_id = heap.alloc(RObject::Integer(vec![7, crate::value::object::NA_INTEGER]));
+            let raw = exporter.export(&heap, &interner, int_id).expect("integers export");
+            Sexp::with_registered_raw(raw, |sexp| {
+                assert_eq!(sexp.typeof_(), SEXPTYPE::INTSXP);
+                assert_eq!(sexp.try_integer_elt(0).expect("elt"), 7);
+                assert_eq!(sexp.try_integer_elt(1).expect("elt"), crate::value::object::NA_INTEGER);
+            });
+        });
+    }
+
+    #[test]
+    fn export_identity_is_stable() {
+        let mut session = crate::sexp::session::RSession::new();
+        session.with_active(|| {
+            let mut heap = Heap::new();
+            let mut exporter = ExportBridge::new();
+            let interner = SymbolInterner::new();
+            let id = heap.alloc(RObject::Integer(vec![42]));
+            let first = exporter.export(&heap, &interner, id).expect("export");
+            let second = exporter.export(&heap, &interner, id).expect("re-export");
+            assert_eq!(first, second, "the same ValueId exports to the same SEXP");
+        });
+    }
+
+    #[test]
+    fn export_pairlist_chain_structure() {
+        let mut session = crate::sexp::session::RSession::new();
+        session.with_active(|| {
+            let mut heap = Heap::new();
+            let mut exporter = ExportBridge::new();
+            let interner = SymbolInterner::new();
+            // (1 . (2 . nil)) — a two-cell chain with distinct tail.
+            let one = heap.alloc(RObject::Integer(vec![1]));
+            let two = heap.alloc(RObject::Integer(vec![2]));
+            let tail = heap.alloc(RObject::Pairlist { car: two, cdr: ValueId::NIL, tag: ValueId::NIL });
+            let head = heap.alloc(RObject::Pairlist { car: one, cdr: tail, tag: ValueId::NIL });
+            let raw = exporter.export(&heap, &interner, head).expect("pairlist exports");
+            Sexp::with_registered_raw(raw, |sexp| {
+                assert_eq!(sexp.typeof_(), SEXPTYPE::LISTSXP);
+                let car = sexp.try_car().expect("car");
+                assert_eq!(car.try_integer_elt(0).expect("car value"), 1);
+                let cdr = sexp.try_cdr().expect("cdr");
+                assert_eq!(cdr.typeof_(), SEXPTYPE::LISTSXP);
+                let cadr = cdr.try_car().expect("cadr");
+                assert_eq!(cadr.try_integer_elt(0).expect("cadr value"), 2);
+                let cddr = cdr.try_cdr().expect("cddr");
+                assert_eq!(cddr.typeof_(), SEXPTYPE::NILSXP);
+            });
+        });
+    }
+
+    #[test]
+    fn export_recursive_closure_in_own_environment_terminates() {
+        let mut session = crate::sexp::session::RSession::new();
+        session.with_active(|| {
+            let mut heap = Heap::new();
+            let mut interner = SymbolInterner::new();
+            let mut exporter = ExportBridge::new();
+            // The canonical recursion shape: env binds f to a closure whose
+            // captured environment is that same env. Without pre-registration
+            // this export infinite-loops.
+            let env_id = crate::value::env::new_environment(&mut heap, ValueId::EMPTY_ENV);
+            let formals = heap.alloc(RObject::Nil);
+            let body = heap.alloc(RObject::Integer(vec![1]));
+            let closure = heap.alloc(RObject::Closure { formals, body, env: env_id });
+            let f_sym = interner.intern_symbol("f");
+            crate::value::env::define(&mut heap, env_id, f_sym, closure).expect("define");
+            let raw = exporter.export(&heap, &interner, closure).expect("recursive closure exports");
+            Sexp::with_registered_raw(raw, |sexp| {
+                assert_eq!(sexp.typeof_(), SEXPTYPE::CLOSXP);
+            });
+        });
+    }
+
+    #[test]
+    fn export_environment_bindings_visible() {
+        let mut session = crate::sexp::session::RSession::new();
+        session.with_active(|| {
+            let mut heap = Heap::new();
+            let mut interner = SymbolInterner::new();
+            let mut exporter = ExportBridge::new();
+            let env_id = crate::value::env::new_environment(&mut heap, ValueId::EMPTY_ENV);
+            let answer = heap.alloc(RObject::Real(vec![42.0]));
+            let sym = interner.intern_symbol("answer");
+            crate::value::env::define(&mut heap, env_id, sym, answer).expect("define");
+            let raw = exporter.export(&heap, &interner, env_id).expect("environment exports");
+            Sexp::with_registered_raw(raw, |env_sexp| {
+                assert_eq!(env_sexp.typeof_(), SEXPTYPE::ENVSXP);
+                // Full round-trip: re-import the exported environment and
+                // verify the binding survives both crossings.
+                let mut heap2 = Heap::new();
+                let mut interner2 = SymbolInterner::new();
+                let mut bridge = ValueBridge::new();
+                let reimported = bridge
+                    .import(&mut heap2, &mut interner2, env_sexp)
+                    .expect("re-import succeeds");
+                let sym2 = interner2.intern_symbol("answer");
+                let (_scope, binding) = crate::value::env::lookup(&heap2, reimported, sym2)
+                    .expect("binding visible after round-trip");
+                match heap2.object(binding.value) {
+                    Some(RObject::Real(values)) => assert_eq!(values.as_slice(), &[42.0]),
+                    other => panic!("expected 42.0 after round-trip, got {other:?}"),
+                }
+            });
+        });
+    }
+
+    #[test]
+    fn export_string_na_round_trips() {
+        let mut session = crate::sexp::session::RSession::new();
+        session.with_active(|| {
+            let mut heap = Heap::new();
+            let mut interner = SymbolInterner::new();
+            let mut exporter = ExportBridge::new();
+            let hello = interner.intern_string("hello");
+            let na = interner.intern_string("\0NA");
+            let id = heap.alloc(RObject::String(vec![hello, na]));
+            let raw = exporter.export(&heap, &interner, id).expect("strings export");
+            Sexp::with_registered_raw(raw, |sexp| {
+                assert_eq!(sexp.typeof_(), SEXPTYPE::STRSXP);
+                assert_eq!(sexp.len(), 2);
+                // Element 1 must round-trip to the NA string sentinel, not text.
+                let elt = crate::sexp::accessors::STRING_ELT(raw, 1);
+                assert_eq!(elt, crate::sexp::globals::R_NaString(), "NA string round-trips");
+            });
+        });
+    }
+
+    #[test]
+    fn interop_capstone_compute_new_world_consume_legacy_world() {
+        // The migration use case end-to-end: a program evaluates in the
+        // ValueId world, its result crosses back through the export bridge,
+        // and the legacy world reads the exact value — the interop pattern
+        // every consumer migration slice will follow.
+        let mut session = crate::sexp::session::RSession::new();
+        let mut heap = Heap::new();
+        let mut interner = SymbolInterner::new();
+        let mut bridge = ValueBridge::new();
+        let expressions = session.with_active(|| {
+            crate::eval::parser::parse_active_expressions(
+                "{ x <- 1:10; c(x[3], x[7], x[3] * x[7]) }",
+            )
+            .expect("source parses")
+        });
+        let imported = bridge
+            .import(&mut heap, &mut interner, &expressions[0])
+            .expect("program imports");
+        let env_id = bootstrap_env(&mut heap, &mut interner);
+        let result = crate::value::eval::eval(&mut heap, &mut interner, imported, env_id)
+            .expect("new-world evaluation succeeds");
+
+        session.with_active(|| {
+            let mut exporter = ExportBridge::new();
+            let raw = exporter
+                .export(&heap, &interner, result)
+                .expect("result exports to the legacy world");
+            Sexp::with_registered_raw(raw, |sexp| {
+                // The legacy world sees exactly c(3, 7, 21) — integer-typed
+                // through the colon sequence semantics.
+                assert_eq!(sexp.len(), 3);
+                assert_eq!(sexp.try_integer_elt(0).expect("first"), 3);
+                assert_eq!(sexp.try_integer_elt(1).expect("second"), 7);
+                assert_eq!(sexp.try_integer_elt(2).expect("third"), 21);
+            });
+        });
     }
 
     #[test]
