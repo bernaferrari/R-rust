@@ -11,10 +11,9 @@
 //! version info, then recursive WriteItem/ReadItem. ASCII, native-endian
 //! binary, and XDR binary headers/bodies are supported.
 
-use std::ffi::CStr;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::os::raw::{c_char, c_double, c_int};
+use std::os::raw::{c_char, c_int};
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
@@ -26,12 +25,11 @@ use crate::sexp::accessors::*;
 use crate::sexp::attrib_core::{R_NamesSymbol, setAttrib};
 use crate::sexp::constructors::*;
 use crate::sexp::envir::R_findVarInFrame;
-use crate::sexp::ffi::{R_xlen_t, Rboolean, Rcomplex, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{R_xlen_t, Rboolean, SEXP, SEXPTYPE};
 use crate::sexp::globals::{
     R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_MissingArg, R_NaString, R_NilValue, R_UnboundValue,
 };
 use crate::sexp::instance::with_required_current_instance;
-use crate::sexp::memory_ext::allocSExp;
 use crate::sexp::protect::*;
 #[cfg(test)]
 use crate::sexp::symbol::Rf_install;

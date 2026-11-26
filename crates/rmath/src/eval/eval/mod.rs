@@ -21,7 +21,6 @@
 use std::ffi::CString;
 use std::os::raw::c_int;
 
-use crate::sexp::accessors::{CHAR, PRINTNAME, TYPEOF};
 use crate::sexp::envir::{find_fun_result, forcePromise};
 use crate::sexp::ffi::{SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};

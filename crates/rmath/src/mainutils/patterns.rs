@@ -1,8 +1,8 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
-use std::os::raw::{c_double, c_int, c_uint, c_void};
+use std::os::raw::{c_double, c_int};
 
-use crate::sexp::accessors::{LENGTH, TYPEOF, VECTOR_ELT};
+use crate::sexp::accessors::{LENGTH, TYPEOF};
 use crate::sexp::attrib_core::{R_ClassSymbol, getAttrib};
 use crate::sexp::constructors::Rf_isNull;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};

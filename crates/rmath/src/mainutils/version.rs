@@ -5,7 +5,7 @@
 //! R version string constants and helpers.
 //! C projections of the same pinned target used by R introspection and streams.
 
-use std::os::raw::{c_char, c_int};
+use std::os::raw::c_int;
 
 /// R major version number (e.g., "4")
 pub const R_MAJOR: &[u8] = crate::mainutils::compatibility_target::MAJOR_C;

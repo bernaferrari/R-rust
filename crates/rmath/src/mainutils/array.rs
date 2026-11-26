@@ -27,7 +27,7 @@ use crate::sexp::accessors::{INTEGER_ELT, LOGICAL_ELT, REAL_ELT};
 use crate::sexp::attrib_core::{
     R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
 };
-use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3, Rf_cons, Rf_length};
+use crate::sexp::constructors::{Rf_allocVector3, Rf_cons, Rf_length};
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;

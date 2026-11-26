@@ -4,10 +4,7 @@
 //! a protected vector so GC cannot collect half-linked nodes). Pass 2b links
 //! references and fills payloads. True cycles are handled by construction.
 
-use crate::sexp::accessors::*;
-use crate::sexp::constructors::*;
 use crate::sexp::ffi::{Rcomplex, SEXP, SEXPTYPE};
-use crate::sexp::globals::*;
 
 use super::*;
 
@@ -61,7 +58,7 @@ impl<'a> GraphReader<'a> {
         Ok(slice.to_vec())
     }
 
-    pub fn read(mut self) -> Result<SEXP, String> {
+    pub fn read(self) -> Result<SEXP, String> {
         self.read_hooked(R_NilValue())
     }
 

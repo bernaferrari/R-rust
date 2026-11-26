@@ -6,8 +6,8 @@ use crate::mainutils::coerce::{ISNAN, R_FINITE, asInteger, asLogical, asReal};
 use crate::mainutils::duplicate::duplicate;
 use crate::mainutils::relop::{PRIMNAME, checkArity};
 use crate::sexp::accessors::{
-    BODY, CADDR, CADR, CAR, CDR, CHAR, CLOENV, ENCLOS, FORMALS, LENGTH, PRINTNAME, SET_BODY,
-    SET_CLOENV, SET_ENCLOS, SET_FORMALS, SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETCDR,
+    BODY, CADDR, CADR, CAR, CDR, CHAR, CLOENV, ENCLOS, LENGTH, PRINTNAME,
+    SET_CLOENV, SET_ENCLOS, SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETCDR,
     STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::attrib_core::{getAttrib, setAttrib};
@@ -15,8 +15,8 @@ use crate::sexp::constructors::{Rf_allocVector, Rf_isEnvironment, Rf_isString, R
 use crate::sexp::context::R_GlobalContext;
 use crate::sexp::envir::{R_findVarInFrame, findFun};
 use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
-use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_MissingArg, R_NilValue, R_UnboundValue};
-use crate::sexp::memory_ext::{allocSExp, mkPROMISE};
+use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_MissingArg, R_NilValue};
+use crate::sexp::memory_ext::mkPROMISE;
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------

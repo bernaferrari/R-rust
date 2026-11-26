@@ -24,7 +24,7 @@ use crate::library::grdevices::device_registry;
 use crate::mainutils::errors::{Rf_error_cstr, Rf_warning_cstr};
 pub(crate) use crate::mainutils::graphics_ffi::R_GE_gcontext;
 use crate::mainutils::graphics_ffi::{
-    raster_interpolate, raster_resize_for_rotation, raster_rotate, raster_rotated_offset,
+    raster_rotated_offset,
     raster_rotated_size, raster_scale,
 };
 use crate::sexp::accessors::{LENGTH, TYPEOF, VECTOR_ELT};

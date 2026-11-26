@@ -26,11 +26,11 @@ use std::os::raw::{c_char, c_int};
 
 use fancy_regex::{Regex as PerlInnerRegex, RegexBuilder as PerlRegexBuilder};
 
-use crate::mainutils::essentials::{set_integer_checked, set_logical_checked};
+use crate::mainutils::essentials::set_integer_checked;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
-use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::*;
 use crate::sexp::protect::protect;
 

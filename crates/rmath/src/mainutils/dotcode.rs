@@ -10,18 +10,15 @@
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
-use crate::mainutils::memory_main::{R_ExternalPtrAddr, sexptype2char};
 use crate::mainutils::rdynload::{
     R_FindSymbol as R_lookupLoadedSymbol, R_dlsym, R_findDllByHandle,
 };
 use crate::mainutils::relop::PRIMVAL;
 use crate::sexp::accessors::{
-    CAR, CDR, COMPLEX, INTEGER, LENGTH, PRINTNAME, RAW, REAL, SET_STRING_ELT, SET_VECTOR_ELT,
-    SETCDR, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH, translateChar,
+    CAR, CDR, LENGTH, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH, translateChar,
 };
-use crate::sexp::attrib_core::{getAttrib, setAttrib};
-use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector, Rf_length, Rf_mkChar};
-use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, Rcomplex, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::constructors::{Rf_ScalarLogical, Rf_length};
+use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance;
 

@@ -7,12 +7,9 @@
 //! the historical names used by older translated code while delegating to the
 //! Rust-shaped descriptor layer.
 
-use std::os::raw::c_int;
 
 use crate::mainutils::names::FunTabEntry;
-use crate::sexp::accessors::SET_PRIMOFFSET;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
-use crate::sexp::memory;
 
 use super::primitive;
 pub use super::primitive::{PRIMNAME, PrimFun};

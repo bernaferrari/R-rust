@@ -12,9 +12,9 @@
 //! Based on CACM algorithm #347 by R. C. Singleton (1969), a modified Hoare
 //! quicksort incorporating the modification in the remark by Peto.
 
-use std::os::raw::{c_int, c_void};
+use std::os::raw::c_int;
 
-use crate::sexp::ffi::{NA_INTEGER, SEXP};
+use crate::sexp::ffi::NA_INTEGER;
 
 // ---------------------------------------------------------------------------
 // NaN / NA utilities

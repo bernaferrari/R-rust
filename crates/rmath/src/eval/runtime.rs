@@ -12,7 +12,7 @@ use std::os::raw::c_int;
 use crate::sexp::context::{R_GlobalContext_in, RCNTXT};
 use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::{
-    R_BaseEnv_in, R_GlobalEnv_in, R_Visible_in, set_R_GlobalEnv_in, set_R_Visible_in,
+    R_BaseEnv_in, R_GlobalEnv_in, R_Visible_in, set_R_Visible_in,
 };
 use crate::sexp::instance::with_required_current_instance;
 

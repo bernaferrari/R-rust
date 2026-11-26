@@ -4,7 +4,6 @@ use crate::eval::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
 use crate::mainutils::coerce::coerceVector;
 use crate::mainutils::errors::Rf_warning_cstr;
 use crate::mainutils::essentials::{active_owner, owner_sexp, sexp_ok};
-use crate::sexp::accessors::CAR;
 use crate::sexp::constructors::Rf_allocVector3;
 use crate::sexp::ffi::{NA_INTEGER, NA_REAL, R_NA_BIT_PATTERN, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;

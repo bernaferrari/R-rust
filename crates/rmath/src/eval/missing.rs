@@ -28,7 +28,7 @@ use std::ptr;
 
 use crate::eval::attrib_core::{R_NamesSymbol, R_SrcFileSymbol, getAttrib};
 use crate::sexp::accessors::{
-    CADDR, CADR, CAR, CDDR, CDR, CHAR, FORMALS, FRAME, HASHTAB, LENGTH, NAMED, PRINTNAME,
+    CADR, CAR, CDDR, CDR, CHAR, FORMALS, FRAME, HASHTAB, LENGTH, NAMED, PRINTNAME,
     SET_NAMED, SET_STRING_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF,
 };
 

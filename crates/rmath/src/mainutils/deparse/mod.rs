@@ -49,7 +49,6 @@ use crate::sexp::globals::*;
 use crate::sexp::protect::*;
 use crate::sexp::symbol::R_BraceSymbol;
 use crate::sexp::symbol::R_DotsSymbol;
-use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
 // Checked CHARSXP text and string constructors

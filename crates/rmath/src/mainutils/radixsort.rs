@@ -12,12 +12,12 @@
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::os::raw::{c_int, c_void};
+use std::os::raw::c_int;
 
 use crate::eval::attrib_core::setAttrib;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{NA_LOGICAL, NA_REAL, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NaString, R_NilValue};
 use crate::sexp::protect::protect;
 

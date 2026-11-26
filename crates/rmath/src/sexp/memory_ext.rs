@@ -10,8 +10,7 @@
 //! - allocSExp, allocFormalsList, etc.
 //! - R_alloc/vmaxget/vmaxset (transient memory from C stack)
 
-use std::alloc::Layout;
-use std::os::raw::{c_int, c_void};
+use std::os::raw::c_int;
 use std::ptr;
 
 use super::ffi::{SEXP, SEXPTYPE, SexprecCore};

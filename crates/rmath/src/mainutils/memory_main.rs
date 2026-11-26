@@ -22,18 +22,18 @@
 //! unix/system.rs, unix/embedded.rs, and mainutils/main.rs are provided
 //! as pub(crate) functions WITHOUT #[unsafe(no_mangle)] to avoid duplicate symbol errors.
 
-use std::os::raw::{c_char, c_double, c_int, c_long, c_void};
+use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{ExtPtrBody, Listsxp, NA_INTEGER, NodeBody, R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{ExtPtrBody, Listsxp, NA_INTEGER, NodeBody, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_GlobalEnv, R_MissingArg, R_NilValue};
 use crate::sexp::heap::NodeLink;
 use crate::sexp::instance::{
     RInstance, with_finalizer_state_in, with_gc_state_in, with_memory_state_in,
 };
-use crate::sexp::{Sexp, SexpMut, object::SexpResult, owner::OwnerToken};
+use crate::sexp::{Sexp, object::SexpResult, owner::OwnerToken};
 
 #[cfg(test)]
 #[path = "memory_finalizer_batch_tests.rs"]

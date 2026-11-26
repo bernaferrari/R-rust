@@ -12,7 +12,7 @@ use std::os::raw::c_int;
 
 use crate::sexp::accessors::*;
 use crate::sexp::attrib_core::{
-    R_ClassSymbol, R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib,
+    R_ClassSymbol, getAttrib,
 };
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};

@@ -3,7 +3,7 @@
 //! Session-local workspace and startup settings from r-source/src/main/startup.c.
 
 use std::ffi::{CStr, CString};
-use std::os::raw::{c_char, c_int, c_void};
+use std::os::raw::{c_char, c_int};
 
 use crate::sexp::instance::with_current_instance;
 

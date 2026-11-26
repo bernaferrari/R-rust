@@ -6,9 +6,7 @@
 
 use std::collections::HashMap;
 
-use crate::sexp::accessors::*;
 use crate::sexp::ffi::{Rcomplex, SEXP, SEXPTYPE};
-use crate::sexp::globals::*;
 
 use super::*;
 

@@ -19,7 +19,7 @@ use std::os::raw::c_int;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::*;
 
 pub mod read;
@@ -161,7 +161,7 @@ fn decode_frame(bytes: &[u8]) -> Result<Vec<u8>, String> {
         COMPRESS_GZIP => {
             use flate2::read::GzDecoder;
             use std::io::Read as _;
-            let mut decoder = GzDecoder::new(&bytes[HEADER_LEN..frame_end]);
+            let decoder = GzDecoder::new(&bytes[HEADER_LEN..frame_end]);
             let mut out = Vec::with_capacity(uncompressed_len);
             decoder
                 .take(uncompressed_len as u64 + 1)

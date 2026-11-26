@@ -18,7 +18,6 @@
 
 use std::os::raw::c_int;
 
-use crate::sexp::accessors::*;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::object::{NodeBody, Sexp, SexpError, SexpMut};
 use crate::sexp::owner::OwnerToken;

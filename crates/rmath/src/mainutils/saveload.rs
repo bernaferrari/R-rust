@@ -7,18 +7,16 @@
 //! (ascii/XDR/binary) and the pre-RBG1 legacy layout are gone.
 
 use crate::sexp::accessors::{
-    CAD5R, CADDR, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LOGICAL, PRINTNAME, RAW, REAL,
-    SET_ATTRIB, SET_OBJECT, SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETTAG, STRING_ELT, TAG,
+    CAD5R, CADDR, CADR, CAR, CDR, CHAR, PRINTNAME, SET_STRING_ELT, STRING_ELT, TAG,
     TYPEOF, XLENGTH,
 };
-use crate::sexp::attrib_core::{R_ClassSymbol, getAttrib};
-use crate::sexp::constructors::{Rf_allocList, Rf_allocVector3};
+use crate::sexp::constructors::Rf_allocVector3;
 use crate::sexp::envir::R_findVar;
-use crate::sexp::ffi::{R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NaString, R_NilValue, R_UnboundValue};
 use crate::sexp::protect::protect;
 
-use std::io::{self, BufRead, Cursor, Read, Write};
+use std::io::{self, Write};
 use std::os::raw::c_int;
 
 mod workspace_file;

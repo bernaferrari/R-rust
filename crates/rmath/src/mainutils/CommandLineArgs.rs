@@ -7,12 +7,8 @@
 
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_void};
-use std::ptr;
 
 use crate::mainutils::startup::StartupRuntimeState;
-use crate::sexp::accessors::SET_STRING_ELT;
-use crate::sexp::constructors::Rf_allocVector;
-use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::instance::{with_required_current_instance, with_required_repl_flags};
 
 // ---------------------------------------------------------------------------
