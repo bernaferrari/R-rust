@@ -197,7 +197,9 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
             header.push(format!("{:>width$}", cat, width = width));
             body.push(format!("{:>width$}", num, width = width));
         }
-        return format!("{}\n{}", header.join(" "), body.join(" "));
+        // GNU's print.table leads with a blank line exactly as the golden
+        // pins — the margin formatting emits it before the header row.
+        return format!("\n{}\n{}", header.join(" "), body.join(" "));
     }
     // POSIXct printing: classed epoch seconds display as quoted datetimes
     /// carrying the tzone suffix exactly as print.POSIXct.
