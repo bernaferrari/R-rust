@@ -1427,10 +1427,15 @@ mod tests {
         let na_real = heap.alloc(RObject::Real(vec![f64::from_bits(crate::value::object::NA_REAL_BITS)]));
         let sym = interner.intern_symbol("NA_real_");
         env::define(heap, base, sym, na_real).expect("NA_real_");
+        // .GlobalEnv resolves to the user environment itself — the global
+        /// exactly as GNU's top-level reference.
+        let user = env::new_environment(heap, base);
+        let genv_sym = interner.intern_symbol(".GlobalEnv");
+        env::define(heap, base, genv_sym, user).expect(".GlobalEnv");
         let na_str = heap.alloc(RObject::String(vec![interner.intern_string("\0NA")]));
         let sym = interner.intern_symbol("NA_character_");
         env::define(heap, base, sym, na_str).expect("NA_character_");
-        env::new_environment(heap, base)
+        user
     }
 
     #[test]
@@ -2099,6 +2104,34 @@ print(typeof(x))"#;
         let source = std::fs::read_to_string(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../tests/conformance/cases/397_internal_error_state_dispatch.R"),
+        )
+        .expect("case");
+        let mut session = crate::sexp::session::RSession::new();
+        let expressions: Vec<_> = session.with_active(|| {
+            crate::eval::parser::parse_active_expressions(&source).unwrap_or_default()
+        });
+        let mut heap = Heap::new();
+        let mut interner = SymbolInterner::new();
+        let mut bridge = ValueBridge::new();
+        let env_id = bootstrap_env(&mut heap, &mut interner);
+        for (i, expr) in expressions.iter().enumerate() {
+            match bridge.import(&mut heap, &mut interner, expr) {
+                Ok(imported) => match crate::value::eval::eval(&mut heap, &mut interner, imported, env_id) {
+                    Ok(_) => println!("expr {i}: ok vis={} out={:?}", heap.visible, heap.output),
+                    Err(e) => println!("expr {i}: EVAL ERR {e:?}"),
+                },
+                Err(e) => println!("expr {i}: IMPORT ERR {e:?}"),
+            }
+        }
+    }
+
+
+    #[test]
+    #[ignore]
+    fn trace_437_debug() {
+        let source = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests/conformance/cases/437_save_load_list_basic.R"),
         )
         .expect("case");
         let mut session = crate::sexp::session::RSession::new();

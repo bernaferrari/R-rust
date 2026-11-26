@@ -178,6 +178,15 @@ pub mod primitive_ids {
     pub const INTERRUPTS_SUSPENDED: u32 = 164;
     pub const IS_PRIMITIVE: u32 = 165;
     pub const IS_TRUE: u32 = 166;
+    /// Object persistence — RBG1 roundtrips replacing the dropped GNU
+    /// wire formats.
+    pub const SAVE: u32 = 168;
+    pub const LOAD: u32 = 169;
+    pub const RM: u32 = 170;
+    pub const AS_VECTOR: u32 = 171;
+    pub const AS_CHARACTER: u32 = 172;
+    pub const TSP: u32 = 173;
+    pub const TSP_ASSIGN: u32 = 174;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -208,7 +217,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -223,12 +232,14 @@ pub(crate) fn call_primitive(
     caller_env: ValueId,
 ) -> EvalResult {
     let result = call_primitive_inner(heap, interner, id, args, caller_env);
-    if result.is_ok() {
+    // .Internal propagates the inner evaluation's visibility exactly —
+    /// the central discipline must not override what the wrapped call set.
+    if result.is_ok() && id.0 != INTERNAL {
         heap.visible = !matches!(
             id.0,
             ASSIGN | SUPERASSIGN | PRINT | CAT | INVISIBLE | WHILE | REPEAT | FOR
                 | WRITELINES | ASSIGN_FN | FILE_REMOVE | FILE_COPY | FILE_RENAME
-                | SYS_SETENV | SYS_UNSETENV | UNLINK | DIR_CREATE
+                | SYS_SETENV | SYS_UNSETENV | UNLINK | DIR_CREATE | SAVE | RM
         );
     }
     result
@@ -865,6 +876,36 @@ fn call_primitive_inner(
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             let is = matches!(heap.object(operands[0]), Some(RObject::Primitive(_)));
             Ok(heap.alloc(RObject::Logical(vec![if is { 1 } else { 0 }])))
+        }
+        SAVE => save_primitive(heap, interner, args, caller_env),
+        LOAD => load_primitive(heap, interner, args, caller_env),
+        RM => {
+            // rm(x, y) — bare symbols name bindings to remove from the
+            /// calling environment exactly as GNU's non-standard lookup.
+            let raw = raw_args(heap, args);
+            for expr in &raw {
+                if let Some(RObject::Symbol { name, .. }) = heap.object(*expr) {
+                    let sym = *name;
+                    let _ = super::env::remove(heap, caller_env, sym);
+                }
+            }
+            Ok(ValueId::NIL)
+        }
+        AS_VECTOR => {
+            // as.vector strips every attribute — the bare vector remains.
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let stripped = heap.alloc(heap.object(operands[0]).cloned().unwrap_or(RObject::Nil));
+            Ok(stripped)
+        }
+        AS_CHARACTER => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            coerce_character(heap, interner, operands[0])
+        }
+        TSP => attrib_getter(heap, interner, args, caller_env, "tsp"),
+        TSP_ASSIGN => {
+            // tsp<- is plain attribute replacement exactly as GNU treats it.
+            let operands = eval_args(heap, interner, args, caller_env, 2)?;
+            copy_with_attrib(heap, interner, operands[0], "tsp", operands[1]).map_err(RSignal::from)
         }
         GREPL => grep_primitive(heap, interner, args, caller_env, true),
         GREP => grep_primitive(heap, interner, args, caller_env, false),
@@ -1548,7 +1589,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -1683,6 +1724,13 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "interruptsSuspended" => Some(INTERRUPTS_SUSPENDED),
         "is.primitive" => Some(IS_PRIMITIVE),
         "isTRUE" => Some(IS_TRUE),
+        "save" => Some(SAVE),
+        "load" => Some(LOAD),
+        "rm" => Some(RM),
+        "as.vector" => Some(AS_VECTOR),
+        "as.character" => Some(AS_CHARACTER),
+        "tsp" => Some(TSP),
+        "tsp<-" => Some(TSP_ASSIGN),
         "printDeferredWarnings" => Some(PRINT_DEFERRED_WARNINGS),
         "grepl" => Some(GREPL),
         "grep" => Some(GREP),
@@ -3252,7 +3300,7 @@ pub(crate) fn get_attrib(
 /// R's copy-on-write discipline: the original object is never mutated —
 /// assignment binds the fresh copy, so aliases keep the old attributes.
 /// The attribute chain itself is rebuilt node-by-node for the same reason.
-fn copy_with_attrib(
+pub(crate) fn copy_with_attrib(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     obj: ValueId,
@@ -6296,4 +6344,223 @@ fn unique_primitive(
         }
         _ => Err(EvalError::TypeError("unique requires an atomic vector").into()),
     }
+}
+
+/// `save(..., file, envir)` — variadic bare symbols or list= character
+/// names resolved in envir, encoded as RBG1 exactly as the architecture's
+/// GNU-wire-format replacement specifies.
+fn save_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    // Tagged walk: file/envir/list by name, bare symbols positional.
+    let mut file_path: Option<String> = None;
+    let mut envir = caller_env;
+    let mut names: Vec<String> = Vec::new();
+    // Positional-mode detection: any non-symbol untagged argument means
+    /// the call follows .Internal's positional ordering — names vector,
+    /// file, ascii, version, envir — rather than the user-facing bare
+    /// symbol capture.
+    let mut positional_mode = false;
+    {
+        let mut scan = args;
+        loop {
+            let (car, cdr, tag) = match heap.object(scan) {
+                Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+                _ => break,
+            };
+            let untagged = !matches!(heap.object(tag), Some(RObject::Symbol { .. }));
+            if untagged && !matches!(heap.object(car), Some(RObject::Symbol { .. })) {
+                positional_mode = true;
+            }
+            if cdr == ValueId::NIL {
+                break;
+            }
+            scan = cdr;
+        }
+    }
+    let mut positional_seen = 0usize;
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
+        };
+        match tag_name.as_deref() {
+            Some("file") => {
+                let evaluated = eval(heap, interner, car, caller_env)?;
+                let v = force_if_promise(heap, interner, evaluated)?;
+                file_path = string_operand(heap, interner, v);
+            }
+            Some("envir") => {
+                let evaluated = eval(heap, interner, car, caller_env)?;
+                envir = force_if_promise(heap, interner, evaluated)?;
+            }
+            Some("list") => {
+                let evaluated = eval(heap, interner, car, caller_env)?;
+                let v = force_if_promise(heap, interner, evaluated)?;
+                names.extend(string_vec(heap, interner, v));
+            }
+            Some("ascii") | Some("version") | Some("eval.promises") | Some("compress") | Some("compression_level") => {}
+            _ => {
+                if positional_mode {
+                    // .Internal ordering: position 1 names, 2 file, 5 envir.
+                    positional_seen += 1;
+                    let evaluated = eval(heap, interner, car, caller_env)?;
+                    let v = force_if_promise(heap, interner, evaluated)?;
+                    match positional_seen {
+                        1 => names.extend(string_vec(heap, interner, v)),
+                        2 => file_path = string_operand(heap, interner, v),
+                        5 => envir = v,
+                        _ => {}
+                    }
+                } else if let Some(RObject::Symbol { name, .. }) = heap.object(car) {
+                    // Bare symbol — the object name itself, GNU's
+                    /// non-standard capture of unevaluated arguments.
+                    names.push(interner.symbol_name(*name).to_string());
+                }
+            }
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    let path = file_path.ok_or(EvalError::TypeError("save requires file"))?;
+    let mut bindings: Vec<(String, ValueId)> = Vec::new();
+    for name in &names {
+        let sym = interner.intern_symbol(name);
+        let (_, binding) = super::env::lookup(heap, envir, sym)
+            .ok_or(EvalError::UnboundVariable(name.clone()))?;
+        bindings.push((name.clone(), binding.value));
+    }
+    let bytes = super::rbg1::encode_save(heap, interner, &bindings);
+    std::fs::write(&path, bytes).map_err(|e| EvalError::TypeError("save write failed"))?;
+    Ok(ValueId::NIL)
+}
+
+/// `load(file, envir)` — decode the RBG1 stream, define every binding in
+/// envir, and return the character vector of names exactly as GNU.
+fn load_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let mut file_path: Option<String> = None;
+    let mut envir = caller_env;
+    let mut cursor = args;
+    let mut positional = 0usize;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        positional += 1;
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let v = force_if_promise(heap, interner, evaluated)?;
+        match tag_name.as_deref() {
+            Some("envir") => envir = v,
+            Some("file") => file_path = string_operand(heap, interner, v),
+            _ => {
+                if positional == 1 {
+                    file_path = string_operand(heap, interner, v);
+                } else if positional == 2 {
+                    envir = v;
+                }
+            }
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    let path = file_path.ok_or(EvalError::TypeError("load requires file"))?;
+    let bytes = std::fs::read(&path).map_err(|e| EvalError::TypeError("load read failed"))?;
+    let bindings = super::rbg1::decode_save(heap, interner, &bytes)
+        .ok_or(EvalError::TypeError("bad save file"))?;
+    let mut names: Vec<super::intern::InternedStr> = Vec::new();
+    for (name, value) in bindings {
+        let sym = interner.intern_symbol(&name);
+        names.push(interner.intern_string(&name));
+        super::env::define(heap, envir, sym, value)
+            .map_err(|_| RSignal::Error(EvalError::TypeError("cannot add binding")))?;
+    }
+    Ok(heap.alloc(RObject::String(names)))
+}
+
+/// GNU's character coercion — integers and logicals render as decimal and
+/// TRUE/FALSE exactly as paste does, real NA becomes the sentinel.
+fn coerce_character(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    value: ValueId,
+) -> EvalResult {
+    // factor input decodes through its levels first — as.character(factor)
+    /// yields the labels exactly as GNU.
+    let factor_classed = get_attrib(heap, interner, value, "class")
+        .and_then(|id| match heap.object(id) {
+            Some(RObject::String(vals)) => Some(vals.iter().any(|v| interner.string_text(*v) == "factor")),
+            _ => None,
+        })
+        .unwrap_or(false);
+    if factor_classed {
+        if let Some(RObject::Integer(codes)) = heap.object(value) {
+            let levels = get_attrib(heap, interner, value, "levels")
+                .and_then(|id| match heap.object(id) {
+                    Some(RObject::String(vals)) => Some(vals.clone()),
+                    _ => None,
+                })
+                .unwrap_or_default();
+            let out: Vec<super::intern::InternedStr> = codes
+                .iter()
+                .map(|&code| {
+                    if code == crate::value::object::NA_INTEGER {
+                        interner.intern_string("\0NA")
+                    } else {
+                        levels
+                            .get((code - 1).max(0) as usize)
+                            .copied()
+                            .unwrap_or_else(|| interner.intern_string(""))
+                    }
+                })
+                .collect();
+            return Ok(heap.alloc(RObject::String(out)));
+        }
+    }
+    let out: Vec<super::intern::InternedStr> = match heap.object(value) {
+        Some(RObject::String(values)) => values.clone(),
+        Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => values
+            .iter()
+            .map(|&v| {
+                if v == crate::value::object::NA_INTEGER {
+                    interner.intern_string("\0NA")
+                } else {
+                    interner.intern_string(&v.to_string())
+                }
+            })
+            .collect(),
+        Some(RObject::Real(values)) => values
+            .iter()
+            .map(|&v| {
+                if v.to_bits() == crate::value::object::NA_REAL_BITS {
+                    interner.intern_string("\0NA")
+                } else {
+                    interner.intern_string(&super::print::format_real(v))
+                }
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    Ok(heap.alloc(RObject::String(out)))
 }
