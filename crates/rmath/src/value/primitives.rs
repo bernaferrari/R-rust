@@ -343,6 +343,13 @@ pub mod primitive_ids {
     pub const SYS_GETPID: u32 = 325;
     pub const OLSONNAMES: u32 = 326;
     pub const IQR_FN: u32 = 327;
+    pub const SYS_CHMOD: u32 = 328;
+    pub const FILE_INFO: u32 = 329;
+    pub const SYS_GETLOCALE: u32 = 330;
+    pub const SYS_SETLOCALE: u32 = 331;
+    pub const NZCHAR: u32 = 332;
+    pub const AT_OP: u32 = 333;
+    pub const AT_ASSIGN: u32 = 334;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -373,7 +380,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN, SUMMARY_FN, MATRIX_MULT, CROSSPROD, TCROSSPROD, MAXCOL, IDIV, NROW_FN, NCOL_FN, SYS_GETPID, OLSONNAMES, IQR_FN};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN, SUMMARY_FN, MATRIX_MULT, CROSSPROD, TCROSSPROD, MAXCOL, IDIV, NROW_FN, NCOL_FN, SYS_GETPID, OLSONNAMES, IQR_FN, SYS_CHMOD, FILE_INFO, SYS_GETLOCALE, SYS_SETLOCALE, NZCHAR, AT_OP, AT_ASSIGN};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -1492,6 +1499,133 @@ fn call_primitive_inner(
             };
             let iqr = quantile7(&vals, 0.75) - quantile7(&vals, 0.25);
             Ok(heap.alloc(RObject::Real(vec![iqr])))
+        }
+        SYS_CHMOD => {
+            // chmod each path to the octal mode, reporting per-file success
+            // exactly as GNU — missing files yield FALSE, not an error.
+            let operands = eval_args(heap, interner, args, caller_env, 2)?;
+            let paths = string_vec(heap, interner, operands[0]);
+            let mode_text = string_operand(heap, interner, operands[1]).unwrap_or_else(|| "0644".to_string());
+            let trimmed = mode_text.trim_start_matches('0');
+            let mode = u32::from_str_radix(if trimmed.is_empty() { "0" } else { trimmed }, 8).unwrap_or(0o644);
+            let mut out = Vec::new();
+            for path in &paths {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let ok = std::fs::metadata(path)
+                        .map(|_| std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).is_ok())
+                        .unwrap_or(false);
+                    out.push(ok as i32);
+                }
+                #[cfg(not(unix))]
+                {
+                    let _ = mode;
+                    out.push(0);
+                }
+            }
+            Ok(heap.alloc(RObject::Logical(out)))
+        }
+        FILE_INFO => {
+            // The metadata frame GNU's file.info returns — this slice
+            // covers the mode column as an octal character string.
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let paths = string_vec(heap, interner, operands[0]);
+            let mut modes = Vec::new();
+            for path in &paths {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let text = std::fs::metadata(path)
+                        .map(|m| format!("{:o}", m.permissions().mode() & 0o7777))
+                        .unwrap_or_else(|_| "\0NA".to_string());
+                    modes.push(text);
+                }
+                #[cfg(not(unix))]
+                {
+                    modes.push("\0NA".to_string());
+                }
+            }
+            let interned: Vec<_> = modes.iter().map(|m| interner.intern_string(m)).collect();
+            let col = heap.alloc(RObject::String(interned));
+            let frame = heap.alloc(RObject::List(vec![col]));
+            let names_obj = heap.alloc(RObject::String(vec![interner.intern_string("mode")]));
+            let frame = copy_with_attrib(heap, interner, frame, "names", names_obj).map_err(RSignal::from)?;
+            let class_obj = heap.alloc(RObject::String(vec![interner.intern_string("data.frame")]));
+            copy_with_attrib(heap, interner, frame, "class", class_obj).map_err(RSignal::from)
+        }
+        SYS_GETLOCALE | SYS_SETLOCALE => {
+            // The process locale is the C locale in this runtime exactly
+            // as a default POSIX session; category validation follows
+            // GNU's exact error.
+            let operands = eval_args(heap, interner, args, caller_env, 1).unwrap_or_default();
+            let valid = ["LC_ALL", "LC_COLLATE", "LC_CTYPE", "LC_MONETARY", "LC_NUMERIC", "LC_TIME", "LC_MESSAGES", "LC_PAPER", "LC_MEASUREMENT"];
+            if let Some(first) = operands.first() {
+                let category = string_operand(heap, interner, *first).unwrap_or_default();
+                if !category.is_empty() && !valid.contains(&category.as_str()) {
+                    return Err(EvalError::Condition("invalid 'category' argument".to_string()).into());
+                }
+            }
+            let locale = interner.intern_string("C");
+            Ok(heap.alloc(RObject::String(vec![locale])))
+        }
+        NZCHAR => {
+            // Elementwise non-empty test exactly as GNU — NA stays NA.
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let texts = string_vec(heap, interner, operands[0]);
+            let out: Vec<i32> = texts
+                .iter()
+                .map(|s| {
+                    if s.starts_with('\0') {
+                        crate::value::object::NA_INTEGER
+                    } else {
+                        (!s.is_empty()) as i32
+                    }
+                })
+                .collect();
+            Ok(heap.alloc(RObject::Logical(out)))
+        }
+        AT_OP => {
+            // The slot operator — exactly slot(obj, name) in operator form,
+            // the slot name unevaluated precisely as `$`.
+            let parts = raw_args(heap, args);
+            if parts.len() != 2 {
+                return Err(EvalError::UnsupportedForm("@ arity").into());
+            }
+            let object = eval(heap, interner, parts[0], caller_env)?;
+            let object = force_if_promise(heap, interner, object)?;
+            let name = match heap.object(parts[1]) {
+                Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+                _ => {
+                    let evaluated = eval(heap, interner, parts[1], caller_env)?;
+                    let v = force_if_promise(heap, interner, evaluated)?;
+                    string_operand(heap, interner, v).unwrap_or_default()
+                }
+            };
+            s4_slot_get(heap, interner, object, &name)
+        }
+        AT_ASSIGN => {
+            // `@<-`(obj, name, value) — slot replacement constructing the
+            // updated object exactly as GNU's operator desugar; the slot
+            // name arrives unevaluated in operator use and evaluated in
+            // the explicit-function form.
+            let parts = raw_args(heap, args);
+            if parts.len() != 3 {
+                return Err(EvalError::UnsupportedForm("@<- arity").into());
+            }
+            let object = eval(heap, interner, parts[0], caller_env)?;
+            let object = force_if_promise(heap, interner, object)?;
+            let name = match heap.object(parts[1]) {
+                Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+                _ => {
+                    let evaluated = eval(heap, interner, parts[1], caller_env)?;
+                    let v = force_if_promise(heap, interner, evaluated)?;
+                    string_operand(heap, interner, v).unwrap_or_default()
+                }
+            };
+            let value = eval(heap, interner, parts[2], caller_env)?;
+            let value = force_if_promise(heap, interner, value)?;
+            s4_slot_set(heap, interner, object, &name, value)
         }
         SUMMARY_FN => summary_primitive(heap, interner, args, caller_env),
         MATRIX_MULT | CROSSPROD | TCROSSPROD | MAXCOL => matrix_ops_primitive(heap, interner, id.0, args, caller_env),
@@ -4167,7 +4301,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom", "message", "missing", "parent.env", "order", "rank", "ordered", "is.ordered", "is.factor", "na.omit", "na.exclude", "pbeta", "dbeta", "qbeta", "find", "UseMethod", "NextMethod", "getS3method", "emptyenv", "as.integer", "as.numeric", "as.double", "stopifnot", "sequence", "rep.int", "rep_len", "dt", "pt", "qt", "sample", "sample.int", "builtins", "regexec", "df", "pf", "qf", "substr", "file", "isOpen", "close", "flush", "writeChar", "readChar", "union", "intersect", "setdiff", "setequal", "table", "setClass", "new", "is", "slot", "slotNames", "unname", "which.min", "which.max", "withVisible", "system", "writeBin", "readBin", "url", "dim<-", "storage.mode<-", "as.list", "body", "summary", "%*%", "crossprod", "tcrossprod", "max.col", "%/%", "NROW", "NCOL", "Sys.getpid", "OlsonNames", "IQR",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom", "message", "missing", "parent.env", "order", "rank", "ordered", "is.ordered", "is.factor", "na.omit", "na.exclude", "pbeta", "dbeta", "qbeta", "find", "UseMethod", "NextMethod", "getS3method", "emptyenv", "as.integer", "as.numeric", "as.double", "stopifnot", "sequence", "rep.int", "rep_len", "dt", "pt", "qt", "sample", "sample.int", "builtins", "regexec", "df", "pf", "qf", "substr", "file", "isOpen", "close", "flush", "writeChar", "readChar", "union", "intersect", "setdiff", "setequal", "table", "setClass", "new", "is", "slot", "slotNames", "unname", "which.min", "which.max", "withVisible", "system", "writeBin", "readBin", "url", "dim<-", "storage.mode<-", "as.list", "body", "summary", "%*%", "crossprod", "tcrossprod", "max.col", "%/%", "NROW", "NCOL", "Sys.getpid", "OlsonNames", "IQR", "Sys.chmod", "file.info", "Sys.getlocale", "Sys.setlocale", "nzchar", "@", "@<-",
     ]
 }
 
@@ -4185,6 +4319,13 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "Sys.getpid" => Some(SYS_GETPID),
         "OlsonNames" => Some(OLSONNAMES),
         "IQR" => Some(IQR_FN),
+        "Sys.chmod" => Some(SYS_CHMOD),
+        "file.info" => Some(FILE_INFO),
+        "Sys.getlocale" => Some(SYS_GETLOCALE),
+        "Sys.setlocale" => Some(SYS_SETLOCALE),
+        "nzchar" => Some(NZCHAR),
+        "@" => Some(AT_OP),
+        "@<-" => Some(AT_ASSIGN),
         "/" => Some(DIV),
         "if" => Some(IF),
         "{" => Some(BRACE),
@@ -12552,14 +12693,44 @@ fn slot_primitive(
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 2)?;
     let slot_name = string_operand(heap, interner, operands[1]).unwrap_or_default();
-    let names: Vec<String> = match get_attrib(heap, interner, operands[0], "names") {
+    s4_slot_get(heap, interner, operands[0], &slot_name)
+}
+
+/// S4 slot extraction: the object's slot list is a named list — position
+/// lookup exactly as the class definition orders it.
+fn s4_slot_get(heap: &Heap, interner: &SymbolInterner, obj: ValueId, slot_name: &str) -> EvalResult {
+    let names: Vec<String> = match get_attrib(heap, interner, obj, "names") {
         Some(n) => string_vec(heap, interner, n),
         None => Vec::new(),
     };
-    if let Some(RObject::List(items)) = heap.object(operands[0]) {
-        if let Some(pos) = names.iter().position(|n| n == &slot_name) {
+    if let Some(RObject::List(items)) = heap.object(obj) {
+        if let Some(pos) = names.iter().position(|n| n == slot_name) {
             if let Some(value) = items.get(pos) {
                 return Ok(*value);
+            }
+        }
+    }
+    Err(EvalError::TypeError("slot does not exist").into())
+}
+
+/// S4 slot replacement: copy the object's slot list substituting the
+/// named position exactly as GNU's `@<-` reconstruction.
+fn s4_slot_set(heap: &mut Heap, interner: &SymbolInterner, obj: ValueId, slot_name: &str, value: ValueId) -> EvalResult {
+    let names: Vec<String> = match get_attrib(heap, interner, obj, "names") {
+        Some(n) => string_vec(heap, interner, n),
+        None => Vec::new(),
+    };
+    if let Some(RObject::List(items)) = heap.object(obj) {
+        let mut items = items.clone();
+        if let Some(pos) = names.iter().position(|n| n == slot_name) {
+            if pos < items.len() {
+                items[pos] = value;
+                let chain = heap.get(obj).map(|slot| slot.attrib).unwrap_or(ValueId::NIL);
+                let result = heap.alloc(RObject::List(items));
+                if let Some(slot) = heap.get_mut(result) {
+                    slot.attrib = chain;
+                }
+                return Ok(result);
             }
         }
     }
