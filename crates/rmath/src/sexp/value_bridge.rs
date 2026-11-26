@@ -286,6 +286,48 @@ impl ValueBridge {
                 self.attach_attributes(heap, interner, sexp, id)?;
                 Ok(id)
             }
+            SEXPTYPE::PROMSXP => {
+                // Promises carry three slots — expression, environment, and
+                // the forced value (unbound until evaluation). All three
+                // cross; forcing then happens in the new evaluator over the
+                // imported expression graph, exactly the migration semantics.
+                let id = heap.alloc(RObject::Promise {
+                    expr: ValueId::NIL,
+                    env: ValueId::NIL,
+                    value: ValueId::UNBOUND,
+                });
+                self.forward.insert(key, id);
+                let expr = match sexp.try_prcode() {
+                    Ok(e) if e.typeof_() != SEXPTYPE::NILSXP => {
+                        self.import(heap, interner, &e)?
+                    }
+                    _ => ValueId::NIL,
+                };
+                let env = match sexp.try_prenv() {
+                    Ok(e) if e.typeof_() != SEXPTYPE::NILSXP => {
+                        self.import(heap, interner, &e)?
+                    }
+                    _ => ValueId::NIL,
+                };
+                let value = match sexp.try_prvalue() {
+                    Ok(v) => {
+                        if v.as_raw() == crate::sexp::globals::R_UnboundValue() {
+                            ValueId::UNBOUND
+                        } else {
+                            self.import(heap, interner, &v)?
+                        }
+                    }
+                    _ => ValueId::UNBOUND,
+                };
+                match heap.object_mut(id) {
+                    Some(slot @ RObject::Promise { .. }) => {
+                        *slot = RObject::Promise { expr, env, value };
+                    }
+                    _ => return Err(ImportError::TruncatedPayload),
+                }
+                self.attach_attributes(heap, interner, sexp, id)?;
+                Ok(id)
+            }
             SEXPTYPE::BUILTINSXP | SEXPTYPE::SPECIALSXP => {
                 // Legacy primitives map onto the new primitive registry by
                 // their print name. The scaffolding table covers the
@@ -704,7 +746,7 @@ impl ExportBridge {
             }
             RObject::Environment { .. } => self.export_environment(heap, interner, value),
             RObject::Closure { .. } => self.export_closure(heap, interner, value),
-            RObject::Promise { .. } => Err(ExportError::UnsupportedObject("promise")),
+            RObject::Promise { .. } => self.export_promise(heap, interner, value),
             RObject::Primitive(_) => Err(ExportError::UnsupportedObject("primitive")),
             _ => Err(ExportError::UnsupportedObject("unhandled variant")),
         }
@@ -807,6 +849,39 @@ impl ExportBridge {
         }
         drop(guard);
         Ok(environment)
+    }
+
+    /// Export a promise with the same skeleton-and-patch discipline as
+    /// closures: the expression edge can reference the environment the
+    /// promise belongs to, cycling back through bindings.
+    fn export_promise(
+        &mut self,
+        heap: &Heap,
+        interner: &SymbolInterner,
+        value: ValueId,
+    ) -> Result<SEXP, ExportError> {
+        use crate::sexp::accessors::{SET_PRCODE, SET_PRENV, SET_PRVALUE};
+        use crate::sexp::globals::{R_NilValue, R_UnboundValue};
+        let (expr, env, forced) = match heap.object(value) {
+            Some(RObject::Promise { expr, env, value }) => (*expr, *env, *value),
+            _ => return Err(ExportError::DanglingEdge),
+        };
+        let skeleton = crate::sexp::memory_ext::allocSExp(SEXPTYPE::PROMSXP);
+        let guard = crate::sexp::protect::protect(skeleton);
+        self.reverse.insert(value, skeleton);
+        SET_PRCODE(skeleton, R_NilValue());
+        SET_PRENV(skeleton, R_NilValue());
+        SET_PRVALUE(skeleton, R_UnboundValue());
+        let expr_sexp = self.export(heap, interner, expr)?;
+        SET_PRCODE(skeleton, expr_sexp);
+        let env_sexp = self.export(heap, interner, env)?;
+        SET_PRENV(skeleton, env_sexp);
+        if forced != ValueId::UNBOUND {
+            let forced_sexp = self.export(heap, interner, forced)?;
+            SET_PRVALUE(skeleton, forced_sexp);
+        }
+        drop(guard);
+        Ok(skeleton)
     }
 
     /// Export a closure through skeleton-and-patch pre-registration. The
@@ -957,11 +1032,11 @@ mod tests {
             let mut bridge = ValueBridge::new();
             let mut arena = crate::sexp::memory::RArena::new();
 
-            let raw = arena.alloc_node(SEXPTYPE::PROMSXP);
-            let sexp = Sexp::from_arena_raw(raw, &arena).expect("live promise");
+            let raw = arena.alloc_node(SEXPTYPE::WEAKREFSXP);
+            let sexp = Sexp::from_arena_raw(raw, &arena).expect("live weakref");
             match bridge.import_atomic(&mut heap, &mut interner, &sexp) {
-                Err(ImportError::UnsupportedType(SEXPTYPE::PROMSXP)) => {}
-                other => panic!("promises must be rejected for now, got {other:?}"),
+                Err(ImportError::UnsupportedType(SEXPTYPE::WEAKREFSXP)) => {}
+                other => panic!("weak references must be rejected for now, got {other:?}"),
             }
         });
     }
@@ -1546,6 +1621,78 @@ mod tests {
         // Mixed integer/logical operands coerce upward through c().
         let (heap, _interner, result) = eval_in_new_world("{ x <- c(1:2, 3.5); x[3] }");
         expect_reals(&heap, result, &[3.5]);
+    }
+
+    #[test]
+    fn import_promise_slots_cross() {
+        // A promise built in the legacy world imports with all three slots
+        // intact: expression, environment, and the unbound forced-value slot.
+        let mut session = crate::sexp::session::RSession::new();
+        session.with_active(|| {
+            use crate::sexp::accessors::{SET_PRCODE, SET_PRENV, SET_PRVALUE};
+            use crate::sexp::globals::{R_NilValue, R_UnboundValue};
+            let promise = crate::sexp::memory_ext::allocSExp(SEXPTYPE::PROMSXP);
+            let guard = crate::sexp::protect::protect(promise);
+            let expr = crate::sexp::constructors::Rf_ScalarReal(99.0);
+            SET_PRCODE(promise, expr);
+            SET_PRENV(promise, crate::sexp::globals::R_EmptyEnv());
+            SET_PRVALUE(promise, R_UnboundValue());
+            let _ = R_NilValue();
+            let mut heap = Heap::new();
+            let mut interner = SymbolInterner::new();
+            let mut bridge = ValueBridge::new();
+            Sexp::with_registered_raw(promise, |sexp| {
+                let id = bridge
+                    .import(&mut heap, &mut interner, sexp)
+                    .expect("promises import");
+                match heap.object(id) {
+                    Some(RObject::Promise { expr, env, value }) => {
+                        match heap.object(*expr) {
+                            Some(RObject::Real(values)) => {
+                                assert_eq!(values.as_slice(), &[99.0])
+                            }
+                            other => panic!("expected 99.0 expr, got {other:?}"),
+                        }
+                        assert_eq!(*value, ValueId::UNBOUND, "unforced promises stay unbound");
+                        let _ = env;
+                    }
+                    other => panic!("expected promise, got {other:?}"),
+                }
+            });
+            drop(guard);
+        });
+    }
+
+    #[test]
+    fn export_promise_round_trips_slots() {
+        // The new-world promise crosses back: expression and environment
+        // slots land in the right places, the unbound value sentinel too.
+        let mut session = crate::sexp::session::RSession::new();
+        session.with_active(|| {
+            let mut heap = Heap::new();
+            let interner = SymbolInterner::new();
+            let mut exporter = ExportBridge::new();
+            let expr = heap.alloc(RObject::Real(vec![7.0]));
+            let env_id = crate::value::env::new_environment(&mut heap, ValueId::EMPTY_ENV);
+            let promise_id = heap.alloc(RObject::Promise {
+                expr,
+                env: env_id,
+                value: ValueId::UNBOUND,
+            });
+            let raw = exporter
+                .export(&heap, &interner, promise_id)
+                .expect("promise exports");
+            use crate::sexp::accessors::{PRCODE, PRENV, PRVALUE};
+            let prvalue = PRVALUE(raw);
+            assert_eq!(prvalue, crate::sexp::globals::R_UnboundValue(), "unforced stays unbound");
+            let code = PRCODE(raw);
+            assert!(!code.is_null(), "expression slot populated");
+            Sexp::with_registered_raw(code, |sexp| {
+                assert_eq!(sexp.try_real_elt(0).expect("expr value"), 7.0);
+            });
+            let env = PRENV(raw);
+            assert!(!env.is_null(), "environment slot populated");
+        });
     }
 
     /// Extract a numeric vector's elements from the legacy world as doubles,
