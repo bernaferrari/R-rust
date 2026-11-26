@@ -30,7 +30,6 @@ use crate::nmath::dist::gamma::pgamma;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::*;
-use crate::sexp::memory_ext::R_alloc;
 use crate::sexp::protect::protect;
 
 // ---- internal helper functions (not exported) ----
@@ -1711,8 +1710,8 @@ fn fexact(
     // both element types have valid zero representations. The session retains
     // the transient allocation for this native call.
     unsafe {
-        let dwrk =
-            R_alloc(std::mem::size_of::<c_double>(), (iwkmax / 2) as usize).cast::<c_double>();
+        let mut block_ws = vec![0.0f64; (iwkmax / 2) as usize];
+        let dwrk = block_ws.as_mut_ptr();
         let iwrk = dwrk.cast::<c_int>();
         f2xact(
             nrow,
