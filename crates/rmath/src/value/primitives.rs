@@ -1380,7 +1380,9 @@ fn concat_primitive(
                     Flat::Logical(values) => {
                         for v in values {
                             let text = if v == crate::value::object::NA_INTEGER {
-                                "NA".to_string()
+                                // GNU: NA coerces to NA_character_ — the
+                                // missing sentinel, never the literal text.
+                                "\0NA".to_string()
                             } else if v != 0 {
                                 "TRUE".to_string()
                             } else {
@@ -1392,7 +1394,7 @@ fn concat_primitive(
                     Flat::Integer(values) => {
                         for v in values {
                             let text = if v == crate::value::object::NA_INTEGER {
-                                "NA".to_string()
+                                "\0NA".to_string()
                             } else {
                                 v.to_string()
                             };
@@ -1402,7 +1404,7 @@ fn concat_primitive(
                     Flat::Real(values) => {
                         for v in values {
                             let text = if v.to_bits() == crate::value::object::NA_REAL_BITS {
-                                "NA".to_string()
+                                "\0NA".to_string()
                             } else if v.fract() == 0.0 && v.abs() < 1e15 {
                                 format!("{}", v as i64)
                             } else {
@@ -2163,6 +2165,21 @@ fn math_unary(
             }
         })
         .collect();
+    // GNU type fidelity: abs of an integer vector stays integer; the
+    /// transcendental functions always produce real.
+    if op == ABS && matches!(heap.object(operands[0]), Some(RObject::Integer(_))) {
+        let ints: Vec<i32> = out
+            .iter()
+            .map(|v| {
+                if v.is_nan() {
+                    crate::value::object::NA_INTEGER
+                } else {
+                    *v as i32
+                }
+            })
+            .collect();
+        return Ok(heap.alloc(RObject::Integer(ints)));
+    }
     Ok(heap.alloc(RObject::Real(out)))
 }
 

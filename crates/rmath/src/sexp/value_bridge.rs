@@ -2007,6 +2007,7 @@ mod tests {
             name,
             "<-" | "=" | "<<-" | "print" | "cat" | "invisible" | "assign"
                 | "writeLines" | "file.remove" | "file.copy" | "file.rename" | "unlink"
+                | "while" | "for" | "repeat"
         )
     }
 
@@ -2048,7 +2049,7 @@ mod tests {
                         },
                         _ => false,
                     };
-                    if !invisible && value != ValueId::NIL {
+                    if !invisible {
                         let text = crate::value::print::format_value(&heap, &interner, value);
                         heap.output.push_str(&text);
                         heap.output.push('\n');
@@ -2167,7 +2168,7 @@ mod tests {
                             }
                             _ => false,
                         };
-                        if !invisible && value != ValueId::NIL {
+                        if !invisible {
                             let text = crate::value::print::format_value(&heap, &interner, value);
                             heap.output.push_str(&text);
                             heap.output.push('\n');
