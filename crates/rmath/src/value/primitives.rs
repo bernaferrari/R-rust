@@ -251,6 +251,16 @@ pub mod primitive_ids {
     pub const GREGEXPR: u32 = 233;
     pub const GSUB: u32 = 234;
     pub const SUB_FN: u32 = 235;
+    pub const FORMALS: u32 = 236;
+    pub const OPTIONS_FN: u32 = 237;
+    pub const GET_OPTION: u32 = 238;
+    pub const CBIND: u32 = 239;
+    pub const RBIND: u32 = 240;
+    pub const IS_NUMERIC_FN: u32 = 241;
+    pub const IS_INTEGER_FN: u32 = 242;
+    pub const IS_DOUBLE_FN: u32 = 243;
+    pub const IS_LOGICAL_FN: u32 = 244;
+    pub const IS_CHARACTER_FN: u32 = 245;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -281,7 +291,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -1985,6 +1995,20 @@ fn call_primitive_inner(
                 None => Ok(ValueId::NIL),
             }
         }
+        IS_NUMERIC_FN | IS_INTEGER_FN | IS_DOUBLE_FN | IS_LOGICAL_FN | IS_CHARACTER_FN => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let yes = match id.0 {
+                IS_NUMERIC_FN => matches!(
+                    heap.object(operands[0]),
+                    Some(RObject::Real(_)) | Some(RObject::Integer(_))
+                ) && get_attrib(heap, interner, operands[0], "class").is_none(),
+                IS_INTEGER_FN => matches!(heap.object(operands[0]), Some(RObject::Integer(_))),
+                IS_DOUBLE_FN => matches!(heap.object(operands[0]), Some(RObject::Real(_))),
+                IS_LOGICAL_FN => matches!(heap.object(operands[0]), Some(RObject::Logical(_))),
+                _ => matches!(heap.object(operands[0]), Some(RObject::String(_))),
+            };
+            Ok(heap.alloc(RObject::Logical(vec![yes as i32])))
+        }
         INHERITS => {
             // inherits checks the class chain for classed objects; the
             /// unclassed atomic types carry their implicit classes exactly
@@ -2043,6 +2067,89 @@ fn call_primitive_inner(
         }
         GREGEXPR => gregexpr_primitive(heap, interner, args, caller_env),
         GSUB | SUB_FN => gsub_primitive(heap, interner, id.0, args, caller_env),
+        FORMALS => {
+            // The closure's formals pairlist as a named list — defaults
+            /// ride as their expressions, missing defaults as the empty
+            /// symbol exactly as GNU's formals list.
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let formals = match heap.object(operands[0]) {
+                Some(RObject::Closure { formals, .. }) => Some(*formals),
+                _ => None,
+            };
+            let mut items = Vec::new();
+            let mut names = Vec::new();
+            let mut cursor = formals.unwrap_or(ValueId::NIL);
+            for _ in 0..100_000 {
+                if cursor == ValueId::NIL {
+                    break;
+                }
+                let (car, tag, next) = match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, tag, cdr, .. }) => (*car, *tag, *cdr),
+                    _ => break,
+                };
+                let name = match heap.object(tag) {
+                    Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+                    _ => String::new(),
+                };
+                names.push(name);
+                let item = if car == ValueId::MISSING || car == ValueId::NIL {
+                    // The missing default rides as the empty symbol — its
+                    /// typeof reads symbol exactly as GNU's missing marker.
+                    let empty = interner.intern_symbol("");
+                    heap.alloc(RObject::Symbol { name: empty, value: ValueId::NIL, internal: ValueId::NIL })
+                } else {
+                    car
+                };
+                items.push(item);
+                cursor = next;
+            }
+            let result = heap.alloc(RObject::List(items));
+            if names.iter().any(|n| !n.is_empty()) {
+                let interned: Vec<super::intern::InternedStr> = names
+                    .iter()
+                    .map(|s| interner.intern_string(s))
+                    .collect();
+                let names_vec = heap.alloc(RObject::String(interned));
+                return copy_with_attrib(heap, interner, result, "names", names_vec).map_err(RSignal::from);
+            }
+            Ok(result)
+        }
+        OPTIONS_FN => options_primitive(heap, interner, args, caller_env),
+        GET_OPTION => {
+            if heap.options_width_fallback.is_none() {
+                let fallback = heap.alloc(RObject::Real(vec![80.0]));
+                heap.options_width_fallback = Some(fallback);
+            }
+            // One or two operands exactly as GNU — the second rides as the
+            /// default for absent options. The optional operand walks the
+            /// raw pairlist since eval_args enforces exact arity.
+            let mut operand_count = 0usize;
+            {
+                let mut cursor = args;
+                for _ in 0..16 {
+                    match heap.object(cursor) {
+                        Some(RObject::Pairlist { cdr, .. }) => {
+                            operand_count += 1;
+                            if *cdr == ValueId::NIL {
+                                break;
+                            }
+                            cursor = *cdr;
+                        }
+                        _ => break,
+                    }
+                }
+            }
+            let operands = eval_args(heap, interner, args, caller_env, operand_count)?;
+            let name = match heap.object(operands[0]) {
+                Some(RObject::String(vals)) if !vals.is_empty() => interner.string_text(vals[0]).to_string(),
+                _ => String::new(),
+            };
+            match lookup_option(heap, interner, &name) {
+                Some(value) => Ok(value),
+                None => Ok(if operands.len() > 1 { operands[1] } else { ValueId::NIL }),
+            }
+        }
+        CBIND | RBIND => bind_primitive(heap, interner, id.0, args, caller_env),
         XTABS => xtabs_primitive(heap, interner, args, caller_env),
         FORMAT => {
             // format() on Date-classed input renders ISO exactly as the
@@ -3050,7 +3157,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol",
     ]
 }
 
@@ -3252,6 +3359,16 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "gregexpr" => Some(GREGEXPR),
         "gsub" => Some(GSUB),
         "sub" => Some(SUB_FN),
+        "formals" => Some(FORMALS),
+        "options" => Some(OPTIONS_FN),
+        "getOption" => Some(GET_OPTION),
+        "cbind" => Some(CBIND),
+        "rbind" => Some(RBIND),
+        "is.numeric" => Some(IS_NUMERIC_FN),
+        "is.integer" => Some(IS_INTEGER_FN),
+        "is.double" => Some(IS_DOUBLE_FN),
+        "is.logical" => Some(IS_LOGICAL_FN),
+        "is.character" => Some(IS_CHARACTER_FN),
         "tsp" => Some(TSP),
         "tsp<-" => Some(TSP_ASSIGN),
         "printDeferredWarnings" => Some(PRINT_DEFERRED_WARNINGS),
@@ -5282,24 +5399,33 @@ fn apply_family(
     let operands = eval_args(heap, interner, args, caller_env, 2)?;
     let elements = sequence_elements(heap, operands[0])?;
     let fun = operands[1];
-    let (formals, body, closure_env) = match heap.object(fun) {
-        Some(RObject::Closure { formals, body, env }) => (*formals, *body, *env),
-        _ => return Err(EvalError::TypeError("apply requires a closure").into()),
+    // Primitives and closures both apply through the shared value passing
+    /// machinery exactly as GNU's lapplyFUN dispatches.
+    let closure_parts = match heap.object(fun) {
+        Some(RObject::Closure { formals, body, env }) => Some((*formals, *body, *env)),
+        _ => None,
     };
     let mut results = Vec::new();
     for element in elements {
-        // Synthetic argument pairlist: one node carrying the element. The
-        // element is a value; self-evaluation makes the promise correct.
-        let arg_node = heap.alloc(RObject::Pairlist {
-            car: element,
-            cdr: ValueId::NIL,
-            tag: ValueId::NIL,
-        });
-        let applied = super::eval::apply_closure_public(
-            heap, interner, formals, body, closure_env, arg_node, caller_env,
-        )?;
-        let applied = force_if_promise(heap, interner, applied)?;
-        results.push(applied);
+        if let Some((formals, body, closure_env)) = closure_parts {
+            let forced = heap.alloc(RObject::Promise {
+                expr: element,
+                env: caller_env,
+                value: element,
+            });
+            let arg_node = heap.alloc(RObject::Pairlist {
+                car: forced,
+                cdr: ValueId::NIL,
+                tag: ValueId::NIL,
+            });
+            let applied = super::eval::apply_closure_public(
+                heap, interner, formals, body, closure_env, arg_node, caller_env,
+            )?;
+            let applied = force_if_promise(heap, interner, applied)?;
+            results.push(applied);
+        } else {
+            results.push(apply_fun_to(heap, interner, fun, element, caller_env)?);
+        }
     }
     if op == LAPPLY {
         return Ok(heap.alloc(RObject::List(results)));
@@ -5319,6 +5445,7 @@ fn simplify_sapply(heap: &mut Heap, results: Vec<ValueId>) -> EvalResult {
         Logical,
         Integer,
         Real,
+        String,
     }
     let mut kind: Option<Kind> = None;
     for result in &results {
@@ -5326,6 +5453,7 @@ fn simplify_sapply(heap: &mut Heap, results: Vec<ValueId>) -> EvalResult {
             Some(RObject::Logical(v)) if v.len() == 1 => Kind::Logical,
             Some(RObject::Integer(v)) if v.len() == 1 => Kind::Integer,
             Some(RObject::Real(v)) if v.len() == 1 => Kind::Real,
+            Some(RObject::String(v)) if v.len() == 1 => Kind::String,
             _ => return Ok(heap.alloc(RObject::List(results))),
         };
         match (&kind, &this) {
@@ -5333,6 +5461,10 @@ fn simplify_sapply(heap: &mut Heap, results: Vec<ValueId>) -> EvalResult {
             (Some(Kind::Logical), Kind::Logical) => {}
             (Some(Kind::Integer), Kind::Integer) => {}
             (Some(Kind::Real), Kind::Real) => {}
+            (Some(Kind::String), Kind::String) => {}
+            // Character mixtures dominate — GNU coerces to character when
+            /// any result is character.
+            (Some(Kind::String), _) | (_, Kind::String) => kind = Some(Kind::String),
             // Mixed numeric kinds simplify upward to real in GNU's exact
             // shape; logical/integer mixtures stay integer. The slice
             // simplifies any numeric mixture to real, documented.
@@ -5359,6 +5491,16 @@ fn simplify_sapply(heap: &mut Heap, results: Vec<ValueId>) -> EvalResult {
                 }
             }
             Ok(heap.alloc(RObject::Integer(out)))
+        }
+        Some(Kind::String) => {
+            let mut out = Vec::new();
+            for result in results {
+                match heap.object(result) {
+                    Some(RObject::String(v)) => out.push(v[0]),
+                    _ => return Err(EvalError::TypeError("simplify kind drift").into()),
+                }
+            }
+            return Ok(heap.alloc(RObject::String(out)));
         }
         _ => {
             let mut out = Vec::new();
@@ -5401,7 +5543,7 @@ fn unlist_primitive(
         return Ok(value);
     }
     enum Leaf {
-        Scalar { rank: u8, int: i32, real: f64, text: String, name: String },
+        Scalar { rank: u8, int: i32, real: f64, imag: f64, text: String, name: String },
         Intact { value: ValueId, name: String },
     }
     fn rank_of(heap: &Heap, v: ValueId) -> u8 {
@@ -5471,7 +5613,7 @@ fn unlist_primitive(
                     } else {
                         format!("{item_prefix}{}", k + 1)
                     };
-                    let (int, real, text) = match heap.object(*item) {
+                    let (int, real, im, text) = match heap.object(*item) {
                         Some(RObject::Logical(vals)) | Some(RObject::Integer(vals)) => {
                             let v = vals.get(k).copied().unwrap_or(crate::value::object::NA_INTEGER);
                             let r = if v == crate::value::object::NA_INTEGER {
@@ -5479,30 +5621,30 @@ fn unlist_primitive(
                             } else {
                                 v as f64
                             };
-                            (v, r, v.to_string())
+                            (v, r, 0.0, v.to_string())
                         }
                         Some(RObject::Real(vals)) => {
                             let v = vals.get(k).copied().unwrap_or(f64::NAN);
-                            (0, v, super::print::format_real(v))
+                            (0, v, 0.0, super::print::format_real(v))
                         }
                         Some(RObject::String(vals)) => {
                             let s = vals
                                 .get(k)
                                 .map(|x| interner.string_text(*x).to_string())
                                 .unwrap_or_default();
-                            (0, f64::NAN, s)
+                            (0, f64::NAN, 0.0, s)
                         }
                         Some(RObject::Complex(vals)) => {
                             let z = vals.get(k).copied().unwrap_or_default();
-                            (0, f64::NAN, super::print::format_complex(z))
+                            (0, z.r, z.i, super::print::format_complex(z))
                         }
                         Some(RObject::Raw(vals)) => {
                             let v = vals.get(k).copied().unwrap_or(0);
-                            (v as i32, v as f64, format!("{v}"))
+                            (v as i32, v as f64, 0.0, format!("{v}"))
                         }
-                        _ => (0, f64::NAN, String::new()),
+                        _ => (0, f64::NAN, 0.0, String::new()),
                     };
-                    out.push(Leaf::Scalar { rank, int, real, text, name });
+                    out.push(Leaf::Scalar { rank, int, real, imag: im, text, name });
                 }
             }
         }
@@ -5521,7 +5663,7 @@ fn unlist_primitive(
         let mut names = Vec::new();
         for leaf in &leaves {
             match leaf {
-                Leaf::Scalar { rank, int, real, text, name } => {
+                Leaf::Scalar { rank, int, real, text, name, .. } => {
                     let scalar = match rank {
                         3 => heap.alloc(RObject::Real(vec![*real])),
                         5 => heap.alloc(RObject::String(vec![interner.intern_string(text)])),
@@ -5558,13 +5700,15 @@ fn unlist_primitive(
     let mut names = Vec::new();
     let mut ints = Vec::new();
     let mut reals = Vec::new();
+    let mut imags = Vec::new();
     let mut texts = Vec::new();
     for leaf in &leaves {
         match leaf {
-            Leaf::Scalar { rank, int, real, text, name } => {
+            Leaf::Scalar { rank, int, real, imag, text, name } => {
                 top_rank = top_rank.max(*rank);
                 ints.push(*int);
                 reals.push(*real);
+                imags.push(*imag);
                 texts.push(text.clone());
                 names.push(name.clone());
             }
@@ -5577,6 +5721,16 @@ fn unlist_primitive(
             .map(|s| interner.intern_string(s))
             .collect();
         heap.alloc(RObject::String(interned))
+    } else if top_rank >= 4 {
+        // Complex promotion: real parts ride from the numeric leaves exactly
+        /// as GNU's coercion — logicals and integers contribute their value,
+        /// complex leaves their own real part.
+        let zs: Vec<crate::value::object::RComplex> = reals
+            .iter()
+            .zip(imags.iter())
+            .map(|(&r, &i)| crate::value::object::RComplex { r, i })
+            .collect();
+        heap.alloc(RObject::Complex(zs))
     } else if top_rank >= 3 {
         heap.alloc(RObject::Real(reals))
     } else {
@@ -7769,8 +7923,17 @@ fn apply_fun_to(
     arg: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
+    // The argument arrives already evaluated — wrapping it in a pre-forced
+    /// promise keeps primitive argument forcing value-faithful exactly as
+    /// GNU: forcing yields the object itself rather than re-evaluating it
+    /// as an expression, which would mis-evaluate symbols as lookups.
+    let forced = heap.alloc(RObject::Promise {
+        expr: arg,
+        env: caller_env,
+        value: arg,
+    });
     let arg_node = heap.alloc(RObject::Pairlist {
-        car: arg,
+        car: forced,
         cdr: ValueId::NIL,
         tag: ValueId::NIL,
     });
@@ -8795,6 +8958,15 @@ fn coerce_character(
                 .collect();
             return Ok(heap.alloc(RObject::String(out)));
         }
+    }
+    // Complex input renders elementwise exactly as as.character of a
+    /// complex vector — the same formatting print uses.
+    if let Some(RObject::Complex(values)) = heap.object(value) {
+        let out: Vec<super::intern::InternedStr> = values
+            .iter()
+            .map(|&z| interner.intern_string(&super::print::format_complex(z)))
+            .collect();
+        return Ok(heap.alloc(RObject::String(out)));
     }
     let out: Vec<super::intern::InternedStr> = match heap.object(value) {
         Some(RObject::String(values)) => values.clone(),
@@ -9884,4 +10056,252 @@ fn has_true_tag(
         cursor = next;
     }
     false
+}
+
+/// The option store lives on the heap as an insertion-ordered association
+/// exactly as GNU's session options; width defaults to 80 as GNU.
+fn lookup_option(heap: &Heap, interner: &mut SymbolInterner, name: &str) -> Option<ValueId> {
+    let _ = interner;
+    heap.options
+        .iter()
+        .find(|(key, _)| key == name)
+        .map(|(_, value)| *value)
+        .or_else(|| {
+            if name == "width" {
+                // The one default the slice honors — everything else reads
+                // NULL exactly as an unset custom option does.
+                heap.options_width_fallback
+            } else {
+                None
+            }
+        })
+}
+
+/// `options(...)` — tagged pairs set values and the result carries the
+/// previous values as a named list; bare string arguments query the named
+/// options exactly as GNU's query form.
+fn options_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    if heap.options_width_fallback.is_none() {
+        let fallback = heap.alloc(RObject::Real(vec![80.0]));
+        heap.options_width_fallback = Some(fallback);
+    }
+    let mut previous: Vec<(String, ValueId)> = Vec::new();
+    let mut queried: Vec<(String, ValueId)> = Vec::new();
+    let mut cursor = args;
+    for _ in 0..100_000 {
+        if cursor == ValueId::NIL {
+            break;
+        }
+        let (car, tag, next) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, tag, cdr, .. }) => (*car, *tag, *cdr),
+            _ => break,
+        };
+        let tag_name = if tag == ValueId::NIL {
+            None
+        } else {
+            match heap.object(tag) {
+                Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+                _ => None,
+            }
+        };
+        match tag_name {
+            Some(name) if !name.is_empty() => {
+                let value = eval(heap, interner, car, caller_env)?;
+                let old = lookup_option(heap, interner, &name).unwrap_or(ValueId::NIL);
+                previous.push((name.clone(), old));
+                if let Some(slot) = heap.options.iter_mut().find(|(key, _)| *key == name) {
+                    slot.1 = value;
+                } else {
+                    heap.options.push((name, value));
+                }
+            }
+            _ => {
+                // Query form: bare character arguments name options to read.
+                let value = eval(heap, interner, car, caller_env)?;
+                if let Some(RObject::String(vals)) = heap.object(value) {
+                    for v in vals.clone() {
+                        let name = interner.string_text(v).to_string();
+                        let current = lookup_option(heap, interner, &name).unwrap_or(ValueId::NIL);
+                        queried.push((name, current));
+                    }
+                }
+            }
+        }
+        cursor = next;
+    }
+    // GNU's visibility discipline: setting options returns invisibly; the
+    /// pure query form returns visibly.
+    if queried.is_empty() && !previous.is_empty() {
+        heap.visible = false;
+    }
+    let result_set = if !queried.is_empty() { queried } else { previous };
+    let items: Vec<ValueId> = result_set.iter().map(|(_, v)| *v).collect();
+    let names: Vec<super::intern::InternedStr> = result_set
+        .iter()
+        .map(|(n, _)| interner.intern_string(n))
+        .collect();
+    let result = heap.alloc(RObject::List(items));
+    if !names.is_empty() {
+        let names_vec = heap.alloc(RObject::String(names));
+        return copy_with_attrib(heap, interner, result, "names", names_vec).map_err(RSignal::from);
+    }
+    Ok(result)
+}
+
+/// `cbind`/`rbind` — atomic operands recycle to the longest length and
+/// bind into a column-major matrix exactly as GNU; tags become column or
+/// row names; mixed types coerce to the highest in the lattice.
+fn bind_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    op: u32,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let mut operands = Vec::new();
+    let mut tags: Vec<Option<String>> = Vec::new();
+    let mut cursor = args;
+    for _ in 0..100_000 {
+        if cursor == ValueId::NIL {
+            break;
+        }
+        let (car, tag, next) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, tag, cdr, .. }) => (*car, *tag, *cdr),
+            _ => break,
+        };
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
+        };
+        let value = eval(heap, interner, car, caller_env)?;
+        operands.push(force_if_promise(heap, interner, value)?);
+        tags.push(tag_name);
+        cursor = next;
+    }
+    if operands.is_empty() {
+        return Ok(ValueId::NIL);
+    }
+    // Highest rank across operands decides the matrix type.
+    let mut rank = 0u8;
+    for operand in &operands {
+        rank = rank.max(match heap.object(*operand) {
+            Some(RObject::Logical(_)) => 1,
+            Some(RObject::Integer(_)) => 2,
+            Some(RObject::Real(_)) => 3,
+            Some(RObject::Complex(_)) => 4,
+            Some(RObject::String(_)) => 5,
+            Some(RObject::Raw(_)) => 1,
+            _ => 0,
+        });
+    }
+    let lengths: Vec<usize> = operands
+        .iter()
+        .map(|v| vector_length(heap, *v).unwrap_or(0))
+        .collect();
+    let longest = lengths.iter().copied().max().unwrap_or(0);
+    // Zero-length operands drop out whenever any non-zero operand exists
+    /// exactly as GNU's cbind/rbind; when every operand is empty they all
+    /// stay and shape a zero-extent matrix of the common type.
+    if longest > 0 {
+        let keep: Vec<usize> = (0..operands.len()).filter(|&i| lengths[i] > 0).collect();
+        operands = keep.iter().map(|&i| operands[i]).collect();
+        tags = keep.iter().map(|&i| tags[i].clone()).collect();
+    }
+    let (nrow, ncol) = if op == CBIND {
+        (longest, operands.len())
+    } else {
+        (operands.len(), longest)
+    };
+    // Element extraction with recycling — column-major output arranged by
+    /// orientation exactly as GNU's recycling fill.
+    let cell = |heap: &Heap, interner: &SymbolInterner, operand: ValueId, row: usize| -> (i32, f64, String) {
+        let len = vector_length(heap, operand).unwrap_or(0);
+        if len == 0 {
+            // Zero-extent matrices never touch their elements — the total
+            /// element count is zero — so this path is unreachable in exact
+            /// GNU shape; the guard documents the invariant.
+            return (crate::value::object::NA_INTEGER, f64::from_bits(crate::value::object::NA_REAL_BITS), "NA".to_string());
+        }
+        let idx = row % len;
+        match heap.object(operand) {
+            Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => {
+                let v = vals.get(idx).copied().unwrap_or(crate::value::object::NA_INTEGER);
+                let r = if v == crate::value::object::NA_INTEGER {
+                    f64::from_bits(crate::value::object::NA_REAL_BITS)
+                } else {
+                    v as f64
+                };
+                (v, r, if v == crate::value::object::NA_INTEGER { "NA".to_string() } else { v.to_string() })
+            }
+            Some(RObject::Real(vals)) => {
+                let v = vals.get(idx).copied().unwrap_or(f64::NAN);
+                (0, v, crate::value::print::format_real(v))
+            }
+            Some(RObject::String(vals)) => {
+                let s = vals
+                    .get(idx)
+                    .map(|x| interner.string_text(*x).to_string())
+                    .unwrap_or_default();
+                (0, f64::NAN, s)
+            }
+            _ => (0, f64::NAN, String::new()),
+        }
+    };
+    // Column-major positions: cbind column j is operand j recycled down the
+    /// rows; rbind row i is operand i with elements running across columns.
+    let total = nrow * ncol;
+    let mut ints = Vec::with_capacity(total);
+    let mut reals = Vec::with_capacity(total);
+    let mut texts: Vec<String> = Vec::with_capacity(total);
+    for flat in 0..total {
+        let row = flat % nrow;
+        let col = flat / nrow;
+        let (operand, element_row) = if op == CBIND {
+            (operands[col], row)
+        } else {
+            (operands[row], col)
+        };
+        let (iv, rv, tv) = cell(heap, interner, operand, element_row);
+        ints.push(iv);
+        reals.push(rv);
+        texts.push(tv);
+    }
+    let matrix = if rank >= 5 {
+        let interned: Vec<super::intern::InternedStr> = texts
+            .iter()
+            .map(|s| interner.intern_string(s))
+            .collect();
+        heap.alloc(RObject::String(interned))
+    } else if rank >= 3 {
+        heap.alloc(RObject::Real(reals))
+    } else {
+        heap.alloc(RObject::Integer(ints))
+    };
+    let dim = heap.alloc(RObject::Integer(vec![nrow as i32, ncol as i32]));
+    let matrix = copy_with_attrib(heap, interner, matrix, "dim", dim).map_err(RSignal::from)?;
+    // Dimension names: tags fill the binding orientation exactly as GNU;
+    /// the other orientation carries empty names.
+    if tags.iter().any(|t| t.is_some()) {
+        let tag_texts: Vec<super::intern::InternedStr> = tags
+            .iter()
+            .map(|t| interner.intern_string(t.as_deref().unwrap_or("")))
+            .collect();
+        let tag_vec = heap.alloc(RObject::String(tag_texts));
+        // The untagged orientation carries NULL exactly as GNU — an empty
+        /// character vector would read non-null to is.null.
+        let (first, second) = if op == CBIND {
+            (ValueId::NIL, tag_vec)
+        } else {
+            (tag_vec, ValueId::NIL)
+        };
+        let dn = heap.alloc(RObject::List(vec![first, second]));
+        copy_with_attrib(heap, interner, matrix, "dimnames", dn).map_err(RSignal::from)
+    } else {
+        Ok(matrix)
+    }
 }

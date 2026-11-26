@@ -548,6 +548,9 @@ fn format_matrix_inner(
     col_names: Option<Vec<String>>,
 ) -> String {
     let element = |i: usize, j: usize| format_element(heap, interner, object, i + j * nrow);
+    // Character matrix columns left-align exactly as GNU's printMatrix —
+    /// numeric columns right-align.
+    let left_align = matches!(object, RObject::String(_));
     let headers: Vec<String> = match &col_names {
         Some(names) => names.clone(),
         None => (0..ncol).map(|j| format!("[,{}]", j + 1)).collect(),
@@ -588,8 +591,13 @@ fn format_matrix_inner(
                 out.push(' ');
             }
             let text = element(i, j);
-            out.push_str(&" ".repeat(widths[j] - text.len()));
-            out.push_str(&text);
+            if left_align {
+                out.push_str(&text);
+                out.push_str(&" ".repeat(widths[j] - text.len()));
+            } else {
+                out.push_str(&" ".repeat(widths[j] - text.len()));
+                out.push_str(&text);
+            }
         }
     }
     out
@@ -643,7 +651,9 @@ fn dimnames_of(
     let extract = |idx: usize| -> Option<Vec<String>> {
         let item = items.get(idx)?;
         match heap.object(*item) {
-            Some(RObject::String(values)) => Some(
+            // Empty vectors ride as absent exactly as GNU's NULL dimnames
+            /// entries — positional labels take their place.
+            Some(RObject::String(values)) if !values.is_empty() => Some(
                 values
                     .iter()
                     .map(|v| interner.string_text(*v).to_string())

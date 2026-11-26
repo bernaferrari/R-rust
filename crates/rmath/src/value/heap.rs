@@ -52,6 +52,12 @@ pub struct Heap {
     /// output state lives with the runtime state for the migration slice;
     /// the console/connection subsystem migration owns the final shape.
     pub output: String,
+    /// Session options as insertion-ordered name/value pairs — GNU's
+    /// options list in miniature; reads fall back to width's default.
+    pub options: Vec<(String, ValueId)>,
+    /// The lazily-allocated width fallback value — 80 exactly as GNU's
+    /// default, allocated on first use so the heap owns the object.
+    pub options_width_fallback: Option<ValueId>,
 }
 
 impl Heap {
