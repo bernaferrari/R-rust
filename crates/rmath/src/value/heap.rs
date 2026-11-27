@@ -45,6 +45,9 @@ pub struct Heap {
     /// explicitly at file/dir creation since the test harness shares the
     /// real process mask.
     pub umask_state: i64,
+    /// Graphics parameter state — GNU's par() machine, values as numeric
+    /// vectors keyed by parameter name exactly as the device layer holds.
+    pub par_state: std::collections::HashMap<String, Vec<f64>>,
     /// The closure context stack GNU's sys.* family reads — one entry per
     /// active closure application, innermost last.
     pub contexts: Vec<crate::value::eval::ContextFrame>,
