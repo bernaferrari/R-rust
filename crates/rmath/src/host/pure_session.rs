@@ -271,7 +271,9 @@ impl PureSession {
     /// Configure the embedder's resource limits — the facade's
     /// contract exactly: eval-depth ceiling (zero for the GNU 500),
     /// wall-clock execution deadline derived from the millisecond
-        /// budget, memory caps pending the heap's admission control.
+    /// budget, and the memory caps wired into the heap's admission
+    /// control. Zero means unlimited on each measure exactly as the
+    /// facade's zero-configures-default contract.
     pub fn set_resource_limits(&mut self, limits: super::values::RResourceLimits) {
         self.session.heap.max_eval_depth = limits.max_eval_depth as usize;
         self.session.heap.eval_deadline = if limits.max_execution_time_ms == 0 {
@@ -281,6 +283,16 @@ impl PureSession {
                 std::time::Instant::now()
                     + std::time::Duration::from_millis(limits.max_execution_time_ms),
             )
+        };
+        self.session.heap.memory_cap_bytes = if limits.max_alloc_bytes == 0 {
+            None
+        } else {
+            Some(limits.max_alloc_bytes as usize)
+        };
+        self.session.heap.node_cap = if limits.max_arena_nodes == 0 {
+            None
+        } else {
+            Some(limits.max_arena_nodes as usize)
         };
     }
 
@@ -1968,6 +1980,32 @@ cat(grconvertX(0:1, "user", "device"), grconvertY(0:1, "user", "device"), "\n")
         assert!(
             session.render_with_dimensions("1 + 1", 200, 150).is_err(),
             "arithmetic must not render a blank canvas"
+        );
+    }
+
+    #[test]
+    fn memory_budget_rejects_oversize_allocation_and_recovers() {
+        let mut session = PureSession::new();
+        session.set_resource_limits(crate::host::values::RResourceLimits {
+            max_eval_depth: 1000,
+            max_execution_time_ms: 15000,
+            max_alloc_bytes: 64 * 1024 * 1024,
+            max_arena_nodes: 500_000,
+        });
+        // 800MB of doubles blows the 64MiB cap — the wasm resource
+        // contract's exact probe.
+        let err = session
+            .eval_output("numeric(100000000)")
+            .expect_err("oversize allocation must fail");
+        assert!(
+            err.contains("memory") || err.contains("alloc") || err.contains("budget"),
+            "{err}"
+        );
+        // Recovery is the contract's other half — the unwound allocation
+        // must not poison later evaluation.
+        assert_eq!(
+            session.eval_output("1 + 1").expect("session recovers"),
+            "[1] 2\n"
         );
     }
 

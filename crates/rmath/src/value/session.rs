@@ -8,7 +8,7 @@
 //! exactly as the REPL end-of-task discipline pins.
 
 use super::env;
-use super::eval::{eval, RSignal};
+use super::eval::{eval, EvalError, RSignal};
 use super::heap::Heap;
 use super::id::ValueId;
 use super::intern::SymbolInterner;
@@ -61,6 +61,61 @@ impl Session {
     }
 
     /// Evaluate R source with GNU's exact script contract: expressions
+    /// Boundary maintenance after one top-level expression — the safe
+    /// point where no evaluator locals exist, so the root set is exactly
+    /// the session's reachable state. Collection runs when pressured or
+    /// whenever admission caps are configured; the sticky budget flags
+    /// then decide whether the expression answered over budget. The
+    /// flags clear here so one transgression poisons exactly one
+    /// expression, never the session.
+    fn boundary_maintenance(&mut self, value: ValueId) -> Result<(), String> {
+        let pressured = self.heap.gc_pressure();
+        let capped = self.heap.memory_cap_bytes.is_some() || self.heap.node_cap.is_some();
+        let memory_tripped = self.heap.memory_cap_tripped;
+        let nodes_tripped = self.heap.node_cap_tripped;
+        self.heap.memory_cap_tripped = false;
+        self.heap.node_cap_tripped = false;
+        if pressured || capped {
+            let mut extra: Vec<ValueId> = Vec::new();
+            extra.push(self.global_env);
+            // The value roots only when it survives — a budget-tripped
+            // expression discards its result, and rooting it here would
+            // defeat the very reclaim recovery depends on.
+            if !memory_tripped && !nodes_tripped {
+                extra.push(value);
+            }
+            if let Some(id) = self.heap.global_env_id {
+                extra.push(id);
+            }
+            if let Some(id) = self.heap.base_env_id {
+                extra.push(id);
+            }
+            extra.extend(self.heap.package_registry.values().copied());
+            for (key, handlers) in &self.heap.exit_handlers {
+                extra.push(*key);
+                extra.extend(handlers.iter().copied());
+            }
+            extra.extend(self.heap.s3_dispatch.iter().map(|(_, method, _)| *method));
+            extra.extend(self.heap.debugged.iter().copied());
+            extra.extend(self.heap.retained_roots.roots());
+            let stack = super::roots::RootStack::new();
+            let table = super::roots::RootTable::default();
+            let roots = super::gc::RootSet {
+                stack: &stack,
+                table: &table,
+                extra: &extra,
+            };
+            super::gc::collect(&mut self.heap, &roots);
+        }
+        if memory_tripped {
+            return Err("memory limit exceeded".to_string());
+        }
+        if nodes_tripped {
+            return Err("arena node limit exceeded".to_string());
+        }
+        Ok(())
+    }
+
     /// evaluate in order against the shared global environment, visible
     /// results auto-print, and deferred warnings flush after each
     /// expression's output. The first error aborts the remaining script.
@@ -69,8 +124,19 @@ impl Session {
         let expressions = parse_native_expressions(source, &mut self.heap, &mut self.interner)
             .map_err(SessionError::Parse)?;
         for expr in &expressions {
-            let value = eval(&mut self.heap, &mut self.interner, *expr, self.global_env)
-                .map_err(SessionError::Eval)?;
+            let value = match eval(&mut self.heap, &mut self.interner, *expr, self.global_env) {
+                Ok(value) => value,
+                Err(signal) => {
+                    // The error path still collects — reclaiming the
+                    // unwound garbage is what lets the next expression
+                    // admit again after a budget failure.
+                    let _ = self.boundary_maintenance(ValueId::NIL);
+                    return Err(SessionError::Eval(signal));
+                }
+            };
+            if let Err(text) = self.boundary_maintenance(value) {
+                return Err(SessionError::Eval(RSignal::from(EvalError::Condition(text))));
+            }
             // Primitive writes (cat/print/writeLines) and auto-printed
             /// values interleave in evaluation order exactly as GNU's
             /// stdout does — both append to the one output buffer.
@@ -109,6 +175,9 @@ impl Session {
         for expr in &expressions {
             last = eval(&mut self.heap, &mut self.interner, *expr, self.global_env)
                 .map_err(SessionError::Eval)?;
+            if let Err(text) = self.boundary_maintenance(last) {
+                return Err(SessionError::Eval(RSignal::from(EvalError::Condition(text))));
+            }
         }
         Ok(last)
     }
@@ -134,6 +203,16 @@ impl Session {
         for expr in &expressions {
             match eval(&mut self.heap, &mut self.interner, *expr, self.global_env) {
                 Ok(value) => {
+                    if let Err(text) = self.boundary_maintenance(value) {
+                        let chunk = std::mem::take(&mut self.heap.output);
+                        full.stdout.push_str(&chunk);
+                        full.output.push_str(&chunk);
+                        let line = format!("Error: {text}\n");
+                        full.stderr.push_str(&line);
+                        full.output.push_str(&line);
+                        full.error = Some(text);
+                        return full;
+                    }
                     // Primitive writes accumulate in the output buffer; the
                     /// auto-printed value joins them before the chunk is
                     /// lifted — the interleave is evaluation order exactly.
@@ -164,6 +243,9 @@ impl Session {
                     full.value = Some(value);
                 }
                 Err(signal) => {
+                    // Collection still runs — the unwound garbage must
+                    // leave the admission measure before the next eval.
+                    let _ = self.boundary_maintenance(ValueId::NIL);
                     let chunk = std::mem::take(&mut self.heap.output);
                     full.stdout.push_str(&chunk);
                     full.output.push_str(&chunk);

@@ -163,10 +163,15 @@ pub struct Heap {
     /// past the cap unwinds evaluation exactly as the facade's arena
         /// limit does.
     pub memory_cap_bytes: Option<usize>,
+    /// Sticky admission flags — set in `alloc` when a cap is genuinely
+    /// crossed, read and cleared at evaluation boundaries. Collection
+    /// reclaims the bytes without clearing the fact of the crossing.
+    pub memory_cap_tripped: bool,
     /// The host-configured ceiling on live arena objects, polled
     /// alongside the byte cap exactly as the facade's max_arena_nodes
     /// bounds the old world's arena occupancy.
     pub node_cap: Option<usize>,
+    pub node_cap_tripped: bool,
     /// The host-configured execution deadline, polled alongside
     /// cancellation at eval entry exactly as the time limit needs.
     pub eval_deadline: Option<std::time::Instant>,
@@ -248,6 +253,19 @@ impl Heap {
     pub fn alloc(&mut self, body: RObject) -> ValueId {
         self.allocations_since_gc += 1;
         self.payload_bytes += payload_estimate(&body);
+        // Admission accounting — the cap crossing sticks because the
+        // allocation genuinely happened over budget; boundary collection
+        // can reclaim the object afterward without erasing that fact.
+        if let Some(cap) = self.memory_cap_bytes {
+            if self.payload_bytes > cap {
+                self.memory_cap_tripped = true;
+            }
+        }
+        if let Some(cap) = self.node_cap {
+            if self.live_count + 1 > cap {
+                self.node_cap_tripped = true;
+            }
+        }
         match self.free_head {
             Some(free_index) => {
                 let slot_entry = &mut self.slots[free_index as usize];
