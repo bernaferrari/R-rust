@@ -844,6 +844,32 @@ mod tests {
     }
 
     #[test]
+    fn graphics_mfrow_progression_matches_oracle() {
+        let mut session = PureSession::new();
+        // The device geometry the oracle pins: 640x480 raster at 72dpi.
+        session.session.heap.graphics.set_device_size(640.0, 480.0);
+        let script = r#"
+emit <- function(tag) {
+  cat(tag, "|", paste(par("mfg"), collapse=","), "|",
+      paste(sprintf("%.3f", par("fig")), collapse=","), "\n", sep="")
+}
+
+emit("fresh")
+par(mfrow=c(2,3)); emit("mfrow-initial")
+for (i in 1:7) { plot.new(); emit(paste0("mfrow-", i)) }
+par(mfcol=c(2,3)); emit("mfcol-initial")
+for (i in 1:7) { plot.new(); emit(paste0("mfcol-", i)) }
+par(mfrow=c(2,3)); par(mfg=c(1,2)); emit("explicit-mfg")
+plot.new(); emit("explicit-new-1")
+plot.new(); emit("explicit-new-2")
+par(new=FALSE); plot.new(); emit("after-new-false")
+"#;
+        let result = session.eval(script);
+        let expected = "fresh|1,1,1,1|0.000,1.000,0.000,1.000\nmfrow-initial|2,3,2,3|0.667,1.000,0.000,0.500\nmfrow-1|1,1,2,3|0.000,0.333,0.500,1.000\nmfrow-2|1,2,2,3|0.333,0.667,0.500,1.000\nmfrow-3|1,3,2,3|0.667,1.000,0.500,1.000\nmfrow-4|2,1,2,3|0.000,0.333,0.000,0.500\nmfrow-5|2,2,2,3|0.333,0.667,0.000,0.500\nmfrow-6|2,3,2,3|0.667,1.000,0.000,0.500\nmfrow-7|1,1,2,3|0.000,0.333,0.500,1.000\nmfcol-initial|2,3,2,3|0.667,1.000,0.000,0.500\nmfcol-1|1,1,2,3|0.000,0.333,0.500,1.000\nmfcol-2|2,1,2,3|0.000,0.333,0.000,0.500\nmfcol-3|1,2,2,3|0.333,0.667,0.500,1.000\nmfcol-4|2,2,2,3|0.333,0.667,0.000,0.500\nmfcol-5|1,3,2,3|0.667,1.000,0.500,1.000\nmfcol-6|2,3,2,3|0.667,1.000,0.000,0.500\nmfcol-7|1,1,2,3|0.000,0.333,0.500,1.000\nexplicit-mfg|1,2,2,3|0.333,0.667,0.500,1.000\nexplicit-new-1|1,2,2,3|0.333,0.667,0.500,1.000\nexplicit-new-2|1,2,2,3|0.333,0.667,0.500,1.000\nafter-new-false|1,3,2,3|0.667,1.000,0.500,1.000\n";
+        assert_eq!(result.stdout, expected, "mfg progression");
+    }
+
+    #[test]
     fn data_loads_datasets_into_the_calling_environment() {
         let mut session = PureSession::new();
         let result = session.eval("data(iris)");

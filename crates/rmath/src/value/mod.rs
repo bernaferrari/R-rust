@@ -19,6 +19,7 @@ pub mod print;
 pub mod regex;
 pub mod rbg1;
 pub mod datasets;
+pub mod graphics;
 pub mod civil;
 pub mod roots;
 pub mod parser;

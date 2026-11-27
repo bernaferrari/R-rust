@@ -66,7 +66,9 @@ pub struct Heap {
     pub lib_paths: Vec<String>,
     /// Graphics parameter state — GNU's par() machine, values as numeric
     /// vectors keyed by parameter name exactly as the device layer holds.
-    pub par_state: std::collections::HashMap<String, Vec<f64>>,
+    /// The graphics device state exactly as GNU's per-device GPar —
+    /// the layout cascade, dumb overrides, and frame progression.
+    pub graphics: crate::value::graphics::GraphicsParState,
     /// The closure context stack GNU's sys.* family reads — one entry per
     /// active closure application, innermost last.
     pub contexts: Vec<crate::value::eval::ContextFrame>,
