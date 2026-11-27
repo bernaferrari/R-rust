@@ -92,6 +92,9 @@ pub struct Heap {
     pub sink_file: Option<std::fs::File>,
     /// Sink depth counter backing sink.number().
     pub sink_depth: i32,
+    /// Message suppression depth — suppressMessages increments while its
+    /// expression evaluates; message() is silent above zero exactly as GNU.
+    pub message_suppressed: i32,
     /// Session options as insertion-ordered name/value pairs — GNU's
     /// options list in miniature; reads fall back to width's default.
     pub options: Vec<(String, ValueId)>,
