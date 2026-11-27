@@ -617,7 +617,7 @@ pub(crate) fn call_primitive(
                 | SYS_SETENV | SYS_UNSETENV | UNLINK | DIR_CREATE | SAVE | RM | DPUT
                 | WARNING | MESSAGE_FN | CLOSE_FN | FLUSH_FN | WRITECHAR | SETCLASS | STOPIFNOT
                 | WRITEBIN | ATTACH | DETACH | LOCK_BINDING | UNLOCK_BINDING | LOCK_ENVIRONMENT
-                | MAKE_ACTIVE_BINDING | ON_EXIT | LAYOUT | LIB_PATHS | SINK | SOURCE | SYS_SOURCE | SUPPRESS_MESSAGES
+                | MAKE_ACTIVE_BINDING | ON_EXIT | LAYOUT | LIB_PATHS | SINK | SOURCE | SYS_SOURCE | SUPPRESS_MESSAGES | WRITE_TABLE | WRITE_CSV2
         );
     }
     result
@@ -9592,6 +9592,7 @@ fn strings_of_value(
     }
     match heap.object(value) {
         Some(RObject::String(values)) => Ok(values.clone()),
+        Some(RObject::Nil) | None => Ok(Vec::new()),
         Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => {
             let logical = matches!(heap.object(value), Some(RObject::Logical(_)));
             Ok(values
@@ -13330,7 +13331,15 @@ fn data_frame_primitive(
         cursor = cdr;
     }
     if columns.is_empty() {
-        return Err(EvalError::TypeError("data.frame requires columns").into());
+        // GNU's empty constructor yields the zero-column frame — names and
+        /// row.names ride empty, the class attribute stands alone.
+        let result = heap.alloc(RObject::List(Vec::new()));
+        let names_obj = heap.alloc(RObject::String(Vec::new()));
+        let with_names = copy_with_attrib(heap, interner, result, "names", names_obj).map_err(RSignal::from)?;
+        let rows_obj = heap.alloc(RObject::Integer(Vec::new()));
+        let with_rows = copy_with_attrib(heap, interner, with_names, "row.names", rows_obj).map_err(RSignal::from)?;
+        let class_obj = heap.alloc(RObject::String(vec![interner.intern_string("data.frame")]));
+        return copy_with_attrib(heap, interner, with_rows, "class", class_obj).map_err(RSignal::from);
     }
     // Duplicate names disambiguate through GNU's make.unique suffixing —
     // the first occurrence stands, repeats gain .1, .2 in order.
@@ -15853,6 +15862,42 @@ fn read_fwf_primitive(
     copy_with_attrib(heap, interner, with_rows, "class", class_obj).map_err(RSignal::from)
 }
 
+/// NA-aware string coercion for the transform family: logical and integer
+/// NA positions coerce to the missing sentinel exactly as GNU's character
+/// coercion — not the two-letter text — while genuine strings pass through.
+fn transform_strings(
+    heap: &Heap,
+    interner: &mut SymbolInterner,
+    value: ValueId,
+) -> Result<Vec<super::intern::InternedStr>, EvalError> {
+    match heap.object(value) {
+        Some(RObject::Logical(vals)) => Ok(vals
+            .iter()
+            .map(|v| {
+                if *v == crate::value::object::NA_INTEGER {
+                    interner.intern_string(" NA")
+                } else if *v != 0 {
+                    interner.intern_string("TRUE")
+                } else {
+                    interner.intern_string("FALSE")
+                }
+            })
+            .collect()),
+        Some(RObject::Integer(vals)) => Ok(vals
+            .iter()
+            .map(|v| {
+                if *v == crate::value::object::NA_INTEGER {
+                    interner.intern_string(" NA")
+                } else {
+                    interner.intern_string(&v.to_string())
+                }
+            })
+            .collect()),
+        Some(RObject::Nil) | None => Ok(Vec::new()),
+        _ => strings_of_value(heap, interner, value),
+    }
+}
+
 /// toupper/tolower — ASCII case transforms with NA propagation exactly as
 /// GNU's C-locale behavior.
 fn case_transform_primitive(
@@ -15863,7 +15908,7 @@ fn case_transform_primitive(
     caller_env: ValueId,
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 1)?;
-    let vals = strings_of_value(heap, interner, operands[0]).map_err(RSignal::from)?;
+    let vals = transform_strings(heap, interner, operands[0]).map_err(RSignal::from)?;
     let out: Vec<_> = vals
         .iter()
         .map(|v| {
@@ -15894,7 +15939,7 @@ fn chartr_primitive(
     let operands = eval_args(heap, interner, args, caller_env, 3)?;
     let old_chars: Vec<char> = string_operand(heap, interner, operands[0]).unwrap_or_default().chars().collect();
     let new_chars: Vec<char> = string_operand(heap, interner, operands[1]).unwrap_or_default().chars().collect();
-    let vals = strings_of_value(heap, interner, operands[2]).map_err(RSignal::from)?;
+    let vals = transform_strings(heap, interner, operands[2]).map_err(RSignal::from)?;
     let out: Vec<_> = vals
         .iter()
         .map(|v| {
@@ -15926,7 +15971,7 @@ fn trimws_primitive(
     caller_env: ValueId,
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 1)?;
-    let vals = strings_of_value(heap, interner, operands[0]).map_err(RSignal::from)?;
+    let vals = transform_strings(heap, interner, operands[0]).map_err(RSignal::from)?;
     let out: Vec<_> = vals
         .iter()
         .map(|v| {
