@@ -22,49 +22,18 @@ fn main() {
         }
     };
 
-    let mut session = match env::var("RPORT_RUNTIME_PACKAGE_POLICY").as_deref() {
-        Ok("portable") => rmath::android::RSession::new_with_path_policy(
-            rmath::android::RuntimePathPolicy::new(Vec::new(), env::temp_dir()),
-        ),
-        Ok("native") | Err(_) => rmath::android::RSession::new(),
-        Ok(other) => {
-            eprintln!("invalid runtime package policy: {other}");
-            std::process::exit(2);
-        }
+    // The pure-Rust Session owns parse/eval/print with no SEXP machinery —
+    // the rport-c2v5f.11 runtime cutover. Mirrors Rscript: an uncaught
+    // error prints the composed output to stderr and exits non-zero.
+    let mut session = rmath::value::session::Session::new();
+    let (output, failed) = match session.eval_script(&code) {
+        Ok(output) => (output, false),
+        Err(error) => (format!("Error: {error}\n"), true),
     };
-    session.enable_host_process_capabilities();
-    session.set_top_level_evaluation_mode(rmath::android::TopLevelEvaluationMode::Script);
-    if let Some(receipt) = env::var_os("RPORT_RUNTIME_RECEIPT") {
-        if let Err(error) = fs::write(
-            receipt,
-            format!(
-                "top_level_evaluation_mode: Script\n{:#?}\n",
-                session.runtime_info()
-            ),
-        ) {
-            eprintln!("failed to record initialized runtime policy: {error}");
-            std::process::exit(2);
-        }
-    }
-    #[cfg(rport_renderplot)]
-    let result = {
-        // A real device with bundled font metrics, not a success-only stub.
-        // 504 device units at 72 dpi matches the default PDF's 7-inch extent.
-        let mut device = r_graphics_engine::Scene::new(504, 504);
-        session.eval_script_with_renderplot_backend(&code, &mut device)
-    };
-    #[cfg(not(rport_renderplot))]
-    let result = session.eval(&code);
-
-    // Mirror Rscript: an uncaught error prints the composed output (prior
-    // prints plus the rendered "Error in <call> : ..." text) to stderr and
-    // exits non-zero; the error text may not be the first line of the
-    // output, so key off the typed result, not the output prefix.
-    let failed = matches!(result.typed, rmath::android::RValue::Error(_));
     let emitted = if failed {
-        io::stderr().lock().write_all(result.output.as_bytes())
+        io::stderr().lock().write_all(output.as_bytes())
     } else {
-        io::stdout().lock().write_all(result.output.as_bytes())
+        io::stdout().lock().write_all(output.as_bytes())
     };
     if let Err(error) = emitted {
         eprintln!("failed to write conformance output: {error}");
