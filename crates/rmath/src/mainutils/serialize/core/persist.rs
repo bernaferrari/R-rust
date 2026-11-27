@@ -12,22 +12,6 @@ use super::*;
 // Attribute / tag presence helpers
 // ---------------------------------------------------------------------------
 
-#[inline]
-pub(crate) fn sexp_has_attributes(s: SEXP) -> bool {
-    {
-        let attrib = ATTRIB(s);
-        !attrib.is_null() && attrib != R_NilValue()
-    }
-}
-
-#[inline]
-pub(crate) fn sexp_has_tag(s: SEXP) -> bool {
-    {
-        let tag = TAG(s);
-        !tag.is_null() && tag != R_NilValue()
-    }
-}
-
 // Match GNU's structural package/namespace predicates, plus namespaces
 // represented by this runtime's package cache.
 pub(crate) fn persistent_package_or_namespace(s: SEXP) -> bool {

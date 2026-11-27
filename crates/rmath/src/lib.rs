@@ -174,7 +174,6 @@ pub mod rng;
 pub mod tzone;
 #[allow(unused_variables, unused_assignments, unused_mut)]
 pub mod tzone_strftime;
-pub mod xdr;
 
 pub mod host;
 #[allow(dead_code, non_camel_case_types)]
