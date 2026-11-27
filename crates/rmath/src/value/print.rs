@@ -1090,15 +1090,25 @@ pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String
             const INFIX: &[&str] = &[
                 "+", "-", "*", "/", "^", "%%", "<", ">", "<=", ">=", "==", "!=", "|", "&", "~", "=", "<-", ":=", "%in%", "|>", "||", "&&",
             ];
+            // `:` renders infix without spaces exactly as GNU — 1:3 —
+            /// while the arithmetic and comparison operators pad.
+            if op_text == ":" && items.len() == 2 {
+                let left = deparse(heap, interner, items[0]);
+                let right = deparse(heap, interner, items[1]);
+                return format!("{}:{}", left, right);
+            }
             if INFIX.contains(&op_text.as_str()) {
                 if items.len() == 2 {
                     let left = deparse(heap, interner, items[0]);
                     let right = deparse(heap, interner, items[1]);
                     return format!("{} {} {}", left, op_text, right);
                 }
-                if items.len() == 1 {
-                    return format!("{} {}", op_text, deparse(heap, interner, items[0]));
-                }
+            }
+            // Unary operators hug their operand exactly as GNU — -x,
+            /// !x, ~x — no space intervening.
+            const UNARY: &[&str] = &["-", "+", "!", "~"];
+            if UNARY.contains(&op_text.as_str()) && items.len() == 1 {
+                return format!("{}{}", op_text, deparse(heap, interner, items[0]));
             }
             if op_text == "(" {
                 return format!("({})", items.first().map(|v| deparse(heap, interner, *v)).unwrap_or_default());
