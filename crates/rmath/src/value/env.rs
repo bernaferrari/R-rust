@@ -249,6 +249,17 @@ fn env_is_locked(heap: &Heap, env: ValueId) -> bool {
         .unwrap_or(false)
 }
 
+/// Cross-module binding mutation — the active-binding installer in
+/// primitives needs the flag flip after definition.
+pub fn mutate_binding_public(
+    heap: &mut Heap,
+    env: ValueId,
+    sym: SymId,
+    mutation: impl FnOnce(&mut Binding),
+) -> Result<(), EnvError> {
+    mutate_binding(heap, env, sym, mutation)
+}
+
 fn mutate_binding(
     heap: &mut Heap,
     env: ValueId,

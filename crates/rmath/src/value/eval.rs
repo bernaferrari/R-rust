@@ -111,7 +111,23 @@ pub fn eval(
             let label = interner.symbol_name(sym).to_string();
             heap.visible = true;
             match env::lookup(heap, env_id, sym) {
-                Some((_, binding)) => force_if_promise(heap, interner, binding.value),
+                Some((_, binding)) => {
+                    if binding.active {
+                        // GNU's active-binding read: the stored closure fires
+                        // with zero arguments and its result is the value.
+                        match heap.object(binding.value).cloned() {
+                            Some(RObject::Closure { formals, body, env: clos_env }) => {
+                                let applied = apply_closure(
+                                    heap, interner, formals, body, clos_env, ValueId::NIL, env_id,
+                                )?;
+                                force_if_promise(heap, interner, applied)
+                            }
+                            _ => force_if_promise(heap, interner, binding.value),
+                        }
+                    } else {
+                        force_if_promise(heap, interner, binding.value)
+                    }
+                }
                 None => {
                     // `..N` reads the Nth dots element directly — GNU's
                     /// positional dots access resolved at lookup time.

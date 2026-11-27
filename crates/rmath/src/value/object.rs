@@ -70,6 +70,9 @@ impl Clone for RObject {
             RObject::Expression(v) => RObject::Expression(v.clone()),
             RObject::Bytecode(chunk) => RObject::Bytecode(chunk.clone()),
             RObject::Altrep(_) => unreachable!("altrep objects cannot duplicate"),
+            // External payloads are reference objects — the Rc shares the
+            // underlying resource exactly as GNU's connection duplication.
+            RObject::External(cell) => RObject::External(cell.clone()),
             _ => unreachable!("variant duplication arrives with its migration slice"),
         }
     }

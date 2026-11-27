@@ -41,6 +41,10 @@ pub struct Heap {
     /// gctorture state pair — prior-value returns exactly as GNU.
     pub gctorture_state: bool,
     pub gctorture2_step: i32,
+    /// The process umask shadow GNU's Sys.umask mutates — applied
+    /// explicitly at file/dir creation since the test harness shares the
+    /// real process mask.
+    pub umask_state: i64,
     /// Active S3 dispatch entries — (generic, object, remaining classes) —
     /// pushed by UseMethod/NextMethod exactly as GNU's dispatch context.
     pub s3_dispatch: Vec<(String, crate::value::id::ValueId, Vec<String>)>,
@@ -83,6 +87,7 @@ impl Heap {
         Heap {
             next_gc_threshold: 1024,
             visible: true,
+            umask_state: 0o022,
             ..Heap::default()
         }
     }
