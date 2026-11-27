@@ -1,152 +1,57 @@
 # Safe API Audit
 
-The Android and app-facing Rust boundary is intentionally safe and owned:
+The workspace is memory-safe by construction, enforced at compile time
+rather than audited by inspection: every computational crate carries
+`#![forbid(unsafe_code)]` — `r-math`, `r-core`, `r-base`, `r-stats`,
+`r-graphics`, and `r-runtime`. There is no `SEXP`, no raw interpreter
+pointer type, and no `unsafe` block anywhere in the runtime; the C-ABI
+compatibility shims and the unsafe-op allowlist (`docs/unsafe-op-allowlist.tsv`)
+were retired with the pure-Rust foundation.
 
-- `r-embed` exposes `RSession`, `EvalOutput`, `RValue`, package metadata,
-  cancellation tokens, and PNG plot bytes as Rust-owned values.
-- `r-uniffi` exposes UniFFI records/enums/objects only. Kotlin callers never
-  receive raw interpreter pointers.
-- `r-wasm` uses owned values across the browser and Node.js boundaries.
-- Remaining raw `SEXP` projections, `SEXPTYPE`, and C scalar types stay inside
-  the crate-private interpreter. Checked node identities and owning handles
-  replace raw storage as the core is modernized.
+## Crate DAG and boundary shapes
 
-Run the checked audit:
-
-```bash
-scripts/audit_safe_api.sh
-```
-
-The release gate runs this script by default.
-
-## Current Boundary
-
-| Layer | Public Shape | Unsafe/Raw Policy |
+| Layer | Public shape | Safety enforcement |
 | --- | --- | --- |
-| `r-uniffi` | UniFFI records, enums, and `RSession` object | No `unsafe`; no raw `SEXP`; owned values only |
-| `r-embed` | Safe Rust `RSession`, `RValue`, package and plot APIs | No `unsafe`; no raw `SEXP`; owned values only |
-| `r-wasm` | `WasmRSession` and owned values through wasm-bindgen | No `unsafe` or raw `SEXP` in the crate source |
-| `rmath::android` | Rust session facade over the interpreter core | Owned `RValue` surface; internal raw access stays below this layer |
-| `rmath::sexp` | Crate-private runtime implementation | Raw `SEXP` and internal checked handles are inaccessible to downstream crates |
+| `r-math` | Pure statistical functions over `&mut MathState` and explicit RNGs | `#![forbid(unsafe_code)]` |
+| `r-core` | `ValueId(slot, generation)` + `Heap<Slot>` + `RObject` enum; parser, evaluator, environments | `#![forbid(unsafe_code)]` |
+| `r-stats` | Statistical builtins over `r-core`/`r-math` | `#![forbid(unsafe_code)]` |
+| `r-graphics` | Graphics builtins over `r-core`/`r-graphics-engine` | `#![forbid(unsafe_code)]` |
+| `r-base` | The primitive registry and session bootstrap | `#![forbid(unsafe_code)]` |
+| `r-runtime` | Host integration: `r_runtime::embed` re-export boundary, session facade, owned `RValue` snapshots | `#![forbid(unsafe_code)]` |
+| `r-uniffi` | UniFFI records, enums, objects over `r-runtime` | Owned values only |
+| `r-wasm` | `WasmRSession` over `r-runtime::embed` | Owned values across the JS boundary |
+| `r-host-cli` | CLI host over `r-runtime` | Owned values only |
 
-## Remaining Unsafe Work
+The dependency order is one-way, verified cycle-free:
+`r-math < r-core < {r-stats, r-graphics} < r-base < r-runtime < adapters`.
 
-Use `python3 scripts/unsafe_syntax_report.py` with ast-grep installed
-to count Rust unsafe blocks, function declarations and pointer types in
-the core runtime and desktop CLI. Compare source trees with
-`--source-root` and use `--production` to exclude explicit test-only
-items and modules. Both modes exclude comments, strings and macro
-expansions. At `094136f0`, the full count was 23,308 and the production
-count was 18,034. Record both counts and verify changes at the affected
-runtime entry points before counting a checkpoint toward `rport-mk395`.
+## Ownership model
 
-The app boundary is clean, but the core interpreter still contains raw and
-unsafe internals. Track the remaining ownership and execution work through:
+- Values are 8-byte `Copy` `ValueId(slot, generation)` handles into a
+  direct O(1) generational `Heap<Slot>`. Object payloads are the typed
+  `RObject` enum — no untyped pointer projections exist.
+- All runtime state is explicit: `&mut Heap`, `&mut SymbolInterner`,
+  `&mut RngState`/`&mut MathState` thread through signatures. No
+  `thread_local!` ambient state remains in the runtime.
+- Control flow is `Result<ValueId, RSignal>` end to end; there is no
+  panic-based error channel, so `panic = "abort"` targets (wasm,
+  Android) are sound.
+- GC uses generational mark-and-sweep over explicit root tables; roots
+  are values in `Heap`-owned structures, not a manual protection ledger.
 
-- `rport-hah9u.32`: remaining raw runtime/context fields
-- `rport-sg9a`: explicit runtime borrowing and retirement of ambient TLS access
-- `rport-0dbg`: remaining Rust 2024 unsafe-op cleanup below the app boundary
-- `rport-x3pp`: object/S3 parity, including package-created list-object S3 dispatch
-- `rport-e6q`: older broad unsafe/raw SEXP audit issue; use this document and
-  `rport-erop` as the release-facing audit source
+## Lint policy
 
-The standard for future app-facing additions is simple: return owned values or
-lifetime-bound wrappers, and do not expose raw pointers through `r-embed` or
-`r-uniffi`.
+Clippy correctness lints are enabled workspace-wide, including
+`never_loop`, `while_immutable_condition`, `mut_range_bound`,
+`absurd_extreme_comparisons`, `drop_non_drop`, and `dead_code`. The
+remaining crate-level allows in `r-math`/`r-runtime` cover style lints
+inherited from the mechanical C-port translation; retiring that tail is
+tracked in `rport-c2v5f.16`. Site-specific allows carry justification
+comments where a lint pattern is intentional (Fortran range-bound reuse,
+regex greediness flags retained for the unimplemented GNU extension
+surface, parser bookkeeping fields).
 
-## Runtime containment and rooting
-
-The translated `sexp`, `eval`, `mainutils`, `library`, `modules`, and platform
-runtime modules are crate-private. This intentionally removes the experimental
-raw public API: shared SEXP access must not permit ambient evaluation, mutation,
-or GC to invalidate an outstanding borrow. External hosts use owned results
-and the `r-embed` handle API. Compile-fail fixtures reject raw module access;
-these privacy tests are not a separate proof of every internal lifetime rule.
-
-Rust roots use stable `(slot, generation)` identities, owner-aware replacement,
-and owning, thread-confined handles and guards. Legacy UNPROTECT operates only on
-the legacy stack. Contexts live in `Rc<UnsafeCell<RCNTXT>>`; pointer derivation
-uses `UnsafeCell::get` after ownership is stored. Scope checkpoints release
-internal transient roots by generation without revoking managed guards.
-
-Options and cached base wrappers now store actual owning `Sexp` values. Queries
-snapshot those values before callbacks; eviction or replacement releases their
-roots without a permanent preserve ledger. Source and private-bytecode flat
-replacement calls retain separate owning syntax and execution graphs, resolve
-the setter once, and preserve the original shared RHS. The checked node factory
-publishes complete promise expression/environment/value links before collection.
-
-S4 primitive generics, method lists, validity functions, inheritance tables,
-and the deferred-default marker now retain their actual values through owning
-fields. Cache replacement and clearing release those roots. Dispatch snapshots
-the values before calling R; its status guard restores the original physical
-runtime even when a callback revokes availability. Task callbacks likewise own
-their function and data, snapshot inputs before evaluation, and restore running
-and visibility state on their original runtime. Stable callback identities make
-removal and insertion during iteration deterministic. The public callback
-wrapper's optional-data, naming, indexing, and warning compatibility remains
-tracked in `rport-2gpp.1.4`.
-
-`eval()` owns the selected expression and environment through callbacks and
-collection. A NULL element in an expression vector participates in evaluation
-and visibility rather than being skipped. Return transfers are consumed only
-by the matching eval context; unmatched transfers continue to unwind. Direct
-native entries use the same original-owner transfer scope as managed calls.
-Closure duplication shares FORMALS, BODY, and CLOENV as GNU R does, snapshots
-those edges before allocation, and duplicates attributes according to the
-requested depth. The collector and object representation are unchanged.
-
-Bundled `.Call`, `.External`, and `.External2` resolution now returns a typed
-native routine. Its callable variant retains the exact Rust function pointer;
-interface and fixed `.Call` arity checks precede invocation. Dispatch snapshots
-owning argument cells, values, and tags before lazy name or package providers
-can collect or close the original runtime. This does not authenticate the
-remaining erased `.C`/`.Fortran` route or arbitrary foreign-library pointers.
-External payload counts and complete per-routine input contracts remain separate
-obligations from the callable ABI.
-
-Host handles now select an opaque namespace, slot, and generation in a private
-engine store of owning values. They no longer evaluate R helper strings or
-consult `..rport_handles..` bindings. Publication and writes stage a result
-before replacing a slot; failure preserves its old value, while ordinary R
-side effects are not rolled back. Exhausted generations retire slots, and
-closure invalidates the store. Typed reads do not print or parse output.
-
-Console capture retains its original physical runtime through cleanup, including
-closure and unwinding. Automatic printing executes the real printer into a
-capture: custom methods retain their exact bytes and stream order, and explicit
-output is not trimmed or given an invented newline. Script callbacks use checked
-original-owner continuation; a revoked runtime cannot supply another session's
-warnings, location state, or successful result. GC operation guards likewise
-restore the original flag, and environment preambles retain owning snapshots
-instead of adding temporary entries to a manual protection ledger.
-
-The executable acceptance evidence and its limits are recorded in
-[`runtime-ownership-acceptance.md`](runtime-ownership-acceptance.md). These
-boundaries have targeted native and Miri regressions; they do not establish
-whole-runtime aliasing safety, complete GNU behavior, or platform acceptance.
-
-Internal unsafe routines still require root and aliasing discipline. Targeted
-strict-provenance Miri runs with default borrow checking cover binding
-publication callbacks, owning options/cache eviction, and replacement graphs
-through collection. Some historical runs used exposed provenance. These are
-bounded executable checks, not a formal proof of every internal path.
-
-The LOESS numerical engine and headless renderer use `#![forbid(unsafe_code)]`.
-The R adapters remain inside the crate-private interpreter boundary. Mutable
-arena lends reject re-entry; vector helpers validate their type and payload kind,
-including the runtime's vector-backed BCODESXP representation. Evaluator inputs,
-builtin argument lists and temporary internal primitives stay rooted during
-nested evaluation. Bytecode variable lookup and writes root their live operand
-stack before promise or active-binding evaluation can trigger collection.
-
-String/list element access now validates target tags, buffer presence and signed
-indices before reading or writing payloads in both debug and release builds. String
-setters share the generational write barrier used by list setters. Targeted
-Miri reproduced an out-of-range string write before the fix, then passed the
-same regression and invalid-tag/index tests afterward. These checks still
-require a live initialized SEXP; they cannot make arbitrary raw pointers safe.
-
-The owned LOESS kernel receives a per-operation execution policy, checks a
-conservative workspace estimate and polls cancellation within numerical loops.
-It returns errors to the adapter and never stores the callback in R models.
+The standard for app-facing additions is unchanged: return owned values
+or lifetime-bound wrappers; never expose raw handles through
+`r-runtime::embed` or `r-uniffi`. The compile-time forbid makes most of
+the historical audit categories impossible rather than merely audited.
