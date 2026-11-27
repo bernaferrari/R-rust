@@ -6281,7 +6281,9 @@ fn call_primitive_inner(
         READ_RDS => {
             let bound = bind_formals(heap, interner, args, caller_env, &["file", "refhook"])?;
             let path = bound[0].and_then(|v| string_operand(heap, interner, v)).unwrap_or_default();
-            let bytes = std::fs::read(&path)
+            let host = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path)
+                .ok_or_else(|| RSignal::from(EvalError::Condition(format!("cannot read file: {path}"))))?;
+            let bytes = std::fs::read(&host)
                 .map_err(|e| RSignal::from(EvalError::Condition(format!("cannot read file: {e}"))))?;
             super::rbg1::decode_rds(heap, interner, &bytes, caller_env)
                 .ok_or(EvalError::TypeError("malformed RDS stream").into())
