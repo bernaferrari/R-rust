@@ -9,6 +9,7 @@
 //! model.
 
 // C-to-Rust translation conventions (R's nmath library uses C naming)
+#![forbid(unsafe_code)]
 #![allow(non_upper_case_globals)]
 #![allow(non_snake_case)]
 // Enable all clippy lints including pedantic
