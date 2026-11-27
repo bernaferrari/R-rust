@@ -120,6 +120,23 @@ pub enum EnvFrame {
 }
 
 impl EnvFrame {
+    /// Lock every binding in the frame — lockEnvironment(bindings=TRUE).
+    pub fn lock_all(&mut self) {
+        match self {
+            EnvFrame::Empty => {}
+            EnvFrame::List(entries) => {
+                for (_, binding) in entries.iter_mut() {
+                    binding.locked = true;
+                }
+            }
+            EnvFrame::Hash(map) => {
+                for binding in map.values_mut() {
+                    binding.locked = true;
+                }
+            }
+        }
+    }
+
     pub fn get(&self, sym: SymId) -> Option<ValueId> {
         self.get_binding(sym).map(|binding| binding.value)
     }

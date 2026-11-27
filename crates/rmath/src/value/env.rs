@@ -168,6 +168,37 @@ pub fn lock_binding(heap: &mut Heap, env: ValueId, sym: SymId) -> Result<(), Env
     mutate_binding(heap, env, sym, |binding| binding.locked = true)
 }
 
+/// Unlock an individual binding — GNU's `unlockBinding`.
+pub fn unlock_binding(heap: &mut Heap, env: ValueId, sym: SymId) -> Result<(), EnvError> {
+    mutate_binding(heap, env, sym, |binding| binding.locked = false)
+}
+
+/// Read the environment lock flag — GNU's `environmentIsLocked`.
+pub fn is_locked(heap: &Heap, env: ValueId) -> bool {
+    env_is_locked(heap, env)
+}
+
+/// Read one binding's lock flag — GNU's `bindingIsLocked`; absent bindings
+/// report FALSE exactly as GNU.
+pub fn binding_is_locked(heap: &Heap, env: ValueId, sym: SymId) -> bool {
+    lookup_in_frame(heap, env, sym)
+        .map(|binding| binding.locked)
+        .unwrap_or(false)
+}
+
+/// Lock every binding currently in the frame — lockEnvironment's
+/// bindings=TRUE form exactly as GNU.
+pub fn lock_all_bindings(heap: &mut Heap, env: ValueId) -> Result<(), EnvError> {
+    let slot = heap.get_mut(env).ok_or(EnvError::NotAnEnvironment)?;
+    match &mut slot.body {
+        RObject::Environment { frame, .. } => {
+            frame.lock_all();
+            Ok(())
+        }
+        _ => Err(EnvError::NotAnEnvironment),
+    }
+}
+
 /// Lock the whole environment — GNU's `lockEnvironment`.
 pub fn lock_environment(heap: &mut Heap, env: ValueId) -> Result<(), EnvError> {
     let slot = heap.get_mut(env).ok_or(EnvError::NotAnEnvironment)?;
