@@ -624,6 +624,21 @@ pub mod primitive_ids {
     pub const FINDINTERVAL: u32 = 615;
     pub const MAKE_NAMES: u32 = 616;
     pub const MAKE_UNIQUE: u32 = 617;
+    pub const RBINOM: u32 = 618;
+    pub const RPOIS: u32 = 619;
+    pub const RGAMMA: u32 = 620;
+    pub const REXP: u32 = 621;
+    pub const RBETA: u32 = 622;
+    pub const RCHISQ: u32 = 623;
+    pub const RT: u32 = 624;
+    pub const RF_DIST: u32 = 625;
+    pub const RLNORM: u32 = 626;
+    pub const RLOGIS: u32 = 627;
+    pub const RCAUCHY: u32 = 628;
+    pub const RGEOM: u32 = 629;
+    pub const RWEIBULL: u32 = 630;
+    pub const RNBINOM: u32 = 631;
+    pub const RHYPER: u32 = 632;
     pub const GRCONVERTX: u32 = 564;
     pub const GRCONVERTY: u32 = 565;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
@@ -656,7 +671,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN, SUMMARY_FN, MATRIX_MULT, CROSSPROD, TCROSSPROD, MAXCOL, IDIV, NROW_FN, NCOL_FN, SYS_GETPID, OLSONNAMES, IQR_FN, SYS_CHMOD, FILE_INFO, SYS_GETLOCALE, SYS_SETLOCALE, NZCHAR, AT_OP, AT_ASSIGN, SYS_INFO, SYS_TIME, SYS_DATE, SYS_WHICH, FLOOR, CEILING, TRUNC, ROUND, SIGNIF, EXPM1, LOG1P, ACOSH, ASINH, ATANH, COSPI, SINPI, TANPI, ANYNA, SYS_LOCALECONV, AGREP, AGREPL, APPLY, AS_ENVIRONMENT, AS_CALL, ENC2NATIVE, ENC2UTF8, SEARCH_FN, AS_FACTOR, AS_ORDERED, ADDNA, APERM, ADDMARGINS, DOT_SUBSET, DOT_SUBSET2, ASPLIT, ATTACH, DETACH, POS_TO_ENV, DOT_CLASS2, GC_TIME, AVE, BACKSOLVE, BQUOTE, CALL_FN, CHAR_TO_RAW, CHARMATCH, CUMSUM, CUMPROD, CUMMIN, CUMMAX, COMMENT_FN, COMMENT_ASSIGN, COMPLETE_CASES, COLSUMS, ROWSUMS, COLMEANS, ROWMEANS, DCAUCHY, DCHISQ, DEXP, CUT, DATE_FN, CAPABILITIES, BY_FN, BROWSER_FN, DGAMMA, DGEOM, DNBINOM, DIFF, DIAG, DO_CALL, DWEIBULL, DROP_FN, DROPLEVELS, DUPLICATED, ANYDUPLICATED, DIR_EXISTS, FILE_CREATE, FILE_ACCESS, ENVIRONMENT_ASSIGN, FORCEANDCALL, DECLARE, PRIMTRACE, PRIMUNTRACE, STANDARDGENERIC, DMULTINOM, DOTS_LENGTH, DOTS_NAMES, DOTS_ELT, IS_DATA_FRAME, FILE_APPEND, FILE_LINK, FILE_SYMLINK, SYS_READLINK, FILE_SIZE, FILE_MTIME, GL, HEAD_FN, TAIL_FN, INTERACTION, GCINFO, GCTORTURE, GCTORTURE2, IS_FINITE, IS_INFINITE, IS_NAN, IS_VECTOR, IS_LOADED, L10N_INFO, CSTACK_INFO, EXTSOFTVERSION, LIST_FILES, MEMORY_PROFILE, ENV_IS_LOCKED, LOCK_BINDING, BINDING_IS_LOCKED, UNLOCK_BINDING, LOCK_ENVIRONMENT, MAKE_ACTIVE_BINDING, BINDING_IS_ACTIVE, SYS_UMASK, NORMALIZE_PATH, OLDCLASS, OLDCLASS_ASSIGN, IS_OBJECT, PAIRLIST_CTOR, AS_PAIRLIST, OUTER, ON_EXIT, IS_S4_TEST, NARGS, SYS_NFRAME, SYS_CALL, SYS_FRAME, SYS_FUNCTION, PARENT_FRAME, IS_FUNCTION, METHODS, PAR, LAYOUT, FORMAT_DF, LIB_PATHS, FIND_PACKAGE, SYSTEM_FILE, FORMAT_INFO, PCAUCHY, QCAUCHY, PCHISQ, QCHISQ, PEXP, QEXP, PGAMMA, QGAMMA, PGEOM, QGEOM, PNBINOM, QNBINOM, PWEIBULL, QWEIBULL, RANGE_FN, PMIN, PMAX, PMATCH, PROP_TABLE, ROW_FN, COL_FN, RELEVEL, SEARCHPATHS, PATH_EXPAND, PCRE_CONFIG, RAWTOCHAR, QHYPER, PTUKEY, QPOIS, QBINOM, DUNIF, PUNIF, QUNIF, SIGN, SEQ_ALONG, SEQ_INT, SCAN, SINGLE, SINK, SINK_NUMBER, SORT_LIST, SOURCE, SYS_SOURCE, SPLIT, SWITCH, SUPPRESS_MESSAGES, STRWRAP, XTFRM, CACHE_CLASS, STARTSWITH, ENDSWITH, TOUPPER, TOLOWER, CHARTR, TRIMWS, TABULATE, SYSTEM2, WITH, LENGTHS, WRITE_TABLE, WRITE_CSV2, READ_FWF, SAVE_RDS, READ_RDS, WITH_RESTARTS, INVOKE_RESTART, TRY_INVOKE_RESTART, FIND_RESTART, COMPUTE_RESTARTS, IS_RESTART, RESTART_DESCRIPTION, WITH_CALLING_HANDLERS, NS_GET, NS_GET3, LIBRARY, REQUIRE, DATA_FN, PLOT_NEW, PLOT_WINDOW, LINES_FN, RECT_FN, POINTS_FN, TEXT_FN, PRETTY_FN, GRCONVERTX, GRCONVERTY, AXIS_FN, BOX_FN, PLOT_FN, TITLE_FN, SEGMENTS_FN, ABLINE_FN, POLYGON_FN, LOG10, LOG2, TAN, ASIN, ACOS, ATAN, ATAN2, GAMMAFN, LGAMMAFN, DIGAMMA, TRIGAMMA, FACTORIAL, LFACTORIAL, BETA, LBETA, CHOOSE, LCHOOSE, STRSPLIT, TRANSPOSE, IS_MATRIX, AS_MATRIX, SET_SEED, RUNIF, RNORM, FILTER_FN, REDUCE_FN, MAPPLY, VAR_COV, COR_FN, QUANTILE, MAD, WEIGHTED_MEAN, MAP_FN, NEGATE, EXPAND_GRID, FINDINTERVAL, MAKE_NAMES, MAKE_UNIQUE};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN, SUMMARY_FN, MATRIX_MULT, CROSSPROD, TCROSSPROD, MAXCOL, IDIV, NROW_FN, NCOL_FN, SYS_GETPID, OLSONNAMES, IQR_FN, SYS_CHMOD, FILE_INFO, SYS_GETLOCALE, SYS_SETLOCALE, NZCHAR, AT_OP, AT_ASSIGN, SYS_INFO, SYS_TIME, SYS_DATE, SYS_WHICH, FLOOR, CEILING, TRUNC, ROUND, SIGNIF, EXPM1, LOG1P, ACOSH, ASINH, ATANH, COSPI, SINPI, TANPI, ANYNA, SYS_LOCALECONV, AGREP, AGREPL, APPLY, AS_ENVIRONMENT, AS_CALL, ENC2NATIVE, ENC2UTF8, SEARCH_FN, AS_FACTOR, AS_ORDERED, ADDNA, APERM, ADDMARGINS, DOT_SUBSET, DOT_SUBSET2, ASPLIT, ATTACH, DETACH, POS_TO_ENV, DOT_CLASS2, GC_TIME, AVE, BACKSOLVE, BQUOTE, CALL_FN, CHAR_TO_RAW, CHARMATCH, CUMSUM, CUMPROD, CUMMIN, CUMMAX, COMMENT_FN, COMMENT_ASSIGN, COMPLETE_CASES, COLSUMS, ROWSUMS, COLMEANS, ROWMEANS, DCAUCHY, DCHISQ, DEXP, CUT, DATE_FN, CAPABILITIES, BY_FN, BROWSER_FN, DGAMMA, DGEOM, DNBINOM, DIFF, DIAG, DO_CALL, DWEIBULL, DROP_FN, DROPLEVELS, DUPLICATED, ANYDUPLICATED, DIR_EXISTS, FILE_CREATE, FILE_ACCESS, ENVIRONMENT_ASSIGN, FORCEANDCALL, DECLARE, PRIMTRACE, PRIMUNTRACE, STANDARDGENERIC, DMULTINOM, DOTS_LENGTH, DOTS_NAMES, DOTS_ELT, IS_DATA_FRAME, FILE_APPEND, FILE_LINK, FILE_SYMLINK, SYS_READLINK, FILE_SIZE, FILE_MTIME, GL, HEAD_FN, TAIL_FN, INTERACTION, GCINFO, GCTORTURE, GCTORTURE2, IS_FINITE, IS_INFINITE, IS_NAN, IS_VECTOR, IS_LOADED, L10N_INFO, CSTACK_INFO, EXTSOFTVERSION, LIST_FILES, MEMORY_PROFILE, ENV_IS_LOCKED, LOCK_BINDING, BINDING_IS_LOCKED, UNLOCK_BINDING, LOCK_ENVIRONMENT, MAKE_ACTIVE_BINDING, BINDING_IS_ACTIVE, SYS_UMASK, NORMALIZE_PATH, OLDCLASS, OLDCLASS_ASSIGN, IS_OBJECT, PAIRLIST_CTOR, AS_PAIRLIST, OUTER, ON_EXIT, IS_S4_TEST, NARGS, SYS_NFRAME, SYS_CALL, SYS_FRAME, SYS_FUNCTION, PARENT_FRAME, IS_FUNCTION, METHODS, PAR, LAYOUT, FORMAT_DF, LIB_PATHS, FIND_PACKAGE, SYSTEM_FILE, FORMAT_INFO, PCAUCHY, QCAUCHY, PCHISQ, QCHISQ, PEXP, QEXP, PGAMMA, QGAMMA, PGEOM, QGEOM, PNBINOM, QNBINOM, PWEIBULL, QWEIBULL, RANGE_FN, PMIN, PMAX, PMATCH, PROP_TABLE, ROW_FN, COL_FN, RELEVEL, SEARCHPATHS, PATH_EXPAND, PCRE_CONFIG, RAWTOCHAR, QHYPER, PTUKEY, QPOIS, QBINOM, DUNIF, PUNIF, QUNIF, SIGN, SEQ_ALONG, SEQ_INT, SCAN, SINGLE, SINK, SINK_NUMBER, SORT_LIST, SOURCE, SYS_SOURCE, SPLIT, SWITCH, SUPPRESS_MESSAGES, STRWRAP, XTFRM, CACHE_CLASS, STARTSWITH, ENDSWITH, TOUPPER, TOLOWER, CHARTR, TRIMWS, TABULATE, SYSTEM2, WITH, LENGTHS, WRITE_TABLE, WRITE_CSV2, READ_FWF, SAVE_RDS, READ_RDS, WITH_RESTARTS, INVOKE_RESTART, TRY_INVOKE_RESTART, FIND_RESTART, COMPUTE_RESTARTS, IS_RESTART, RESTART_DESCRIPTION, WITH_CALLING_HANDLERS, NS_GET, NS_GET3, LIBRARY, REQUIRE, DATA_FN, PLOT_NEW, PLOT_WINDOW, LINES_FN, RECT_FN, POINTS_FN, TEXT_FN, PRETTY_FN, GRCONVERTX, GRCONVERTY, AXIS_FN, BOX_FN, PLOT_FN, TITLE_FN, SEGMENTS_FN, ABLINE_FN, POLYGON_FN, LOG10, LOG2, TAN, ASIN, ACOS, ATAN, ATAN2, GAMMAFN, LGAMMAFN, DIGAMMA, TRIGAMMA, FACTORIAL, LFACTORIAL, BETA, LBETA, CHOOSE, LCHOOSE, STRSPLIT, TRANSPOSE, IS_MATRIX, AS_MATRIX, SET_SEED, RUNIF, RNORM, FILTER_FN, REDUCE_FN, MAPPLY, VAR_COV, COR_FN, QUANTILE, MAD, WEIGHTED_MEAN, MAP_FN, NEGATE, EXPAND_GRID, FINDINTERVAL, MAKE_NAMES, MAKE_UNIQUE, RBINOM, RPOIS, RGAMMA, REXP, RBETA, RCHISQ, RT, RF_DIST, RLNORM, RLOGIS, RCAUCHY, RGEOM, RWEIBULL, RNBINOM, RHYPER};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -6068,6 +6083,21 @@ fn call_primitive_inner(
         FINDINTERVAL => find_interval_primitive(heap, interner, args, caller_env),
         MAKE_NAMES => make_names_primitive(heap, interner, args, caller_env),
         MAKE_UNIQUE => make_unique_primitive(heap, interner, args, caller_env),
+        RBINOM => rbinom_primitive(heap, interner, args, caller_env),
+        RPOIS => rpois_primitive(heap, interner, args, caller_env),
+        RGAMMA => rgamma_primitive(heap, interner, args, caller_env),
+        REXP => rexp_primitive(heap, interner, args, caller_env),
+        RBETA => rbeta_primitive(heap, interner, args, caller_env),
+        RCHISQ => rchisq_primitive(heap, interner, args, caller_env),
+        RT => rt_primitive(heap, interner, args, caller_env),
+        RF_DIST => rf_primitive(heap, interner, args, caller_env),
+        RLNORM => rlnorm_primitive(heap, interner, args, caller_env),
+        RLOGIS => rlogis_primitive(heap, interner, args, caller_env),
+        RCAUCHY => rcauchy_primitive(heap, interner, args, caller_env),
+        RGEOM => rgeom_primitive(heap, interner, args, caller_env),
+        RWEIBULL => rweibull_primitive(heap, interner, args, caller_env),
+        RNBINOM => rnbinom_primitive(heap, interner, args, caller_env),
+        RHYPER => rhyper_primitive(heap, interner, args, caller_env),
         DNORM | PNORM | QNORM | DPOIS | PPOIS | DBINOM | PBINOM | PBETA | DBETA | QBETA | DT | PT | QT | DF | PF | QF | DCAUCHY | DCHISQ | DEXP | PCAUCHY | QCAUCHY | PCHISQ | QCHISQ | PEXP | QEXP | PGAMMA | QGAMMA | PGEOM | QGEOM | PNBINOM | QNBINOM | PWEIBULL | QWEIBULL | QPOIS | QBINOM | DUNIF | PUNIF | QUNIF => dpq_primitive(heap, interner, id.0, args, caller_env),
         WITH_RESTARTS => with_restarts_primitive(heap, interner, args, caller_env),
         INVOKE_RESTART => invoke_restart_primitive(heap, interner, args, caller_env, false),
@@ -7854,6 +7884,8 @@ pub fn primitive_names() -> &'static [&'static str] {
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
         "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom", "message", "missing", "parent.env", "order", "rank", "ordered", "is.ordered", "is.factor", "na.omit", "na.exclude", "pbeta", "dbeta", "qbeta", "find", "UseMethod", "NextMethod", "getS3method", "emptyenv", "as.integer", "as.numeric", "as.double", "stopifnot", "sequence", "rep.int", "rep_len", "dt", "pt", "qt", "sample", "sample.int", "builtins", "regexec", "df", "pf", "qf", "substr", "file", "isOpen", "close", "flush", "writeChar", "readChar", "union", "intersect", "setdiff", "setequal", "table", "setClass", "new", "is", "slot", "slotNames", "unname", "which.min", "which.max", "withVisible", "system", "writeBin", "readBin", "url", "dim<-", "storage.mode<-", "as.list", "body", "summary", "%*%", "crossprod", "tcrossprod", "max.col", "%/%", "NROW", "NCOL", "Sys.getpid", "OlsonNames", "IQR", "Sys.chmod", "file.info", "Sys.getlocale", "Sys.setlocale", "nzchar", "@", "@<-", "Sys.info", "Sys.time", "Sys.Date", "Sys.which", "floor", "ceiling", "trunc", "round", "signif", "expm1", "log1p", "acosh", "asinh", "atanh", "cospi", "sinpi", "tanpi", "anyNA", "Sys.localeconv", "agrep", "agrepl", "apply", "as.environment", "as.call", "enc2native", "enc2utf8", "search", "as.factor", "as.ordered", "addNA", "aperm", "addmargins", ".subset", ".subset2", "asplit", "attach", "detach", "pos.to.env", ".class2", "gc.time", "ave", "backsolve", "bquote", "call", "charToRaw", "charmatch", "cumsum", "cumprod", "cummin", "cummax", "comment", "comment<-", "complete.cases", "colSums", "rowSums", "colMeans", "rowMeans", "dcauchy", "dchisq", "dexp", "cut", "date", "capabilities", "by", "browser", "bzfile", "gzfile", "xzfile", "dgamma", "dgeom", "dnbinom", "diff", "diag", "do.call", "dweibull", "drop", "droplevels", "duplicated", "anyDuplicated", "dir.exists", "file.create", "file.access", "environment<-", "forceAndCall", "declare", ".primTrace", ".primUntrace", "standardGeneric", "dmultinom", "...length", "...names", "...elt", "is.data.frame", "file.append", "file.link", "file.symlink", "Sys.readlink", "file.size", "file.mtime", "gl", "head", "tail", "interaction", "gcinfo", "gctorture", "gctorture2", "is.finite", "is.infinite", "is.nan", "is.vector", "is.loaded", "l10n_info", "Cstack_info", "extSoftVersion", "list.files", "memory.profile", "environmentIsLocked", "lockBinding", "bindingIsLocked", "unlockBinding", "lockEnvironment", "makeActiveBinding", "bindingIsActive", "Sys.umask", "normalizePath", "oldClass", "oldClass<-", "is.object", "pairlist", "as.pairlist", "outer", "on.exit", "isS4", "nargs", "sys.nframe", "sys.call", "sys.frame", "sys.function", "parent.frame", "is.function", "methods", "par", "layout", "format.data.frame", ".libPaths", "find.package", "system.file", "format.info", "pcauchy", "qcauchy", "pchisq", "qchisq", "pexp", "qexp", "pgamma", "qgamma", "pgeom", "qgeom", "pnbinom", "qnbinom", "pweibull", "qweibull", "range", "pmin", "pmax", "pmatch", "prop.table", "row", "col", "relevel", "searchpaths", "path.expand", "pcre_config", "rawToChar", "qhyper", "ptukey", "qpois", "qbinom", "dunif", "punif", "qunif", "sign", "seq_along", "seq.int", "scan", "single", "sink", "sink.number", "sort.list", "source", "sys.source", "split", "switch", "suppressMessages", "strwrap", "xtfrm", ".cache_class", "startsWith", "endsWith", "toupper", "tolower", "chartr", "trimws", "tabulate", "system2", "with", "lengths", "write.table", "write.csv2", "read.fwf", "saveRDS", "readRDS", "withRestarts", "invokeRestart", "tryInvokeRestart", "findRestart", "computeRestarts", "isRestart", "restartDescription", "withCallingHandlers", "::", ":::", "library", "require", "data", "plot.new", "plot.window", "lines", "rect", "points", "text", "pretty", "grconvertX", "grconvertY", "axis", "box", "plot", "title", "segments", "abline", "polygon", "log10", "log2", "tan", "asin", "acos", "atan", "atan2", "gamma", "lgamma", "digamma", "trigamma", "factorial", "lfactorial", "beta", "lbeta", "choose", "lchoose", "strsplit", "t", "is.matrix", "as.matrix", "set.seed", "runif", "rnorm", "Filter", "Reduce", "mapply", "cov", "cor", "quantile", "mad", "weighted.mean",
         "Map", "expand.grid", "findInterval", "make.names", "make.unique",
+        "rbinom", "rpois", "rgamma", "rexp", "rbeta", "rchisq", "rt", "rf",
+        "rlnorm", "rlogis", "rcauchy", "rgeom", "rweibull", "rnbinom", "rhyper",
     ]
 }
 
@@ -8153,6 +8185,21 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "findInterval" => Some(FINDINTERVAL),
         "make.names" => Some(MAKE_NAMES),
         "make.unique" => Some(MAKE_UNIQUE),
+        "rbinom" => Some(RBINOM),
+        "rpois" => Some(RPOIS),
+        "rgamma" => Some(RGAMMA),
+        "rexp" => Some(REXP),
+        "rbeta" => Some(RBETA),
+        "rchisq" => Some(RCHISQ),
+        "rt" => Some(RT),
+        "rf" => Some(RF_DIST),
+        "rlnorm" => Some(RLNORM),
+        "rlogis" => Some(RLOGIS),
+        "rcauchy" => Some(RCAUCHY),
+        "rgeom" => Some(RGEOM),
+        "rweibull" => Some(RWEIBULL),
+        "rnbinom" => Some(RNBINOM),
+        "rhyper" => Some(RHYPER),
         "grconvertX" => Some(GRCONVERTX),
         "grconvertY" => Some(GRCONVERTY),
         // bzfile/gzfile share the raw-byte connection machinery — GNU pipes
@@ -19773,6 +19820,144 @@ fn repeat_elements(
 /// never selected, type and names of the source preserved exactly. The
 /// conformance goldens only ever check structure (membership, length,
 /// type), so the deterministic order is observationally equivalent.
+/// GNU's weighted sampling exactly as random.c: FixupProb validation and
+/// normalization, then ProbSampleReplace (descending heapsort cumulative
+/// scan) or walker_ProbSampleReplace (alias method beyond 200 dense
+/// categories) with replacement, ProbSampleNoReplace (totalmass depletion)
+/// without. The draw sequence consumes the heap stream exactly as GNU.
+fn weighted_sample_indices_pure(
+    heap: &mut Heap,
+    probs: &[f64],
+    size: usize,
+    replace: bool,
+) -> Result<Vec<usize>, RSignal> {
+    let n = probs.len();
+    let mut p = probs.to_vec();
+    // FixupProb exactly: validation order NA then negative then positive
+    /// count, normalization to sum one.
+    let mut sum = 0.0;
+    let mut npos = 0usize;
+    for value in p.iter() {
+        if !value.is_finite() {
+            return Err(RSignal::Error(EvalError::Condition("NA in probability vector".to_string())));
+        }
+        if *value < 0.0 {
+            return Err(RSignal::Error(EvalError::Condition("negative probability".to_string())));
+        }
+        if *value > 0.0 {
+            npos += 1;
+            sum += *value;
+        }
+    }
+    if npos == 0 || (!replace && size > npos) {
+        return Err(RSignal::Error(EvalError::Condition("too few positive probabilities".to_string())));
+    }
+    for value in p.iter_mut() {
+        *value /= sum;
+    }
+    let ans: Vec<usize> = if replace {
+        let nc = p.iter().filter(|&&pi| n as f64 * pi > 0.1).count();
+        if nc > 200 {
+            walker_sample_pure(heap, &mut p, size)
+        } else {
+            // ProbSampleReplace exactly: descending heapsort with the
+            /// permutation carried, cumulative in place, linear scan.
+            let mut perm: Vec<i32> = (1..=n as i32).collect();
+            crate::mainutils::sort::revsort_with_perm(&mut p, &mut perm, n);
+            for i in 1..n {
+                p[i] += p[i - 1];
+            }
+            let nm1 = n.saturating_sub(1);
+            let mut out = Vec::with_capacity(size);
+            for _ in 0..size {
+                let r_u = heap.rng.unif();
+                let mut j = nm1;
+                for jj in 0..nm1 {
+                    if r_u <= p[jj] {
+                        j = jj;
+                        break;
+                    }
+                }
+                out.push((perm[j] - 1).max(0) as usize);
+            }
+            out
+        }
+    } else {
+        // ProbSampleNoReplace exactly: descending heapsort, totalmass
+        /// depletion with the p/perm shift-down compaction.
+        let mut perm: Vec<i32> = (1..=n as i32).collect();
+        crate::mainutils::sort::revsort_with_perm(&mut p, &mut perm, n);
+        let mut totalmass = 1.0_f64;
+        let mut out = Vec::with_capacity(size);
+        for i in 0..size {
+            let r_t = totalmass * heap.rng.unif();
+            let mut mass = 0.0;
+            let mut j = n - 1 - i;
+            for jj in 0..j {
+                mass += p[jj];
+                if r_t <= mass {
+                    j = jj;
+                    break;
+                }
+            }
+            out.push((perm[j] - 1).max(0) as usize);
+            totalmass -= p[j];
+            for k in j..(n - 1 - i) {
+                p[k] = p[k + 1];
+                perm[k] = perm[k + 1];
+            }
+        }
+        out
+    };
+    Ok(ans)
+}
+
+/// walker_ProbSampleReplace exactly as random.c: the alias tables build
+/// over q = n*p with the H/L cursors, the draw consuming one rejection
+/// index plus one uniform per sample exactly as the rejection branch.
+fn walker_sample_pure(heap: &mut Heap, p: &mut [f64], size: usize) -> Vec<usize> {
+    let n = p.len();
+    let mut a = vec![0i32; n];
+    let mut hl = vec![0i32; n];
+    let mut q = vec![0.0f64; n];
+    let mut h = 0usize;
+    let mut l = n;
+    for i in 0..n {
+        q[i] = p[i] * n as f64;
+        if q[i] < 1.0 {
+            hl[h] = i as i32;
+            h += 1;
+        } else {
+            l -= 1;
+            hl[l] = i as i32;
+        }
+    }
+    if h > 0 && l < n {
+        for k in 0..n.saturating_sub(1) {
+            let i = hl[k] as usize;
+            let j = hl[l] as usize;
+            a[i] = j as i32;
+            q[j] += q[i] - 1.0;
+            if q[j] < 1.0 {
+                l += 1;
+            }
+            if l >= n {
+                break;
+            }
+        }
+    }
+    for (i, qi) in q.iter_mut().enumerate() {
+        *qi += i as f64;
+    }
+    let mut out = Vec::with_capacity(size);
+    for _ in 0..size {
+        let k = heap.rng.unif_index_rejection(n as f64) as usize;
+        let r_u = k as f64 + heap.rng.unif();
+        out.push(if r_u < q[k] { k } else { a[k].max(0) as usize });
+    }
+    out
+}
+
 fn sample_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
@@ -19780,11 +19965,20 @@ fn sample_primitive(
     caller_env: ValueId,
     int_form: bool,
 ) -> EvalResult {
-    let raw = raw_args(heap, args);
+    // GNU's formals exactly: x/n, size, replace, prob — named arguments
+    /// bind by name and positionals fill the gaps exactly as pmatch.
+    let formal_names: &[&str] = if int_form {
+        &["n", "size", "replace", "prob"]
+    } else {
+        &["x", "size", "replace", "prob"]
+    };
+    let slots = eval_matched_args(heap, interner, args, caller_env, formal_names)?;
     let mut positional: Vec<ValueId> = Vec::new();
-    for expr in &raw {
-        let v = eval(heap, interner, *expr, caller_env)?;
-        positional.push(force_if_promise(heap, interner, v)?);
+    for slot in slots.iter().take(4) {
+        match slot {
+            Some(v) => positional.push(*v),
+            None => break,
+        }
     }
     if positional.is_empty() {
         return Ok(heap.alloc(RObject::Integer(Vec::new())));
@@ -19810,13 +20004,13 @@ fn sample_primitive(
             _ => (Vec::new(), Vec::new()),
         }
     };
-    let size = positional.get(1).and_then(|v| match heap.object(*v) {
+    let size = slots[1].and_then(|v| match heap.object(v) {
         Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals.first().copied().map(|x| x as usize),
         Some(RObject::Real(vals)) => vals.first().copied().map(|x| x as usize),
         _ => None,
     });
-    let replace = positional.get(2).map(|v| matches!(heap.object(*v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) == 1)).unwrap_or(false);
-    let probs: Vec<f64> = positional.get(3).and_then(|v| match heap.object(*v) {
+    let replace = slots[2].map(|v| matches!(heap.object(v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) == 1)).unwrap_or(false);
+    let probs: Vec<f64> = slots[3].and_then(|v| match heap.object(v) {
         Some(RObject::Real(vals)) => Some(vals.clone()),
         Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => Some(vals.iter().map(|x| *x as f64).collect()),
         _ => None,
@@ -19826,25 +20020,40 @@ fn sample_primitive(
         // Integer population path — sample.int and the numeric shortcut.
         let n = population.len();
         let k = size.unwrap_or(if replace { n } else { n });
-        let mut chosen: Vec<i64> = Vec::new();
-        let mut available: Vec<usize> = (0..n).collect();
-        while chosen.len() < k {
-            if available.is_empty() {
-                break;
+        if !replace && k > n {
+            return Err(RSignal::Error(EvalError::Condition(
+                "cannot take a sample larger than the population when 'replace = FALSE'".to_string(),
+            )));
+        }
+        // GNU's uniform branch exactly as random.c do_sample: independent
+        /// full-population draws when replacing (or a single draw), else
+        /// the Fisher-Yates copy-out loop pool[j] = pool[--remaining].
+        if !probs.is_empty() {
+            if probs.len() != n {
+                return Err(RSignal::Error(EvalError::Condition(
+                    "incorrect number of probabilities".to_string(),
+                )));
             }
-            // Real randomness exactly as GNU samples: a uniform index
-            /// into the remaining pool, zero-probability entries never
-            /// eligible when probs constrain the draw.
-            let draw = heap.rng.unif_index(available.len() as f64) as usize;
-            let best = draw.min(available.len() - 1);
-            let idx = available[best];
-            if !probs.is_empty() && probs.get(idx).copied().unwrap_or(1.0) <= 0.0 {
-                available.remove(best);
-                continue;
+            let indices = weighted_sample_indices_pure(heap, probs.as_slice(), k, replace)?;
+            return Ok(heap.alloc(RObject::Integer(
+                indices.iter().map(|i| population[*i] as i32).collect(),
+            )));
+        }
+        let mut chosen: Vec<i64> = Vec::with_capacity(k);
+        if replace || k < 2 {
+            for _ in 0..k {
+                let draw = heap.rng.unif_index_rejection(n as f64) as usize;
+                chosen.push(population[draw.min(n - 1)]);
             }
-            chosen.push(population[idx]);
-            if !replace {
-                available.remove(best);
+        } else {
+            let mut pool: Vec<usize> = (0..n).collect();
+            let mut remaining = n;
+            for _ in 0..k {
+                let j = heap.rng.unif_index_rejection(remaining as f64) as usize;
+                let j = j.min(remaining - 1);
+                chosen.push(population[pool[j]]);
+                remaining -= 1;
+                pool[j] = pool[remaining];
             }
         }
         return Ok(heap.alloc(RObject::Integer(chosen.into_iter().map(|v| v as i32).collect())));
@@ -19858,19 +20067,33 @@ fn sample_primitive(
         Some(names_id) => string_vec(heap, interner, names_id),
         None => Vec::new(),
     };
-    let mut chosen_idx: Vec<usize> = Vec::new();
-    let mut available: Vec<usize> = (0..len).collect();
-    while chosen_idx.len() < k && !available.is_empty() {
-        let draw = heap.rng.unif_index(available.len() as f64) as usize;
-        let best = draw.min(available.len() - 1);
-        let idx = available[best];
-        if !probs.is_empty() && probs.get(idx).copied().unwrap_or(1.0) <= 0.0 {
-            available.remove(best);
-            continue;
+    if !replace && k > len {
+        return Err(RSignal::Error(EvalError::Condition(
+            "cannot take a sample larger than the population when 'replace = FALSE'".to_string(),
+        )));
+    }
+    let mut chosen_idx: Vec<usize> = Vec::with_capacity(k);
+    if !probs.is_empty() {
+        if probs.len() != len {
+            return Err(RSignal::Error(EvalError::Condition(
+                "incorrect number of probabilities".to_string(),
+            )));
         }
-        chosen_idx.push(idx);
-        if !replace {
-            available.remove(best);
+        chosen_idx = weighted_sample_indices_pure(heap, probs.as_slice(), k, replace)?;
+    } else if replace || k < 2 {
+        for _ in 0..k {
+            let draw = heap.rng.unif_index_rejection(len as f64) as usize;
+            chosen_idx.push(draw.min(len - 1));
+        }
+    } else {
+        let mut pool: Vec<usize> = (0..len).collect();
+        let mut remaining = len;
+        for _ in 0..k {
+            let j = heap.rng.unif_index_rejection(remaining as f64) as usize;
+            let j = j.min(remaining - 1);
+            chosen_idx.push(pool[j]);
+            remaining -= 1;
+            pool[j] = pool[remaining];
         }
     }
     let out_names: Vec<String> = if names.is_empty() {
@@ -22634,6 +22857,152 @@ fn make_unique_primitive(
         })
         .collect();
     Ok(heap.alloc(RObject::String(out)))
+}
+
+/// The shared vectorized random-generation skeleton: evaluate n plus the
+/// distribution's parameter vectors, install the heap stream as nmath's
+/// uniform source, then draw with GNU's parameter recycling exactly —
+/// parameter i of draw k is element k % len exactly as R's vectorized
+/// random functions recycle.
+fn r_zoo(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+    param_names: &[&str],
+    defaults: &[f64],
+    draw: impl Fn(&[f64]) -> f64,
+) -> EvalResult {
+    let mut names: Vec<&str> = vec!["n"];
+    names.extend_from_slice(param_names);
+    let slots = eval_matched_args(heap, interner, args, caller_env, &names)?;
+    let n = slots[0]
+        .and_then(|v| reals_of_value(heap, v).ok())
+        .and_then(|v| v.first().copied())
+        .unwrap_or(1.0)
+        .max(0.0) as usize;
+    let mut params: Vec<Vec<f64>> = Vec::with_capacity(param_names.len());
+    for (index, _name) in param_names.iter().enumerate() {
+        let values = slots[index + 1]
+            .and_then(|v| reals_of_value(heap, v).ok())
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| vec![defaults[index]]);
+        params.push(values);
+    }
+    let guard = crate::value_rng_bridge::enter(&mut heap.rng);
+    let mut out = Vec::with_capacity(n.min(10_000_000));
+    for i in 0..n.min(10_000_000) {
+        let draw_params: Vec<f64> = params.iter().map(|v| v[i % v.len()]).collect();
+        out.push(draw(&draw_params));
+    }
+    drop(guard);
+    Ok(heap.alloc(RObject::Real(out)))
+}
+
+macro_rules! zoo_primitive {
+    ($name:ident, [$($param:literal),+], [$($default:expr),+], $draw:expr) => {
+        fn $name(
+            heap: &mut Heap,
+            interner: &mut SymbolInterner,
+            args: ValueId,
+            caller_env: ValueId,
+        ) -> EvalResult {
+            r_zoo(heap, interner, args, caller_env, &[$($param),+], &[$($default),+], $draw)
+        }
+    };
+}
+
+zoo_primitive!(rbinom_primitive, ["size", "prob"], [1.0, 0.5], |ps: &[f64]| crate::nmath::dist::binomial::rbinom(ps[0], ps[1]));
+zoo_primitive!(rpois_primitive, ["lambda"], [1.0], |ps: &[f64]| crate::nmath::dist::poisson::rpois(ps[0]));
+zoo_primitive!(rbeta_primitive, ["shape1", "shape2"], [1.0, 1.0], |ps: &[f64]| crate::nmath::dist::beta::rbeta(ps[0], ps[1]));
+zoo_primitive!(rchisq_primitive, ["df"], [1.0], |ps: &[f64]| crate::nmath::dist::chisq::rchisq(ps[0]));
+zoo_primitive!(rt_primitive, ["df"], [1.0], |ps: &[f64]| crate::nmath::dist::t_dist::rt(ps[0]));
+zoo_primitive!(rf_primitive, ["df1", "df2"], [1.0, 1.0], |ps: &[f64]| crate::nmath::dist::f_dist::rf(ps[0], ps[1]));
+zoo_primitive!(rlnorm_primitive, ["meanlog", "sdlog"], [0.0, 1.0], |ps: &[f64]| crate::nmath::dist::lnorm::rlnorm(ps[0], ps[1]));
+zoo_primitive!(rlogis_primitive, ["location", "scale"], [0.0, 1.0], |ps: &[f64]| crate::nmath::dist::logistic::rlogis(ps[0], ps[1]));
+zoo_primitive!(rcauchy_primitive, ["location", "scale"], [0.0, 1.0], |ps: &[f64]| crate::nmath::dist::cauchy::rcauchy(ps[0], ps[1]));
+zoo_primitive!(rgeom_primitive, ["prob"], [0.5], |ps: &[f64]| crate::nmath::dist::geometric::rgeom(ps[0]));
+zoo_primitive!(rweibull_primitive, ["shape", "scale"], [1.0, 1.0], |ps: &[f64]| crate::nmath::dist::weibull::rweibull(ps[0], ps[1]));
+zoo_primitive!(rnbinom_primitive, ["size", "prob"], [1.0, 0.5], |ps: &[f64]| crate::nmath::dist::nbinom::rnbinom(ps[0], ps[1]));
+
+/// rgamma(n, shape, rate, scale) — GNU's parameterization exactly: scale
+/// defaults to 1/rate and an explicit scale overrides rate.
+fn rgamma_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let slots = eval_matched_args(heap, interner, args, caller_env, &["n", "shape", "rate", "scale"])?;
+    let n = slots[0]
+        .and_then(|v| reals_of_value(heap, v).ok())
+        .and_then(|v| v.first().copied())
+        .unwrap_or(1.0)
+        .max(0.0) as usize;
+    let shapes = slots[1]
+        .and_then(|v| reals_of_value(heap, v).ok())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| vec![1.0]);
+    let rates = slots[2]
+        .and_then(|v| reals_of_value(heap, v).ok())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| vec![1.0]);
+    let scales = slots[3].and_then(|v| reals_of_value(heap, v).ok()).filter(|v| !v.is_empty());
+    let guard = crate::value_rng_bridge::enter(&mut heap.rng);
+    let mut out = Vec::with_capacity(n.min(10_000_000));
+    for i in 0..n.min(10_000_000) {
+        let shape = shapes[i % shapes.len()];
+        let scale = match &scales {
+            Some(values) => values[i % values.len()],
+            None => 1.0 / rates[i % rates.len()],
+        };
+        out.push(crate::nmath::dist::gamma::rgamma(shape, scale));
+    }
+    drop(guard);
+    Ok(heap.alloc(RObject::Real(out)))
+}
+
+/// rexp(n, rate) — GNU's rate parameterization exactly: the kernel takes
+/// the scale, which is the rate's reciprocal.
+fn rexp_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    r_zoo(heap, interner, args, caller_env, &["rate"], &[1.0], |ps: &[f64]| {
+        crate::nmath::dist::exponential::rexp(1.0 / ps[0])
+    })
+}
+
+/// rhyper(nn, m, n, k) — GNU's urn parameterization exactly: m white
+/// balls, n black, k drawn.
+fn rhyper_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let slots = eval_matched_args(heap, interner, args, caller_env, &["nn", "m", "n", "k"])?;
+    let nn = slots[0]
+        .and_then(|v| reals_of_value(heap, v).ok())
+        .and_then(|v| v.first().copied())
+        .unwrap_or(1.0)
+        .max(0.0) as usize;
+    let ms = slots[1].and_then(|v| reals_of_value(heap, v).ok()).filter(|v| !v.is_empty()).unwrap_or_else(|| vec![1.0]);
+    let ns = slots[2].and_then(|v| reals_of_value(heap, v).ok()).filter(|v| !v.is_empty()).unwrap_or_else(|| vec![1.0]);
+    let ks = slots[3].and_then(|v| reals_of_value(heap, v).ok()).filter(|v| !v.is_empty()).unwrap_or_else(|| vec![1.0]);
+    let guard = crate::value_rng_bridge::enter(&mut heap.rng);
+    let mut out = Vec::with_capacity(nn.min(10_000_000));
+    for i in 0..nn.min(10_000_000) {
+        out.push(crate::nmath::dist::hypergeometric::rhyper(
+            ms[i % ms.len()],
+            ns[i % ns.len()],
+            ks[i % ks.len()],
+        ));
+    }
+    drop(guard);
+    Ok(heap.alloc(RObject::Real(out)))
 }
 
 /// `complex(length.out, real, imaginary)` — zeros by default exactly as

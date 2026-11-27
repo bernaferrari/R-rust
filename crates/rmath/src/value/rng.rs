@@ -131,4 +131,29 @@ impl PureRng {
     pub fn unif_index(&mut self, dn: f64) -> f64 {
         (dn * self.unif()).floor()
     }
+
+    /// R_unif_index's default rejection branch exactly as GNU's rbits:
+    /// 16-bit chunks assemble one uniform each until the bit width covers
+    /// ceil(log2(dn)), values at or above dn rejected and redrawn. The
+    /// stream consumption is one uniform per chunk exactly as random.c.
+    pub fn unif_index_rejection(&mut self, dn: f64) -> f64 {
+        if dn <= 0.0 {
+            return 0.0;
+        }
+        let bits = dn.log2().ceil() as i32;
+        loop {
+            let mut v: u64 = 0;
+            let mut n = 0;
+            while n <= bits {
+                let v1 = (self.unif() * 65536.0) as u64;
+                v = 65536 * v + v1;
+                n += 16;
+            }
+            let mask = (1u64 << (bits as u32)).wrapping_sub(1);
+            let dv = (v & mask) as f64;
+            if dn > dv {
+                return dv;
+            }
+        }
+    }
 }
