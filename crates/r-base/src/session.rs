@@ -153,7 +153,7 @@ impl Session {
                 return Err(SessionError::Eval(RSignal::from(EvalError::Condition(text))));
             }
             // Primitive writes (cat/print/writeLines) and auto-printed
-            /// values interleave in evaluation order exactly as GNU's
+            // values interleave in evaluation order exactly as GNU's
             /// stdout does — both append to the one output buffer.
             if self.heap.visible {
                 let text = r_core::print::format_value(&self.heap, &self.interner, value);
@@ -230,7 +230,7 @@ impl Session {
                         return full;
                     }
                     // Primitive writes accumulate in the output buffer; the
-                    /// auto-printed value joins them before the chunk is
+                    // auto-printed value joins them before the chunk is
                     /// lifted — the interleave is evaluation order exactly.
                     if self.heap.visible {
                         let text = r_core::print::format_value(&self.heap, &self.interner, value);
@@ -277,7 +277,7 @@ impl Session {
         }
         if self.heap.output_capture_truncated {
             // The capture marker joins stdout and the transcript exactly
-            /// as the facade appends it — output the runtime dropped on
+            // as the facade appends it — output the runtime dropped on
             /// the embedder's behalf is announced, never silent.
             let marker = "\n[captured console output truncated by runtime limit]";
             full.stdout.push_str(marker);
@@ -333,7 +333,7 @@ pub fn render_eval_error(signal: &RSignal) -> String {
         }
         RSignal::Error(r_core::eval::EvalError::Condition(message)) => message.clone(),
         // Control-flow signals reaching top level are evaluator bugs in
-        /// disguise; surface them readably rather than panicking.
+        // disguise; surface them readably rather than panicking.
         other => format!("{other:?}"),
     }
 }
@@ -376,7 +376,7 @@ pub fn bootstrap_env(heap: &mut Heap, interner: &mut SymbolInterner) -> ValueId 
     let sym = interner.intern_symbol("LETTERS");
     env::define(heap, base, sym, upper_val).expect("LETTERS");
     // .GlobalEnv resolves to the user environment itself — the global
-    /// exactly as GNU's top-level reference.
+    // exactly as GNU's top-level reference.
     let user = env::new_environment(heap, base);
     // The serialization codec recognizes both identities — closures
     // capture them by value and the wire carries them as pseudo-
@@ -386,7 +386,7 @@ pub fn bootstrap_env(heap: &mut Heap, interner: &mut SymbolInterner) -> ValueId 
     let genv_sym = interner.intern_symbol(".GlobalEnv");
     env::define(heap, base, genv_sym, user).expect(".GlobalEnv");
     // The global environment carries its printed name — GNU's
-    /// R_GlobalEnv exactly — through the slot attribute chain.
+    // R_GlobalEnv exactly — through the slot attribute chain.
     {
         let name_sym = interner.intern_symbol("name");
         let name_val = heap.alloc(RObject::String(vec![interner.intern_string("R_GlobalEnv")]));
@@ -405,7 +405,7 @@ pub fn bootstrap_env(heap: &mut Heap, interner: &mut SymbolInterner) -> ValueId 
         }
     }
     // version and R.version share one list object — identical() over
-    /// them is TRUE exactly as GNU's aliased constants.
+    // them is TRUE exactly as GNU's aliased constants.
     {
         let major = heap.alloc(RObject::String(vec![interner.intern_string("4")]));
         let minor = heap.alloc(RObject::String(vec![interner.intern_string("4.0")]));
@@ -555,7 +555,7 @@ fn attach_default_packages(heap: &mut Heap, interner: &mut SymbolInterner, base:
     let autoloads = env::new_environment(heap, base);
     name_environment(heap, interner, autoloads, "Autoloads");
     // Link base-ward: each package's enclosure is the next environment
-    /// down the chain exactly as GNU's attach ordering arranges.
+    // down the chain exactly as GNU's attach ordering arranges.
     let mut chain_envs: Vec<ValueId> = Vec::new();
     for package in order {
         if let Some(ns) = heap.package_registry.get(package).copied() {

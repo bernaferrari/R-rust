@@ -41,7 +41,7 @@ pub fn par_default(name: &str) -> Vec<f64> {
 
 pub fn par_get(heap: &Heap, name: &str) -> Vec<f64> {
     // The dumb-parameter reading exactly as the naive machine's: the
-    /// cascade answers region-coupled names, everything else falls to
+    // cascade answers region-coupled names, everything else falls to
     /// GNU's defaults — typing is reconstructed at object construction.
     match heap.graphics.query(name) {
         Some(r_core::graphics::layout::ParValue::Real(values)) => values,
@@ -256,7 +256,7 @@ pub fn plot_new_primitive(
 ) -> EvalResult {
     let (regions, clear, transition) = heap.graphics.prepare_plot_figure();
     // GNU's figure-margins validation — a nonpositive plot region in
-    /// either dimension rejects the frame exactly as
+    // either dimension rejects the frame exactly as
     /// "figure margins too large"; nothing commits on failure.
     let plot_width = regions.plot[2] - regions.plot[0];
     let plot_height = regions.plot[3] - regions.plot[1];
@@ -267,7 +267,7 @@ pub fn plot_new_primitive(
     }
     heap.graphics.commit_plot_figure(transition);
     // The layout's own decision exactly as GNU's GNewPlot — reuse
-    /// paths and mid-grid steps keep the page, first figures and
+    // paths and mid-grid steps keep the page, first figures and
     /// post-wrap frames clear.
     if clear {
         heap.graphics.clear_scene();
@@ -299,7 +299,7 @@ pub fn plot_window_primitive(
         )));
     }
     // xaxs/yaxs exactly as GNU: "r" extends each side 4%, "i" keeps
-    /// the exact limits. The style reads through the par cascade.
+    // the exact limits. The style reads through the par cascade.
     let style = |name: &str| -> String {
         match heap.graphics.query(name) {
             Some(r_core::graphics::layout::ParValue::String(text)) => text,
@@ -463,7 +463,7 @@ pub fn resolve_rcolor(
                 "transparent" | "NA" => return None,
                 other => {
                     // The full 657-entry database with hex parsing
-                    /// exactly as col2rgb — every GNU color name
+                    // exactly as col2rgb — every GNU color name
                     /// resolves in drawing primitives.
                     if let Some((r, g, b, a)) = resolve_named_color(other) {
                         return Some(Color { r: r as u8, g: g as u8, b: b as u8, a: a as u8 });
@@ -503,7 +503,7 @@ pub fn rect_primitive(
 ) -> EvalResult {
     use r_graphics_engine::{Color, DrawOperation, Path, Stroke};
     // Positional order covers GNU's first four exactly; col/border are
-    /// effectively always named in practice — the density/angle/lty
+    // effectively always named in practice — the density/angle/lty
     /// slots of GNU's full signature remain unwired.
     let slots = eval_matched_args(
         heap,
@@ -580,7 +580,7 @@ pub fn points_primitive(
         return Ok(ValueId::NIL);
     }
     // pch resolves per-point with GNU's recycling exactly as col —
-    /// precomputed so the emission loop holds no borrow across the
+    // precomputed so the emission loop holds no borrow across the
     /// scene mutation.
     let pch_values: Vec<i32> = match slots[2] {
         Some(v) => match heap.object(v) {
@@ -598,7 +598,7 @@ pub fn points_primitive(
             _ => 1.0,
         });
     // GNU sizes symbols at half the character width scaled by cex —
-    /// the raster character cell is the cra cascade answer.
+    // the raster character cell is the cra cascade answer.
     let cra = match heap.graphics.query("cra") {
         Some(r_core::graphics::layout::ParValue::Real(v)) if v.len() == 2 => v,
         _ => vec![10.8, 14.4],
@@ -635,7 +635,7 @@ pub fn points_primitive(
             16 => Path::circle(dx, dy, radius).with_fill(color),
             _ => {
                 // 1 and the fallback: open circle — transparent fill,
-                /// stroked rim exactly as GNU's default symbol.
+                // stroked rim exactly as GNU's default symbol.
                 let mut circle = Path::circle(dx, dy, radius);
                 circle.fill = Color { r: 0, g: 0, b: 0, a: 0 };
                 circle.stroke = Stroke::new(1.0, color);
@@ -693,7 +693,7 @@ pub fn text_primitive(
             _ => 1.0,
         });
     // The 12pt base at 72dpi raster units exactly as the portable
-    /// POINTSIZE contract — one raster unit per point.
+    // POINTSIZE contract — one raster unit per point.
     let font_size = (12.0 * cex) as f32;
     for i in 0..count {
         let x = xs[i % xs.len()];
@@ -785,7 +785,7 @@ pub fn pretty_primitive(
             });
         }
         // Near-zero cleanup exactly as the wrapper: relative to the
-        /// overflow-safe per-interval delta.
+        // overflow-safe per-interval delta.
         let delta = (end / ndiv as f64 - start / ndiv as f64).abs();
         for value in values.iter_mut() {
             if value.abs() < 1e-14 * delta {
@@ -828,7 +828,7 @@ pub fn grconvert_primitive(
                 return *v;
             }
             // user → device exactly as the primitive conversion; the
-            /// inverse divides back through the same linear map.
+            // inverse divides back through the same linear map.
             let usr = match heap.graphics.query("usr") {
                 Some(r_core::graphics::layout::ParValue::Real(u)) if u.len() == 4 => u,
                 _ => vec![0.0, 1.0, 0.0, 1.0],
@@ -838,7 +838,7 @@ pub fn grconvert_primitive(
                 (usr[0], usr[1], plot[0], plot[2])
             } else {
                 // y grows upward in user space, downward in raster —
-                /// device bottom pairs with user low exactly as the
+                // device bottom pairs with user low exactly as the
                 /// conversion flips.
                 (usr[2], usr[3], plot[3], plot[1])
             };
@@ -900,7 +900,7 @@ pub fn axis_primitive(
     }
     let horizontal = side == 1 || side == 3;
     // Tick positions: explicit at= or pretty over the usr range exactly
-    /// as axp computation feeds GAxis.
+    // as axp computation feeds GAxis.
     let usr = match heap.graphics.query("usr") {
         Some(r_core::graphics::layout::ParValue::Real(u)) if u.len() == 4 => u,
         _ => vec![0.0, 1.0, 0.0, 1.0],
@@ -940,7 +940,7 @@ pub fn axis_primitive(
         }
     };
     // GAxis clips ticks to the usr window exactly — the 4% extension
-    /// means pretty positions can fall outside and never draw.
+    // means pretty positions can fall outside and never draw.
     let (win_lo, win_hi) = if horizontal {
         (usr[0].min(usr[1]), usr[0].max(usr[1]))
     } else {
@@ -961,7 +961,7 @@ pub fn axis_primitive(
     );
     let plot = heap.graphics.layout.regions().plot;
     // One margin line in raster units exactly as the 0.2in portable
-    /// contract; tcl -0.5 is GNU's outward default.
+    // contract; tcl -0.5 is GNU's outward default.
     let line = 14.4f32;
     let tcl = -0.5f32;
     let tick_len = tcl.abs() * line;
@@ -1067,7 +1067,7 @@ pub fn title_primitive(
     use r_graphics_engine::{Color, DrawOperation, PlotParameters, Point, TextAnchor};
     let slots = eval_matched_args(heap, interner, args, caller_env, &["main", "sub", "xlab", "ylab"])?;
     // Extract every label upfront exactly as the other primitives
-    /// precompute — the emission loop holds no borrow across scene
+    // precompute — the emission loop holds no borrow across scene
     /// mutation.
     let texts: Vec<Option<String>> = (0..4)
         .map(|slot| {
@@ -1103,7 +1103,7 @@ pub fn title_primitive(
         });
     };
     // xlab centers below the bottom margin at two lines out exactly
-    /// as mgp's axis-title line approximates; ylab mirrors beside the
+    // as mgp's axis-title line approximates; ylab mirrors beside the
     /// left margin; main sits in the top margin.
     if let Some(xlab) = text_of(2) {
         if !xlab.is_empty() {
@@ -1163,7 +1163,7 @@ pub fn mtext_primitive(
     let center_x = (plot[0] + plot[2]) as f32 / 2.0;
     let center_y = (plot[1] + plot[3]) as f32 / 2.0;
     // Each side anchors its line outward from the plot edge exactly as
-    /// GNU's margin-line addressing — line 0 butting the edge.
+    // GNU's margin-line addressing — line 0 butting the edge.
     let (x, y) = match side {
         1 => (center_x, plot[3] as f32 + (line + 0.8) * line_height),
         2 => (plot[0] as f32 - (line + 0.8) * line_height, center_y),
@@ -1304,7 +1304,7 @@ pub fn color_ramp_primitive(
         }
         HEAT_COLORS => {
             // rainbow(i, start=0, end=1/6) then fading-saturation yellows
-            /// exactly as GNU's two-part composition.
+            // exactly as GNU's two-part composition.
             let j = n / 4;
             let i = n - j;
             for h in gnu_seq(0.0, 1.0 / 6.0, i) {
@@ -1320,7 +1320,7 @@ pub fn color_ramp_primitive(
         TERRAIN_COLORS => {
             let k = n / 2;
             // First half green-to-tan, second half continuing to
-            /// near-white exactly as GNU's split sequences with the
+            // near-white exactly as GNU's split sequences with the
             /// overlapping first element dropped.
             let h1 = gnu_seq(4.0 / 12.0, 2.0 / 12.0, k);
             let s1 = gnu_seq(1.0, 1.0, k);
@@ -1358,7 +1358,7 @@ pub fn color_ramp_primitive(
             let l1 = if even_n { k + 1 - 1 } else { k + 1 };
             let l2 = n - k + if even_n { 1 } else { 0 };
             // Cyan half fading to white then magenta growing exactly as
-            /// GNU's mirrored saturation sequences.
+            // GNU's mirrored saturation sequences.
             if l1 > 0 {
                 let target = if even_n { 0.5 / k as f64 } else { 0.0 };
                 for s in gnu_seq(0.5, target, l1) {
@@ -1446,7 +1446,7 @@ pub fn col2rgb_primitive(
     let rows = if alpha_flag { 4 } else { 3 };
     let mut cells: Vec<i32> = Vec::new();
     // Column-major exactly as R matrices — each color's channels
-    /// contiguous per column.
+    // contiguous per column.
     let mut columns: Vec<(u32, u32, u32, u32)> = Vec::new();
     for name in &names {
         match resolve_named_color(name) {
@@ -1466,7 +1466,7 @@ pub fn col2rgb_primitive(
     let dim = heap.alloc(RObject::Integer(vec![rows as i32, names.len() as i32]));
     let mut result = copy_with_attrib(heap, interner, matrix, "dim", dim).map_err(RSignal::from)?;
     // dimnames — row names red/green/blue exactly as GNU, no column
-    /// names.
+    // names.
     let row_label_names: Vec<&str> = if alpha_flag {
         vec!["red", "green", "blue", "alpha"]
     } else {
@@ -1683,7 +1683,7 @@ pub fn rgb2hsv_primitive(
     let max_value = slots[3].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(255.0);
     let input = slots[0].unwrap_or(ValueId::NIL);
     // The matrix form carries rows exactly as GNU's rbind composition;
-    /// separate vectors take the single-channel path.
+    // separate vectors take the single-channel path.
     let mut triples: Vec<(f64, f64, f64)> = Vec::new();
     let matrix_dim = get_attrib(heap, interner, input, "dim");
     if let Some(dim_id) = matrix_dim {
@@ -1756,7 +1756,7 @@ pub fn arrows_primitive(
     let angle_deg = reals_at(5).first().copied().unwrap_or(30.0);
     let code = reals_at(6).first().copied().unwrap_or(2.0) as i32;
     // Precompute geometry before emission exactly as the other
-    /// primitives — no borrows across scene mutation.
+    // primitives — no borrows across scene mutation.
     let mut segments: Vec<(f64, f64, f64, f64)> = Vec::new();
     let head_len = length_in * 72.0;
     let half_angle = angle_deg.to_radians();
@@ -1767,7 +1767,7 @@ pub fn arrows_primitive(
         let y1 = y1s[i % y1s.len().max(1)];
         segments.push((x0, y0, x1, y1));
         // Head geometry in user space approximates GNU's device-space
-        /// rotation — the shaft angle plus/minus the head angle.
+        // rotation — the shaft angle plus/minus the head angle.
         let shaft = (y1 - y0).atan2(x1 - x0);
         if code == 2 || code == 3 {
             for sign in [1.0f64, -1.0] {
@@ -1838,7 +1838,7 @@ pub fn hist_primitive(
     let xlo = xs.iter().copied().fold(f64::INFINITY, f64::min);
     let xhi = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     // Break resolution exactly as GNU: explicit vector, scalar count
-    /// through pretty with min.n=1, or the Sturges default.
+    // through pretty with min.n=1, or the Sturges default.
     let mut use_br = false;
     let mut breaks: Vec<f64> = match slots[1] {
         Some(b) => {
@@ -1886,7 +1886,7 @@ pub fn hist_primitive(
     let h_max = h.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let equidist = !use_br || (h_max - h_min) < 1e-7 * h_mean;
     // freq resolution exactly as GNU: default follows equidist unless
-    /// probability overrides.
+    // probability overrides.
     let freq1 = match slots[2] {
         Some(f) => matches!(heap.object(f), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) != 0),
         None => match slots[3] {
@@ -1902,7 +1902,7 @@ pub fn hist_primitive(
         .unwrap_or(true);
     let fuzz_arg = slots[6].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(1e-7);
     // The diddle exactly as GNU: median width for many bins, range
-    /// for few, smallest positive otherwise.
+    // for few, smallest positive otherwise.
     let mut sorted_h = h.clone();
     sorted_h.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let median_h = sorted_h[sorted_h.len() / 2];
@@ -1934,7 +1934,7 @@ pub fn hist_primitive(
         }
     }
     // BinCount exactly as GNU: right-closed bins with the lowest
-    /// boundary inclusive when include.lowest.
+    // boundary inclusive when include.lowest.
     let bin_count = breaks.len() - 1;
     let mut counts: Vec<i32> = vec![0; bin_count];
     for &x in &xs {
@@ -1963,7 +1963,7 @@ pub fn hist_primitive(
     let density: Vec<f64> = counts.iter().enumerate().map(|(i, &c)| c as f64 / (n as f64 * h[i])).collect();
     let mids: Vec<f64> = (0..bin_count).map(|i| 0.5 * (breaks[i] + breaks[i + 1])).collect();
     // The histogram object exactly as GNU's structure(): named list,
-    /// class attribute.
+    // class attribute.
     let heights: Vec<f64> = if freq1 {
         counts.iter().map(|&c| c as f64).collect()
     } else {
@@ -1974,7 +1974,7 @@ pub fn hist_primitive(
         .unwrap_or(true);
     if do_plot {
         // plot.histogram composition exactly: plot.new, window over
-        /// range(breaks) x range(y, 0), title, axes, then the bars.
+        // range(breaks) x range(y, 0), title, axes, then the bars.
         let main_text = format!("Histogram of {}", xname);
         let ylab_text = if freq1 { "Frequency" } else { "Density" };
         let ymax = heights.iter().copied().fold(0.0f64, f64::max);
@@ -2111,7 +2111,7 @@ pub fn boxplot_primitive(
             heap.alloc(RObject::Pairlist { car: v, cdr: rest, tag: ValueId::NIL })
         };
         // ylim spans everything plotted exactly as GNU's range over
-        /// stats and outliers; xlim the group positions with margins.
+        // stats and outliers; xlim the group positions with margins.
         let mut ymin = f64::INFINITY;
         let mut ymax = f64::NEG_INFINITY;
         for stats in &all_stats {
@@ -2182,7 +2182,7 @@ pub fn boxplot_primitive(
         }
     }
     // The invisible return: stats as a 5 x n column-major matrix plus
-    /// n, conf, out, group exactly as GNU.
+    // n, conf, out, group exactly as GNU.
     let mut matrix_vals: Vec<f64> = Vec::new();
     for stats in &all_stats {
         for &v in stats {
@@ -2219,13 +2219,13 @@ pub fn curve_primitive(
     caller_env: ValueId,
 ) -> EvalResult {
     // The raw first element is the unevaluated expression exactly as
-    /// substitute(expr) captures it.
+    // substitute(expr) captures it.
     let raw_expr = match heap.object(args) {
         Some(RObject::Pairlist { car, .. }) => *car,
         _ => ValueId::NIL,
     };
     // The expression itself must never evaluate in the caller
-    /// environment — extract the remaining arguments manually with
+    // environment — extract the remaining arguments manually with
     /// positional-then-named matching exactly as GNU's formals after
     /// expr.
     let mut from_v: Option<ValueId> = None;
@@ -2282,11 +2282,11 @@ pub fn curve_primitive(
         vec![from]
     } else {
         // GNU seq.int arithmetic exactly: multiply before divide —
-        /// the fp ordering is observable in the endpoint ulps.
+        // the fp ordering is observable in the endpoint ulps.
         (0..n).map(|i| from + (to - from) * i as f64 / (n - 1) as f64).collect()
     };
     // Data environment binding xname to the whole vector — vectorized
-    /// evaluation exactly as GNU's eval(expr, envir = ll).
+    // evaluation exactly as GNU's eval(expr, envir = ll).
     let data_env = r_core::env::new_environment(heap, caller_env);
     let x_obj = heap.alloc(RObject::Real(xs.clone()));
     let sym = interner.intern_symbol(&xname);
@@ -2353,7 +2353,7 @@ pub fn matplot_primitive(
     let slots = eval_matched_args(heap, interner, args, caller_env, &["x", "y", "type", "col"])?;
     let input = slots[0].unwrap_or(ValueId::NIL);
     // Columns spread from the dim attribute exactly as GNU's matrix
-    /// handling; a bare vector is one column.
+    // handling; a bare vector is one column.
     let (vals, nrow, ncol) = if let Some(dim_id) = get_attrib(heap, interner, input, "dim") {
         if let Some(RObject::Integer(dims)) = heap.object(dim_id).cloned() {
             if dims.len() == 2 {
@@ -2390,7 +2390,7 @@ pub fn matplot_primitive(
     };
     plot_window_primitive(heap, interner, win_args, caller_env)?;
     // Each column a series, colors cycling through the palette
-    /// positions 1:6 exactly as GNU's default col.
+    // positions 1:6 exactly as GNU's default col.
     for c in 0..ncol {
         let mut col_vals: Vec<f64> = Vec::new();
         for r in 0..nrow {
@@ -2705,7 +2705,7 @@ pub fn stripchart_primitive(
         let mut py: Vec<f64> = Vec::new();
         if method_name == "jitter" {
             // base jitter semantics: amount = jitter * diff(range)/5
-            /// over the group positions exactly as GNU's composition.
+            // over the group positions exactly as GNU's composition.
             let spread = jitter_amount;
             for &x in g {
                 let noise = (heap.rng.unif() - 0.5) * 2.0 * spread;
@@ -2714,7 +2714,7 @@ pub fn stripchart_primitive(
             }
         } else if method_name == "stack" {
             // Stack duplicates upward exactly as GNU: binning identical
-            /// values and counting occurrences.
+            // values and counting occurrences.
             let mut counts: Vec<(u64, usize)> = Vec::new();
             for &x in g {
                 let key = x.to_bits();
@@ -2811,7 +2811,7 @@ pub fn prettynum_primitive(
     };
     let input = slots[0].unwrap_or(ValueId::NIL);
     // Character input passes through the mark insertion exactly as
-    /// GNU; numeric input formats first.
+    // GNU; numeric input formats first.
     let raw: Vec<String> = match heap.object(input).cloned() {
         Some(RObject::String(vals)) => vals.iter().map(|s| interner.string_text(*s).to_string()).collect(),
         _ => {
@@ -2823,7 +2823,7 @@ pub fn prettynum_primitive(
     for text in &raw {
         let trimmed = text.trim();
         // Split at the decimal point exactly as GNU's integer/fraction
-        /// separation, preserving sign and exponent untouched.
+        // separation, preserving sign and exponent untouched.
         let (mantissa, exponent) = match trimmed.find(['e', 'E']) {
             Some(pos) => (&trimmed[..pos], &trimmed[pos..]),
             None => (trimmed, ""),
@@ -2896,7 +2896,7 @@ pub fn density_primitive(
     let cut = slots[13].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(3.0);
     let ext = slots[14].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(4.0);
     // bw.nrd0 exactly as GNU: 0.9 * min(sd, iqr/1.34) * nx^(-1/5),
-    /// with the zero-floor fallback to sd then to 1.
+    // with the zero-floor fallback to sd then to 1.
     let mean = xs.iter().sum::<f64>() / nx as f64;
     let sd = (xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (nx - 1) as f64).sqrt();
     let mut sorted = xs.clone();
@@ -2930,7 +2930,7 @@ pub fn density_primitive(
         n = 1usize << ((n as f64).log2().ceil() as usize);
     }
     // BinDist exactly as GNU: linear mass distribution into adjacent
-    /// bins over (lo, up) with the edge-bin rules.
+    // bins over (lo, up) with the edge-bin rules.
     let mut binned = vec![0.0f64; 2 * n];
     let xdelta = (up - lo) / (n - 1) as f64;
     let ixmax = n as i64 - 2;
@@ -2954,7 +2954,7 @@ pub fn density_primitive(
         *v *= tot_mass;
     }
     // Kernel ordinates exactly as GNU: seq(0, (2n-1)/(n-1)*(up-lo),
-    /// length 2n) with the mirrored negative second half, gaussian
+    // length 2n) with the mirrored negative second half, gaussian
     /// density at sd = bw.
     let span = (2 * n - 1) as f64 / (n - 1) as f64 * (up - lo);
     let mut kords = vec![0.0f64; 2 * n];
@@ -2970,7 +2970,7 @@ pub fn density_primitive(
         *k = inv_bw_sqrt2pi * (-0.5 * z * z).exp();
     }
     // Circular convolution directly — mathematically identical to
-    /// GNU's FFT convolution for this symmetric kernel; divided by
+    // GNU's FFT convolution for this symmetric kernel; divided by
     /// the length exactly as the manual inverse-fft scaling.
     let two_n = 2 * n;
     let mut conv = vec![0.0f64; n];
@@ -2987,7 +2987,7 @@ pub fn density_primitive(
         conv[t] = acc.max(0.0);
     }
     // xords and linear interpolation onto the user grid exactly as
-    /// approx(xords, kords, x).
+    // approx(xords, kords, x).
     let xords: Vec<f64> = (0..n).map(|i| lo + (up - lo) * i as f64 / (n - 1) as f64).collect();
     let x_out: Vec<f64> = (0..n_user).map(|i| {
         if n_user > 1 {
@@ -3036,7 +3036,7 @@ pub fn grid_primitive(
 ) -> EvalResult {
     let slots = eval_matched_args(heap, interner, args, caller_env, &["nx", "ny", "col", "lty", "lwd", "equilogs"])?;
     // Tick positions recomputed over the usr window exactly as the
-    /// axis cascade does — the lightgray dotted reference lines.
+    // axis cascade does — the lightgray dotted reference lines.
     let usr = match heap.graphics.query("usr") {
         Some(r_core::graphics::layout::ParValue::Real(u)) if u.len() == 4 => u,
         _ => vec![0.0, 1.0, 0.0, 1.0],
@@ -3109,7 +3109,7 @@ pub fn rug_primitive(
         _ => vec![0.0, 1.0, 0.0, 1.0],
     };
     // Tick size in user units exactly as GNU's fraction of the axis
-    /// span — negative direction (outward) as GNU's tck.
+    // span — negative direction (outward) as GNU's tck.
     let ticksize = slots[1].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(0.03);
     let side = slots[2].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(1.0) as i32;
     let yspan = usr[3] - usr[2];
@@ -3158,7 +3158,7 @@ pub fn fivenum_values(xs: &[f64]) -> Vec<f64> {
     d.iter()
         .map(|&di| {
             // R indices are 1-based; the fractional index averages its
-            /// floor and ceiling exactly as GNU.
+            // floor and ceiling exactly as GNU.
             let lo = sorted[(di.floor() as usize).saturating_sub(1).min(n - 1)];
             let hi = sorted[(di.ceil() as usize).saturating_sub(1).min(n - 1)];
             0.5 * (lo + hi)
@@ -3293,7 +3293,7 @@ pub fn stem_primitive(
         c = 10f64.powi((1.0 - r.log10().floor()) as i32);
     }
     // rnd — GNU's exact truncating arithmetic: the +-0.5 shift with
-    /// truncation toward zero at the integer casts.
+    // truncation toward zero at the integer casts.
     let rnd = |u: f64, c: f64| -> f64 {
         if u < 0.0 { u * c - 0.5 } else { u * c + 0.5 }
     };
@@ -3387,7 +3387,7 @@ pub fn barplot_primitive(
         &["height", "width", "space", "names.arg", "legend.text", "beside", "horiz", "col", "border", "main", "xlab", "ylab", "plot"])?;
     let input = slots[0].unwrap_or(ValueId::NIL);
     // Shape detection: matrix spreads rows as series, vectors become
-    /// the one-column beside form exactly as GNU.
+    // the one-column beside form exactly as GNU.
     let mut heights: Vec<Vec<f64>> = Vec::new();
     let mut nrow = 1usize;
     let mut ncol = 0usize;
@@ -3428,13 +3428,13 @@ pub fn barplot_primitive(
     };
     let mean_width = width.iter().sum::<f64>() / width.len() as f64;
     // space scaled exactly as GNU — 0.2 default, c(0,1) for beside
-    /// matrices.
+    // matrices.
     let spaces: Vec<f64> = match slots[2] {
         Some(s) => {
             let spec = reals_of_value(heap, s).unwrap_or_default();
             if spec.len() == 2 && beside && !vector_input {
                 // c(0,1) means: intra-group space then inter-group —
-                /// expanded exactly as GNU's rep.int composition.
+                // expanded exactly as GNU's rep.int composition.
                 let mut expanded = Vec::new();
                 for _c in 0..ncol {
                     expanded.push(spec[1]);
@@ -3453,7 +3453,7 @@ pub fn barplot_primitive(
         }
     };
     // Cumulative positions exactly as GNU: w.r = cumsum(space+width),
-    /// midpoints and lefts derived.
+    // midpoints and lefts derived.
     let count = if beside { nrow * ncol } else { ncol };
     let mut wr: Vec<f64> = Vec::new();
     let mut acc = 0.0;
@@ -3466,7 +3466,7 @@ pub fn barplot_primitive(
     let wm: Vec<f64> = wr.iter().enumerate().map(|(i, &r)| r - width[i % width.len()] / 2.0).collect();
     let wl: Vec<f64> = wr.iter().enumerate().map(|(i, &r)| r - width[i % width.len()]).collect();
     // Limits exactly as GNU: x spans the bar positions, y the stacked
-    /// heights with zero.
+    // heights with zero.
     let stacked: Vec<f64> = (0..ncol).map(|c| {
         heights.iter().map(|series| series.get(c).copied().unwrap_or(0.0)).sum()
     }).collect();
@@ -3497,7 +3497,7 @@ pub fn barplot_primitive(
         };
         plot_window_primitive(heap, interner, win_args, caller_env)?;
         // Bars: stacked series accumulate; beside rows sit at their own
-        /// positions exactly as GNU's per-series loop.
+        // positions exactly as GNU's per-series loop.
         let col_default = if vector_input { "grey" } else { "grey" };
         for r in 0..nrow {
             let mut base = vec![0.0f64; ncol];
@@ -3527,7 +3527,7 @@ pub fn barplot_primitive(
         }
     }
     // Midpoints returned invisibly exactly as GNU — beside matrices
-    /// shape them back to rows.
+    // shape them back to rows.
     let out: Vec<f64> = if beside && !vector_input {
         wm
     } else if beside {
@@ -3732,7 +3732,7 @@ pub fn plot_primitive(
         None => "p".to_string(),
     };
     // plot(x) with a single vector plots against the index exactly as
-    /// GNU's xy.coords default.
+    // GNU's xy.coords default.
     if ys.is_empty() && !xs.is_empty() {
         ys = std::mem::take(&mut xs);
         xs = (1..=ys.len()).map(|i| i as f64).collect();
@@ -3751,7 +3751,7 @@ pub fn plot_primitive(
     let ylo = pairs.iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
     let yhi = pairs.iter().map(|p| p.1).fold(f64::NEG_INFINITY, f64::max);
     // Compose through the primitives exactly as user code would —
-    /// construct each call's evaluated arguments directly.
+    // construct each call's evaluated arguments directly.
     let xlim = heap.alloc(RObject::Real(vec![xlo, xhi]));
     let ylim = heap.alloc(RObject::Real(vec![ylo, yhi]));
     let xv = heap.alloc(RObject::Real(pairs.iter().map(|p| p.0).collect::<Vec<_>>()));
@@ -3768,7 +3768,7 @@ pub fn plot_primitive(
     };
     plot_window_primitive(heap, interner, win_args, caller_env)?;
     // The glyph layer exactly as type selects: points, lines, both,
-    /// overplotted, or nothing — "n" still draws axes and the frame.
+    // overplotted, or nothing — "n" still draws axes and the frame.
     let xy_args = {
         let second = cell(yv, ValueId::NIL, heap);
         cell(xv, second, heap)

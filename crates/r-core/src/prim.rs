@@ -49,7 +49,7 @@ pub fn eval_args(
             _ => break,
         };
         // Empty actual arguments error with their 1-based call position
-        /// exactly as GNU's argument forcing reports them.
+        // exactly as GNU's argument forcing reports them.
         if car == ValueId::MISSING {
             return Err(EvalError::Condition(format!(
                 "argument {} is empty",
@@ -81,7 +81,7 @@ pub fn vector_length(heap: &Heap, value: ValueId) -> Option<usize> {
         Some(RObject::List(v)) => Some(v.len()),
         Some(RObject::Expression(v)) => Some(v.len()),
         // GNU: length of a call counts the operator plus every argument
-        /// exactly as the pairlist chain encodes.
+        // exactly as the pairlist chain encodes.
         Some(RObject::Language { cdr, .. }) => {
             let mut count = 1usize;
             let mut cursor = *cdr;
@@ -176,7 +176,7 @@ pub fn copy_with_attrib(
     }
     if !found && attr_value != ValueId::NIL {
         // GNU appends new attributes at the chain's end — attributes()
-        /// enumerates in insertion order exactly as the oracle pins.
+        // enumerates in insertion order exactly as the oracle pins.
         entries.push((sym_obj, attr_value));
     }
     // Rebuild the chain tail-to-head.
@@ -272,7 +272,7 @@ pub fn eval_matched_args(
 ) -> Result<Vec<Option<ValueId>>, RSignal> {
     let mut slots: Vec<Option<ValueId>> = vec![None; names.len()];
     // Collect (tag, value) pairs without evaluating — matching is
-    /// structural exactly as GNU's argument resolution precedes forcing.
+    // structural exactly as GNU's argument resolution precedes forcing.
     let mut items: Vec<(Option<String>, ValueId)> = Vec::new();
     let mut cursor = args;
     loop {

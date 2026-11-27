@@ -90,7 +90,7 @@ pub fn eval(
     env_id: ValueId,
 ) -> EvalResult {
     // GNU's nested-too-deeply ceiling — options(expressions=) in shape,
-    /// the host's resource limit in authority. Zero configures the GNU
+    // the host's resource limit in authority. Zero configures the GNU
     /// default of 500 exactly as the facade's resource contract pins.
     let ceiling = if heap.max_eval_depth == 0 {
         500
@@ -103,7 +103,7 @@ pub fn eval(
         )));
     }
     // The deadline shares the cancellation poll site — one cheap check
-    /// pair per node against the tree walk's cost.
+    // pair per node against the tree walk's cost.
     if let Some(deadline) = heap.eval_deadline {
         if web_time::Instant::now() >= deadline {
             return Err(RSignal::from(EvalError::Condition(
@@ -200,7 +200,7 @@ fn eval_node(
                 }
                 None => {
                     // `..N` reads the Nth dots element directly — GNU's
-                    /// positional dots access resolved at lookup time.
+                    // positional dots access resolved at lookup time.
                     if let Some(index) = parse_dotdot_index(&label) {
                         return dots_elt(heap, interner, env_id, index)
                             .ok_or(EvalError::UnboundVariable(label)).map_err(RSignal::from);
@@ -213,7 +213,7 @@ fn eval_node(
         RObject::Language { car, cdr, .. } => {
             let (car, cdr) = (*car, *cdr);
             // GNU's findFun: a symbolic call head resolves through function
-            /// lookup, which skips non-callable bindings — a variable named
+            // lookup, which skips non-callable bindings — a variable named
             /// `names` never shadows the primitive in function position.
             let callee = match heap.object(car) {
                 Some(RObject::Symbol { name, .. }) => {
@@ -339,7 +339,7 @@ fn call(
     call_expr: ValueId,
 ) -> EvalResult {
     // Dots forwarding: a bare `...` argument splices the caller's dots
-    /// pairlist into the call exactly as GNU — promises carried intact so
+    // pairlist into the call exactly as GNU — promises carried intact so
     /// downstream forcing shares the original cells.
     let dots_sym = interner.intern_symbol("...");
     let needs_splice = {
@@ -364,7 +364,7 @@ fn call(
     };
     let args = if needs_splice {
         // Rebuild the chain: ordinary cells copy through, `...` cells
-        /// expand into the visible dots in order.
+        // expand into the visible dots in order.
         let mut source: Vec<(ValueId, ValueId)> = Vec::new();
         let mut cursor = args;
         for _ in 0..MAX_LIST_LENGTH {
@@ -422,7 +422,7 @@ fn call(
         _ => Err(EvalError::NotCallable.into()),
     };
     // conditionCall fidelity — GNU's context stack answers the raising
-    /// frame's call: attach this call when the error originates here
+    // frame's call: attach this call when the error originates here
     /// (no inner frame claimed it), and never overwrite as the error
     /// unwinds through outer frames. Control flow is not a condition
     /// and attaches nothing.
@@ -555,7 +555,7 @@ fn apply_closure(
     }
 
     // Dots capture: every argument matching left unconsumed joins the
-    /// pairlist as a promise in the caller's environment, tags preserved
+    // pairlist as a promise in the caller's environment, tags preserved
     /// exactly as GNU — forwarding and introspection both read this.
     if dots_position.is_some() {
         let mut dots = ValueId::NIL;
@@ -577,7 +577,7 @@ fn apply_closure(
     }
 
     // The context entry GNU's sys.* family reads — pushed for the body
-    /// evaluation exactly as GNU's context stack, popped on every exit.
+    // evaluation exactly as GNU's context stack, popped on every exit.
     heap.contexts.push(ContextFrame {
         frame,
         call: call_expr,

@@ -30,7 +30,7 @@ pub fn format_real(v: f64) -> String {
         return "0".to_string();
     }
     // GNU format.c's formatReal exactly: fixed notation whenever its
-    /// width does not exceed scientific width plus scipen — a width
+    // width does not exceed scientific width plus scipen — a width
     /// comparison, not an exponent threshold. digits=7 and scipen=0
     /// are the pinned defaults.
     let (neg, kpower, nsig) = scientific_parts(v);
@@ -40,10 +40,10 @@ pub fn format_real(v: f64) -> String {
     let d = nsig - 1;
     if needs_scientific(v) {
         // Scientific exactly as GNU: nsig significant digits in the
-        /// mantissa, two-digit minimum exponent.
+        // mantissa, two-digit minimum exponent.
         let mantissa = v / 10f64.powi(kpower);
         // Rounding to nsig significant digits can carry into the next
-        /// power exactly as GNU — the exponent shifts with it.
+        // power exactly as GNU — the exponent shifts with it.
         let mut mantissa_text = trim_fixed(mantissa, (nsig - 1).max(0) as usize);
         let mut kpower = kpower;
         if mantissa_text.parse::<f64>().unwrap_or(0.0).abs() >= 10.0 {
@@ -62,7 +62,7 @@ pub fn format_real(v: f64) -> String {
 fn scientific_parts(v: f64) -> (i32, i32, i32) {
     let neg = if v < 0.0 { 1 } else { 0 };
     // GNU rounds to digits significant figures FIRST — carry-over
-    /// changes both the exponent and the significant count exactly as
+    // changes both the exponent and the significant count exactly as
     /// 999999999999 rounding into 1e12 demonstrates.
     let abs = v.abs();
     let rough_exp = abs.log10().floor() as i32;
@@ -131,7 +131,7 @@ fn decimals_used(v: f64) -> Option<usize> {
         return None;
     }
     // Fixed-notation decimals exactly as formatReal's rgt — trailing
-    /// zeros trimmed after rendering at the computed precision.
+    // zeros trimmed after rendering at the computed precision.
     let (_, kpower, nsig) = scientific_parts(v);
     let left = kpower + 1;
     let rgt = (nsig - left).max(0) as usize;
@@ -172,7 +172,7 @@ fn format_element(heap: &Heap, interner: &SymbolInterner, value: &RObject, index
                 "NA".to_string()
             } else {
                 // GNU escapes embedded quotes and backslashes inside the
-                /// surrounding quotes exactly as print.c does.
+                // surrounding quotes exactly as print.c does.
                 let escaped = text.replace('\\', "\\\\").replace('"', "\\\"");
                 format!("\"{}\"", escaped)
             }
@@ -230,12 +230,12 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         None => return "NULL".to_string(),
     };
     // Language objects and bare symbols print deparsed — the source
-    /// reconstruction exactly as GNU's print.language, no [1] prefix.
+    // reconstruction exactly as GNU's print.language, no [1] prefix.
     if matches!(object, RObject::Language { .. } | RObject::Symbol { .. }) {
         return deparse(heap, interner, value);
     }
     // Expression vectors print inside the expression() wrapper with each
-    /// element deparsed comma-separated exactly as GNU's print.expression.
+    // element deparsed comma-separated exactly as GNU's print.expression.
     if let RObject::Expression(items) = object {
         if items.is_empty() {
             return "expression()".to_string();
@@ -247,7 +247,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         return format!("expression({})", parts.join(", "));
     }
     // factor printing: classed integer codes display as their level labels
-    /// unquoted, with the Levels line trailing exactly as print.factor.
+    // unquoted, with the Levels line trailing exactly as print.factor.
     if matches!(object, RObject::Integer(_)) && is_factor(heap, interner, value) {
         return format_factor(heap, interner, value);
     }
@@ -333,7 +333,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         return format!("{}\n{}", header_row.join(" "), value_row.join(" "));
     }
     // table printing: the category header row above the count row, columns
-    /// right-aligned to the wider of the two exactly as print.table.
+    // right-aligned to the wider of the two exactly as print.table.
     if matches!(object, RObject::Integer(_)) && is_table(heap, interner, value) {
         let counts: Vec<i32> = match object {
             RObject::Integer(vals) => vals.clone(),
@@ -366,7 +366,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         return format!("\n{}\n{}", header.join(" "), body.join(" "));
     }
     // POSIXct printing: classed epoch seconds display as quoted datetimes
-    /// carrying the tzone suffix exactly as print.POSIXct.
+    // carrying the tzone suffix exactly as print.POSIXct.
     if matches!(object, RObject::Real(_) | RObject::Integer(_))
         && crate::attrib::is_posixct_classed(heap, interner, value)
     {
@@ -396,7 +396,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
             })
             .unwrap_or_else(|| "UTC".to_string());
         // GNU drops the time component only when every finite element is
-        /// exactly midnight — a single non-midnight renders all times
+        // exactly midnight — a single non-midnight renders all times
         /// exactly as format.POSIXct's collective omission rule.
         let all_midnight = secs
             .iter()
@@ -428,7 +428,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         return out;
     }
     // Date printing: classed day counts display as quoted ISO strings
-    /// exactly as print.Date — a character-vector rendering of the civil
+    // exactly as print.Date — a character-vector rendering of the civil
     /// dates.
     if matches!(object, RObject::Real(_) | RObject::Integer(_))
         && crate::attrib::is_date_classed(heap, interner, value)
@@ -470,7 +470,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         return out;
     }
     // difftime printing: the unclassed numeric prints inside the "Time
-    /// difference of N units" phrasing exactly as print.difftime.
+    // difference of N units" phrasing exactly as print.difftime.
     if matches!(object, RObject::Real(_) | RObject::Integer(_)) && is_difftime(heap, interner, value) {
         let nums: Vec<f64> = match object {
             RObject::Real(vals) => vals.clone(),
@@ -494,7 +494,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         return format!("Time difference of {amount} {unit}");
     }
     // data.frame printing: classed lists lay out as tables — column names
-    /// right-justified over per-column widths, row names on the left,
+    // right-justified over per-column widths, row names on the left,
     /// character cells unquoted exactly as print.data.frame.
     if matches!(object, RObject::List(_)) && is_data_frame(heap, interner, value) {
         return format_data_frame(heap, interner, value);
@@ -509,14 +509,14 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         RObject::Nil => return "NULL".to_string(),
         RObject::List(items) if items.is_empty() && !is_data_frame(heap, interner, value) => {
             // GNU prints the bare empty list as list() exactly — no
-            /// recursion layout applies to zero elements.
+            // recursion layout applies to zero elements.
             return "list()".to_string();
         }
         RObject::List(items) => {
             // List printing in GNU is a recursive [[i]] layout — the slice
             // prints the flat element count shape for scalarness checks.
             // Named elements print under `$name` headers; unnamed ones keep
-            /// the positional [[i]] form — GNU's mixed-header rule.
+            // the positional [[i]] form — GNU's mixed-header rule.
             let names = crate::attrib::get_attrib(heap, interner, value, "names");
             let names_vec: Option<Vec<String>> = names.and_then(|id| match heap.object(id) {
                 Some(RObject::String(values)) => Some(
@@ -546,7 +546,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         RObject::Closure { .. } => return "<function>".to_string(),
         RObject::Environment { .. } => {
             // Named environments print their name exactly as GNU's
-            /// <environment: R_GlobalEnv> — the name rides the attribute
+            // <environment: R_GlobalEnv> — the name rides the attribute
             /// chain in the new world.
             let name = crate::attrib::get_attrib(heap, interner, value, "name")
                 .and_then(|id| match heap.object(id) {
@@ -586,7 +586,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         return format!("{base}\n{attrs}");
     }
     // Matrix layout: a two-length integer dim attribute lays the vector out
-    /// column-major under [,j] column headers and [i,] row labels exactly as
+    // column-major under [,j] column headers and [i,] row labels exactly as
     /// GNU's print.matrix does.
     if let Some(dim) = dim_attribute(heap, interner, value) {
         if dim.len() == 2 && dim[0] > 0 && dim[1] > 0 && dim[0] * dim[1] == length as i32 {
@@ -603,7 +603,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         }
     }
     // GNU right-justifies every element to the widest element text so the
-    /// columnar reading holds — NA padding is the visible consequence.
+    // columnar reading holds — NA padding is the visible consequence.
     // Real vectors share one decimal count across all elements — GNU's
     /// format.c uniformity rule: the maximum decimals any fixed-window
     /// element needs applies to all, so 100.5 drags 200 into 200.0.
@@ -652,7 +652,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         elements.iter().map(|e| e.len()).max().unwrap_or(0)
     };
     // GNU named-vector layout: the names print as a header row over the
-    /// values, each column right-justified to the wider of name and value,
+    // values, each column right-justified to the wider of name and value,
     /// with no [1] tags — the two-row reading is the tell.
     let names_id = crate::attrib::get_attrib(heap, interner, value, "names");
     let names_vec: Option<Vec<String>> = names_id.and_then(|id| match heap.object(id) {
@@ -668,7 +668,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     match names_vec {
         Some(names) => {
             // GNU's printNamedVector: one uniform width across every name
-            /// and value, each cell right-justified and followed by a
+            // and value, each cell right-justified and followed by a
             /// trailing space — line ends keep the final blank exactly as
             /// printvector.c emits it.
             let uniform = elements
@@ -693,7 +693,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
             out.push_str("[1]");
             if matches!(object, RObject::String(_)) {
                 // GNU character vectors column-align LEFT-justified to the
-                /// uniform width — the padding trails each element, the
+                // uniform width — the padding trails each element, the
                 /// line itself keeping the final blank exactly as
                 /// printvector.c emits it.
                 let uniform = elements.iter().map(|e| e.len()).max().unwrap_or(0);
@@ -712,7 +712,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         }
     }
     // GNU attribute blocks: every attribute the layout itself did not
-    /// consume prints as attr(,"name") followed by its own formatted body.
+    // consume prints as attr(,"name") followed by its own formatted body.
     out.push_str(&format_attribute_blocks(heap, interner, value));
     out
 }
@@ -787,7 +787,7 @@ fn format_matrix_inner(
 ) -> String {
     let element = |i: usize, j: usize| format_element(heap, interner, object, i + j * nrow);
     // Character matrix columns left-align exactly as GNU's printMatrix —
-    /// numeric columns right-align.
+    // numeric columns right-align.
     let left_align = matches!(object, RObject::String(_));
     let headers: Vec<String> = match &col_names {
         Some(names) => names.clone(),
@@ -808,7 +808,7 @@ fn format_matrix_inner(
     };
     let label_width = row_labels.iter().map(|l| l.len()).max().unwrap_or(0);
     // Positional headers carry a leading space column the bare dimnames
-    /// headers do not — GNU's alignment detail.
+    // headers do not — GNU's alignment detail.
     let positional = row_names.is_none() && col_names.is_none();
     let mut out = String::new();
     out.push_str(&" ".repeat(label_width + 1));
@@ -890,7 +890,7 @@ fn dimnames_of(
         let item = items.get(idx)?;
         match heap.object(*item) {
             // Empty vectors ride as absent exactly as GNU's NULL dimnames
-            /// entries — positional labels take their place.
+            // entries — positional labels take their place.
             Some(RObject::String(values)) if !values.is_empty() => Some(
                 values
                     .iter()
@@ -923,7 +923,7 @@ fn format_cell(heap: &Heap, interner: &SymbolInterner, column: &RObject, index: 
             let text = interner.string_text(values[index]);
             if text == "\0NA" {
                 // Frame cells render character NA bracketed exactly as
-                /// GNU's format.char — distinct from the bare NA of
+                // GNU's format.char — distinct from the bare NA of
                 /// matrix and vector printing.
                 "<NA>".to_string()
             } else {
@@ -1095,7 +1095,7 @@ fn format_factor(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Stri
 /// atomic literals carry their literal form.
 pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String {
     // S4 objects deparse as their constructing new() call exactly as GNU —
-    /// class name first, slots in definition order with deparsed values.
+    // class name first, slots in definition order with deparsed values.
     if let Some(class_text) = s4_class_of(heap, interner, value) {
         if let Some(RObject::List(items)) = heap.object(value) {
             let items = items.clone();
@@ -1148,7 +1148,7 @@ pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String
                 "+", "-", "*", "/", "^", "%%", "<", ">", "<=", ">=", "==", "!=", "|", "&", "~", "=", "<-", ":=", "%in%", "|>", "||", "&&",
             ];
             // `:` renders infix without spaces exactly as GNU — 1:3 —
-            /// while the arithmetic and comparison operators pad.
+            // while the arithmetic and comparison operators pad.
             if op_text == ":" && items.len() == 2 {
                 let left = deparse(heap, interner, items[0]);
                 let right = deparse(heap, interner, items[1]);
@@ -1179,7 +1179,7 @@ pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String
                 .enumerate()
                 .map(|(i, v)| {
                     // Tagged arguments render name = value exactly as GNU's
-                    /// deparse of a call object.
+                    // deparse of a call object.
                     let value_text = if *v == crate::id::ValueId::MISSING {
                         String::new()
                     } else {
@@ -1216,7 +1216,7 @@ pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String
         }
         Some(RObject::Nil) => "NULL".to_string(),
         // Multi-element atomic vectors deparse to their c() construction
-        /// exactly as GNU — each element rendering through the scalar forms.
+        // exactly as GNU — each element rendering through the scalar forms.
         Some(RObject::Real(vals)) if !vals.is_empty() => {
             let parts: Vec<String> = vals.iter().map(|v| format_real(*v)).collect();
             format!("c({})", parts.join(", "))

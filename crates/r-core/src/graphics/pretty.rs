@@ -91,7 +91,7 @@ pub fn r_pretty(
     let subsmall = if subsmall == 0.0 { DBL_MIN } else { subsmall };
 
     // GNU warns through the error channel for extreme cells; the pure
-    /// world clamps silently exactly as far as results are concerned.
+    // world clamps silently exactly as far as results are concerned.
     if cell < subsmall {
         cell = subsmall;
     } else if cell > DBL_MAX / max_f {

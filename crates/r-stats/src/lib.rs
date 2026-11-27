@@ -150,7 +150,7 @@ pub fn dpq_primitive(
                 PEXP => r_math::dist::exponential::pexp_inner(x, 1.0 / param1, lower_flag, log_flag),
                 QEXP => r_math::dist::exponential::qexp_inner(x, 1.0 / param1, lower_flag, log_flag),
                 // GNU's gamma exposes rate with scale = 1/rate exactly as
-                /// the exponential inversion — the core wants scale.
+                // the exponential inversion — the core wants scale.
                 DGAMMA => r_math::dist::gamma::dgamma_inner(x, param1, 1.0 / param2, log_flag),
                 PGAMMA => r_math::dist::gamma::pgamma_inner(x, param1, 1.0 / param2, lower_flag, log_flag),
                 QGAMMA => r_math::dist::gamma::qgamma_inner(x, param1, 1.0 / param2, lower_flag, log_flag),
@@ -237,7 +237,7 @@ pub fn weighted_sample_indices_pure(
     let n = probs.len();
     let mut p = probs.to_vec();
     // FixupProb exactly: validation order NA then negative then positive
-    /// count, normalization to sum one.
+    // count, normalization to sum one.
     let mut sum = 0.0;
     let mut npos = 0usize;
     for value in p.iter() {
@@ -264,7 +264,7 @@ pub fn weighted_sample_indices_pure(
             walker_sample_pure(heap, &mut p, size)
         } else {
             // ProbSampleReplace exactly: descending heapsort with the
-            /// permutation carried, cumulative in place, linear scan.
+            // permutation carried, cumulative in place, linear scan.
             let mut perm: Vec<i32> = (1..=n as i32).collect();
             r_core::support::sort::revsort_with_perm(&mut p, &mut perm, n);
             for i in 1..n {
@@ -287,7 +287,7 @@ pub fn weighted_sample_indices_pure(
         }
     } else {
         // ProbSampleNoReplace exactly: descending heapsort, totalmass
-        /// depletion with the p/perm shift-down compaction.
+        // depletion with the p/perm shift-down compaction.
         let mut perm: Vec<i32> = (1..=n as i32).collect();
         r_core::support::sort::revsort_with_perm(&mut p, &mut perm, n);
         let mut totalmass = 1.0_f64;
@@ -430,7 +430,7 @@ pub fn loess_core_fit(xs: &[f64], ys: &[f64], span: f64, degree: usize) -> Vec<f
     vertices.dedup();
     let fits: Vec<(f64, f64)> = vertices.iter().map(|&q| vertex_fit(xs, ys, q, nf, span, degree)).collect();
     // Cubic Hermite blending exactly as ehg128: value and slope pairs at
-    /// the leaf's corner vertices, the derivative terms scaled by the
+    // the leaf's corner vertices, the derivative terms scaled by the
     /// cell width.
     let mut fitted = vec![0.0f64; n];
     for i in 0..n {
@@ -476,7 +476,7 @@ pub fn loess_primitive(
     let formula = eval(heap, interner, operands_raw[0], caller_env)?;
     let formula = force_if_promise(heap, interner, formula)?;
     // Parse the formula exactly as y ~ x: the tilde-headed language object
-    /// with the response as car of cdr and predictor as car of cddr.
+    // with the response as car of cdr and predictor as car of cddr.
     let (mut response, mut predictor) = (ValueId::NIL, ValueId::NIL);
     if let Some(RObject::Language { car, cdr, .. }) = heap.object(formula) {
         let mut cursor = *cdr;
@@ -501,7 +501,7 @@ pub fn loess_primitive(
         return Err(EvalError::Condition("loess requires equal-length numeric x and y".to_string()).into());
     }
     // span and degree exactly as GNU's defaults; tagged overrides read
-    /// through the argument tags.
+    // through the argument tags.
     let mut span = 0.75f64;
     let mut degree = 2usize;
     let mut cursor = args;
@@ -609,7 +609,7 @@ pub fn rngkind_primitive(
     let prior_normal = "Inversion";
     let prior_sample = if heap.sample_kind_rounding { "Rounding" } else { "Rejection" };
     // Walk the argument pairlist exactly as GNU's dotted-pair matching:
-    /// tagged arguments route by name, untagged fill positions in order.
+    // tagged arguments route by name, untagged fill positions in order.
     let mut values: [Option<ValueId>; 3] = [None, None, None];
     let mut position = 0usize;
     let mut cursor = args;
@@ -758,7 +758,7 @@ pub fn sample_primitive(
     int_form: bool,
 ) -> EvalResult {
     // GNU's formals exactly: x/n, size, replace, prob — named arguments
-    /// bind by name and positionals fill the gaps exactly as pmatch.
+    // bind by name and positionals fill the gaps exactly as pmatch.
     let formal_names: &[&str] = if int_form {
         &["n", "size", "replace", "prob"]
     } else {
@@ -818,7 +818,7 @@ pub fn sample_primitive(
             )));
         }
         // GNU's uniform branch exactly as random.c do_sample: independent
-        /// full-population draws when replacing (or a single draw), else
+        // full-population draws when replacing (or a single draw), else
         /// the Fisher-Yates copy-out loop pool[j] = pool[--remaining].
         if !probs.is_empty() {
             if probs.len() != n {
@@ -1093,7 +1093,7 @@ pub fn quantile_primitive(
         .collect();
     let result = heap.alloc(RObject::Real(out));
     // GNU names every quantile with its percent — integer percents print
-    /// bare exactly as format(100*p) trims trailing zeros.
+    // bare exactly as format(100*p) trims trailing zeros.
     let names: Vec<_> = probs
         .iter()
         .map(|p| {

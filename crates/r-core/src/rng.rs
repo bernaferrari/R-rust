@@ -66,7 +66,7 @@ impl PureRng {
             s = s.wrapping_mul(69069).wrapping_add(1);
         }
         // The fill covers mti's slot first exactly as GNU fills
-        /// i_seed[0..=624] before FixupSeeds resets the index.
+        // i_seed[0..=624] before FixupSeeds resets the index.
         let mut fill = [0u32; MT_N + 1];
         for word in fill.iter_mut() {
             s = s.wrapping_mul(69069).wrapping_add(1);
@@ -75,7 +75,7 @@ impl PureRng {
         self.mt.copy_from_slice(&fill[1..]);
         self.mti = MT_N;
         // FixupSeeds' all-zero guard reinitializes; the scramble never
-        /// produces it, but mirror the check exactly.
+        // produces it, but mirror the check exactly.
         if self.mt.iter().all(|w| *w == 0) {
             self.mti = MT_N + 1;
         }
