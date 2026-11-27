@@ -24,6 +24,7 @@ pub mod graphics;
 pub mod civil;
 pub mod roots;
 pub mod parser;
+pub mod conformance_sweep;
 pub mod session;
 pub mod support;
 pub mod path_policy;
