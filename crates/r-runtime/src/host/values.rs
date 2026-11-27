@@ -19,9 +19,6 @@ pub struct RResult {
     pub stderr: String,
 }
 
-pub(crate) fn saturating_usize(value: u64) -> usize {
-    usize::try_from(value).unwrap_or(usize::MAX)
-}
 
 /// Runtime state needed by Android hosts to wire package libraries and temp files.
 #[derive(Debug, Clone, PartialEq)]

@@ -82,10 +82,6 @@
 #![allow(clippy::range_minus_one)]
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
 #![allow(clippy::wildcard_in_or_patterns)]
-#![allow(clippy::never_loop)]
-#![allow(clippy::while_immutable_condition)]
-#![allow(clippy::mut_range_bound)]
-#![allow(clippy::absurd_extreme_comparisons)]
 // C expression/closure patterns
 #![allow(clippy::redundant_closure_for_method_calls)]
 #![allow(clippy::map_unwrap_or)]
@@ -160,7 +156,6 @@
 #![allow(clippy::explicit_auto_deref)]
 #![allow(clippy::len_zero)]
 #![allow(clippy::write_with_newline)]
-#![allow(clippy::drop_non_drop)]
 #![allow(clippy::assertions_on_constants)]
 #![allow(clippy::naive_bytecount)]
 #![warn(unused_unsafe)]

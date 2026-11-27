@@ -85,53 +85,13 @@ pub fn bessel_y(x: f64, alpha: f64) -> f64 {
 mod ffi {
     use std::os::raw::{c_double, c_int};
 
-    /// C FFI shim: Rf_bessel_i(x, alpha, expo)
-    ///
-    /// `expo` is interpreted as a C int: 0 = unscaled, nonzero = exponentiated.
-    pub fn Rf_bessel_i(x: c_double, alpha: c_double, expo: c_int) -> c_double {
-        super::bessel_i(x, alpha, expo != 0)
-    }
 
-    /// C FFI shim: bessel_i(x, alpha, expo)
-    ///
-    /// `expo` is interpreted as a C int: 0 = unscaled, nonzero = exponentiated.
-    pub fn bessel_i(x: c_double, alpha: c_double, expo: c_int) -> c_double {
-        super::bessel_i(x, alpha, expo != 0)
-    }
 
-    /// C FFI shim: Rf_bessel_j(x, alpha)
-    pub fn Rf_bessel_j(x: c_double, alpha: c_double) -> c_double {
-        super::bessel_j(x, alpha)
-    }
 
-    /// C FFI shim: bessel_j(x, alpha)
-    pub fn bessel_j(x: c_double, alpha: c_double) -> c_double {
-        super::bessel_j(x, alpha)
-    }
 
-    /// C FFI shim: Rf_bessel_k(x, alpha, expo)
-    ///
-    /// `expo` is interpreted as a C int: 0 = unscaled, nonzero = exponentiated.
-    pub fn Rf_bessel_k(x: c_double, alpha: c_double, expo: c_int) -> c_double {
-        super::bessel_k(x, alpha, expo != 0)
-    }
 
-    /// C FFI shim: bessel_k(x, alpha, expo)
-    ///
-    /// `expo` is interpreted as a C int: 0 = unscaled, nonzero = exponentiated.
-    pub fn bessel_k(x: c_double, alpha: c_double, expo: c_int) -> c_double {
-        super::bessel_k(x, alpha, expo != 0)
-    }
 
-    /// C FFI shim: Rf_bessel_y(x, alpha)
-    pub fn Rf_bessel_y(x: c_double, alpha: c_double) -> c_double {
-        super::bessel_y(x, alpha)
-    }
 
-    /// C FFI shim: bessel_y(x, alpha)
-    pub fn bessel_y(x: c_double, alpha: c_double) -> c_double {
-        super::bessel_y(x, alpha)
-    }
 }
 
 #[cfg(test)]

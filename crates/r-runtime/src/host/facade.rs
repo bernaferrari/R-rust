@@ -9,14 +9,7 @@
 use super::RValue;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Process-wide counter assigning each session a unique id.
-static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
 
-/// Allocate the next session identity. Wraps at u64 exhaustion — the
-/// facade never exposes failure for what is unreachable in practice.
-pub(crate) fn next_session_id() -> u64 {
-    NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed)
-}
 
 /// Errors that can occur during R session operations.
 #[derive(Debug)]

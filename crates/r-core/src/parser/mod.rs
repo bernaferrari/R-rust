@@ -60,6 +60,7 @@ pub struct Parser<'h, 'i> {
     /// symbol" scan so inputs without `=>` skip it entirely.
     have_pipebind: bool,
     /// Per-token flag: is this token inside an unclosed `(`/`[`/`{` group?
+    #[allow(dead_code)] // parse-time depth bookkeeping retained for the exact GNU error-position surface; read side pending the clustered-error work
     inside_group: Vec<bool>,
     /// Newline before an infix operator continues only inside `(` / `[`.
     inside_nest: Vec<bool>,

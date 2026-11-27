@@ -64,7 +64,6 @@ fn warn_incomplete(x: f64, fraction: f64, count: i32, ncalc: i32) {
     ml_warn_message(message.text());
 }
 
-const NSIG_BESS: f64 = 16.0;
 const ENSIG_BESS: f64 = 1e16;
 const RTNSIG_BESS: f64 = 1e-4;
 const ENMTEN_BESS: f64 = 8.9e-308;

@@ -761,19 +761,6 @@ fn dim_attribute(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Opti
     }
 }
 
-/// Column-major matrix print: header line indented by the row-label width,
-/// every column right-justified to the wider of its widest element and its
-/// header — GNU's print.matrix layout for the atomic types. Dimnames
-/// replace the positional `[,j]`/`[i,]` labels with bare names.
-fn format_matrix(
-    heap: &Heap,
-    interner: &SymbolInterner,
-    object: &RObject,
-    nrow: usize,
-    ncol: usize,
-) -> String {
-    format_matrix_inner(heap, interner, object, nrow, ncol, None, None)
-}
 
 #[allow(clippy::too_many_arguments)]
 fn format_matrix_inner(

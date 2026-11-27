@@ -945,12 +945,6 @@ fn baked_package_info(package: &str) -> Option<super::packages::RPackageInfo> {
     })
 }
 
-fn baked_package_inventory() -> Vec<super::packages::RPackageInfo> {
-    r_base::assets::BAKED_PACKAGES
-        .iter()
-        .filter_map(|(name, _)| baked_package_info(name))
-        .collect()
-}
 
 /// Rasterize one recorded scene through the Vello CPU renderer exactly
 /// as the device file path does — the host-facing and file-facing

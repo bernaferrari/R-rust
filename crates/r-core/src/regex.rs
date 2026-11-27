@@ -10,7 +10,12 @@ enum Node {
     Char(char),
     Any,
     Class { negate: bool, ranges: Vec<(char, char)>, chars: Vec<char> },
+    // greedy flag retained: POSIX ERE is uniformly greedy exactly as GNU
+    // compiles it; the flag exists for the GNU extension surface the
+    // engine does not yet implement.
+    #[allow(dead_code)]
     Star(Box<Node>, bool),
+    #[allow(dead_code)] // greediness flag — same POSIX-uniform semantics as Star
     Plus(Box<Node>, bool),
     Opt(Box<Node>),
     Concat(Vec<Node>),

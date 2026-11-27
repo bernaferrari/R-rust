@@ -12,8 +12,6 @@ use libm::*;
 use std::collections::HashMap;
 use std::os::raw::{c_double, c_int};
 
-// Constants
-const WILCOX_MAX: i32 = 50;
 const DBL_EPSILON: f64 = 2.220446049250313e-16;
 
 // Per-session cached workspace for cwilcox.

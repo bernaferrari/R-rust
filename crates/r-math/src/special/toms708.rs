@@ -37,7 +37,6 @@ use libm::*;
 // but the TOMS 708 implementation uses its own gamln/gamln1 internally.
 
 const DBL_MIN: f64 = 2.2250738585072014e-308;
-const DBL_MAX: f64 = 1.7976931348623157e+308;
 const DBL_EPSILON: f64 = 2.220446049250313e-16;
 const INT_MAX_I32: i32 = 2147483647;
 const M_LN_SQRT_2PI: f64 = 0.918938533204672741780329736406;

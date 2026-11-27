@@ -76,6 +76,7 @@ fn min0(x: i32, y: i32) -> i32 {
 ///
 /// # Returns
 /// - `ncalc`: Number of orders successfully calculated
+#[allow(clippy::mut_range_bound)] // Fortran range-bound reuse: nstart is intentionally reassigned as scratch state for the overflow-rescale restart, exactly as the netlib original mutates it — the range itself was evaluated once at loop entry.
 fn i_bessel<W: BesselWorkspace + ?Sized>(x: f64, alpha: f64, nb: i32, ize: i32, bi: &mut W) -> i32 {
     let const_ = 1.585;
 

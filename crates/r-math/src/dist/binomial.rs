@@ -589,28 +589,29 @@ pub fn rbinom_inner(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathSta
             return ix as f64;
         }
 
-        // L_np_small: np = n*p < 30 : inverse CDF
+        // L_np_small: np = n*p < 30 : inverse CDF — the Fortran
+        // restart structure never restarts: both exits return, so the
+        // outer loop collapses to straight-line evaluation exactly as
+        // the numeric semantics require.
+        let mut ix: i32 = 0;
+        let mut f = st.qn;
+        let mut u = rng();
         loop {
-            let mut ix: i32 = 0;
-            let mut f = st.qn;
-            let mut u = rng();
-            loop {
-                if u < f {
-                    break;
-                }
-                if ix > 110 {
-                    break;
-                }
-                u -= f;
-                ix += 1;
-                f *= g / (ix as f64) - r_val;
+            if u < f {
+                break;
             }
-            let result = ix;
-            if st.psave > 0.5 {
-                return (n - result) as f64;
+            if ix > 110 {
+                break;
             }
-            return result as f64;
+            u -= f;
+            ix += 1;
+            f *= g / (ix as f64) - r_val;
         }
+        let result = ix;
+        if st.psave > 0.5 {
+            return (n - result) as f64;
+        }
+        return result as f64;
 
 }
 

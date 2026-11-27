@@ -8189,20 +8189,13 @@ pub fn concat_primitive(
     let result = concat_primitive_inner(heap, interner, args, caller_env)?;
     // The datetime stamp rides the concatenated result — first operand's
     // class method governs exactly as GNU's dispatch.
-    let mut cursor = args;
-    let first = loop {
-        let (car, cdr, _) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break ValueId::NIL,
-        };
-        let evaluated = eval(heap, interner, car, caller_env)?;
-        break force_if_promise(heap, interner, evaluated)?;
-        #[allow(unreachable_code)]
-        {
-            cursor = cdr;
+    let first = match heap.object(args) {
+        Some(RObject::Pairlist { car, .. }) => {
+            let evaluated = eval(heap, interner, *car, caller_env)?;
+            force_if_promise(heap, interner, evaluated)?
         }
+        _ => ValueId::NIL,
     };
-    let _ = cursor;
     if first != ValueId::NIL {
         if is_posixct_classed(heap, interner, first) && !is_posixct_classed(heap, interner, result) {
             let tz = get_attrib(heap, interner, first, "tzone");

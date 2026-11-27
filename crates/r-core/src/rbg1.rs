@@ -62,7 +62,6 @@ struct Parsed {
     refs: Vec<u32>,
     data: Vec<u8>,
     len: u32,
-    extra: u8,
 }
 
 struct Cursor<'a> {
@@ -181,7 +180,6 @@ fn parse_node(cursor: &mut Cursor<'_>) -> Option<Parsed> {
         refs,
         data,
         len,
-        extra,
     })
 }
 
@@ -256,7 +254,6 @@ pub fn decode_payload(
         refs: vec![],
         data: vec![],
         len: 0,
-        extra: 0,
     });
     for _ in 1..node_count {
         nodes.push(parse_node(&mut cursor)?);
