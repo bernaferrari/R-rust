@@ -9,6 +9,7 @@
 
 // Attribute machinery lives in r-core's object model exactly as the DAG
 // requires — re-exported here so the registry's existing paths resolve.
+pub use crate::gfxprim::*;
 pub use r_core::attrib::{attrib_names, get_attrib, get_attrib_public, is_date_classed, is_posixct_classed, string_vec_pub};
 use r_core::attrib::string_vec;
 
@@ -769,7 +770,7 @@ pub fn call_primitive(
     result
 }
 
-fn call_primitive_inner(
+pub fn call_primitive_inner(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     id: BuiltinId,
@@ -7123,7 +7124,7 @@ fn call_primitive_inner(
 
 /// Collect the raw argument expressions of a call without evaluating them —
 /// what special forms operate on.
-fn raw_args(heap: &Heap, mut args: ValueId) -> Vec<ValueId> {
+pub fn raw_args(heap: &Heap, mut args: ValueId) -> Vec<ValueId> {
     let mut out = Vec::new();
     for _ in 0..100_000 {
         match heap.object(args) {
@@ -7142,7 +7143,7 @@ fn raw_args(heap: &Heap, mut args: ValueId) -> Vec<ValueId> {
 
 /// `if (test) yes else no` — the test is forced to a single logical;
 /// a missing else branch yields NIL, exactly GNU's invisible NULL.
-fn if_form(
+pub fn if_form(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -7173,7 +7174,7 @@ fn if_form(
 
 /// `{ ... }` — sequence evaluation in the same environment, value of the
 /// last expression; empty blocks yield NIL.
-fn brace_form(
+pub fn brace_form(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -7189,7 +7190,7 @@ fn brace_form(
 /// `<-` / `=` and `<<-` — assignment special forms. The left operand is an
 /// unevaluated symbol; the right evaluates in the caller's environment and
 /// is itself the value of the assignment expression, exactly GNU.
-fn assign_form(
+pub fn assign_form(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -7261,7 +7262,7 @@ fn assign_form(
 }
 
 /// `return(value)` — evaluate the operand and signal the unwinding.
-fn return_form(
+pub fn return_form(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -7285,7 +7286,7 @@ fn return_form(
 /// environment and forced. Integer+integer stays integer (except division,
 /// which is always real); any real operand yields real. Length recycling
 /// requires the longer length be a multiple of the shorter.
-fn arithmetic(
+pub fn arithmetic(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -7676,7 +7677,7 @@ fn arithmetic(
 /// the attribute chain of the longer operand (ties favor the left), so
 /// names survive vector arithmetic and dim/dimnames survive matrix
 /// arithmetic exactly.
-fn propagate_attributes(
+pub fn propagate_attributes(
     heap: &mut Heap,
     left: ValueId,
     right: ValueId,
@@ -7695,7 +7696,7 @@ fn propagate_attributes(
 }
 
 /// Evaluate and force the leading `expected` arguments of a call.
-fn eval_args(
+pub fn eval_args(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -7736,7 +7737,7 @@ enum Numeric {
     Real(Vec<f64>),
 }
 
-fn numeric_operands(heap: &Heap, value: ValueId) -> Result<Numeric, EvalError> {
+pub fn numeric_operands(heap: &Heap, value: ValueId) -> Result<Numeric, EvalError> {
     match heap.object(value) {
         Some(RObject::Integer(values)) => Ok(Numeric::Integer(values.clone())),
         Some(RObject::Real(values)) => Ok(Numeric::Real(values.clone())),
@@ -7745,7 +7746,7 @@ fn numeric_operands(heap: &Heap, value: ValueId) -> Result<Numeric, EvalError> {
     }
 }
 
-fn as_reals(numeric: Numeric) -> Vec<f64> {
+pub fn as_reals(numeric: Numeric) -> Vec<f64> {
     match numeric {
         Numeric::Real(values) => values,
         Numeric::Integer(values) => values
@@ -7763,7 +7764,7 @@ fn as_reals(numeric: Numeric) -> Vec<f64> {
 
 /// Elementwise binary fold with GNU recycling: the longer length must be a
 /// multiple of the shorter; length-one operands recycle silently.
-fn fold_numeric<T: Copy>(
+pub fn fold_numeric<T: Copy>(
     a: Vec<T>,
     b: Vec<T>,
     _op: u32,
@@ -7787,7 +7788,7 @@ fn fold_numeric<T: Copy>(
 /// `while (test) body` — loops until the test forces false. `break`
 /// unwinds out of the loop entirely; `next` skips to the next iteration.
 /// The loop value is always NIL in GNU.
-fn while_form(
+pub fn while_form(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -7814,7 +7815,7 @@ fn while_form(
 }
 
 /// `repeat body` — an unconditional loop; only `break` exits.
-fn repeat_form(
+pub fn repeat_form(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -7838,7 +7839,7 @@ fn repeat_form(
 /// `for (var in seq) body` — binds each sequence element in turn. Loop
 /// variables in R persist after the loop and take the last element's
 /// value; elements are boxed as length-one vectors, matching GNU.
-fn for_form(
+pub fn for_form(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -7870,7 +7871,7 @@ fn for_form(
 }
 
 /// Force a value to a single truth value, GNU's condition coercion.
-fn truthy(heap: &Heap, value: ValueId) -> Result<bool, RSignal> {
+pub fn truthy(heap: &Heap, value: ValueId) -> Result<bool, RSignal> {
     match heap.object(value) {
         Some(RObject::Logical(values)) if !values.is_empty() => Ok(values[0] != 0),
         Some(RObject::Integer(values)) if !values.is_empty() => Ok(values[0] != 0),
@@ -7881,7 +7882,7 @@ fn truthy(heap: &Heap, value: ValueId) -> Result<bool, RSignal> {
 
 /// Explode a vector into per-element length-one vectors — what for-loop
 /// iteration binds. List elements pass through unboxed, exactly GNU.
-fn sequence_elements(heap: &mut Heap, seq: ValueId) -> Result<Vec<ValueId>, RSignal> {
+pub fn sequence_elements(heap: &mut Heap, seq: ValueId) -> Result<Vec<ValueId>, RSignal> {
     let elements: Vec<RObject> = match heap.object(seq) {
         Some(RObject::Real(values)) => values
             .iter()
@@ -7930,14 +7931,14 @@ fn sequence_elements(heap: &mut Heap, seq: ValueId) -> Result<Vec<ValueId>, RSig
 /// recycling, logical results.
 
 /// Ordered-factor class membership — the class vector carries "ordered".
-fn is_ordered_classed(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
+pub fn is_ordered_classed(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
     match get_attrib(heap, interner, value, "class") {
         Some(class_id) => string_vec(heap, interner, class_id).iter().any(|c| c == "ordered"),
         None => false,
     }
 }
 
-fn comparison(
+pub fn comparison(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -8921,7 +8922,7 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
 /// `function (formals) body` — closure construction. Neither operand
 /// evaluates: the formals pairlist and body expression capture verbatim
 /// alongside the defining environment, exactly GNU's `mkClosure`.
-fn function_form(heap: &mut Heap, args: ValueId, caller_env: ValueId) -> EvalResult {
+pub fn function_form(heap: &mut Heap, args: ValueId, caller_env: ValueId) -> EvalResult {
     let parts = raw_args(heap, args);
     // The parser emits an optional third environment operand (NIL when
     // absent); explicit environments are outside the migration slice.
@@ -8939,7 +8940,7 @@ fn function_form(heap: &mut Heap, args: ValueId, caller_env: ValueId) -> EvalRes
 /// NULL operands drop out. All operands coerce to the highest type present
 /// in the logical < integer < real < character hierarchy. Names are outside
 /// the migration slice.
-fn concat_primitive(
+pub fn concat_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -8987,7 +8988,7 @@ fn concat_primitive(
     Ok(result)
 }
 
-fn concat_primitive_inner(
+pub fn concat_primitive_inner(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -9313,7 +9314,7 @@ fn concat_primitive_inner(
 
 /// `length(x)` — element count as a length-one integer, GNU exactly for
 /// atomic and list vectors.
-fn length_primitive(
+pub fn length_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -9372,7 +9373,7 @@ fn length_primitive(
 /// `from:to` — unit-step sequence, ascending or descending, inclusive of
 /// `to` when it lands exactly. Integer when both operands are integer,
 /// real otherwise — GNU's documented behaviour for the slice.
-fn colon_primitive(
+pub fn colon_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -9419,7 +9420,7 @@ fn colon_primitive(
 /// out-of-range positive indices and NA indices yield NA elements.
 /// Negative indices exclude. Logical indices recycle across the vector.
 /// Zero indices drop out. Real indices truncate toward zero, exactly GNU.
-fn subset_primitive(
+pub fn subset_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -9446,7 +9447,7 @@ fn subset_primitive(
 /// columns select across the frame, character column indexes match the
 /// names, and the result drops to a plain vector exactly when a single
 /// column survives and drop is not FALSE. Row subsets never drop.
-fn data_frame_matrix_subset(
+pub fn data_frame_matrix_subset(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     object: ValueId,
@@ -9610,7 +9611,7 @@ fn data_frame_matrix_subset(
 
 /// The NA-string sentinel for character extraction — interned once per
 /// use exactly as the object model represents NA_character_.
-fn interner_na_string(heap: &mut Heap, interner: &mut SymbolInterner) -> r_core::intern::InternedStr {
+pub fn interner_na_string(heap: &mut Heap, interner: &mut SymbolInterner) -> r_core::intern::InternedStr {
     let _ = heap;
     // The NUL-prefixed sentinel is the codebase's NA_character_
     /// representation exactly as GNU's NA_STRING — plain "NA" would be
@@ -9618,7 +9619,7 @@ fn interner_na_string(heap: &mut Heap, interner: &mut SymbolInterner) -> r_core:
     interner.intern_string("\0NA")
 }
 
-fn matrix_subset(
+pub fn matrix_subset(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     raw: Vec<ValueId>,
@@ -9708,7 +9709,7 @@ fn matrix_subset(
 
 /// Subsetting core operating on already-evaluated operands — shared by the
 /// primitive and by the real-index truncation recursion.
-fn subset_impl(
+pub fn subset_impl(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     source: ValueId,
@@ -9894,7 +9895,7 @@ fn subset_impl(
     Ok(extracted)
 }
 
-fn vector_length(heap: &Heap, value: ValueId) -> Option<usize> {
+pub fn vector_length(heap: &Heap, value: ValueId) -> Option<usize> {
     match heap.object(value) {
         Some(RObject::Logical(v)) => Some(v.len()),
         Some(RObject::Integer(v)) => Some(v.len()),
@@ -9929,7 +9930,7 @@ fn vector_length(heap: &Heap, value: ValueId) -> Option<usize> {
 
 /// Extract positions from an atomic vector into a fresh vector of the same
 /// type; usize::MAX positions yield the type's NA element.
-fn extract_elements(
+pub fn extract_elements(
     heap: &mut Heap,
     source: ValueId,
     positions: &[usize],
@@ -9988,7 +9989,7 @@ fn extract_elements(
 
 /// Extract a logical view of a value with GNU coercion: numeric zero is
 /// FALSE, nonzero TRUE, NA propagates as the integer NA sentinel.
-fn logicals_of_value(heap: &Heap, value: ValueId) -> Result<Vec<i32>, EvalError> {
+pub fn logicals_of_value(heap: &Heap, value: ValueId) -> Result<Vec<i32>, EvalError> {
     match heap.object(value) {
         Some(RObject::Logical(values)) => Ok(values.clone()),
         Some(RObject::Integer(values)) => Ok(values.clone()),
@@ -10011,7 +10012,7 @@ fn logicals_of_value(heap: &Heap, value: ValueId) -> Result<Vec<i32>, EvalError>
 /// `&` and `|` — elementwise logic with GNU NA semantics: NA & FALSE is
 /// FALSE, NA & TRUE is NA, NA | TRUE is TRUE, NA | FALSE is NA. Length
 /// recycling follows the arithmetic rule.
-fn logic_elementwise(
+pub fn logic_elementwise(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -10048,7 +10049,7 @@ fn logic_elementwise(
 }
 
 /// `!` — elementwise negation; NA stays NA, exactly GNU.
-fn logic_not(
+pub fn logic_not(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -10067,7 +10068,7 @@ fn logic_not(
 /// `&&` and `||` — short-circuit operators over first elements only. The
 /// right operand evaluates only when the left doesn't decide the outcome —
 /// GNU's control-flow contract, which side effects observe.
-fn logic_short_circuit(
+pub fn logic_short_circuit(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -10124,7 +10125,7 @@ fn logic_short_circuit(
 
 /// Numeric coercion for the reduction and math primitives: logical and
 /// integer vectors widen to reals with the NA bit pattern preserved.
-fn reals_of_value(heap: &Heap, value: ValueId) -> Result<Vec<f64>, EvalError> {
+pub fn reals_of_value(heap: &Heap, value: ValueId) -> Result<Vec<f64>, EvalError> {
     match heap.object(value) {
         Some(RObject::Real(values)) => Ok(values.clone()),
         Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => Ok(values
@@ -10145,7 +10146,7 @@ fn reals_of_value(heap: &Heap, value: ValueId) -> Result<Vec<f64>, EvalError> {
 /// element poisons the reduction (the slice has no na.rm yet). Integer and
 /// logical inputs fold in integer arithmetic exactly as GNU does; real
 /// inputs fold in real.
-fn reduction(
+pub fn reduction(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -10199,7 +10200,7 @@ fn reduction(
 
 /// Concatenate vectors exactly as `c()` — same-type fast path, numeric
 /// promotion otherwise. Shared by the variadic reduction reshape.
-fn concat_vectors(heap: &mut Heap, inputs: &[ValueId]) -> Result<ValueId, EvalError> {
+pub fn concat_vectors(heap: &mut Heap, inputs: &[ValueId]) -> Result<ValueId, EvalError> {
     if inputs.len() == 1 {
         return Ok(inputs[0]);
     }
@@ -10228,7 +10229,7 @@ fn concat_vectors(heap: &mut Heap, inputs: &[ValueId]) -> Result<ValueId, EvalEr
     Ok(heap.alloc(RObject::Real(out)))
 }
 
-fn reduction_fold(
+pub fn reduction_fold(
     heap: &mut Heap,
     op: u32,
     operands: &[ValueId],
@@ -10275,7 +10276,7 @@ fn reduction_fold(
 /// Elementwise unary math — `sqrt`/`exp`/`log`/`abs` over real-coerced
 /// inputs. NA inputs yield NA outputs; domain behavior matches IEEE, which
 /// is what GNU inherits from libm.
-fn math_unary(
+pub fn math_unary(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -10339,7 +10340,7 @@ fn math_unary(
 /// Negative indices count exclusion-invariant positions exactly as GNU's
 /// scalar negative subscript — the slice supports positive indices and
 /// documents the negative case as future work.
-fn extract_primitive(
+pub fn extract_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -10431,7 +10432,7 @@ fn extract_primitive(
 
 /// Coerce a value to its character representation with GNU formatting for
 /// the atomic types in the migration slice.
-fn strings_of_value(
+pub fn strings_of_value(
     heap: &Heap,
     interner: &mut SymbolInterner,
     value: ValueId,
@@ -10503,7 +10504,7 @@ fn strings_of_value(
 /// the vector operands in order. `paste0` maps here with an empty default
 /// separator — resolved by call name at the import boundary, so the slice
 /// reads the separator argument identically for both spellings.
-fn paste_primitive(
+pub fn paste_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -10616,7 +10617,7 @@ fn paste_primitive(
 }
 
 /// `nchar(x)` — character counts per element, integer output exactly GNU.
-fn nchar_primitive(
+pub fn nchar_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -10644,7 +10645,7 @@ fn nchar_primitive(
 /// `[` call. The slice requires the subscripted object be a plain symbol —
 /// nested replacement chains are deep GNU territory beyond the migration
 /// scaffolding.
-fn assign_replacement(
+pub fn assign_replacement(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     target: ValueId,
@@ -10765,7 +10766,7 @@ fn assign_replacement(
 }
 
 /// `[<-` as a primitive: positional arguments object, index, value.
-fn subset_assign_primitive(
+pub fn subset_assign_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -10782,7 +10783,7 @@ fn subset_assign_primitive(
 /// one position; environments define through reference semantics exactly
 /// as `$<-` does. NULL values delete list elements rather than storing
 /// the null constant.
-fn subset2_assign_primitive(
+pub fn subset2_assign_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -10932,7 +10933,7 @@ fn subset2_assign_primitive(
 /// excluded positions. Logical indices select replacement positions. The
 /// slice requires the value's type match the object's — type promotion in
 /// replacement is documented as future work.
-fn subset_replace(
+pub fn subset_replace(
     heap: &mut Heap,
     object: ValueId,
     index: ValueId,
@@ -11076,7 +11077,7 @@ fn subset_replace(
 
 /// `numeric(n)`/`integer(n)`/`logical(n)` — zero/FALSE-filled vectors of
 /// the requested length, GNU's constructor defaults exactly.
-fn vector_constructor(
+pub fn vector_constructor(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -11182,7 +11183,7 @@ pub fn copy_with_attrib(
 
 /// `names(x)` — the names attribute as a character vector, or NIL when the
 /// object has none, exactly GNU.
-fn names_primitive(
+pub fn names_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -11218,7 +11219,7 @@ fn names_primitive(
 
 /// The names<- core, shared between the replacement primitive and the
 /// assignment desugar: a copy of the object carrying the new names.
-fn names_assign_core(
+pub fn names_assign_core(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     obj: ValueId,
@@ -11228,7 +11229,7 @@ fn names_assign_core(
 }
 
 /// `` `names<-` `` as a primitive: positional object and value.
-fn names_assign_primitive(
+pub fn names_assign_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -11245,7 +11246,7 @@ fn names_assign_primitive(
 /// of the same type; list elements unbox exactly as `[[`.
 /// The 72 graphics parameters GNU's par() knows — the readonly device
 /// six (cin cra csi cxy din page) excluded by no.readonly exactly.
-const PAR_NAMES: &[&str] = &[
+pub const PAR_NAMES: &[&str] = &[
     "adj", "ann", "ask", "bg", "bty", "cex", "cex.axis", "cex.lab", "cex.main", "cex.sub",
     "cin", "col", "col.axis", "col.lab", "col.main", "col.sub", "cra", "crt", "csi", "cxy",
     "din", "err", "family", "fg", "fig", "fin", "font", "font.axis", "font.lab", "font.main",
@@ -11255,70 +11256,20 @@ const PAR_NAMES: &[&str] = &[
     "tcl", "usr", "xaxp", "xaxs", "xaxt", "xlog", "xpd", "yaxp", "yaxs", "yaxt",
     "ylog", "ylbias",
 ];
-const PAR_READONLY: &[&str] = &["cin", "cra", "csi", "cxy", "din", "page"];
+pub const PAR_READONLY: &[&str] = &["cin", "cra", "csi", "cxy", "din", "page"];
 
-fn par_default(name: &str) -> Vec<f64> {
-    match name {
-        "mar" => vec![5.1, 4.1, 4.1, 2.1],
-        "mai" => vec![1.02, 0.82, 0.82, 0.42],
-        "las" | "adj" | "ann" | "ask" | "err" | "font" | "lty" | "new" | "pty" | "smo" | "xlog" | "ylog" | "xpd" => vec![0.0],
-        "cex" | "cex.axis" | "cex.lab" | "cex.main" | "cex.sub" | "crt" | "lheight" | "ljoin" | "mkh" | "ps" | "tck" => vec![1.0],
-        "mex" | "font.axis" | "font.lab" | "font.main" | "font.sub" | "lwd" | "pch" => vec![1.0],
-        "mfrow" | "mfcol" => vec![1.0, 1.0],
-        "mfg" => vec![1.0, 1.0, 1.0, 1.0],
-        "mgp" => vec![3.0, 1.0, 0.0],
-        "oma" | "omd" | "omi" => vec![0.0, 0.0, 0.0, 0.0],
-        "lab" => vec![5.0, 5.0, 7.0],
-        "srt" | "ylbias" => vec![0.0],
-        "tcl" => vec![-0.5],
-        "lmitre" => vec![10.0],
-        _ => vec![0.0],
-    }
-}
 
-fn par_get(heap: &Heap, name: &str) -> Vec<f64> {
-    // The dumb-parameter reading exactly as the naive machine's: the
-    /// cascade answers region-coupled names, everything else falls to
-    /// GNU's defaults — typing is reconstructed at object construction.
-    match heap.graphics.query(name) {
-        Some(r_core::graphics::layout::ParValue::Real(values)) => values,
-        Some(r_core::graphics::layout::ParValue::Integer(values))
-        | Some(r_core::graphics::layout::ParValue::Logical(values)) => {
-            values.iter().map(|v| f64::from(*v)).collect()
-        }
-        _ => par_default(name),
-    }
-}
 
-/// Render a cascade answer as a typed object exactly as GNU's par
-/// typing — logicals and integers keep their types through the query.
-fn parvalue_obj(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    value: r_core::graphics::layout::ParValue,
-) -> ValueId {
-    use r_core::graphics::layout::ParValue;
-    match value {
-        ParValue::Real(values) => heap.alloc(RObject::Real(values)),
-        ParValue::Integer(values) => heap.alloc(RObject::Integer(values)),
-        ParValue::Logical(values) => heap.alloc(RObject::Logical(values)),
-        ParValue::String(text) => heap.alloc(RObject::String(vec![interner.intern_string(&text)])),
-    }
-}
 
-/// Read one parameter as a typed object — the cascade's answer or the
-/// default table exactly as par_get.
-fn par_query_obj(heap: &mut Heap, interner: &mut SymbolInterner, name: &str) -> ValueId {
-    match heap.graphics.query(name) {
-        Some(value) => parvalue_obj(heap, interner, value),
-        None => real_obj(heap, par_default(name)),
-    }
-}
+
+
+
+
 
 /// Convert an evaluated argument into the cascade's value shape —
     /// GNU's elementwise coercion exactly, strings passing through for
     /// the character-valued parameters.
-fn parvalue_of(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Option<r_core::graphics::layout::ParValue> {
+pub fn parvalue_of(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Option<r_core::graphics::layout::ParValue> {
     use r_core::graphics::layout::ParValue;
     match heap.object(value) {
         Some(RObject::Real(values)) => Some(ParValue::Real(values.clone())),
@@ -11331,170 +11282,13 @@ fn parvalue_of(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Option
     }
 }
 
-/// Render a numeric vector as a Real object.
-fn real_obj(heap: &mut Heap, values: Vec<f64>) -> ValueId {
-    heap.alloc(RObject::Real(values))
-}
 
-/// par — GNU's graphics parameter machine: single string reads one value,
-/// character vector reads a named list, named arguments set and return the
-/// prior values invisibly, empty form lists everything, no.readonly drops
-/// the device-derived six.
-fn par_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let raw = raw_args(heap, args);
-    // Empty form: the full parameter list.
-    if raw.is_empty() {
-        let mut entries: Vec<(&str, ValueId)> = Vec::new();
-        for name in PAR_NAMES {
-            let values = par_get(heap, name);
-            let obj = real_obj(heap, values);
-            entries.push((name, obj));
-        }
-        let entries_owned: Vec<(String, ValueId)> = entries.into_iter().map(|(n, v)| (n.to_string(), v)).collect();
-        return named_list_owned(heap, interner, entries_owned);
-    }
-    // Tagged no.readonly form.
-    if raw.len() == 1 {
-        if let Some(RObject::Pairlist { .. }) = heap.object(args) {}
-        let is_no_readonly = match heap.object(args) {
-            Some(RObject::Pairlist { tag, .. }) => {
-                matches!(heap.object(*tag), Some(RObject::Symbol { name, .. }) if interner.symbol_name(*name) == "no.readonly")
-            }
-            _ => false,
-        };
-        if is_no_readonly {
-            let v = eval(heap, interner, raw[0], caller_env)?;
-            let v = force_if_promise(heap, interner, v)?;
-            let drop_ro = logical_scalar(heap, v);
-            let mut entries_owned: Vec<(String, ValueId)> = Vec::new();
-            for name in PAR_NAMES {
-                if drop_ro && PAR_READONLY.contains(name) {
-                    continue;
-                }
-                let values = par_get(heap, name);
-                let obj = real_obj(heap, values);
-                entries_owned.push((name.to_string(), obj));
-            }
-            return named_list_owned(heap, interner, entries_owned);
-        }
-    }
-    // Named setters: mar = c(...) forms — every argument tagged.
-    let mut setters: Vec<(String, ValueId)> = Vec::new();
-    let mut positional: Vec<ValueId> = Vec::new();
-    let mut cursor = args;
-    for _ in 0..1000 {
-        if cursor == ValueId::NIL { break; }
-        let (car, tag, next) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, tag, cdr, .. }) => (*car, *tag, *cdr),
-            _ => break,
-        };
-        let tname = match heap.object(tag) {
-            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
-            _ => None,
-        };
-        let vpre = eval(heap, interner, car, caller_env)?;
-        let v = force_if_promise(heap, interner, vpre)?;
-        match tname {
-            Some(n) if !n.is_empty() => setters.push((n, v)),
-            _ => positional.push(v),
-        }
-        cursor = next;
-    }
-    if !setters.is_empty() {
-        let mut prior: Vec<(String, ValueId)> = Vec::new();
-        for (name, v) in &setters {
-            if PAR_READONLY.contains(&name.as_str()) {
-                return Err(RSignal::Error(EvalError::TypeError(
-                    "read-only graphical parameter",
-                )));
-            }
-            let old_obj = par_query_obj(heap, interner, name);
-            prior.push((name.clone(), old_obj));
-            let value = parvalue_of(heap, interner, *v).ok_or_else(|| {
-                RSignal::Error(EvalError::TypeError("invalid par value"))
-            })?;
-            heap.graphics.apply(name, &value).map_err(|message| {
-                RSignal::Error(EvalError::Condition(message))
-            })?;
-        }
-        heap.visible = false;
-        return named_list_owned(heap, interner, prior);
-    }
-    // Character vector reads: one string or several.
-    if let Some(first) = positional.first() {
-        let names = string_vec(heap, interner, *first);
-        if names.len() == 1 {
-            return Ok(par_query_obj(heap, interner, &names[0]));
-        }
-        if !names.is_empty() {
-            let mut entries_owned: Vec<(String, ValueId)> = Vec::new();
-            for name in &names {
-                let obj = par_query_obj(heap, interner, name);
-                entries_owned.push((name.clone(), obj));
-            }
-            return named_list_owned(heap, interner, entries_owned);
-        }
-    }
-    Ok(ValueId::NIL)
-}
 
-/// named_list from owned keys — the par machine's list shape.
-fn named_list_owned(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    entries: Vec<(String, ValueId)>,
-) -> EvalResult {
-    let names: Vec<_> = entries.iter().map(|(n, _)| interner.intern_string(n)).collect();
-    let items: Vec<ValueId> = entries.iter().map(|(_, v)| *v).collect();
-    let result = heap.alloc(RObject::List(items));
-    let names_obj = heap.alloc(RObject::String(names));
-    copy_with_attrib(heap, interner, result, "names", names_obj).map_err(RSignal::from)
-}
 
-/// layout(mat) — GNU's panel-arrangement state: the return is the matrix
-/// maximum, mfrow/mfcol take the dimensions, mfg the (nr, nc, nr, nc)
-/// quadruple, and cex shrinks with the panel count exactly as GNU's
-/// multi-panel adjustment.
-fn layout_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let operands = eval_args(heap, interner, args, caller_env, 1)?;
-    let dims: Vec<i32> = get_attrib(heap, interner, operands[0], "dim")
-        .and_then(|id| match heap.object(id) {
-            Some(RObject::Integer(d)) => Some(d.clone()),
-            _ => None,
-        })
-        .unwrap_or_else(|| vec![1, 1]);
-    let nr = dims.first().copied().unwrap_or(1).max(1);
-    let nc = dims.get(1).copied().unwrap_or(1).max(1);
-    let cells = reals_of_value(heap, operands[0]).unwrap_or_default();
-    let max_cell = cells.iter().cloned().fold(0.0f64, f64::max);
-    let order: Vec<i32> = cells.iter().map(|v| *v as i32).collect();
-    let num_figures = max_cell as i32;
-    let cexbase = match heap.graphics.query("cex") {
-        Some(r_core::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0],
-        _ => 1.0,
-    };
-    heap.graphics
-        .layout
-        .set_layout(nr, nc, &order, num_figures.max(1), cexbase, 1.0, 1.0)
-        .map_err(|message| RSignal::Error(EvalError::Condition(message)))?;
-    let cex = r_core::graphics::layout::LayoutState::split_cex(nr, nc);
-    heap.graphics
-        .apply("cex", &r_core::graphics::layout::ParValue::Real(vec![cex]))
-        .map_err(|message| RSignal::Error(EvalError::Condition(message)))?;
-    // GNU's layout returns the panel count invisibly.
-    heap.visible = false;
-    Ok(heap.alloc(RObject::Integer(vec![max_cell as i32])))
-}
+
+
+
+
 
 /// Read a binding's value honoring GNU's active-binding semantics: active
 /// bindings invoke their stored closure with zero arguments and yield the
@@ -11521,7 +11315,7 @@ pub fn read_binding(
 
 /// Active-binding write — invoke the stored closure with the assigned
 /// value as its single pre-forced argument, exactly as GNU.
-fn invoke_active_write(
+pub fn invoke_active_write(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     fun: ValueId,
@@ -11538,7 +11332,7 @@ fn invoke_active_write(
     }
 }
 
-fn dollar_primitive(
+pub fn dollar_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -11622,7 +11416,7 @@ fn dollar_primitive(
 /// and vector values self-evaluate when the argument promise forces.
 /// sapply simplifies homogeneous length-one results into a vector, GNU's
 /// canonical simplification shape.
-fn apply_family(
+pub fn apply_family(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -11690,7 +11484,7 @@ fn apply_family(
 
 /// GNU's simplification rule shape: every result a length-one atomic vector
 /// of one type unboxes elementwise; otherwise the list stands.
-fn simplify_sapply(heap: &mut Heap, results: Vec<ValueId>) -> EvalResult {
+pub fn simplify_sapply(heap: &mut Heap, results: Vec<ValueId>) -> EvalResult {
     if results.is_empty() {
         return Ok(heap.alloc(RObject::List(results)));
     }
@@ -11780,7 +11574,7 @@ fn simplify_sapply(heap: &mut Heap, results: Vec<ValueId>) -> EvalResult {
 /// type-hierarchy shape: any real promotes to real, integer/logical
 /// mixtures promote to integer. The slice covers numeric flattening;
 /// string mixtures are future work.
-fn unlist_primitive(
+pub fn unlist_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     value: ValueId,
@@ -12003,7 +11797,7 @@ fn unlist_primitive(
 
 /// First element of a numeric vector as a double — the scalar extraction
 /// the constructors share.
-fn first_real(heap: &Heap, value: ValueId) -> Result<f64, EvalError> {
+pub fn first_real(heap: &Heap, value: ValueId) -> Result<f64, EvalError> {
     match heap.object(value) {
         Some(RObject::Real(v)) if !v.is_empty() => Ok(v[0]),
         Some(RObject::Integer(v)) if !v.is_empty() => {
@@ -12023,7 +11817,7 @@ fn first_real(heap: &Heap, value: ValueId) -> Result<f64, EvalError> {
 /// colon operator's integer fidelity; otherwise real. Positional and named
 /// argument shapes both resolve — named extraction uses the same eval_args
 /// machinery since seq's operands are positional in practice.
-fn seq_primitive(
+pub fn seq_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -12142,7 +11936,7 @@ fn seq_primitive(
 /// the civil calendar with the day clamped to the target month exactly as
 /// GNU's month stepping. The result carries the input's class — Date, or
 /// POSIXct/POSIXt with the tzone attribute riding through.
-fn seq_datetime(
+pub fn seq_datetime(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     from: ValueId,
@@ -12253,7 +12047,7 @@ fn seq_datetime(
 
 /// Days in a civil month — leap Februaries on the proleptic Gregorian
 /// calendar exactly as Hinnant's conversion assumes.
-fn days_in_month(year: i64, month: u32) -> u32 {
+pub fn days_in_month(year: i64, month: u32) -> u32 {
     match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
         4 | 6 | 9 | 11 => 30,
@@ -12267,7 +12061,7 @@ fn days_in_month(year: i64, month: u32) -> u32 {
 /// `rep(x, times)` — GNU's simplest repetition shape: the whole vector
 /// repeats times over. Per-element repetition (times as a vector) is
 /// future work.
-fn rep_primitive(heap: &mut Heap, source: ValueId, times: ValueId) -> EvalResult {
+pub fn rep_primitive(heap: &mut Heap, source: ValueId, times: ValueId) -> EvalResult {
     let n = first_real(heap, times).map_err(RSignal::from)? as usize;
     macro_rules! repeat {
         ($variant:ident) => {
@@ -12303,7 +12097,7 @@ fn rep_primitive(heap: &mut Heap, source: ValueId, times: ValueId) -> EvalResult
 
 /// Numeric contents of a vector as doubles — the extraction the statistics
 /// share. Logicals and integers coerce up exactly as GNU's as-double.
-fn numerics_of(heap: &Heap, value: ValueId) -> Result<Vec<f64>, EvalError> {
+pub fn numerics_of(heap: &Heap, value: ValueId) -> Result<Vec<f64>, EvalError> {
     let na = f64::from_bits(r_core::object::NA_REAL_BITS);
     match heap.object(value) {
         Some(RObject::Real(v)) => Ok(v.clone()),
@@ -12334,7 +12128,7 @@ fn numerics_of(heap: &Heap, value: ValueId) -> Result<Vec<f64>, EvalError> {
 /// `mean`/`var`/`sd`/`median` with GNU's na.rm handling: absent or FALSE,
 /// any NA poisons the result to NA; TRUE drops NA positions first. The
 /// na.rm argument resolves tagged or positional.
-fn stat_primitive(
+pub fn stat_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -12416,7 +12210,7 @@ fn stat_primitive(
 }
 
 /// `is.na(x)` — elementwise NA detection across the atomic types.
-fn is_na_primitive(heap: &mut Heap, interner: &SymbolInterner, value: ValueId) -> EvalResult {
+pub fn is_na_primitive(heap: &mut Heap, interner: &SymbolInterner, value: ValueId) -> EvalResult {
     let na_int = r_core::object::NA_INTEGER;
     let out: Vec<i32> = match heap.object(value) {
         Some(RObject::Logical(v)) => v.iter().map(|x| (*x == na_int) as i32).collect(),
@@ -12433,7 +12227,7 @@ fn is_na_primitive(heap: &mut Heap, interner: &SymbolInterner, value: ValueId) -
 
 /// `sort`/`rev`/`unique` — ordering and deduplication over atomic vectors.
 /// GNU's sort drops NAs by default (na.last=NA); the slice follows that.
-fn ordering_primitive(
+pub fn ordering_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -12625,7 +12419,7 @@ fn ordering_primitive(
 
 /// `which(x)` — 1-based positions of TRUE entries, GNU exactly; NA
 /// positions drop out.
-fn which_primitive(heap: &mut Heap, value: ValueId) -> EvalResult {
+pub fn which_primitive(heap: &mut Heap, value: ValueId) -> EvalResult {
     match heap.object(value) {
         Some(RObject::Logical(values)) => {
             let out: Vec<i32> = values
@@ -12643,7 +12437,7 @@ fn which_primitive(heap: &mut Heap, value: ValueId) -> EvalResult {
 /// `any(x)`/`all(x)` — GNU's quantifier NA semantics: any is TRUE if any
 /// entry is TRUE, NA if none TRUE but some NA, FALSE otherwise; all
 /// mirrors.
-fn quantifier_primitive(heap: &mut Heap, op: u32, value: ValueId) -> EvalResult {
+pub fn quantifier_primitive(heap: &mut Heap, op: u32, value: ValueId) -> EvalResult {
     let values = logicals_of_value(heap, value).map_err(RSignal::from)?;
     let na = r_core::object::NA_INTEGER;
     let trues = values.iter().filter(|v| **v != 0 && **v != na).count();
@@ -12670,7 +12464,7 @@ fn quantifier_primitive(heap: &mut Heap, op: u32, value: ValueId) -> EvalResult 
 /// `ifelse(test, yes, no)` — GNU's vectorized conditional: elementwise
 /// selection with yes/no recycling. The slice covers numeric both-sides;
 /// NA test positions yield NA.
-fn ifelse_primitive(
+pub fn ifelse_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -12761,7 +12555,7 @@ fn ifelse_primitive(
 
 /// `%in%` — elementwise membership exactly as GNU: match(x, table,
 /// nomatch = 0) > 0, so NA in x matches NA in the table bitwise.
-fn membership_primitive(heap: &mut Heap, interner: &mut SymbolInterner, left: ValueId, right: ValueId) -> EvalResult {
+pub fn membership_primitive(heap: &mut Heap, interner: &mut SymbolInterner, left: ValueId, right: ValueId) -> EvalResult {
     let positions = match_positions(heap, interner, left, right, 0, &[]);
     let out: Vec<i32> = positions.iter().map(|p| (*p > 0) as i32).collect();
     Ok(heap.alloc(RObject::Logical(out)))
@@ -12770,7 +12564,7 @@ fn membership_primitive(heap: &mut Heap, interner: &mut SymbolInterner, left: Va
 /// GNU's bitwise element keys — NA_real_ and NaN are distinct bit
 /// patterns, the string sentinel is its own key, and every comparison is
 /// exact: this is what makes NA match NA in the table.
-fn match_keys(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<String> {
+pub fn match_keys(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<String> {
     match heap.object(value) {
         Some(RObject::String(vals)) => vals.iter().map(|v| format!("s:{}", interner.string_text(*v))).collect(),
         Some(RObject::Real(vals)) => vals.iter().map(|v| format!("r:{}", v.to_bits())).collect(),
@@ -12782,7 +12576,7 @@ fn match_keys(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<Str
 
 /// The shared match engine — bitwise key equality, incomparables never
 /// matching, nomatch filling exactly as GNU.
-fn match_positions(
+pub fn match_positions(
     heap: &Heap,
     interner: &SymbolInterner,
     left: ValueId,
@@ -12808,7 +12602,7 @@ fn match_positions(
 /// `match(x, table, nomatch, incomparables)` — 1-based first-match
 /// positions exactly as GNU: bitwise NA/NaN matching, incomparables
 /// excluded, nomatch the no-hit fill.
-fn match_primitive(
+pub fn match_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -12857,7 +12651,7 @@ fn match_primitive(
 /// `exists(name, envir)` — GNU's chain lookup by default: the binding may
 /// live in the environment or any enclosure. The name arrives as a
 /// one-element character vector exactly as GNU's interface.
-fn exists_primitive(
+pub fn exists_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -12935,7 +12729,7 @@ fn exists_primitive(
 
 /// `ls(envir)` — sorted binding names of the frame, GNU's ordering. List
 /// frames enumerate; hash frames are outside the object model's slice.
-fn ls_primitive(
+pub fn ls_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     env: ValueId,
@@ -12971,7 +12765,7 @@ fn ls_primitive(
 /// returns; lists are copy-on-write value semantics exactly like vector
 /// replacement — the element replaces or appends with the names attribute
 /// extended.
-fn dollar_assign_primitive(
+pub fn dollar_assign_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -13069,7 +12863,7 @@ fn dollar_assign_primitive(
 /// recycles to nrow*ncol, and because columns fill contiguously the linear
 /// storage IS the data vector — the constructor is recycling plus the dim
 /// attribute, nothing more.
-fn matrix_primitive(
+pub fn matrix_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -13173,7 +12967,7 @@ fn matrix_primitive(
 /// `rep` argument resolution: GNU's forms are rep(x, times), rep(x, each),
 /// and per-element times vectors — all composable. Tagged arguments resolve
 /// before positional exactly as GNU's formals ordering.
-fn rep_dispatch(
+pub fn rep_dispatch(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -13280,7 +13074,7 @@ fn rep_dispatch(
     finish_rep_classed(heap, interner, args, caller_env, result)
 }
 
-fn finish_rep_classed(
+pub fn finish_rep_classed(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -13315,7 +13109,7 @@ fn finish_rep_classed(
     Ok(result)
 }
 
-fn rep_dispatch_inner(
+pub fn rep_dispatch_inner(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -13386,7 +13180,7 @@ fn rep_dispatch_inner(
 
 /// Elementwise repetition: element i appears times[i] times, each repeated
 /// contiguously — GNU's rep(x, times=vector) shape.
-fn rep_per_element(heap: &mut Heap, source: ValueId, schedule: &[usize], each: usize) -> EvalResult {
+pub fn rep_per_element(heap: &mut Heap, source: ValueId, schedule: &[usize], each: usize) -> EvalResult {
     macro_rules! per_type {
         ($variant:ident) => {
             match heap.object(source) {
@@ -13427,7 +13221,7 @@ fn rep_per_element(heap: &mut Heap, source: ValueId, schedule: &[usize], each: u
 
 /// `rep(x, each=k)` — every element repeats k times contiguously before
 /// the next, then the whole pattern repeats times over.
-fn rep_each(heap: &mut Heap, source: ValueId, times: usize, each: usize) -> EvalResult {
+pub fn rep_each(heap: &mut Heap, source: ValueId, times: usize, each: usize) -> EvalResult {
     macro_rules! per_type {
         ($variant:ident) => {
             match heap.object(source) {
@@ -13458,7 +13252,7 @@ fn rep_each(heap: &mut Heap, source: ValueId, times: usize, each: usize) -> Eval
 /// the handler with a condition object and the handler's value becomes the
 /// result. Non-error control flow (break/next/return) propagates exactly —
 /// it is not a condition.
-fn trycatch_primitive(
+pub fn trycatch_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -13550,7 +13344,7 @@ fn trycatch_primitive(
 /// `structure(x, ...)`: every tagged argument attaches as the attribute of
 /// its name — GNU's attribute-attachment interface exactly. Copy-on-write
 /// discipline as with all attribute mutation.
-fn structure_primitive(
+pub fn structure_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -13591,7 +13385,7 @@ fn structure_primitive(
 
 /// `assign(name, value, envir)` — GNU's programmatic define: the name is a
 /// character string, the target environment defaults to the caller.
-fn assign_primitive(
+pub fn assign_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -13625,7 +13419,7 @@ fn assign_primitive(
 }
 
 /// `get(name, envir)` — chain lookup by character name, GNU exactly.
-fn get_primitive(
+pub fn get_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -13653,7 +13447,7 @@ fn get_primitive(
 }
 
 /// Generic named-attribute getter: NULL when absent, exactly GNU.
-fn attrib_getter(
+pub fn attrib_getter(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -13669,7 +13463,7 @@ fn attrib_getter(
 
 /// Generic attribute replacement primitive: `(object, value)` attaches the
 /// value under the attribute name through copy-on-write discipline.
-fn attrib_replacement(
+pub fn attrib_replacement(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -13682,7 +13476,7 @@ fn attrib_replacement(
 
 /// `class(x)`: the class attribute when present, otherwise GNU's implicit
 /// class — matrix/array for dimensioned vectors, the type name otherwise.
-fn class_getter(
+pub fn class_getter(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -13708,7 +13502,7 @@ fn class_getter(
 }
 
 /// rownames/colnames: element one/two of the dimnames attribute.
-fn rowcolnames(
+pub fn rowcolnames(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -13745,7 +13539,7 @@ fn rowcolnames(
 /// rownames<-/colnames<-: rebuild the dimnames list with element one/two
 /// replaced — constructing the two-element NULL list when absent, exactly
 /// GNU's lazy dimnames materialization.
-fn rowcolnames_assign(
+pub fn rowcolnames_assign(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -13775,7 +13569,7 @@ fn rowcolnames_assign(
 
 /// Extract the first string of an operand — the path coercion every file
 /// primitive shares.
-fn string_operand(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Option<String> {
+pub fn string_operand(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Option<String> {
     match heap.object(value) {
         Some(RObject::String(values)) if !values.is_empty() => {
             Some(interner.string_text(values[0]).to_string())
@@ -13824,7 +13618,7 @@ pub fn data_frame_shape(
 /// `tempfile()`: a unique non-existent path inside the system tempdir —
 /// process id plus a counter makes collision impossible within the session
 /// exactly as GNU's pattern randomization does across sessions.
-fn tempfile_primitive(
+pub fn tempfile_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -13876,7 +13670,7 @@ fn tempfile_primitive(
 
 /// `writeLines(text, con)`: every element of text plus a trailing newline,
 /// con a filename string exactly as the conformance slice uses it.
-fn writelines_primitive(
+pub fn writelines_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -13944,7 +13738,7 @@ fn writelines_primitive(
 
 /// `readLines(con)`: the file's lines as a character vector, trailing
 /// newline not producing a spurious empty final element — GNU exactly.
-fn readlines_primitive(
+pub fn readlines_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -14063,7 +13857,7 @@ fn readlines_primitive(
 }
 
 /// `file.exists(paths)` — elementwise existence probe.
-fn file_exists_primitive(
+pub fn file_exists_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -14086,7 +13880,7 @@ fn file_exists_primitive(
 
 /// `file.remove(paths)` — elementwise removal with logical success exactly
 /// as GNU.
-fn file_remove_primitive(
+pub fn file_remove_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -14114,7 +13908,7 @@ fn file_remove_primitive(
 }
 
 /// `file.copy(from, to)` — scalar copy with logical success.
-fn file_copy_primitive(
+pub fn file_copy_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -14136,7 +13930,7 @@ fn file_copy_primitive(
 }
 
 /// `file.rename(from, to)` — scalar rename with logical success.
-fn file_rename_primitive(
+pub fn file_rename_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -14159,7 +13953,7 @@ fn file_rename_primitive(
 
 /// `as.logical(x)` — numeric nonzero is true, NA propagates, strings parse
 /// the T/F/TRUE/FALSE spellings exactly as GNU.
-fn coerce_logical(
+pub fn coerce_logical(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     value: ValueId,
@@ -14206,7 +14000,7 @@ fn coerce_logical(
 }
 
 /// `attr(x, name)` — single named attribute or NULL, exactly GNU.
-fn attr_primitive(
+pub fn attr_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -14223,7 +14017,7 @@ fn attr_primitive(
 
 /// `attr<-(x, name, value)` — the replacement form the general desugar
 /// dispatches: object, attribute name, value positional.
-fn attr_assign_primitive(
+pub fn attr_assign_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -14236,7 +14030,7 @@ fn attr_assign_primitive(
 }
 
 /// `attributes(x)` — every attribute as a named list, NULL when bare.
-fn attributes_primitive(
+pub fn attributes_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -14276,7 +14070,7 @@ fn attributes_primitive(
 
 /// `attributes<-(x, value)` — wholesale attribute replacement: value is a
 /// named list whose entries become the object's attributes, NULL clears all.
-fn attributes_assign_primitive(
+pub fn attributes_assign_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -14312,7 +14106,7 @@ fn attributes_assign_primitive(
 
 /// `length<-(x, n)` — resize: truncation drops the tail, extension pads
 /// with the type's NA exactly as GNU.
-fn length_assign_primitive(
+pub fn length_assign_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -14386,7 +14180,7 @@ fn length_assign_primitive(
 
 /// `file.path(...)` — components joined with the platform separator exactly
 /// as GNU's forward slash on unix.
-fn file_path_primitive(
+pub fn file_path_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -14424,7 +14218,7 @@ fn file_path_primitive(
 /// `data.frame(...)`: tagged arguments become named columns exactly as
 /// GNU — the object is a list carrying class data.frame, names, and
 /// row.names attributes; every column must share one length.
-fn data_frame_primitive(
+pub fn data_frame_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -14550,7 +14344,7 @@ pub fn build_data_frame(
 /// columns plus the aggregated column — GNU's split-apply-combine exactly.
 /// Groups order lexicographically as GNU's factor-level ordering does for
 /// character groupers.
-fn aggregate_primitive(
+pub fn aggregate_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -14765,7 +14559,7 @@ fn aggregate_primitive(
 }
 
 /// One element's plain text — the grouping-key coercion.
-fn element_text(heap: &Heap, interner: &SymbolInterner, value: ValueId, index: usize) -> String {
+pub fn element_text(heap: &Heap, interner: &SymbolInterner, value: ValueId, index: usize) -> String {
     match heap.object(value) {
         Some(RObject::String(values)) => interner
             .string_text(values.get(index).copied().unwrap_or(values[0]))
@@ -14783,7 +14577,7 @@ fn element_text(heap: &Heap, interner: &SymbolInterner, value: ValueId, index: u
 }
 
 /// Extract elements at positions into a fresh same-type vector.
-fn extract_positions(
+pub fn extract_positions(
     heap: &mut Heap,
     interner: &SymbolInterner,
     source: ValueId,
@@ -14812,7 +14606,7 @@ fn extract_positions(
 
 /// Apply a closure or primitive-reference to one vector argument — the
 /// same dual shape lapply resolves.
-fn apply_fun_to(
+pub fn apply_fun_to(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     fun: ValueId,
@@ -14850,7 +14644,7 @@ fn apply_fun_to(
 /// `factor(x)`: character input recodes to integer positions into the
 /// sorted unique levels — GNU's integer-codes-plus-labels object shape with
 /// class and levels attributes exactly.
-fn factor_primitive(
+pub fn factor_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -14929,7 +14723,7 @@ struct ConvSpec {
 /// `sprintf(fmt, ...)`: C-style conversion specs vectorized over recycled
 /// inputs — the subset GNU's statistical printing actually exercises:
 /// %d/%i integers, %f fixed, %s strings, %g significant, %% literal.
-fn sprintf_primitive(
+pub fn sprintf_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -14997,7 +14791,7 @@ fn sprintf_primitive(
 
 /// Parse one sprintf format string into interleaved literals and
 /// conversion specs exactly as the C printf grammar subset requires.
-fn parse_format_pieces(fmt: &str) -> Vec<Result<String, ConvSpec>> {
+pub fn parse_format_pieces(fmt: &str) -> Vec<Result<String, ConvSpec>> {
     let mut pieces: Vec<Result<String, ConvSpec>> = Vec::new();
     let mut chars = fmt.chars().peekable();
     let mut literal = String::new();
@@ -15080,7 +14874,7 @@ fn parse_format_pieces(fmt: &str) -> Vec<Result<String, ConvSpec>> {
 }
 
 /// Format one recycled element against one conversion spec.
-fn format_spec(
+pub fn format_spec(
     heap: &Heap,
     interner: &SymbolInterner,
     spec: &ConvSpec,
@@ -15223,7 +15017,7 @@ fn format_spec(
 /// remaps new-level-names to the old labels they absorb. Length mismatch
 /// in the vector form is GNU's "number of levels differs" error. On
 /// non-factors the attribute attaches plainly exactly as GNU.
-fn levels_assign_primitive(
+pub fn levels_assign_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -15320,7 +15114,7 @@ fn levels_assign_primitive(
 
 /// Reassemble a factor with recoded integers and fresh levels — the
 /// copy-on-write discipline the replacement forms share.
-fn rebuild_factor(
+pub fn rebuild_factor(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     object: ValueId,
@@ -15344,7 +15138,7 @@ fn rebuild_factor(
 /// search through the pure-Rust regex engine. grepl returns the logical
 /// mask exactly as GNU; grep returns indices by default or the matching
 /// values with value=TRUE.
-fn grep_primitive(
+pub fn grep_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -15454,7 +15248,7 @@ fn grep_primitive(
 /// `regexpr(pattern, x)` — match positions and lengths exactly as GNU:
 /// 1-based start positions with -1 for no match, carrying the match.length
 /// attribute.
-fn regexpr_primitive(
+pub fn regexpr_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -15494,7 +15288,7 @@ fn regexpr_primitive(
 /// still in original order), NaN compared bitwise so NaN and NA_real_
 /// dedupe separately, the string sentinel dedupes as one NA, and values
 /// matching incomparables never compare at all — every occurrence stays.
-fn unique_primitive(
+pub fn unique_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -15623,7 +15417,7 @@ fn unique_primitive(
 /// `save(..., file, envir)` — variadic bare symbols or list= character
 /// names resolved in envir, encoded as RBG1 exactly as the architecture's
 /// GNU-wire-format replacement specifies.
-fn save_primitive(
+pub fn save_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -15723,7 +15517,7 @@ fn save_primitive(
 
 /// `load(file, envir)` — decode the RBG1 stream, define every binding in
 /// envir, and return the character vector of names exactly as GNU.
-fn load_primitive(
+pub fn load_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -15781,7 +15575,7 @@ fn load_primitive(
 /// character strings name datasets exactly as GNU's list capture, each
 /// loading into envir (the calling frame by default, exactly as GNU's
 /// parent.frame default) through the lazy-load database decoder.
-fn data_primitive(
+pub fn data_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -15841,141 +15635,19 @@ fn data_primitive(
     Ok(heap.alloc(RObject::String(loaded)))
 }
 
-/// plot.new — GNewPlot exactly as the oracle fixtures pin it: prepare
-/// the candidate figure on a cloned cascade, validate the margins
-/// without consuming cell or page, then commit. The new flag reuses
-/// the current frame; the first figure of an unused device ignores any
-/// preselected cell.
-fn plot_new_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    _args: ValueId,
-    _caller_env: ValueId,
-) -> EvalResult {
-    let (regions, clear, transition) = heap.graphics.prepare_plot_figure();
-    // GNU's figure-margins validation — a nonpositive plot region in
-    /// either dimension rejects the frame exactly as
-    /// "figure margins too large"; nothing commits on failure.
-    let plot_width = regions.plot[2] - regions.plot[0];
-    let plot_height = regions.plot[3] - regions.plot[1];
-    if transition_would_commit(heap) && (plot_width <= 0.0 || plot_height <= 0.0) {
-        return Err(RSignal::Error(EvalError::Condition(
-            "figure margins too large".to_string(),
-        )));
-    }
-    heap.graphics.commit_plot_figure(transition);
-    // The layout's own decision exactly as GNU's GNewPlot — reuse
-    /// paths and mid-grid steps keep the page, first figures and
-    /// post-wrap frames clear.
-    if clear {
-        heap.graphics.clear_scene();
-    }
-    Ok(ValueId::NIL)
-}
 
-/// Whether the prepared transition advances the frame — the reuse
-/// path carries no layout clone.
-fn transition_would_commit(heap: &Heap) -> bool {
-    let _ = heap;
-    true
-}
 
-/// plot.window(xlim, ylim) — install the user coordinate system exactly
-/// as GNU: usr takes the limits with the xaxs/yaxs 4% extension.
-fn plot_window_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let operands = eval_args(heap, interner, args, caller_env, 2)?;
-    let xlim = reals_of_value(heap, operands[0]).unwrap_or_default();
-    let ylim = reals_of_value(heap, operands[1]).unwrap_or_default();
-    if xlim.len() < 2 || ylim.len() < 2 {
-        return Err(RSignal::Error(EvalError::TypeError(
-            "plot.window requires two-element limits",
-        )));
-    }
-    // xaxs/yaxs exactly as GNU: "r" extends each side 4%, "i" keeps
-    /// the exact limits. The style reads through the par cascade.
-    let style = |name: &str| -> String {
-        match heap.graphics.query(name) {
-            Some(r_core::graphics::layout::ParValue::String(text)) => text,
-            _ => "r".to_string(),
-        }
-    };
-    let extend = |lo: f64, hi: f64, style: &str| {
-        if style == "i" {
-            (lo, hi)
-        } else {
-            let span = hi - lo;
-            (lo - 0.04 * span, hi + 0.04 * span)
-        }
-    };
-    let (x0, x1) = extend(xlim[0], xlim[1], &style("xaxs"));
-    let (y0, y1) = extend(ylim[0], ylim[1], &style("yaxs"));
-    heap.graphics
-        .apply("usr", &r_core::graphics::layout::ParValue::Real(vec![x0, x1, y0, y1]))
-        .map_err(|message| RSignal::Error(EvalError::Condition(message)))?;
-    Ok(ValueId::NIL)
-}
 
-/// lines(x, y) — GNU's polyline exactly: x and y recycle against each
-/// other, non-finite points break the line exactly as GPolyline's
-/// segment splitting, and the path strokes in the foreground with no
-/// fill. The simplest drawing primitive — the scene-emission proof.
-fn lines_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    use r_graphics_engine::{Color, DrawOperation, Path, PathCommand, Stroke};
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["x", "y", "col"])?;
-    let xs = slots[0].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
-    let ys = slots[1].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
-    let count = xs.len().max(ys.len());
-    if count == 0 || xs.is_empty() || ys.is_empty() {
-        return Ok(ValueId::NIL);
-    }
-    let color = match slots[2] {
-        Some(v) => resolve_rcolor(heap, interner, v, 0).unwrap_or(Color::BLACK),
-        None => Color::BLACK,
-    };
-    let mut commands = Vec::new();
-    let mut pen_up = true;
-    for i in 0..count {
-        let x = xs[i % xs.len()];
-        let y = ys[i % ys.len()];
-        if !x.is_finite() || !y.is_finite() {
-            pen_up = true;
-            continue;
-        }
-        let (dx, dy) = heap.graphics.user_to_device(x, y);
-        if pen_up {
-            commands.push(PathCommand::MoveTo(dx, dy));
-            pen_up = false;
-        } else {
-            commands.push(PathCommand::LineTo(dx, dy));
-        }
-    }
-    if !commands.is_empty() {
-        let path = Path {
-            commands,
-            stroke: par_stroke(heap, color),
-            anti_alias: true,
-            ..Default::default()
-        };
-        heap.graphics.scene_mut().push(DrawOperation::Path(path));
-    }
-    Ok(ValueId::NIL)
-}
+
+
+
+
 
 /// GNU primitive argument matching exactly as pmatch's exact pass:
 /// tagged arguments bind by exact name first, untagged arguments fill
 /// the remaining slots in order. Tags read through the interner as
 /// plain symbol names.
-fn eval_matched_args(
+pub fn eval_matched_args(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -16039,2507 +15711,95 @@ fn eval_matched_args(
     Ok(slots)
 }
 
-/// Resolve one R color exactly as GNU's portable reach: palette
-/// indices (1-based), the common names, hex literals, transparent.
-/// NA and unknown colors yield None exactly as col2rgb's NA.
-/// Build the stroke GNU's lwd/lty cascade specifies exactly: lwd
-/// scales the base width, lty maps both its numeric and string forms
-/// onto GNU's dash intervals in units of the width — dashed 4,4,
-/// dotted 1,3, dotdash 1,3,4,4, longdash 7,3, twodash 2,2,6,2,
-/// blank suppressing stroke through transparency.
-fn par_stroke(heap: &Heap, color: r_graphics_engine::Color) -> r_graphics_engine::Stroke {
-    use r_graphics_engine::{Color, DashPattern, Stroke};
-    const TRANSPARENT: Color = Color { r: 0, g: 0, b: 0, a: 0 };
-    let lwd = match heap.graphics.query("lwd") {
-        Some(r_core::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0] as f32,
-        Some(r_core::graphics::layout::ParValue::Integer(v)) if v.len() == 1 => v[0] as f32,
-        _ => 1.0,
-    };
-    let width = lwd.max(0.0);
-    let lty_name = match heap.graphics.query("lty") {
-        Some(r_core::graphics::layout::ParValue::String(text)) => text,
-        Some(r_core::graphics::layout::ParValue::Integer(v)) if !v.is_empty() => {
-            match v[0] {
-                0 => "blank".to_string(),
-                2 => "dashed".to_string(),
-                3 => "dotted".to_string(),
-                4 => "dotdash".to_string(),
-                5 => "longdash".to_string(),
-                6 => "twodash".to_string(),
-                _ => "solid".to_string(),
-            }
-        }
-        _ => "solid".to_string(),
-    };
-    let intervals: Option<Vec<f32>> = match lty_name.as_str() {
-        "dashed" => Some(vec![4.0 * width, 4.0 * width]),
-        "dotted" => Some(vec![width, 3.0 * width]),
-        "dotdash" => Some(vec![width, 3.0 * width, 4.0 * width, 4.0 * width]),
-        "longdash" => Some(vec![7.0 * width, 3.0 * width]),
-        "twodash" => Some(vec![2.0 * width, 2.0 * width, 6.0 * width, 2.0 * width]),
-        "blank" => None,
-        _ => None,
-    };
-    let color = if lty_name == "blank" { TRANSPARENT } else { color };
-    let mut stroke = Stroke::new(width.max(0.5), color);
-    if lty_name != "solid" && lty_name != "blank" {
-        if let Some(iv) = intervals {
-            stroke.dash_pattern = Some(DashPattern { intervals: iv, offset: 0.0 });
-        }
-    }
-    stroke
-}
 
-fn resolve_rcolor(
-    heap: &Heap,
-    interner: &SymbolInterner,
-    value: ValueId,
-    index: usize,
-) -> Option<r_graphics_engine::Color> {
-    use r_graphics_engine::Color;
-    // The R 4.x default palette exactly as the pinned oracle — black,
-    /// the six hues, then gray62.
-    const PALETTE: [Color; 8] = [
-        Color::BLACK,
-        Color { r: 0xDF, g: 0x53, b: 0x6B, a: 255 },
-        Color { r: 0x61, g: 0xD0, b: 0x4F, a: 255 },
-        Color { r: 0x22, g: 0x97, b: 0xE6, a: 255 },
-        Color { r: 0x28, g: 0xE2, b: 0xE5, a: 255 },
-        Color { r: 0xCD, g: 0x0B, b: 0xBC, a: 255 },
-        Color { r: 0xF5, g: 0xC7, b: 0x10, a: 255 },
-        Color { r: 0x9E, g: 0x9E, b: 0x9E, a: 255 },
-    ];
-    match heap.object(value) {
-        Some(RObject::String(values)) => {
-            let text = interner.string_text(*values.get(index % values.len().max(1))?);
-            Some(match text {
-                "black" => Color::BLACK,
-                "white" => Color::WHITE,
-                "red" => Color::RED,
-                "blue" => Color::BLUE,
-                "green" => Color { r: 0, g: 255, b: 0, a: 255 },
-                "yellow" => Color { r: 255, g: 255, b: 0, a: 255 },
-                "cyan" => Color { r: 0, g: 255, b: 255, a: 255 },
-                "magenta" => Color { r: 255, g: 0, b: 255, a: 255 },
-                "gray" | "grey" => Color { r: 190, g: 190, b: 190, a: 255 },
-                "orange" => Color { r: 255, g: 165, b: 0, a: 255 },
-                "purple" => Color { r: 160, g: 32, b: 240, a: 255 },
-                "brown" => Color { r: 165, g: 42, b: 42, a: 255 },
-                "pink" => Color { r: 255, g: 192, b: 203, a: 255 },
-                "transparent" | "NA" => return None,
-                other => {
-                    // The full 657-entry database with hex parsing
-                    /// exactly as col2rgb — every GNU color name
-                    /// resolves in drawing primitives.
-                    if let Some((r, g, b, a)) = resolve_named_color(other) {
-                        return Some(Color { r: r as u8, g: g as u8, b: b as u8, a: a as u8 });
-                    }
-                    return None;
-                }
-            })
-        }
-        Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => {
-            let idx = *values.get(index % values.len().max(1))?;
-            if idx == i32::MIN || idx < 1 {
-                None
-            } else {
-                Some(PALETTE[((idx - 1) as usize) % PALETTE.len()])
-            }
-        }
-        Some(RObject::Real(values)) => {
-            let idx = *values.get(index % values.len().max(1))? as i32;
-            if idx < 1 {
-                None
-            } else {
-                Some(PALETTE[((idx - 1) as usize) % PALETTE.len()])
-            }
-        }
-        _ => None,
-    }
-}
 
-/// rect(xleft, ybottom, xright, ytop) — GNU's recycled quads exactly:
-/// fill with col (transparent when NA), stroke with border. The four
-/// coordinates recycle against each other in lockstep.
-fn rect_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    use r_graphics_engine::{Color, DrawOperation, Path, Stroke};
-    // Positional order covers GNU's first four exactly; col/border are
-    /// effectively always named in practice — the density/angle/lty
-    /// slots of GNU's full signature remain unwired.
-    let slots = eval_matched_args(
-        heap,
-        interner,
-        args,
-        caller_env,
-        &["xleft", "ybottom", "xright", "ytop", "col", "border"],
-    )?;
-    let coord = |slot: usize| -> Vec<f64> {
-        slots[slot]
-            .and_then(|v| reals_of_value(heap, v).ok())
-            .unwrap_or_default()
-    };
-    let xl = coord(0);
-    let yb = coord(1);
-    let xr = coord(2);
-    let yt = coord(3);
-    if xl.is_empty() || yb.is_empty() || xr.is_empty() || yt.is_empty() {
-        return Ok(ValueId::NIL);
-    }
-    let count = xl.len().max(yb.len()).max(xr.len()).max(yt.len());
-    for i in 0..count {
-        let x0 = xl[i % xl.len()];
-        let y0 = yb[i % yb.len()];
-        let x1 = xr[i % xr.len()];
-        let y1 = yt[i % yt.len()];
-        if !x0.is_finite() || !y0.is_finite() || !x1.is_finite() || !y1.is_finite() {
-            continue;
-        }
-        let (dx0, dy1) = heap.graphics.user_to_device(x0, y0);
-        let (dx1, dy0) = heap.graphics.user_to_device(x1, y1);
-        let x = dx0.min(dx1);
-        let y = dy0.min(dy1);
-        let w = (dx1 - dx0).abs();
-        let h = (dy1 - dy0).abs();
-        if w <= 0.0 || h <= 0.0 {
-            continue;
-        }
-        let fill = slots[4]
-            .and_then(|v| resolve_rcolor(heap, interner, v, i))
-            .unwrap_or(Color { r: 0, g: 0, b: 0, a: 0 });
-        let border = match slots[5] {
-            Some(v) => resolve_rcolor(heap, interner, v, i)
-                .unwrap_or(Color { r: 0, g: 0, b: 0, a: 0 }),
-            None => Color::BLACK,
-        };
-        let path = Path {
-            fill,
-            stroke: par_stroke(heap, border),
-            anti_alias: true,
-            ..Path::rect(x, y, w, h)
-        };
-        heap.graphics.scene_mut().push(DrawOperation::Path(path));
-    }
-    Ok(ValueId::NIL)
-}
 
-/// points(x, y, pch, col) — GNU's scatter exactly as far as the core
-/// symbols reach: pch 1 open circle, 16 filled, 3 plus, sized by
-/// cex-scaled half character exactly as GSymbol's ipr-scaled radius.
-/// Other pch values fall to the open circle pending the symbol atlas.
-fn points_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    use r_graphics_engine::{Color, DrawOperation, Path, PathCommand, Stroke};
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["x", "y", "pch", "col", "cex"])?;
-    let xs = slots[0].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
-    let ys = slots[1].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
-    let count = xs.len().max(ys.len());
-    if count == 0 || xs.is_empty() || ys.is_empty() {
-        return Ok(ValueId::NIL);
-    }
-    // pch resolves per-point with GNU's recycling exactly as col —
-    /// precomputed so the emission loop holds no borrow across the
-    /// scene mutation.
-    let pch_values: Vec<i32> = match slots[2] {
-        Some(v) => match heap.object(v) {
-            Some(RObject::Real(values)) => values.iter().map(|x| *x as i32).collect(),
-            Some(RObject::Integer(values)) => values.clone(),
-            _ => vec![1],
-        },
-        None => vec![1],
-    };
-    let cex = slots[4]
-        .and_then(|v| reals_of_value(heap, v).ok())
-        .and_then(|v| v.first().copied())
-        .unwrap_or_else(|| match heap.graphics.query("cex") {
-            Some(r_core::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0],
-            _ => 1.0,
-        });
-    // GNU sizes symbols at half the character width scaled by cex —
-    /// the raster character cell is the cra cascade answer.
-    let cra = match heap.graphics.query("cra") {
-        Some(r_core::graphics::layout::ParValue::Real(v)) if v.len() == 2 => v,
-        _ => vec![10.8, 14.4],
-    };
-    let radius = (0.5 * cex * cra[0]) as f32;
-    for i in 0..count {
-        let x = xs[i % xs.len()];
-        let y = ys[i % ys.len()];
-        if !x.is_finite() || !y.is_finite() {
-            continue;
-        }
-        let (dx, dy) = heap.graphics.user_to_device(x, y);
-        let color = match slots[3] {
-            Some(v) => resolve_rcolor(heap, interner, v, i).unwrap_or(Color::BLACK),
-            None => Color::BLACK,
-        };
-        let pch = pch_values[i % pch_values.len()];
-        let path = match pch {
-            3 => {
-                // plus: two strokes through the center
-                let r = radius;
-                Path {
-                    commands: vec![
-                        PathCommand::MoveTo(dx - r, dy),
-                        PathCommand::LineTo(dx + r, dy),
-                        PathCommand::MoveTo(dx, dy - r),
-                        PathCommand::LineTo(dx, dy + r),
-                    ],
-                    stroke: par_stroke(heap, color),
-                    anti_alias: true,
-                    ..Default::default()
-                }
-            }
-            16 => Path::circle(dx, dy, radius).with_fill(color),
-            _ => {
-                // 1 and the fallback: open circle — transparent fill,
-                /// stroked rim exactly as GNU's default symbol.
-                let mut circle = Path::circle(dx, dy, radius);
-                circle.fill = Color { r: 0, g: 0, b: 0, a: 0 };
-                circle.stroke = Stroke::new(1.0, color);
-                circle
-            }
-        };
-        heap.graphics.scene_mut().push(DrawOperation::Path(path));
-    }
-    Ok(ValueId::NIL)
-}
 
-/// text(x, y, labels) — GNU's text exactly as far as the core reach:
-/// labels recycle against coordinates, position centers horizontally
-/// at adj 0.5 exactly as GNU's default, size scales through cex and
-/// the 12pt base exactly as the portable POINTSIZE contract.
-fn text_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    use r_graphics_engine::{Color, DrawOperation, PlotParameters, Point, TextAnchor};
-    let slots = eval_matched_args(
-        heap,
-        interner,
-        args,
-        caller_env,
-        &["x", "y", "labels", "col", "cex"],
-    )?;
-    let xs = slots[0].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
-    let ys = slots[1].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
-    let labels: Vec<String> = match slots[2].and_then(|v| {
-        match heap.object(v) {
-            Some(RObject::String(values)) => Some(
-                values
-                    .iter()
-                    .map(|s| interner.string_text(*s).to_string())
-                    .collect(),
-            ),
-            _ => None,
-        }
-    }) {
-        Some(values) => values,
-        None => return Ok(ValueId::NIL),
-    };
-    let count = xs.len().max(ys.len()).max(labels.len());
-    if count == 0 || xs.is_empty() || ys.is_empty() || labels.is_empty() {
-        return Ok(ValueId::NIL);
-    }
-    let cex = slots[4]
-        .and_then(|v| reals_of_value(heap, v).ok())
-        .and_then(|v| v.first().copied())
-        .unwrap_or_else(|| match heap.graphics.query("cex") {
-            Some(r_core::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0],
-            _ => 1.0,
-        });
-    // The 12pt base at 72dpi raster units exactly as the portable
-    /// POINTSIZE contract — one raster unit per point.
-    let font_size = (12.0 * cex) as f32;
-    for i in 0..count {
-        let x = xs[i % xs.len()];
-        let y = ys[i % ys.len()];
-        if !x.is_finite() || !y.is_finite() {
-            continue;
-        }
-        let text = labels[i % labels.len()].clone();
-        if text.is_empty() {
-            continue;
-        }
-        let color = match slots[3] {
-            Some(v) => resolve_rcolor(heap, interner, v, i).unwrap_or(Color::BLACK),
-            None => Color::BLACK,
-        };
-        let (dx, dy) = heap.graphics.user_to_device(x, y);
-        heap.graphics.scene_mut().push(DrawOperation::Text {
-            text,
-            position: Point { x: dx, y: dy },
-            params: PlotParameters {
-                font_size,
-                text_color: color,
-                dpi: 72.0,
-                text_anchor: TextAnchor::Middle,
-                ..Default::default()
-            },
-        });
-    }
-    Ok(ValueId::NIL)
-}
 
-/// pretty(x, n) — GNU's user-facing tick computation exactly: finite
-/// values only, min_n = n/3, shrink 0.75, the standard biases, and
-/// the interpolated vector with endpoint-exact construction and
-/// near-zero cleanup exactly as the wrapper performs it.
-fn pretty_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["x", "n"])?;
-    let xs: Vec<f64> = slots[0]
-        .and_then(|v| reals_of_value(heap, v).ok())
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|x| x.is_finite())
-        .collect();
-    if xs.is_empty() {
-        return Ok(heap.alloc(RObject::Real(Vec::new())));
-    }
-    let n = slots[1]
-        .and_then(|v| reals_of_value(heap, v).ok())
-        .and_then(|v| v.first().copied())
-        .unwrap_or(5.0) as i32;
-    let lo = xs.iter().copied().fold(f64::INFINITY, f64::min);
-    let up = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    // GNU pretty.default's fixed constants exactly.
-    let result = r_core::graphics::pretty::r_pretty(
-        lo,
-        up,
-        n,
-        n.div_euclid(3),
-        0.75,
-        1.5,
-        0.5 + 1.5 * 1.5,
-        2f64.powi(-20),
-        0,
-    );
-    let ndiv = result.ndiv;
-    if !(0..=10_000_000).contains(&ndiv) {
-        return Err(RSignal::Error(EvalError::Condition(
-            "invalid 'n' argument".to_string(),
-        )));
-    }
-    let (start, end) = (result.lo, result.up);
-    let mut values = Vec::with_capacity(ndiv as usize + 1);
-    if ndiv == 0 {
-        values.push(start);
-    } else {
-        for i in 0..=ndiv as usize {
-            values.push(if i == 0 {
-                start
-            } else if i == ndiv as usize {
-                end
-            } else {
-                let t = i as f64 / ndiv as f64;
-                start * (1.0 - t) + end * t
-            });
-        }
-        // Near-zero cleanup exactly as the wrapper: relative to the
-        /// overflow-safe per-interval delta.
-        let delta = (end / ndiv as f64 - start / ndiv as f64).abs();
-        for value in values.iter_mut() {
-            if value.abs() < 1e-14 * delta {
-                *value = 0.0;
-            }
-        }
-    }
-    Ok(heap.alloc(RObject::Real(values)))
-}
 
-/// grconvertX/grconvertY(value, from, to) — GNU's coordinate query
-/// exactly as far as user and device reach: user maps through the
-/// plot-region conversion, device is raster units with the y-down
-/// flip already inside. Other units remain unwired pending the full
-/// GMapUnits ladder.
-fn grconvert_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-    x_axis: bool,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["x", "from", "to"])?;
-    let values = slots[0].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
-    let unit_name = |slot: usize| -> String {
-        match slots[slot].and_then(|v| match heap.object(v) {
-            Some(RObject::String(values)) => values.first().map(|s| interner.string_text(*s).to_string()),
-            _ => None,
-        }) {
-            Some(text) => text,
-            None => "user".to_string(),
-        }
-    };
-    let from = unit_name(1);
-    let to = unit_name(2);
-    let converted: Vec<f64> = values
-        .iter()
-        .map(|v| {
-            if !v.is_finite() {
-                return *v;
-            }
-            // user → device exactly as the primitive conversion; the
-            /// inverse divides back through the same linear map.
-            let usr = match heap.graphics.query("usr") {
-                Some(r_core::graphics::layout::ParValue::Real(u)) if u.len() == 4 => u,
-                _ => vec![0.0, 1.0, 0.0, 1.0],
-            };
-            let plot = heap.graphics.layout.regions().plot;
-            let (lo_u, hi_u, lo_d, hi_d) = if x_axis {
-                (usr[0], usr[1], plot[0], plot[2])
-            } else {
-                // y grows upward in user space, downward in raster —
-                /// device bottom pairs with user low exactly as the
-                /// conversion flips.
-                (usr[2], usr[3], plot[3], plot[1])
-            };
-            let height = heap.graphics.layout.device_size().1;
-            let user_to_dev = |u: f64| lo_d + (u - lo_u) / (hi_u - lo_u) * (hi_d - lo_d);
-            match (from.as_str(), to.as_str()) {
-                ("user", "device") => {
-                    if x_axis {
-                        user_to_dev(*v)
-                    } else {
-                        height - user_to_dev(*v)
-                    }
-                }
-                ("device", "user") => {
-                    let dev = if x_axis { *v } else { height - *v };
-                    lo_u + (dev - lo_d) / (hi_d - lo_d) * (hi_u - lo_u)
-                }
-                _ => *v,
-            }
-        })
-        .collect();
-    Ok(heap.alloc(RObject::Real(converted)))
-}
 
-/// Format one tick label exactly as GNU's plain numeric reach: integral
-/// values print without the fraction, others trim trailing zeros.
-fn axis_label(value: f64) -> String {
-    if value == value.trunc() && value.abs() < 1e15 {
-        format!("{}", value as i64)
-    } else {
-        // GNU labels ticks with the printer's significant-digit logic —
-        // fp noise in computed positions collapses exactly as 2.5 does,
-        // never shortest-roundtrip noise.
-        r_core::print::format_real(value)
-    }
-}
 
-/// axis(side, at, labels) — GNU's axis composition: pretty-computed
-/// tick positions when absent, the axis line along the plot edge,
-/// tick marks perpendicular at tcl lines (negative outward exactly
-/// as GNU's default), and labels beyond the tick ends. Side 1 bottom,
-/// 2 left, 3 top, 4 right exactly as GAxis.
-fn axis_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    use r_graphics_engine::{Color, DrawOperation, Path, PathCommand, PlotParameters, Point, Stroke, TextAnchor};
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["side", "at", "labels"])?;
-    let side = slots[0]
-        .and_then(|v| reals_of_value(heap, v).ok())
-        .and_then(|v| v.first().copied())
-        .unwrap_or(1.0) as i32;
-    if !(1..=4).contains(&side) {
-        return Err(RSignal::Error(EvalError::Condition(
-            "invalid axis number".to_string(),
-        )));
-    }
-    let horizontal = side == 1 || side == 3;
-    // Tick positions: explicit at= or pretty over the usr range exactly
-    /// as axp computation feeds GAxis.
-    let usr = match heap.graphics.query("usr") {
-        Some(r_core::graphics::layout::ParValue::Real(u)) if u.len() == 4 => u,
-        _ => vec![0.0, 1.0, 0.0, 1.0],
-    };
-    let at: Vec<f64> = match slots[1].and_then(|v| reals_of_value(heap, v).ok()) {
-        Some(values) if !values.is_empty() => values,
-        _ => {
-            let (lo, hi) = if horizontal {
-                (usr[0], usr[1])
-            } else {
-                (usr[2], usr[3])
-            };
-            let result = r_core::graphics::pretty::r_pretty(
-                lo,
-                hi,
-                5,
-                5_i32.div_euclid(3),
-                0.75,
-                1.5,
-                0.5 + 1.5 * 1.5,
-                2f64.powi(-20),
-                0,
-            );
-            let (start, end, ndiv) = (result.lo, result.up, result.ndiv.max(1));
-            (0..=ndiv as usize)
-                .map(|i| {
-                    if i == 0 {
-                        start
-                    } else if i == ndiv as usize {
-                        end
-                    } else {
-                        let t = i as f64 / ndiv as f64;
-                        start * (1.0 - t) + end * t
-                    }
-                })
-                .collect()
-        }
-    };
-    // GAxis clips ticks to the usr window exactly — the 4% extension
-    /// means pretty positions can fall outside and never draw.
-    let (win_lo, win_hi) = if horizontal {
-        (usr[0].min(usr[1]), usr[0].max(usr[1]))
-    } else {
-        (usr[2].min(usr[3]), usr[2].max(usr[3]))
-    };
-    let at: Vec<f64> = at
-        .into_iter()
-        .filter(|v| *v >= win_lo && *v <= win_hi)
-        .collect();
-    if at.is_empty() {
-        return Ok(ValueId::NIL);
-    }
-    // GNU's GAxis records tick coverage into xaxp/yaxp exactly — grid
-    // and axTicks reconstruct positions from first/last/count-1.
-    heap.graphics.set_axp(
-        horizontal,
-        [at[0], at[at.len() - 1], (at.len() - 1) as f64],
-    );
-    let plot = heap.graphics.layout.regions().plot;
-    // One margin line in raster units exactly as the 0.2in portable
-    /// contract; tcl -0.5 is GNU's outward default.
-    let line = 14.4f32;
-    let tcl = -0.5f32;
-    let tick_len = tcl.abs() * line;
-    // The axis edge in y-down raster and the outward direction.
-    let mut commands = Vec::new();
-    let mut label_positions = Vec::new();
-    for value in &at {
-        if horizontal {
-            let u = if side == 1 { *value } else { *value };
-            let v = if side == 1 { usr[2] } else { usr[3] };
-            let (dx, dy) = heap.graphics.user_to_device(u, v);
-            commands.push(PathCommand::MoveTo(dx, dy));
-            // y-down: bottom outward is positive raster y, top negative.
-            let outward = if side == 1 { tick_len } else { -tick_len };
-            commands.push(PathCommand::LineTo(dx, dy + outward));
-            label_positions.push((dx, dy + outward + 0.5 * line, TextAnchor::Middle, *value));
-        } else {
-            let u = if side == 2 { usr[0] } else { usr[1] };
-            let (dx, dy) = heap.graphics.user_to_device(u, *value);
-            commands.push(PathCommand::MoveTo(dx, dy));
-            let outward = if side == 2 { -tick_len } else { tick_len };
-            commands.push(PathCommand::LineTo(dx + outward, dy));
-            label_positions.push((dx + outward - 0.35 * line, dy, TextAnchor::End, *value));
-        }
-    }
-    // The axis line itself spans the plot edge exactly as GAxis draws.
-    let (ax0, ay0, ax1, ay1) = if horizontal {
-        let v = if side == 1 { usr[2] } else { usr[3] };
-        let (x0, y0) = heap.graphics.user_to_device(usr[0], v);
-        let (x1, y1) = heap.graphics.user_to_device(usr[1], v);
-        (x0, y0, x1, y1)
-    } else {
-        let u = if side == 2 { usr[0] } else { usr[1] };
-        let (x0, y0) = heap.graphics.user_to_device(u, usr[2]);
-        let (x1, y1) = heap.graphics.user_to_device(u, usr[3]);
-        (x0, y0, x1, y1)
-    };
-    let mut line_commands = vec![
-        PathCommand::MoveTo(ax0, ay0),
-        PathCommand::LineTo(ax1, ay1),
-    ];
-    line_commands.extend(commands);
-    let parstroke_4 = par_stroke(heap, Color::BLACK);
-    heap.graphics.scene_mut().push(DrawOperation::Path(Path {
-        commands: line_commands,
-        stroke: parstroke_4,
-        anti_alias: true,
-        ..Default::default()
-    }));
-    let cex = match heap.graphics.query("cex") {
-        Some(r_core::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0],
-        _ => 1.0,
-    };
-    for (x, y, anchor, value) in label_positions {
-        heap.graphics.scene_mut().push(DrawOperation::Text {
-            text: axis_label(value),
-            position: Point { x, y },
-            params: PlotParameters {
-                font_size: (12.0 * cex) as f32,
-                text_color: Color::BLACK,
-                dpi: 72.0,
-                text_anchor: anchor,
-                ..Default::default()
-            },
-        });
-    }
-    Ok(ValueId::NIL)
-}
 
-/// box() — GNU's plot-region frame exactly: the four plot edges as
-/// one closed path in the foreground.
-fn box_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    use r_graphics_engine::{Color, DrawOperation, Path, Stroke};
-    let _ = eval_matched_args(heap, interner, args, caller_env, &["which"])?;
-    let plot = heap.graphics.layout.regions().plot;
-    let x = plot[0] as f32;
-    let y = plot[1] as f32;
-    let w = (plot[2] - plot[0]) as f32;
-    let h = (plot[3] - plot[1]) as f32;
-    let parstroke_3 = par_stroke(heap, Color::BLACK);
-    heap.graphics.scene_mut().push(DrawOperation::Path(Path {
-        stroke: parstroke_3,
-        anti_alias: true,
-        ..Path::rect(x, y, w, h)
-    }));
-    Ok(ValueId::NIL)
-}
 
-/// title(main, sub, xlab, ylab) — GNU's margin text exactly as far as
-/// the core reach: axis titles center along their edge at the margin
-/// line, the main title centers over the plot in the top margin.
-fn title_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    use r_graphics_engine::{Color, DrawOperation, PlotParameters, Point, TextAnchor};
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["main", "sub", "xlab", "ylab"])?;
-    // Extract every label upfront exactly as the other primitives
-    /// precompute — the emission loop holds no borrow across scene
-    /// mutation.
-    let texts: Vec<Option<String>> = (0..4)
-        .map(|slot| {
-            slots[slot].and_then(|v| match heap.object(v) {
-                Some(RObject::String(values)) => {
-                    values.first().map(|s| interner.string_text(*s).to_string())
-                }
-                _ => None,
-            })
-        })
-        .collect();
-    let text_of = |slot: usize| -> Option<String> { texts[slot].clone() };
-    let plot = heap.graphics.layout.regions().plot;
-    let center_x = (plot[0] + plot[2]) as f32 / 2.0;
-    let center_y = (plot[1] + plot[3]) as f32 / 2.0;
-    let line = 14.4f32;
-    let cex = match heap.graphics.query("cex") {
-        Some(r_core::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0],
-        _ => 1.0,
-    };
-    let font = (12.0 * cex) as f32;
-    let emit = |heap: &mut Heap, text: String, x: f32, y: f32, anchor: TextAnchor| {
-        heap.graphics.scene_mut().push(DrawOperation::Text {
-            text,
-            position: Point { x, y },
-            params: PlotParameters {
-                font_size: font,
-                text_color: Color::BLACK,
-                dpi: 72.0,
-                text_anchor: anchor,
-                ..Default::default()
-            },
-        });
-    };
-    // xlab centers below the bottom margin at two lines out exactly
-    /// as mgp's axis-title line approximates; ylab mirrors beside the
-    /// left margin; main sits in the top margin.
-    if let Some(xlab) = text_of(2) {
-        if !xlab.is_empty() {
-            emit(heap, xlab, center_x, plot[3] as f32 + 2.5 * line, TextAnchor::Middle);
-        }
-    }
-    if let Some(ylab) = text_of(3) {
-        if !ylab.is_empty() {
-            emit(heap, ylab, plot[0] as f32 - 2.5 * line, center_y, TextAnchor::Middle);
-        }
-    }
-    if let Some(main) = text_of(0) {
-        if !main.is_empty() {
-            emit(heap, main, center_x, plot[1] as f32 - 1.0 * line, TextAnchor::Middle);
-        }
-    }
-    if let Some(sub) = text_of(1) {
-        if !sub.is_empty() {
-            emit(heap, sub, center_x, plot[3] as f32 + 3.5 * line, TextAnchor::Middle);
-        }
-    }
-    Ok(ValueId::NIL)
-}
 
-/// mtext(text, side, line) — margin text exactly as GNU's placement:
-/// side 1 bottom, 2 left, 3 top, 4 right, positioned line lines out
-/// from the plot edge and centered along it exactly as the adj=0.5
-/// default.
-fn mtext_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    use r_graphics_engine::{Color, DrawOperation, PlotParameters, Point, TextAnchor};
-    let slots = eval_matched_args(heap, interner, args, caller_env,
-        &["text", "side", "line", "at", "adj", "padj", "cex", "col", "font"])?;
-    let text = slots[0].and_then(|v| match heap.object(v) {
-        Some(RObject::String(values)) => values.first().map(|s| interner.string_text(*s).to_string()),
-        _ => None,
-    });
-    let text = match text {
-        Some(t) if !t.is_empty() => t,
-        _ => return Ok(ValueId::NIL),
-    };
-    let side = slots[1].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(3.0) as i32;
-    let line = slots[2].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(0.0) as f32;
-    let cex = slots[6].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(1.0);
-    let base_cex = match heap.graphics.query("cex") {
-        Some(r_core::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0],
-        _ => 1.0,
-    };
-    let font = (12.0 * base_cex * cex) as f32;
-    let col = slots[7].and_then(|v| resolve_rcolor(heap, interner, v, 0));
-    let line_height = 14.4f32;
-    let plot = heap.graphics.layout.regions().plot;
-    let center_x = (plot[0] + plot[2]) as f32 / 2.0;
-    let center_y = (plot[1] + plot[3]) as f32 / 2.0;
-    // Each side anchors its line outward from the plot edge exactly as
-    /// GNU's margin-line addressing — line 0 butting the edge.
-    let (x, y) = match side {
-        1 => (center_x, plot[3] as f32 + (line + 0.8) * line_height),
-        2 => (plot[0] as f32 - (line + 0.8) * line_height, center_y),
-        4 => (plot[2] as f32 + (line + 0.8) * line_height, center_y),
-        _ => (center_x, plot[1] as f32 - (line + 0.4) * line_height),
-    };
-    let color = col.unwrap_or(Color::BLACK);
-    heap.graphics.scene_mut().push(DrawOperation::Text {
-        text,
-        position: Point { x, y },
-        params: PlotParameters {
-            font_size: font,
-            text_color: color,
-            dpi: 72.0,
-            text_anchor: TextAnchor::Middle,
-            ..Default::default()
-        },
-    });
-    Ok(ValueId::NIL)
-}
 
-/// GNU's hsv2rgb exactly as colors.c — modf in the same fp order,
-/// the sector table verbatim, intensities scaling (255*x + 0.5)
-/// truncated exactly as ScaleColor.
-fn gnu_hsv2rgb(h: f64, s: f64, v: f64) -> (u32, u32, u32) {
-    let h6 = h * 6.0;
-    let f = h6.fract();
-    let i = (h6.trunc() as i64).rem_euclid(6);
-    let p = v * (1.0 - s);
-    let q = v * (1.0 - s * f);
-    let t = v * (1.0 - s * (1.0 - f));
-    let (r, g, b) = match i {
-        0 => (v, t, p),
-        1 => (q, v, p),
-        2 => (p, v, t),
-        3 => (p, q, v),
-        4 => (t, p, v),
-        _ => (v, p, q),
-    };
-    let scale = |x: f64| -> u32 { (255.0 * x + 0.5) as u32 };
-    (scale(r), scale(g), scale(b))
-}
 
-fn hex_rgb(r: u32, g: u32, b: u32) -> String {
-    format!("#{:02X}{:02X}{:02X}", r, g, b)
-}
 
-/// GNU's seq.int(from, to, length.out) — integer index times by,
-/// exactly as the C sequence generator's fp order.
-fn gnu_seq(from: f64, to: f64, n: usize) -> Vec<f64> {
-    if n == 0 { return Vec::new(); }
-    if n == 1 { return vec![from]; }
-    let by = (to - from) / (n as f64 - 1.0);
-    (0..n).map(|i| from + i as f64 * by).collect()
-}
 
-/// hsv(h, s, v) — recycling exactly as GNU's longest-rule.
-fn hsv_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["h", "s", "v", "alpha"])?;
-    let channel = |index: usize, default: f64| -> Vec<f64> {
-        match slots[index] {
-            Some(v) => reals_of_value(heap, v).unwrap_or_default(),
-            None => vec![default],
-        }
-    };
-    let hs = channel(0, 1.0);
-    let ss = channel(1, 1.0);
-    let vs = channel(2, 1.0);
-    let n = hs.len().max(ss.len()).max(vs.len());
-    if n == 0 {
-        return Ok(heap.alloc(RObject::String(Vec::new())));
-    }
-    let out: Vec<r_core::intern::InternedStr> = (0..n).map(|i| {
-        let (r, g, b) = gnu_hsv2rgb(hs[i % hs.len()], ss[i % ss.len()], vs[i % vs.len()]);
-        interner.intern_string(&hex_rgb(r, g, b))
-    }).collect();
-    Ok(heap.alloc(RObject::String(out)))
-}
 
-/// gray(level) — GNU's rgb(level, level, level) exactly.
-fn gray_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["level", "alpha"])?;
-    let levels = match slots[0] {
-        Some(v) => reals_of_value(heap, v).map_err(RSignal::from)?,
-        None => Vec::new(),
-    };
-    let out: Vec<r_core::intern::InternedStr> = levels.iter().map(|&lv| {
-        let scaled = (255.0 * lv + 0.5) as u32;
-        interner.intern_string(&hex_rgb(scaled, scaled, scaled))
-    }).collect();
-    Ok(heap.alloc(RObject::String(out)))
-}
 
-/// The color-ramp generators exactly as GNU's colorstuff.R — each a
-/// composition of hsv over exact sequence expressions.
-fn color_ramp_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    op: u32,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["n", "s", "v", "start", "end", "alpha", "rev"])?;
-    let n = slots[0].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(0.0) as usize;
-    if n == 0 {
-        return Ok(heap.alloc(RObject::String(Vec::new())));
-    }
-    let emit = |heap: &mut Heap, interner: &mut SymbolInterner, triples: &[(f64, f64, f64)]| -> Vec<r_core::intern::InternedStr> {
-        triples.iter().map(|&(h, s, v)| {
-            let (r, g, b) = gnu_hsv2rgb(h, s, v);
-            interner.intern_string(&hex_rgb(r, g, b))
-        }).collect()
-    };
-    let _ = heap;
-    let mut colors: Vec<(f64, f64, f64)> = Vec::new();
-    match op {
-        RAINBOW => {
-            let s = slots[1].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(1.0);
-            let v = slots[2].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(1.0);
-            let start = slots[3].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(0.0);
-            let end = slots[4].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied())
-                .unwrap_or((n.max(1) as f64 - 1.0) / n as f64);
-            // seq.int(start, (start > end)*1 + end) %% 1 exactly as GNU.
-            let target = if start > end { 1.0 + end } else { end };
-            for h in gnu_seq(start, target, n) {
-                colors.push((h - h.floor(), s, v));
-            }
-        }
-        HEAT_COLORS => {
-            // rainbow(i, start=0, end=1/6) then fading-saturation yellows
-            /// exactly as GNU's two-part composition.
-            let j = n / 4;
-            let i = n - j;
-            for h in gnu_seq(0.0, 1.0 / 6.0, i) {
-                colors.push((h, 1.0, 1.0));
-            }
-            if j > 0 {
-                let sats = gnu_seq(1.0 - 1.0 / (2.0 * j as f64), 1.0 / (2.0 * j as f64), j);
-                for s in sats {
-                    colors.push((1.0 / 6.0, s, 1.0));
-                }
-            }
-        }
-        TERRAIN_COLORS => {
-            let k = n / 2;
-            // First half green-to-tan, second half continuing to
-            /// near-white exactly as GNU's split sequences with the
-            /// overlapping first element dropped.
-            let h1 = gnu_seq(4.0 / 12.0, 2.0 / 12.0, k);
-            let s1 = gnu_seq(1.0, 1.0, k);
-            let v1 = gnu_seq(0.65, 0.9, k);
-            for idx in 0..k {
-                colors.push((h1[idx], s1[idx], v1[idx]));
-            }
-            let rest = n - k + 1;
-            let h2 = gnu_seq(2.0 / 12.0, 0.0, rest);
-            let s2 = gnu_seq(1.0, 0.0, rest);
-            let v2 = gnu_seq(0.9, 0.95, rest);
-            for idx in 1..rest {
-                colors.push((h2[idx], s2[idx], v2[idx]));
-            }
-        }
-        TOPO_COLORS => {
-            let j = n / 3;
-            let k = n / 3;
-            let i = n - j - k;
-            for h in gnu_seq(43.0 / 60.0, 31.0 / 60.0, i) {
-                colors.push((h, 1.0, 1.0));
-            }
-            for h in gnu_seq(23.0 / 60.0, 11.0 / 60.0, j) {
-                colors.push((h, 1.0, 1.0));
-            }
-            let hues = gnu_seq(10.0 / 60.0, 6.0 / 60.0, k);
-            let sats = gnu_seq(1.0, 0.3, k);
-            for idx in 0..k {
-                colors.push((hues[idx], sats[idx], 1.0));
-            }
-        }
-        CM_COLORS => {
-            let even_n = n % 2 == 0;
-            let k = n / 2;
-            let l1 = if even_n { k + 1 - 1 } else { k + 1 };
-            let l2 = n - k + if even_n { 1 } else { 0 };
-            // Cyan half fading to white then magenta growing exactly as
-            /// GNU's mirrored saturation sequences.
-            if l1 > 0 {
-                let target = if even_n { 0.5 / k as f64 } else { 0.0 };
-                for s in gnu_seq(0.5, target, l1) {
-                    colors.push((6.0 / 12.0, s, 1.0));
-                }
-            }
-            if l2 > 1 {
-                let sats = gnu_seq(0.0, 0.5, l2);
-                for &s in sats.iter().skip(1) {
-                    colors.push((10.0 / 12.0, s, 1.0));
-                }
-            }
-        }
-        _ => {}
-    }
-    let rev_flag = slots[6]
-        .map(|v| matches!(heap.object(v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) != 0))
-        .unwrap_or(false);
-    if rev_flag {
-        colors.reverse();
-    }
-    let out = emit(heap, interner, &colors);
-    Ok(heap.alloc(RObject::String(out)))
-}
 
-/// Resolve one color spec — name case-insensitively against GNU's
-/// 657-entry database, #RRGGBB/#RRGGBBAA hex literally, exactly as
-/// colors.c's col2name.
-fn resolve_named_color(name: &str) -> Option<(u32, u32, u32, u32)> {
-    use r_core::support::colors::COLOR_DATA;
-    if let Some(hex) = name.strip_prefix('#') {
-        let digits = hex.len();
-        if digits == 6 || digits == 8 {
-            let value = u32::from_str_radix(hex, 16).ok()?;
-            let r = (value >> (digits * 4 - 8)) & 0xff;
-            let g = (value >> (digits * 4 - 16)) & 0xff;
-            let b = (value >> (digits * 4 - 24)) & 0xff;
-            let a = if digits == 8 { value & 0xff } else { 255 };
-            return Some((r, g, b, a));
-        }
-        return None;
-    }
-    let lowered = name.to_ascii_lowercase();
-    for entry in COLOR_DATA.iter() {
-        let entry_name = std::str::from_utf8(entry.name)
-            .unwrap_or("")
-            .trim_end_matches('\0');
-        if entry_name == lowered {
-            let code = entry.code;
-            return Some((code & 0xff, (code >> 8) & 0xff, (code >> 16) & 0xff, (code >> 24) & 0xff));
-        }
-    }
-    None
-}
 
-/// colors() — GNU's 657 names in database order exactly as C_colors.
-fn colors_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    _args: ValueId,
-    _caller_env: ValueId,
-) -> EvalResult {
-    use r_core::support::colors::COLOR_DATA;
-    let out: Vec<r_core::intern::InternedStr> = COLOR_DATA.iter().map(|entry| {
-        let name = std::str::from_utf8(entry.name).unwrap_or("").trim_end_matches('\0');
-        interner.intern_string(name)
-    }).collect();
-    Ok(heap.alloc(RObject::String(out)))
-}
 
-/// col2rgb(col, alpha) — the 3xN integer matrix exactly as GNU, rows
-/// named red/green/blue, alpha appending a fourth row.
-fn col2rgb_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["col", "alpha"])?;
-    let input = slots[0].unwrap_or(ValueId::NIL);
-    let names = string_vec(heap, interner, input);
-    let alpha_flag = slots[1]
-        .map(|v| matches!(heap.object(v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) != 0))
-        .unwrap_or(false);
-    let rows = if alpha_flag { 4 } else { 3 };
-    let mut cells: Vec<i32> = Vec::new();
-    // Column-major exactly as R matrices — each color's channels
-    /// contiguous per column.
-    let mut columns: Vec<(u32, u32, u32, u32)> = Vec::new();
-    for name in &names {
-        match resolve_named_color(name) {
-            Some(rgba) => columns.push(rgba),
-            None => return Err(EvalError::TypeError("invalid color name").into()),
-        }
-    }
-    for rgba in &columns {
-        cells.push(rgba.0 as i32);
-        cells.push(rgba.1 as i32);
-        cells.push(rgba.2 as i32);
-        if alpha_flag {
-            cells.push(rgba.3 as i32);
-        }
-    }
-    let matrix = heap.alloc(RObject::Integer(cells));
-    let dim = heap.alloc(RObject::Integer(vec![rows as i32, names.len() as i32]));
-    let mut result = copy_with_attrib(heap, interner, matrix, "dim", dim).map_err(RSignal::from)?;
-    // dimnames — row names red/green/blue exactly as GNU, no column
-    /// names.
-    let row_label_names: Vec<&str> = if alpha_flag {
-        vec!["red", "green", "blue", "alpha"]
-    } else {
-        vec!["red", "green", "blue"]
-    };
-    let row_ids: Vec<r_core::intern::InternedStr> = row_label_names.iter().map(|n| interner.intern_string(n)).collect();
-    let row_names_obj = heap.alloc(RObject::String(row_ids));
-    let dimnames_list = heap.alloc(RObject::List(vec![row_names_obj, ValueId::NIL]));
-    result = copy_with_attrib(heap, interner, result, "dimnames", dimnames_list).map_err(RSignal::from)?;
-    Ok(result)
-}
 
-/// palette(value) — reads or replaces the session palette exactly as
-/// GNU: no arguments returns the current visibly, arguments replace
-/// and return the previous invisibly.
-fn palette_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["value"])?;
-    let current: Vec<String> = if heap.palette.is_empty() {
-        vec!["black", "#DF536B", "#61D04F", "#2297E6", "#28E2E5", "#CD0BBC", "#F5C710", "gray62"]
-            .iter().map(|s| s.to_string()).collect()
-    } else {
-        heap.palette.clone()
-    };
-    let render = |heap: &mut Heap, interner: &mut SymbolInterner, names: &[String]| -> ValueId {
-        let ids: Vec<r_core::intern::InternedStr> = names.iter().map(|n| interner.intern_string(n)).collect();
-        heap.alloc(RObject::String(ids))
-    };
-    match slots[0] {
-        None => {
-            heap.visible = true;
-            Ok(render(heap, interner, &current))
-        }
-        Some(v) if v == ValueId::NIL => {
-            heap.visible = true;
-            Ok(render(heap, interner, &current))
-        }
-        Some(v) => {
-            let replacement = string_vec(heap, interner, v);
-            if !replacement.is_empty() {
-                heap.palette = replacement;
-            }
-            heap.visible = false;
-            Ok(render(heap, interner, &current))
-        }
-    }
-}
 
-/// GNU's hcl2rgb exactly as colors.c — polar LUV through XYZ to sRGB
-/// with the gamma transform and fixup clamping, constants verbatim.
-fn gnu_hcl2rgb(h: f64, c: f64, l: f64) -> (f64, f64, f64) {
-    const WHITE_Y: f64 = 100.000;
-    const WHITE_U: f64 = 0.1978398;
-    const WHITE_V: f64 = 0.4683363;
-    const GAMMA: f64 = 2.4;
-    let gtrans = |u: f64| -> f64 {
-        if u > 0.00304 { 1.055 * u.powf(1.0 / GAMMA) - 0.055 } else { 12.92 * u }
-    };
-    if l <= 0.0 {
-        return (0.0, 0.0, 0.0);
-    }
-    let rad = std::f64::consts::PI / 180.0 * h;
-    let uu = c * rad.cos();
-    let vv = c * rad.sin();
-    let y = WHITE_Y * if l > 7.999592 { ((l + 16.0) / 116.0).powi(3) } else { l / 903.3 };
-    let u2 = uu / (13.0 * l) + WHITE_U;
-    let v2 = vv / (13.0 * l) + WHITE_V;
-    let x = 9.0 * y * u2 / (4.0 * v2);
-    let z = -x / 3.0 - 5.0 * y + 3.0 * y / v2;
-    (
-        gtrans((3.240479 * x - 1.537150 * y - 0.498535 * z) / WHITE_Y),
-        gtrans((-0.969256 * x + 1.875992 * y + 0.041556 * z) / WHITE_Y),
-        gtrans((0.055648 * x - 0.204043 * y + 1.057311 * z) / WHITE_Y),
-    )
-}
 
-/// hcl(h, c, l, fixup) — recycling exactly as GNU, channels clamped
-/// exactly as FixupColor.
-fn hcl_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["h", "c", "l", "alpha", "fixup"])?;
-    let channel = |index: usize, default: f64| -> Vec<f64> {
-        match slots[index] {
-            Some(v) => reals_of_value(heap, v).unwrap_or_default(),
-            None => vec![default],
-        }
-    };
-    let hs = channel(0, 0.0);
-    let cs = channel(1, 35.0);
-    let ls = channel(2, 85.0);
-    let n = hs.len().max(cs.len()).max(ls.len());
-    if n == 0 {
-        return Ok(heap.alloc(RObject::String(Vec::new())));
-    }
-    let scale = |x: f64| -> u32 {
-        let scaled = (255.0 * x + 0.5) as i64;
-        scaled.clamp(0, 255) as u32
-    };
-    let out: Vec<r_core::intern::InternedStr> = (0..n).map(|i| {
-        let (r, g, b) = gnu_hcl2rgb(hs[i % hs.len()], cs[i % cs.len()], ls[i % ls.len()]);
-        interner.intern_string(&hex_rgb(scale(r), scale(g), scale(b)))
-    }).collect();
-    Ok(heap.alloc(RObject::String(out)))
-}
 
-/// adjustcolor(col, alpha.f, red.f, green.f, blue.f, offset) — GNU's
-/// matrix composition exactly: channels scaled to [0,1], diagonal
-/// transform applied, offsets added, clamped, alpha appended exactly
-/// as rgb with an alpha argument.
-fn adjustcolor_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env,
-        &["col", "alpha.f", "red.f", "green.f", "blue.f", "offset", "transform"])?;
-    let input = slots[0].unwrap_or(ValueId::NIL);
-    let names = string_vec(heap, interner, input);
-    let factor = |index: usize| -> f64 {
-        slots[index].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(1.0)
-    };
-    let alpha_f = factor(1);
-    let red_f = factor(2);
-    let green_f = factor(3);
-    let blue_f = factor(4);
-    let offsets: Vec<f64> = slots[5]
-        .and_then(|v| reals_of_value(heap, v).ok())
-        .unwrap_or_else(|| vec![0.0, 0.0, 0.0, 0.0]);
-    let offset_at = |i: usize| -> f64 { offsets.get(i).copied().unwrap_or(0.0) };
-    let clamp01 = |x: f64| -> f64 { x.clamp(0.0, 1.0) };
-    let quant = |x: f64| -> u32 { (255.0 * x + 0.5) as u32 };
-    let out: Vec<r_core::intern::InternedStr> = names.iter().map(|name| {
-        match resolve_named_color(name) {
-            Some((r, g, b, a)) => {
-                let rn = clamp01(r as f64 / 255.0 * red_f + offset_at(0));
-                let gn = clamp01(g as f64 / 255.0 * green_f + offset_at(1));
-                let bn = clamp01(b as f64 / 255.0 * blue_f + offset_at(2));
-                let an = clamp01(a as f64 / 255.0 * alpha_f + offset_at(3));
-                interner.intern_string(&format!("#{:02X}{:02X}{:02X}{:02X}", quant(rn), quant(gn), quant(bn), quant(an)))
-            }
-            None => interner.intern_string(""),
-        }
-    }).collect();
-    Ok(heap.alloc(RObject::String(out)))
-}
 
-/// GNU's rgb2hsv exactly as colors.c — the min/max branch structure
-/// verbatim, hue sectors scaled by sixths.
-fn gnu_rgb2hsv(r: f64, g: f64, b: f64) -> (f64, f64, f64) {
-    let mut min = r;
-    let mut max = r;
-    let mut r_max = true;
-    let mut b_max = false;
-    if min > g {
-        if b < g {
-            min = b;
-        } else {
-            min = g;
-            if b > r {
-                max = b;
-                b_max = true;
-                r_max = false;
-            }
-        }
-    } else if b > g {
-        max = b;
-        b_max = true;
-        r_max = false;
-    } else {
-        max = g;
-        r_max = false;
-        if b < r {
-            min = b;
-        }
-    }
-    let v = max;
-    let delta = max - min;
-    if max == 0.0 || delta == 0.0 {
-        return (0.0, 0.0, v);
-    }
-    let s = delta / max;
-    let mut h = if r_max {
-        (g - b) / delta
-    } else if b_max {
-        4.0 + (r - g) / delta
-    } else {
-        2.0 + (b - r) / delta
-    };
-    h /= 6.0;
-    if h < 0.0 {
-        h += 1.0;
-    }
-    (h, s, v)
-}
 
-/// rgb2hsv(r, g, b) — the 3-row matrix exactly as GNU, inputs scaled
-/// by maxColorValue exactly as the R wrapper.
-fn rgb2hsv_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["r", "g", "b", "maxColorValue"])?;
-    let max_value = slots[3].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(255.0);
-    let input = slots[0].unwrap_or(ValueId::NIL);
-    // The matrix form carries rows exactly as GNU's rbind composition;
-    /// separate vectors take the single-channel path.
-    let mut triples: Vec<(f64, f64, f64)> = Vec::new();
-    let matrix_dim = get_attrib(heap, interner, input, "dim");
-    if let Some(dim_id) = matrix_dim {
-        if let Some(RObject::Integer(dims)) = heap.object(dim_id).cloned() {
-            if dims.len() == 2 && dims[0] == 3 {
-                let cols = dims[1] as usize;
-                let vals = reals_of_value(heap, input).map_err(RSignal::from)?;
-                for c in 0..cols {
-                    let r = vals.get(c * 3).copied().unwrap_or(0.0);
-                    let g = vals.get(c * 3 + 1).copied().unwrap_or(0.0);
-                    let b = vals.get(c * 3 + 2).copied().unwrap_or(0.0);
-                    triples.push((r / max_value, g / max_value, b / max_value));
-                }
-            }
-        }
-    }
-    if triples.is_empty() {
-        let rs = reals_of_value(heap, input).unwrap_or_default();
-        let gs = slots[1].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
-        let bs = slots[2].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
-        for i in 0..rs.len() {
-            let r = rs[i];
-            let g = gs.get(i % gs.len().max(1)).copied().unwrap_or(0.0);
-            let b = bs.get(i % bs.len().max(1)).copied().unwrap_or(0.0);
-            triples.push((r / max_value, g / max_value, b / max_value));
-        }
-    }
-    let mut cells: Vec<f64> = Vec::new();
-    for &(r, g, b) in &triples {
-        let (h, s, v) = gnu_rgb2hsv(r, g, b);
-        cells.push(h);
-        cells.push(s);
-        cells.push(v);
-    }
-    let matrix = heap.alloc(RObject::Real(cells));
-    let dim = heap.alloc(RObject::Integer(vec![3, triples.len() as i32]));
-    let mut result = copy_with_attrib(heap, interner, matrix, "dim", dim).map_err(RSignal::from)?;
-    let row_ids: Vec<r_core::intern::InternedStr> = ["h", "s", "v"].iter().map(|n| interner.intern_string(n)).collect();
-    let row_names_obj = heap.alloc(RObject::String(row_ids));
-    let dimnames_list = heap.alloc(RObject::List(vec![row_names_obj, ValueId::NIL]));
-    result = copy_with_attrib(heap, interner, result, "dimnames", dimnames_list).map_err(RSignal::from)?;
-    Ok(result)
-}
 
-/// arrows(x0, y0, x1, y1, length, angle, code) — GNU's segments plus
-/// arrowheads: the head lines rotate +/-angle off the shaft at the
-/// endpoints code selects, length in inches scaled at 72dpi exactly
-/// as GArrow.
-fn arrows_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    use r_graphics_engine::{DrawOperation, PathCommand};
-    let slots = eval_matched_args(heap, interner, args, caller_env,
-        &["x0", "y0", "x1", "y1", "length", "angle", "code", "col", "lty", "lwd"])?;
-    let reals_at = |index: usize| -> Vec<f64> {
-        slots[index].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default()
-    };
-    let x0s = reals_at(0);
-    let y0s = reals_at(1);
-    let x1s = reals_at(2);
-    let y1s = reals_at(3);
-    let n = x0s.len().max(y0s.len()).max(x1s.len()).max(y1s.len());
-    if n == 0 {
-        return Ok(ValueId::NIL);
-    }
-    let length_in = reals_at(4).first().copied().unwrap_or(0.25);
-    let angle_deg = reals_at(5).first().copied().unwrap_or(30.0);
-    let code = reals_at(6).first().copied().unwrap_or(2.0) as i32;
-    // Precompute geometry before emission exactly as the other
-    /// primitives — no borrows across scene mutation.
-    let mut segments: Vec<(f64, f64, f64, f64)> = Vec::new();
-    let head_len = length_in * 72.0;
-    let half_angle = angle_deg.to_radians();
-    for i in 0..n {
-        let x0 = x0s[i % x0s.len().max(1)];
-        let y0 = y0s[i % y0s.len().max(1)];
-        let x1 = x1s[i % x1s.len().max(1)];
-        let y1 = y1s[i % y1s.len().max(1)];
-        segments.push((x0, y0, x1, y1));
-        // Head geometry in user space approximates GNU's device-space
-        /// rotation — the shaft angle plus/minus the head angle.
-        let shaft = (y1 - y0).atan2(x1 - x0);
-        if code == 2 || code == 3 {
-            for sign in [1.0f64, -1.0] {
-                let a = shaft + std::f64::consts::PI + sign * half_angle;
-                segments.push((x1, y1, x1 + head_len * a.cos(), y1 + head_len * a.sin()));
-            }
-        }
-        if code == 1 || code == 3 {
-            for sign in [1.0f64, -1.0] {
-                let a = shaft + sign * half_angle;
-                segments.push((x0, y0, x0 + head_len * a.cos(), y0 + head_len * a.sin()));
-            }
-        }
-    }
-    use r_graphics_engine::{Color, Path};
-    for (x0, y0, x1, y1) in segments {
-        let col = slots[7].and_then(|v| resolve_rcolor(heap, interner, v, 0)).unwrap_or(Color::BLACK);
-        let stroke = par_stroke(heap, col);
-        let (dx0, dy0) = heap.graphics.user_to_device(x0, y0);
-        let (dx1, dy1) = heap.graphics.user_to_device(x1, y1);
-        heap.graphics.scene_mut().push(DrawOperation::Path(Path {
-            commands: vec![
-                PathCommand::MoveTo(dx0, dy0),
-                PathCommand::LineTo(dx1, dy1),
-            ],
-            stroke,
-            anti_alias: true,
-            ..Default::default()
-        }));
-    }
-    Ok(ValueId::NIL)
-}
 
-/// hist(x, breaks, freq, probability, include.lowest, right, fuzz, plot)
-/// — GNU's hist.default data path exactly: Sturges through pretty with
-/// min.n=1, the diddle fuzz adjustment, boundary binning, densities
-/// over un-fuzzed widths — then the plot.histogram composition for
-/// plot=TRUE.
-fn hist_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    // xname captures the raw expression exactly as deparse1(substitute).
-    let raw_first = match heap.object(args) {
-        Some(RObject::Pairlist { car, .. }) => *car,
-        _ => ValueId::NIL,
-    };
-    let slots = eval_matched_args(heap, interner, args, caller_env,
-        &["x", "breaks", "freq", "probability", "include.lowest", "right", "fuzz", "density",
-          "angle", "col", "border", "main", "xlim", "ylim", "xlab", "ylab", "axes", "plot", "labels", "nclass"])?;
-    let xname = if raw_first != ValueId::NIL {
-        r_core::print::deparse(heap, interner, raw_first)
-    } else {
-        "x".to_string()
-    };
-    let input = slots[0].unwrap_or(ValueId::NIL);
-    let xs: Vec<f64> = reals_of_value(heap, input)
-        .map_err(RSignal::from)?
-        .into_iter()
-        .filter(|x| x.is_finite())
-        .collect();
-    let n = xs.len();
-    if n == 0 {
-        return Err(EvalError::TypeError("invalid length(x)").into());
-    }
-    let xlo = xs.iter().copied().fold(f64::INFINITY, f64::min);
-    let xhi = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    // Break resolution exactly as GNU: explicit vector, scalar count
-    /// through pretty with min.n=1, or the Sturges default.
-    let mut use_br = false;
-    let mut breaks: Vec<f64> = match slots[1] {
-        Some(b) => {
-            let spec = reals_of_value(heap, b).unwrap_or_default();
-            if spec.len() > 1 {
-                use_br = true;
-                let mut sorted = spec;
-                sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-                sorted
-            } else if spec.len() == 1 {
-                let count = spec[0] as i32;
-                let result = r_core::graphics::pretty::r_pretty(
-                    xlo, xhi, count, 1, 0.75, 1.5, 0.5 + 1.5 * 1.5, 2f64.powi(-20), 0,
-                );
-                let ndiv = result.ndiv;
-                (0..=ndiv.max(0) as usize).map(|i| {
-                    let t = i as f64 / ndiv.max(1) as f64;
-                    result.lo * (1.0 - t) + result.up * t
-                }).collect()
-            } else {
-                Vec::new()
-            }
-        }
-        None => Vec::new(),
-    };
-    if breaks.is_empty() {
-        // Sturges exactly as nclass.Sturges — ceiling(log2(n) + 1).
-        let sturges = ((n as f64).log2() + 1.0).ceil() as i32;
-        let result = r_core::graphics::pretty::r_pretty(
-            xlo, xhi, sturges, 1, 0.75, 1.5, 0.5 + 1.5 * 1.5, 2f64.powi(-20), 0,
-        );
-        let ndiv = result.ndiv;
-        breaks = (0..=ndiv.max(0) as usize).map(|i| {
-            let t = i as f64 / ndiv.max(1) as f64;
-            result.lo * (1.0 - t) + result.up * t
-        }).collect();
-    }
-    let nb = breaks.len() as i32;
-    if nb <= 1 {
-        return Err(EvalError::TypeError("invalid breakpoints").into());
-    }
-    let h: Vec<f64> = breaks.windows(2).map(|w| w[1] - w[0]).collect();
-    let h_mean = h.iter().sum::<f64>() / h.len() as f64;
-    let h_min = h.iter().copied().fold(f64::INFINITY, f64::min);
-    let h_max = h.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    let equidist = !use_br || (h_max - h_min) < 1e-7 * h_mean;
-    // freq resolution exactly as GNU: default follows equidist unless
-    /// probability overrides.
-    let freq1 = match slots[2] {
-        Some(f) => matches!(heap.object(f), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) != 0),
-        None => match slots[3] {
-            Some(prob) => !matches!(heap.object(prob), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) != 0),
-            None => equidist,
-        },
-    };
-    let include_lowest = slots[4]
-        .map(|v| matches!(heap.object(v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) != 0))
-        .unwrap_or(true);
-    let right = slots[5]
-        .map(|v| matches!(heap.object(v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) != 0))
-        .unwrap_or(true);
-    let fuzz_arg = slots[6].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(1e-7);
-    // The diddle exactly as GNU: median width for many bins, range
-    /// for few, smallest positive otherwise.
-    let mut sorted_h = h.clone();
-    sorted_h.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let median_h = sorted_h[sorted_h.len() / 2];
-    let diddle_base = if nb > 5 {
-        median_h
-    } else if nb <= 3 {
-        xhi - xlo
-    } else {
-        h.iter().copied().filter(|&w| w > 0.0).fold(f64::INFINITY, f64::min)
-    };
-    let diddle = fuzz_arg * diddle_base;
-    // Fuzz directions exactly as GNU's include.lowest interplay.
-    let mut fuzzybreaks: Vec<f64> = Vec::new();
-    if right {
-        for (i, b) in breaks.iter().enumerate() {
-            if i == 0 {
-                fuzzybreaks.push(b + if include_lowest { -diddle } else { diddle });
-            } else {
-                fuzzybreaks.push(b + diddle);
-            }
-        }
-    } else {
-        for (i, b) in breaks.iter().enumerate() {
-            if i == breaks.len() - 1 {
-                fuzzybreaks.push(b + if include_lowest { diddle } else { -diddle });
-            } else {
-                fuzzybreaks.push(b - diddle);
-            }
-        }
-    }
-    // BinCount exactly as GNU: right-closed bins with the lowest
-    /// boundary inclusive when include.lowest.
-    let bin_count = breaks.len() - 1;
-    let mut counts: Vec<i32> = vec![0; bin_count];
-    for &x in &xs {
-        for i in 0..bin_count {
-            let inside = if right {
-                let lower_ok = if i == 0 && include_lowest {
-                    x >= fuzzybreaks[0]
-                } else {
-                    x > fuzzybreaks[i]
-                };
-                lower_ok && x <= fuzzybreaks[i + 1]
-            } else {
-                let upper_ok = if i == bin_count - 1 && include_lowest {
-                    x <= fuzzybreaks[bin_count]
-                } else {
-                    x < fuzzybreaks[i + 1]
-                };
-                x >= fuzzybreaks[i] && upper_ok
-            };
-            if inside {
-                counts[i] += 1;
-                break;
-            }
-        }
-    }
-    let density: Vec<f64> = counts.iter().enumerate().map(|(i, &c)| c as f64 / (n as f64 * h[i])).collect();
-    let mids: Vec<f64> = (0..bin_count).map(|i| 0.5 * (breaks[i] + breaks[i + 1])).collect();
-    // The histogram object exactly as GNU's structure(): named list,
-    /// class attribute.
-    let heights: Vec<f64> = if freq1 {
-        counts.iter().map(|&c| c as f64).collect()
-    } else {
-        density.clone()
-    };
-    let do_plot = slots[17]
-        .map(|v| matches!(heap.object(v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) != 0))
-        .unwrap_or(true);
-    if do_plot {
-        // plot.histogram composition exactly: plot.new, window over
-        /// range(breaks) x range(y, 0), title, axes, then the bars.
-        let main_text = format!("Histogram of {}", xname);
-        let ylab_text = if freq1 { "Frequency" } else { "Density" };
-        let ymax = heights.iter().copied().fold(0.0f64, f64::max);
-        let xlim = heap.alloc(RObject::Real(vec![breaks[0], breaks[breaks.len() - 1]]));
-        let ylim = heap.alloc(RObject::Real(vec![0.0, ymax]));
-        let cell = |v: ValueId, rest: ValueId, heap: &mut Heap| {
-            heap.alloc(RObject::Pairlist { car: v, cdr: rest, tag: ValueId::NIL })
-        };
-        plot_new_primitive(heap, interner, ValueId::NIL, caller_env)?;
-        let win_args = {
-            let second = cell(ylim, ValueId::NIL, heap);
-            cell(xlim, second, heap)
-        };
-        plot_window_primitive(heap, interner, win_args, caller_env)?;
-        // title(main, xlab=xname, ylab)
-        let main_obj = heap.alloc(RObject::String(vec![interner.intern_string(&main_text)]));
-        let xlab_obj = heap.alloc(RObject::String(vec![interner.intern_string(&xname)]));
-        let ylab_obj = heap.alloc(RObject::String(vec![interner.intern_string(ylab_text)]));
-        let title_args = {
-            let ylab_cell = cell(ylab_obj, ValueId::NIL, heap);
-            let xlab_cell = cell(xlab_obj, ylab_cell, heap);
-            cell(main_obj, xlab_cell, heap)
-        };
-        title_primitive(heap, interner, title_args, caller_env)?;
-        // axis(1), axis(2)
-        let one = heap.alloc(RObject::Real(vec![1.0]));
-        let two = heap.alloc(RObject::Real(vec![2.0]));
-        let axis1_args = cell(one, ValueId::NIL, heap);
-        axis_primitive(heap, interner, axis1_args, caller_env)?;
-        let axis2_args = cell(two, ValueId::NIL, heap);
-        axis_primitive(heap, interner, axis2_args, caller_env)?;
-        // rect(breaks[-nB], 0, breaks[-1], y, col="lightgray")
-        let xleft = heap.alloc(RObject::Real(breaks[..bin_count].to_vec()));
-        let ybottom = heap.alloc(RObject::Real(vec![0.0]));
-        let xright = heap.alloc(RObject::Real(breaks[1..].to_vec()));
-        let ytop = heap.alloc(RObject::Real(heights.clone()));
-        let rect_args = {
-            let col_obj = heap.alloc(RObject::String(vec![interner.intern_string("lightgray")]));
-            let col_cell = cell(col_obj, ValueId::NIL, heap);
-            let ytop_cell = cell(ytop, col_cell, heap);
-            let xright_cell = cell(xright, ytop_cell, heap);
-            let ybot_cell = cell(ybottom, xright_cell, heap);
-            cell(xleft, ybot_cell, heap)
-        };
-        rect_primitive(heap, interner, rect_args, caller_env)?;
-    }
-    // Build the result list with names and class exactly as GNU.
-    let breaks_obj = heap.alloc(RObject::Real(breaks.clone()));
-    let counts_obj = heap.alloc(RObject::Integer(counts.clone()));
-    let density_obj = heap.alloc(RObject::Real(density));
-    let mids_obj = heap.alloc(RObject::Real(mids));
-    let xname_obj = heap.alloc(RObject::String(vec![interner.intern_string(&xname)]));
-    let equidist_obj = heap.alloc(RObject::Logical(vec![if equidist { 1 } else { 0 }]));
-    let list = heap.alloc(RObject::List(vec![breaks_obj, counts_obj, density_obj, mids_obj, xname_obj, equidist_obj]));
-    let names_vec: Vec<r_core::intern::InternedStr> = ["breaks", "counts", "density", "mids", "xname", "equidist"]
-        .iter().map(|n| interner.intern_string(n)).collect();
-    let names_obj = heap.alloc(RObject::String(names_vec));
-    let mut result = copy_with_attrib(heap, interner, list, "names", names_obj).map_err(RSignal::from)?;
-    let class_obj = heap.alloc(RObject::String(vec![interner.intern_string("histogram")]));
-    result = copy_with_attrib(heap, interner, result, "class", class_obj).map_err(RSignal::from)?;
-    heap.visible = !do_plot;
-    Ok(result)
-}
 
-/// boxplot(x, ..., range, plot) — GNU's data path exactly: per-group
-/// boxplot.stats, the 5 x n stats matrix, invisible return. Rendering
-/// composes whisker/staple segments, the box rect, median line, and
-/// outlier points.
-fn boxplot_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env,
-        &["x", "range", "width", "varwidth", "notch", "outline", "names", "plot", "border", "col", "horizontal"])?;
-    let input = slots[0].unwrap_or(ValueId::NIL);
-    let coef = slots[1].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(1.5);
-    // Groups: a list spreads each element; a bare vector is one group.
-    let groups: Vec<Vec<f64>> = match heap.object(input).cloned() {
-        Some(RObject::List(items)) => {
-            let mut gs = Vec::new();
-            for item in items {
-                gs.push(reals_of_value(heap, item).map_err(RSignal::from)?
-                    .into_iter().filter(|x| x.is_finite()).collect());
-            }
-            gs
-        }
-        _ => vec![reals_of_value(heap, input).map_err(RSignal::from)?
-            .into_iter().filter(|x| x.is_finite()).collect()],
-    };
-    let ngroups = groups.len();
-    // Per-group stats exactly as boxplot.stats.
-    let mut all_stats: Vec<Vec<f64>> = Vec::new();
-    let mut all_n: Vec<f64> = Vec::new();
-    let mut all_conf: Vec<f64> = Vec::new();
-    let mut all_out: Vec<f64> = Vec::new();
-    let mut all_group: Vec<f64> = Vec::new();
-    for (gi, g) in groups.iter().enumerate() {
-        let n = g.len();
-        let mut stats = fivenum_values(g);
-        let iqr = stats[3] - stats[1];
-        let mut out: Vec<f64> = Vec::new();
-        if coef != 0.0 && iqr.is_finite() {
-            let lo_fence = stats[1] - coef * iqr;
-            let hi_fence = stats[3] + coef * iqr;
-            let mut in_fence: Vec<f64> = Vec::new();
-            for &x in g {
-                if x < lo_fence || x > hi_fence {
-                    out.push(x);
-                } else {
-                    in_fence.push(x);
-                }
-            }
-            if !out.is_empty() && !in_fence.is_empty() {
-                stats[0] = in_fence.iter().copied().fold(f64::INFINITY, f64::min);
-                stats[4] = in_fence.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-            }
-        }
-        for &o in &out {
-            all_out.push(o);
-            all_group.push((gi + 1) as f64);
-        }
-        all_n.push(n as f64);
-        all_conf.push(stats[2] - 1.58 * iqr / (n as f64).sqrt());
-        all_conf.push(stats[2] + 1.58 * iqr / (n as f64).sqrt());
-        all_stats.push(stats);
-    }
-    let do_plot = slots[7]
-        .map(|v| matches!(heap.object(v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) != 0))
-        .unwrap_or(true);
-    if do_plot {
-        let cell = |v: ValueId, rest: ValueId, heap: &mut Heap| {
-            heap.alloc(RObject::Pairlist { car: v, cdr: rest, tag: ValueId::NIL })
-        };
-        // ylim spans everything plotted exactly as GNU's range over
-        /// stats and outliers; xlim the group positions with margins.
-        let mut ymin = f64::INFINITY;
-        let mut ymax = f64::NEG_INFINITY;
-        for stats in &all_stats {
-            for &v in stats {
-                ymin = ymin.min(v);
-                ymax = ymax.max(v);
-            }
-        }
-        for &o in &all_out {
-            ymin = ymin.min(o);
-            ymax = ymax.max(o);
-        }
-        plot_new_primitive(heap, interner, ValueId::NIL, caller_env)?;
-        let xlim_obj = heap.alloc(RObject::Real(vec![0.5, ngroups as f64 + 0.5]));
-        let ylim_obj = heap.alloc(RObject::Real(vec![ymin, ymax]));
-        let win_args = {
-            let second = cell(ylim_obj, ValueId::NIL, heap);
-            cell(xlim_obj, second, heap)
-        };
-        plot_window_primitive(heap, interner, win_args, caller_env)?;
-        // GNU's box width: 0.8 of the group spacing by default.
-        let wid = 0.4f64;
-        for (gi, stats) in all_stats.iter().enumerate() {
-            let x = (gi + 1) as f64;
-            // Box from hinge to hinge, median line across.
-            let xleft = heap.alloc(RObject::Real(vec![x - wid]));
-            let ybot = heap.alloc(RObject::Real(vec![stats[1]]));
-            let xright = heap.alloc(RObject::Real(vec![x + wid]));
-            let ytop = heap.alloc(RObject::Real(vec![stats[3]]));
-            let rect_args = {
-                let yt = cell(ytop, ValueId::NIL, heap);
-                let xr = cell(xright, yt, heap);
-                let yb = cell(ybot, xr, heap);
-                cell(xleft, yb, heap)
-            };
-            rect_primitive(heap, interner, rect_args, caller_env)?;
-            let seg = |x0: f64, y0: f64, x1: f64, y1: f64, heap: &mut Heap, interner: &mut SymbolInterner| -> Result<(), RSignal> {
-                let x0o = heap.alloc(RObject::Real(vec![x0]));
-                let y0o = heap.alloc(RObject::Real(vec![y0]));
-                let x1o = heap.alloc(RObject::Real(vec![x1]));
-                let y1o = heap.alloc(RObject::Real(vec![y1]));
-                let sa = {
-                    let y1c = heap.alloc(RObject::Pairlist { car: y1o, cdr: ValueId::NIL, tag: ValueId::NIL });
-                    let x1c = heap.alloc(RObject::Pairlist { car: x1o, cdr: y1c, tag: ValueId::NIL });
-                    let y0c = heap.alloc(RObject::Pairlist { car: y0o, cdr: x1c, tag: ValueId::NIL });
-                    heap.alloc(RObject::Pairlist { car: x0o, cdr: y0c, tag: ValueId::NIL })
-                };
-                segments_primitive(heap, interner, sa, caller_env)?;
-                Ok(())
-            };
-            // Median line across the full box width exactly as GNU.
-            seg(x - wid, stats[2], x + wid, stats[2], heap, interner)?;
-            // Whiskers: box edge to whisker end, staples at half width.
-            seg(x, stats[1], x, stats[0], heap, interner)?;
-            seg(x, stats[3], x, stats[4], heap, interner)?;
-            seg(x - wid / 2.0, stats[0], x + wid / 2.0, stats[0], heap, interner)?;
-            seg(x - wid / 2.0, stats[4], x + wid / 2.0, stats[4], heap, interner)?;
-        }
-        // Outlier points.
-        if !all_out.is_empty() {
-            let xs_obj = heap.alloc(RObject::Real(all_group.clone()));
-            let ys_obj = heap.alloc(RObject::Real(all_out.clone()));
-            let pa = {
-                let yc = cell(ys_obj, ValueId::NIL, heap);
-                cell(xs_obj, yc, heap)
-            };
-            let _ = points_primitive(heap, interner, pa, caller_env);
-        }
-    }
-    // The invisible return: stats as a 5 x n column-major matrix plus
-    /// n, conf, out, group exactly as GNU.
-    let mut matrix_vals: Vec<f64> = Vec::new();
-    for stats in &all_stats {
-        for &v in stats {
-            matrix_vals.push(v);
-        }
-    }
-    let stats_obj = heap.alloc(RObject::Real(matrix_vals));
-    let dim_obj = heap.alloc(RObject::Integer(vec![5, ngroups as i32]));
-    let stats_matrix = copy_with_attrib(heap, interner, stats_obj, "dim", dim_obj)?;
-    let n_obj = heap.alloc(RObject::Real(all_n));
-    let conf_vals: Vec<f64> = all_conf;
-    let conf_obj = heap.alloc(RObject::Real(conf_vals));
-    let out_obj = heap.alloc(RObject::Real(all_out));
-    let group_obj = heap.alloc(RObject::Real(all_group));
-    let list = heap.alloc(RObject::List(vec![stats_matrix, n_obj, conf_obj, out_obj, group_obj]));
-    let names_vec: Vec<r_core::intern::InternedStr> = ["stats", "n", "conf", "out", "group"]
-        .iter()
-        .map(|s| interner.intern_string(s))
-        .collect();
-    let names_obj = heap.alloc(RObject::String(names_vec));
-    let with_names = copy_with_attrib(heap, interner, list, "names", names_obj)?;
-    heap.visible = false;
-    Ok(with_names)
-}
 
-/// curve(expr, from, to, n, add, type, xname) — GNU's data path:
-/// the raw expression evaluates once over the sequence vector in a
-/// data environment binding xname exactly as eval(expr, envir=list).
-/// Returns the invisible x/y list.
-fn curve_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    // The raw first element is the unevaluated expression exactly as
-    /// substitute(expr) captures it.
-    let raw_expr = match heap.object(args) {
-        Some(RObject::Pairlist { car, .. }) => *car,
-        _ => ValueId::NIL,
-    };
-    // The expression itself must never evaluate in the caller
-    /// environment — extract the remaining arguments manually with
-    /// positional-then-named matching exactly as GNU's formals after
-    /// expr.
-    let mut from_v: Option<ValueId> = None;
-    let mut to_v: Option<ValueId> = None;
-    let mut n_v: Option<ValueId> = None;
-    let mut xname_v: Option<ValueId> = None;
-    let mut positional_index = 0usize;
-    {
-        let mut cursor = match heap.object(args) {
-            Some(RObject::Pairlist { cdr, .. }) => *cdr,
-            _ => ValueId::NIL,
-        };
-        loop {
-            let (car, cdr, tag) = match heap.object(cursor) {
-                Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-                _ => break,
-            };
-            let tag_name = match heap.object(tag) {
-                Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
-                _ => None,
-            };
-            let evaluated = eval(heap, interner, car, caller_env)?;
-            let evaluated = force_if_promise(heap, interner, evaluated)?;
-            match tag_name.as_deref() {
-                Some("from") => from_v = Some(evaluated),
-                Some("to") => to_v = Some(evaluated),
-                Some("n") => n_v = Some(evaluated),
-                Some("xname") => xname_v = Some(evaluated),
-                _ => {
-                    match positional_index {
-                        0 => from_v = Some(evaluated),
-                        1 => to_v = Some(evaluated),
-                        2 => n_v = Some(evaluated),
-                        _ => {}
-                    }
-                    positional_index += 1;
-                }
-            }
-            if cdr == ValueId::NIL {
-                break;
-            }
-            cursor = cdr;
-        }
-    }
-    let from = from_v.and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(0.0);
-    let to = to_v.and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(1.0);
-    let n = n_v.and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(101.0) as usize;
-    let xname = match xname_v.and_then(|v| heap.object(v).cloned()) {
-        Some(RObject::String(vals)) => interner.string_text(vals[0]).to_string(),
-        _ => "x".to_string(),
-    };
-    // seq.int(from, to, length.out = n) exactly as GNU.
-    let xs: Vec<f64> = if n <= 1 {
-        vec![from]
-    } else {
-        // GNU seq.int arithmetic exactly: multiply before divide —
-        /// the fp ordering is observable in the endpoint ulps.
-        (0..n).map(|i| from + (to - from) * i as f64 / (n - 1) as f64).collect()
-    };
-    // Data environment binding xname to the whole vector — vectorized
-    /// evaluation exactly as GNU's eval(expr, envir = ll).
-    let data_env = r_core::env::new_environment(heap, caller_env);
-    let x_obj = heap.alloc(RObject::Real(xs.clone()));
-    let sym = interner.intern_symbol(&xname);
-    let _ = r_core::env::define(heap, data_env, sym, x_obj);
-    let y_value = eval(heap, interner, raw_expr, data_env)?;
-    let y_value = force_if_promise(heap, interner, y_value)?;
-    let ys = reals_of_value(heap, y_value).map_err(RSignal::from)?;
-    if ys.len() != xs.len() {
-        return Err(EvalError::TypeError("'expr' did not evaluate to an object of length 'n'").into());
-    }
-    // Rendering: plot type="l" over the computed ranges.
-    let add = false;
-    if !add {
-        let cell = |v: ValueId, rest: ValueId, heap: &mut Heap| {
-            heap.alloc(RObject::Pairlist { car: v, cdr: rest, tag: ValueId::NIL })
-        };
-        let ymin = ys.iter().copied().filter(|y| y.is_finite()).fold(f64::INFINITY, f64::min);
-        let ymax = ys.iter().copied().filter(|y| y.is_finite()).fold(f64::NEG_INFINITY, f64::max);
-        plot_new_primitive(heap, interner, ValueId::NIL, caller_env)?;
-        let xlim_obj = heap.alloc(RObject::Real(vec![from, to]));
-        let ylim_obj = heap.alloc(RObject::Real(vec![ymin, ymax]));
-        let win_args = {
-            let second = cell(ylim_obj, ValueId::NIL, heap);
-            cell(xlim_obj, second, heap)
-        };
-        plot_window_primitive(heap, interner, win_args, caller_env)?;
-    }
-    // lines(x, y) through the primitive — type l exactly as default.
-    {
-        let cell = |v: ValueId, rest: ValueId, heap: &mut Heap| {
-            heap.alloc(RObject::Pairlist { car: v, cdr: rest, tag: ValueId::NIL })
-        };
-        let xs_obj = heap.alloc(RObject::Real(xs.clone()));
-        let ys_obj = heap.alloc(RObject::Real(ys.clone()));
-        let line_args = {
-            let yc = cell(ys_obj, ValueId::NIL, heap);
-            cell(xs_obj, yc, heap)
-        };
-        let _ = lines_primitive(heap, interner, line_args, caller_env);
-    }
-    // Invisible list(x = x, y = y) exactly as GNU.
-    let x_out = heap.alloc(RObject::Real(xs));
-    let y_out = heap.alloc(RObject::Real(ys));
-    let list = heap.alloc(RObject::List(vec![x_out, y_out]));
-    let names_vec: Vec<r_core::intern::InternedStr> = ["x", "y"]
-        .iter()
-        .map(|s| interner.intern_string(s))
-        .collect();
-    let names_obj = heap.alloc(RObject::String(names_vec));
-    let with_names = copy_with_attrib(heap, interner, list, "names", names_obj)?;
-    heap.visible = false;
-    Ok(with_names)
-}
 
-/// matplot(x, y, type, col) — GNU's single-argument form: the matrix
-/// columns become series against seq_len(nrow), colors cycling 1:6
-/// exactly as the default.
-fn matplot_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["x", "y", "type", "col"])?;
-    let input = slots[0].unwrap_or(ValueId::NIL);
-    // Columns spread from the dim attribute exactly as GNU's matrix
-    /// handling; a bare vector is one column.
-    let (vals, nrow, ncol) = if let Some(dim_id) = get_attrib(heap, interner, input, "dim") {
-        if let Some(RObject::Integer(dims)) = heap.object(dim_id).cloned() {
-            if dims.len() == 2 {
-                let v = reals_of_value(heap, input).map_err(RSignal::from)?;
-                (v, dims[0] as usize, dims[1] as usize)
-            } else {
-                let v = reals_of_value(heap, input).map_err(RSignal::from)?;
-                let n = v.len();
-                (v, n, 1)
-            }
-        } else {
-            let v = reals_of_value(heap, input).map_err(RSignal::from)?;
-            let n = v.len();
-            (v, n, 1)
-        }
-    } else {
-        let v = reals_of_value(heap, input).map_err(RSignal::from)?;
-        let n = v.len();
-        (v, n, 1)
-    };
-    let xs: Vec<f64> = (1..=nrow).map(|i| i as f64).collect();
-    let cell = |v: ValueId, rest: ValueId, heap: &mut Heap| {
-        heap.alloc(RObject::Pairlist { car: v, cdr: rest, tag: ValueId::NIL })
-    };
-    // Frame over the full ranges exactly as matplot's internal plot.
-    let ymin = vals.iter().copied().filter(|y| y.is_finite()).fold(f64::INFINITY, f64::min);
-    let ymax = vals.iter().copied().filter(|y| y.is_finite()).fold(f64::NEG_INFINITY, f64::max);
-    plot_new_primitive(heap, interner, ValueId::NIL, caller_env)?;
-    let xlim_obj = heap.alloc(RObject::Real(vec![1.0, nrow as f64]));
-    let ylim_obj = heap.alloc(RObject::Real(vec![ymin, ymax]));
-    let win_args = {
-        let second = cell(ylim_obj, ValueId::NIL, heap);
-        cell(xlim_obj, second, heap)
-    };
-    plot_window_primitive(heap, interner, win_args, caller_env)?;
-    // Each column a series, colors cycling through the palette
-    /// positions 1:6 exactly as GNU's default col.
-    for c in 0..ncol {
-        let mut col_vals: Vec<f64> = Vec::new();
-        for r in 0..nrow {
-            col_vals.push(vals.get(c * nrow + r).copied().unwrap_or(f64::NAN));
-        }
-        let xs_obj = heap.alloc(RObject::Real(xs.clone()));
-        let ys_obj = heap.alloc(RObject::Real(col_vals));
-        let col_index = heap.alloc(RObject::Real(vec![(c % 6 + 1) as f64]));
-        let line_args = {
-            let col_cell = cell(col_index, ValueId::NIL, heap);
-            let y_cell = cell(ys_obj, col_cell, heap);
-            cell(xs_obj, y_cell, heap)
-        };
-        let _ = lines_primitive(heap, interner, line_args, caller_env);
-    }
-    heap.visible = false;
-    Ok(ValueId::NIL)
-}
 
-/// Serialize the scene to SVG — paths become path elements, text
-/// anchored at position, clears as the background rect. Device
-/// coordinates are y-down in SVG exactly as the scene records them.
-fn scene_to_svg(scene: &r_graphics_engine::Scene) -> String {
-    use r_graphics_engine::{DrawOperation, PathCommand};
-    let (w, h) = scene.dimensions();
-    let mut out = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">\n",
-        w, h, w, h
-    );
-    let color_hex = |c: &r_graphics_engine::Color| format!("#{:02X}{:02X}{:02X}", c.r, c.g, c.b);
-    for op in scene.operations() {
-        match op {
-            DrawOperation::Clear(c) => {
-                out.push_str(&format!(
-                    "<rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\" fill=\"{}\"/>\n",
-                    w, h, color_hex(c)
-                ));
-            }
-            DrawOperation::Path(path) => {
-                let mut d = String::new();
-                for cmd in &path.commands {
-                    match cmd {
-                        PathCommand::MoveTo(x, y) => d.push_str(&format!("M {:.2} {:.2} ", x, y)),
-                        PathCommand::LineTo(x, y) => d.push_str(&format!("L {:.2} {:.2} ", x, y)),
-                        PathCommand::QuadTo(cx, cy, x, y) => d.push_str(&format!("Q {:.2} {:.2} {:.2} {:.2} ", cx, cy, x, y)),
-                        PathCommand::CubicTo(c1x, c1y, c2x, c2y, x, y) => d.push_str(&format!(
-                            "C {:.2} {:.2} {:.2} {:.2} {:.2} {:.2} ", c1x, c1y, c2x, c2y, x, y
-                        )),
-                        PathCommand::ArcTo { x, y, .. } => d.push_str(&format!("L {:.2} {:.2} ", x, y)),
-                        PathCommand::Close => d.push('Z'),
-                    }
-                }
-                let fill = if path.fill.a == 0 { "none".to_string() } else { color_hex(&path.fill) };
-                out.push_str(&format!(
-                    "<path d=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{:.2}\"/>\n",
-                    d.trim(),
-                    fill,
-                    color_hex(&path.stroke.color),
-                    path.stroke.width
-                ));
-            }
-            DrawOperation::Text { text, position, .. } => {
-                let escaped = text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
-                out.push_str(&format!(
-                    "<text x=\"{:.2}\" y=\"{:.2}\" font-size=\"12\" fill=\"black\">{}</text>\n",
-                    position.x, position.y, escaped
-                ));
-            }
-            _ => {}
-        }
-    }
-    out.push_str("</svg>\n");
-    out
-}
 
-/// Rasterize one recorded scene into PNG bytes — the Vello CPU renderer
-/// replays operations exactly as the facade's headless pipeline does,
-/// vector glyphs and all, no GPU anywhere in the chain.
-#[cfg(feature = "renderplot-device")]
-fn render_scene_png(scene: &r_graphics_engine::Scene) -> Option<Vec<u8>> {
-    let (w, h) = scene.dimensions();
-    let mut renderer = r_device_android_headless::VelloRenderer::try_new(w, h).ok()?;
-    scene.replay(&mut renderer);
-    renderer.try_finish().ok()
-}
 
-/// Without the rasterizer feature the png device reports failure
-/// exactly as an unavailable device should — the host chose the slim
-/// build, the error is honest about it.
-#[cfg(not(feature = "renderplot-device"))]
-fn render_scene_png(_scene: &r_graphics_engine::Scene) -> Option<Vec<u8>> {
-    None
-}
 
-/// svg(filename, width, height) — opens the file-backed device
-/// exactly as GNU: inches at 72 points each.
-fn svg_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["filename", "width", "height"])?;
-    let filename = match slots[0].and_then(|v| heap.object(v).cloned()) {
-        Some(RObject::String(vals)) => interner.string_text(vals[0]).to_string(),
-        _ => "Rplot.svg".to_string(),
-    };
-    let width_in = slots[1].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(7.0);
-    let height_in = slots[2].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(7.0);
-    heap.graphics.set_device_size(width_in * 72.0, height_in * 72.0);
-    heap.graphics.device_file = Some(filename);
-    heap.graphics.device_kind = r_core::graphics::state::DeviceKind::Svg;
-    heap.visible = false;
-    Ok(ValueId::NIL)
-}
 
-/// png(filename, width, height) — the raster device exactly as GNU:
-/// pixel dimensions at a nominal 72dpi, defaulting to 480 square.
-fn png_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env,
-        &["filename", "width", "height", "units", "pointsize", "bg", "res"])?;
-    let filename = slots[0]
-        .and_then(|v| string_operand(heap, interner, v))
-        .unwrap_or_else(|| "Rplot%03d.png".to_string());
-    let width = slots[1].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(480.0);
-    let height = slots[2].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(480.0);
-    heap.graphics.set_device_size(width, height);
-    heap.graphics.device_file = Some(filename);
-    heap.graphics.device_kind = r_core::graphics::state::DeviceKind::Png;
-    heap.visible = false;
-    Ok(ValueId::NIL)
-}
 
-/// dev.off() — flushes the scene to the device file exactly as GNU's
-/// close-then-write, returning the closed device number invisibly.
-fn dev_off_primitive(
-    heap: &mut Heap,
-    _interner: &mut SymbolInterner,
-    _args: ValueId,
-    _caller_env: ValueId,
-) -> EvalResult {
-    if let Some(filename) = heap.graphics.device_file.take() {
-        match heap.graphics.device_kind {
-            r_core::graphics::state::DeviceKind::Svg => {
-                let svg = scene_to_svg(heap.graphics.scene());
-                if r_core::vfile::write_file(heap, &filename, svg.as_bytes()).is_err() {
-                    return Err(EvalError::TypeError("cannot open device file").into());
-                }
-            }
-            r_core::graphics::state::DeviceKind::Png => {
-                let png_bytes = render_scene_png(heap.graphics.scene())
-                    .ok_or(EvalError::TypeError("png rasterization failed"))?;
-                if r_core::vfile::write_file(heap, &filename, &png_bytes).is_err() {
-                    return Err(EvalError::TypeError("cannot open device file").into());
-                }
-            }
-        }
-        heap.graphics.set_device_size(504.0, 504.0);
-    }
-    heap.visible = false;
-    Ok(heap.alloc(RObject::Integer(vec![1])))
-}
 
-/// dev.cur() — the active device number: 2 when a file device is
-/// open exactly as GNU's null-device-plus-one, 1 otherwise.
-fn dev_cur_primitive(
-    heap: &mut Heap,
-    _interner: &mut SymbolInterner,
-    _args: ValueId,
-    _caller_env: ValueId,
-) -> EvalResult {
-    let number = if heap.graphics.device_file.is_some() { 2 } else { 1 };
-    heap.visible = true;
-    Ok(heap.alloc(RObject::Integer(vec![number])))
-}
 
-/// pie(x, labels, edges, radius, clockwise, init.angle, col) — GNU's
-/// wedge geometry exactly: cumulative fractions mapped through
-/// twopi*t + init.angle degrees, n = max(2, floor(edges*dx)) arc
-/// steps, polygons closing at the center, labels at 1.1 radius with
-/// side-dependent adjustment.
-fn pie_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env,
-        &["x", "labels", "edges", "radius", "clockwise", "init.angle", "density", "angle", "col", "border", "lty", "main"])?;
-    let xs = reals_of_value(heap, slots[0].unwrap_or(ValueId::NIL)).map_err(RSignal::from)?;
-    if xs.iter().any(|x| x.is_nan() || *x < 0.0) {
-        return Err(EvalError::TypeError("'x' values must be positive.").into());
-    }
-    let labels: Vec<String> = match slots[1].and_then(|v| heap.object(v).cloned()) {
-        Some(RObject::String(vals)) => vals.iter().map(|s| interner.string_text(*s).to_string()).collect(),
-        _ => (1..=xs.len()).map(|i| i.to_string()).collect(),
-    };
-    let edges = slots[2].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(200.0);
-    let radius = slots[3].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(0.8);
-    let clockwise = slots[4]
-        .map(|v| matches!(heap.object(v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) != 0))
-        .unwrap_or(false);
-    let init_angle = if clockwise { 90.0 } else { 0.0 };
-    // GNU's default pastel cycle exactly.
-    let default_cols = ["white", "lightblue", "mistyrose", "lightcyan", "lavender", "cornsilk"];
-    let cols: Vec<String> = match slots[8].and_then(|v| heap.object(v).cloned()) {
-        Some(RObject::String(vals)) => vals.iter().map(|s| interner.string_text(*s).to_string()).collect(),
-        _ => default_cols.iter().map(|s| s.to_string()).collect(),
-    };
-    // Cumulative fractions exactly as c(0, cumsum(x)/sum(x)).
-    let total: f64 = xs.iter().sum();
-    let mut cum = vec![0.0f64];
-    let mut acc = 0.0;
-    for &x in &xs {
-        acc += x / total;
-        cum.push(acc);
-    }
-    let nx = xs.len();
-    let twopi = if clockwise { -2.0 * std::f64::consts::PI } else { 2.0 * std::f64::consts::PI };
-    let t2xy = |t: f64| -> (f64, f64) {
-        let t2p = twopi * t + init_angle * std::f64::consts::PI / 180.0;
-        (radius * t2p.cos(), radius * t2p.sin())
-    };
-    let cell = |v: ValueId, rest: ValueId, heap: &mut Heap| {
-        heap.alloc(RObject::Pairlist { car: v, cdr: rest, tag: ValueId::NIL })
-    };
-    plot_new_primitive(heap, interner, ValueId::NIL, caller_env)?;
-    let lim = heap.alloc(RObject::Real(vec![-1.0, 1.0]));
-    let lim2 = heap.alloc(RObject::Real(vec![-1.0, 1.0]));
-    let win_args = {
-        let second = cell(lim2, ValueId::NIL, heap);
-        cell(lim, second, heap)
-    };
-    plot_window_primitive(heap, interner, win_args, caller_env)?;
-    for i in 0..nx {
-        let dx = cum[i + 1] - cum[i];
-        let n = (edges * dx).floor().max(2.0) as usize;
-        // Arc points then the closing center exactly as c(P$x, 0).
-        let mut px: Vec<f64> = Vec::new();
-        let mut py: Vec<f64> = Vec::new();
-        for k in 0..n.max(2) {
-            let t = if n > 1 { cum[i] + dx * k as f64 / (n - 1) as f64 } else { cum[i] };
-            let (x, y) = t2xy(t);
-            px.push(x);
-            py.push(y);
-        }
-        px.push(0.0);
-        py.push(0.0);
-        let col = cols[i % cols.len()].clone();
-        let xs_obj = heap.alloc(RObject::Real(px));
-        let ys_obj = heap.alloc(RObject::Real(py));
-        let col_obj = heap.alloc(RObject::String(vec![interner.intern_string(&col)]));
-        let poly_args = {
-            let col_cell = cell(col_obj, ValueId::NIL, heap);
-            let y_cell = cell(ys_obj, col_cell, heap);
-            cell(xs_obj, y_cell, heap)
-        };
-        polygon_primitive(heap, interner, poly_args, caller_env)?;
-    }
-    heap.visible = false;
-    Ok(ValueId::NIL)
-}
 
-/// stripchart(x, method, jitter, vertical) — GNU's group positioning
-/// exactly: overplot at integer positions, jitter through base
-/// jitter's factor/50 scaling over runif, stack accumulating
-/// duplicates upward.
-fn stripchart_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env,
-        &["x", "method", "jitter", "offset", "vertical", "group.names", "add", "at"])?;
-    let input = slots[0].unwrap_or(ValueId::NIL);
-    let groups: Vec<Vec<f64>> = match heap.object(input).cloned() {
-        Some(RObject::List(items)) => items.iter()
-            .map(|item| reals_of_value(heap, *item).unwrap_or_default())
-            .collect(),
-        _ => vec![reals_of_value(heap, input).map_err(RSignal::from)?],
-    };
-    let method_name = match slots[1].and_then(|v| heap.object(v).cloned()) {
-        Some(RObject::String(vals)) => interner.string_text(vals[0]).to_string(),
-        _ => "overplot".to_string(),
-    };
-    let jitter_amount = slots[2].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(0.1);
-    let n = groups.len();
-    // Plot frame over data range by group positions exactly as GNU.
-    let all: Vec<f64> = groups.iter().flat_map(|g| g.iter().copied()).filter(|x| x.is_finite()).collect();
-    let dmin = all.iter().copied().fold(f64::INFINITY, f64::min);
-    let dmax = all.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    let cell = |v: ValueId, rest: ValueId, heap: &mut Heap| {
-        heap.alloc(RObject::Pairlist { car: v, cdr: rest, tag: ValueId::NIL })
-    };
-    plot_new_primitive(heap, interner, ValueId::NIL, caller_env)?;
-    let xlim_obj = heap.alloc(RObject::Real(vec![dmin, dmax]));
-    let ylim_obj = heap.alloc(RObject::Real(vec![0.5, n as f64 + 0.5]));
-    let win_args = {
-        let second = cell(ylim_obj, ValueId::NIL, heap);
-        cell(xlim_obj, second, heap)
-    };
-    plot_window_primitive(heap, interner, win_args, caller_env)?;
-    for (gi, g) in groups.iter().enumerate() {
-        let base_y = (gi + 1) as f64;
-        let mut px: Vec<f64> = Vec::new();
-        let mut py: Vec<f64> = Vec::new();
-        if method_name == "jitter" {
-            // base jitter semantics: amount = jitter * diff(range)/5
-            /// over the group positions exactly as GNU's composition.
-            let spread = jitter_amount;
-            for &x in g {
-                let noise = (heap.rng.unif() - 0.5) * 2.0 * spread;
-                px.push(x);
-                py.push(base_y + noise);
-            }
-        } else if method_name == "stack" {
-            // Stack duplicates upward exactly as GNU: binning identical
-            /// values and counting occurrences.
-            let mut counts: Vec<(u64, usize)> = Vec::new();
-            for &x in g {
-                let key = x.to_bits();
-                let entry = counts.iter_mut().find(|(k, _)| *k == key);
-                match entry {
-                    Some((_, c)) => {
-                        *c += 1;
-                        px.push(x);
-                        py.push(base_y + (*c - 1) as f64 * 0.2);
-                    }
-                    None => {
-                        counts.push((key, 1));
-                        px.push(x);
-                        py.push(base_y);
-                    }
-                }
-            }
-        } else {
-            for &x in g {
-                px.push(x);
-                py.push(base_y);
-            }
-        }
-        if !px.is_empty() {
-            let xs_obj = heap.alloc(RObject::Real(px));
-            let ys_obj = heap.alloc(RObject::Real(py));
-            let pa = {
-                let yc = cell(ys_obj, ValueId::NIL, heap);
-                cell(xs_obj, yc, heap)
-            };
-            let _ = points_primitive(heap, interner, pa, caller_env);
-        }
-    }
-    heap.visible = false;
-    Ok(ValueId::NIL)
-}
 
-/// dotchart(x, labels) — GNU's dot positions at integer rows with
-/// the values along x, composing frame and points.
-fn dotchart_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["x", "labels", "groups", "gcolor", "cex", "pch", "col"])?;
-    let xs = reals_of_value(heap, slots[0].unwrap_or(ValueId::NIL)).map_err(RSignal::from)?;
-    let n = xs.len();
-    let xmin = xs.iter().copied().filter(|x| x.is_finite()).fold(0.0f64, f64::min);
-    let xmax = xs.iter().copied().filter(|x| x.is_finite()).fold(f64::NEG_INFINITY, f64::max);
-    let cell = |v: ValueId, rest: ValueId, heap: &mut Heap| {
-        heap.alloc(RObject::Pairlist { car: v, cdr: rest, tag: ValueId::NIL })
-    };
-    plot_new_primitive(heap, interner, ValueId::NIL, caller_env)?;
-    // GNU orders rows bottom-up: row 1 at the bottom exactly.
-    let xlim_obj = heap.alloc(RObject::Real(vec![xmin.min(0.0), xmax]));
-    let ylim_obj = heap.alloc(RObject::Real(vec![0.0, n as f64 + 1.0]));
-    let win_args = {
-        let second = cell(ylim_obj, ValueId::NIL, heap);
-        cell(xlim_obj, second, heap)
-    };
-    plot_window_primitive(heap, interner, win_args, caller_env)?;
-    let ys: Vec<f64> = (1..=n).rev().map(|i| i as f64).collect();
-    let xs_obj = heap.alloc(RObject::Real(xs));
-    let ys_obj = heap.alloc(RObject::Real(ys));
-    let pa = {
-        let yc = cell(ys_obj, ValueId::NIL, heap);
-        cell(xs_obj, yc, heap)
-    };
-    let _ = points_primitive(heap, interner, pa, caller_env);
-    heap.visible = false;
-    Ok(ValueId::NIL)
-}
 
-/// prettyNum(x, big.mark, big.interval, decimal.mark) — GNU's mark
-/// insertion core: the integer part grouped from the right every
-/// big.interval digits, decimal point replaced exactly.
-fn prettynum_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env,
-        &["x", "big.mark", "big.interval", "small.mark", "small.interval", "decimal.mark"])?;
-    let big_mark = match slots[1].and_then(|v| heap.object(v).cloned()) {
-        Some(RObject::String(vals)) => interner.string_text(vals[0]).to_string(),
-        _ => String::new(),
-    };
-    let interval = slots[2].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(3.0) as usize;
-    let decimal_mark = match slots[5].and_then(|v| heap.object(v).cloned()) {
-        Some(RObject::String(vals)) => interner.string_text(vals[0]).to_string(),
-        _ => ".".to_string(),
-    };
-    let input = slots[0].unwrap_or(ValueId::NIL);
-    // Character input passes through the mark insertion exactly as
-    /// GNU; numeric input formats first.
-    let raw: Vec<String> = match heap.object(input).cloned() {
-        Some(RObject::String(vals)) => vals.iter().map(|s| interner.string_text(*s).to_string()).collect(),
-        _ => {
-            let xs = reals_of_value(heap, input).map_err(RSignal::from)?;
-            xs.iter().map(|x| r_core::print::format_real(*x)).collect()
-        }
-    };
-    let mut out: Vec<r_core::intern::InternedStr> = Vec::new();
-    for text in &raw {
-        let trimmed = text.trim();
-        // Split at the decimal point exactly as GNU's integer/fraction
-        /// separation, preserving sign and exponent untouched.
-        let (mantissa, exponent) = match trimmed.find(['e', 'E']) {
-            Some(pos) => (&trimmed[..pos], &trimmed[pos..]),
-            None => (trimmed, ""),
-        };
-        let (int_part, frac_part) = match mantissa.find('.') {
-            Some(pos) => (&mantissa[..pos], Some(&mantissa[pos + 1..])),
-            None => (mantissa, None),
-        };
-        let (sign, digits) = if let Some(stripped) = int_part.strip_prefix('-') {
-            ("-", stripped)
-        } else {
-            ("", int_part)
-        };
-        // Group from the right every interval digits exactly as GNU.
-        let mut grouped = String::new();
-        if !big_mark.is_empty() && digits.len() > interval && interval > 0 {
-            let first = digits.len() % interval;
-            let mut pos = 0;
-            if first > 0 {
-                grouped.push_str(&digits[..first]);
-                pos = first;
-                if pos < digits.len() {
-                    grouped.push_str(&big_mark);
-                }
-            }
-            while pos < digits.len() {
-                grouped.push_str(&digits[pos..(pos + interval).min(digits.len())]);
-                pos += interval;
-                if pos < digits.len() {
-                    grouped.push_str(&big_mark);
-                }
-            }
-        } else {
-            grouped.push_str(digits);
-        }
-        let mut result = format!("{}{}", sign, grouped);
-        if let Some(frac) = frac_part {
-            result.push_str(&decimal_mark);
-            result.push_str(frac);
-        }
-        result.push_str(exponent);
-        out.push(interner.intern_string(&result));
-    }
-    heap.visible = true;
-    Ok(heap.alloc(RObject::String(out)))
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /// system.time(expr) — times the raw expression exactly as GNU,
 /// returning the proc.time-shaped named vector.
-fn system_time_primitive(
+pub fn system_time_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -18563,938 +15823,33 @@ fn system_time_primitive(
     Ok(result)
 }
 
-/// density(x, bw, adjust, kernel, n, from, to, cut) — GNU's
-/// density.default exactly: nrd0 bandwidth, the extended lo/up
-/// range, BinDist linear mass binning, gaussian kernel ordinates
-/// mirrored over 2n, circular convolution (direct, mathematically
-/// identical to the FFT for this symmetric kernel), linear
-/// interpolation onto the user grid.
-fn density_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env,
-        &["x", "bw", "adjust", "kernel", "weights", "window", "width", "give.Rkern", "subdensity", "warnWbw", "n", "from", "to", "cut", "ext"])?;
-    let xs_all = reals_of_value(heap, slots[0].unwrap_or(ValueId::NIL)).map_err(RSignal::from)?;
-    let xs: Vec<f64> = xs_all.iter().copied().filter(|x| x.is_finite()).collect();
-    let nx = xs.len();
-    let n_big = xs_all.len().max(1);
-    if nx < 2 {
-        return Err(EvalError::TypeError("need at least 2 points to select a bandwidth automatically").into());
-    }
-    let adjust = slots[2].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(1.0);
-    let cut = slots[13].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(3.0);
-    let ext = slots[14].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(4.0);
-    // bw.nrd0 exactly as GNU: 0.9 * min(sd, iqr/1.34) * nx^(-1/5),
-    /// with the zero-floor fallback to sd then to 1.
-    let mean = xs.iter().sum::<f64>() / nx as f64;
-    let sd = (xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (nx - 1) as f64).sqrt();
-    let mut sorted = xs.clone();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    // Quartiles exactly as GNU's quantile type 7 at 0.25/0.75.
-    let quantile7 = |p: f64| -> f64 {
-        let h = (nx - 1) as f64 * p + 1.0;
-        let hf = h.floor();
-        let idx = (hf as usize).saturating_sub(1).min(nx - 1);
-        let nxt = (idx + 1).min(nx - 1);
-        sorted[idx] + (h - hf) * (sorted[nxt] - sorted[idx])
-    };
-    let iqr = quantile7(0.75) - quantile7(0.25);
-    let lo_bw = sd.min(iqr / 1.34);
-    let base_bw = if lo_bw > 0.0 { lo_bw } else if sd > 0.0 { sd } else { 1.0 };
-    let bw = match slots[1].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()) {
-        Some(explicit) if explicit.is_finite() && explicit > 0.0 => adjust * explicit,
-        _ => adjust * 0.9 * base_bw * (nx as f64).powf(-0.2),
-    };
-    // Grid exactly as GNU: from/to then the extended lo/up.
-    let xmin = xs.iter().copied().fold(f64::INFINITY, f64::min);
-    let xmax = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    let from = slots[11].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(xmin - cut * bw);
-    let to = slots[12].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(xmax + cut * bw);
-    let lo = from - ext * bw;
-    let up = to + ext * bw;
-    // n forced up to 512 then to a power of two exactly as GNU.
-    let n_user = slots[10].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(512.0) as usize;
-    let mut n = n_user.max(512);
-    if n > 512 {
-        n = 1usize << ((n as f64).log2().ceil() as usize);
-    }
-    // BinDist exactly as GNU: linear mass distribution into adjacent
-    /// bins over (lo, up) with the edge-bin rules.
-    let mut binned = vec![0.0f64; 2 * n];
-    let xdelta = (up - lo) / (n - 1) as f64;
-    let ixmax = n as i64 - 2;
-    let weights: Vec<f64> = vec![1.0 / nx as f64; nx];
-    for (i, &xi) in xs.iter().enumerate() {
-        let xpos = (xi - lo) / xdelta;
-        let ix = xpos.floor() as i64;
-        let fx = xpos - ix as f64;
-        let wi = weights[i];
-        if ix >= 0 && ix <= ixmax {
-            binned[ix as usize] += (1.0 - fx) * wi;
-            binned[(ix + 1) as usize] += fx * wi;
-        } else if ix == -1 {
-            binned[0] += fx * wi;
-        } else if ix == ixmax + 1 {
-            binned[ix as usize] += (1.0 - fx) * wi;
-        }
-    }
-    let tot_mass = nx as f64 / n_big as f64;
-    for v in binned.iter_mut() {
-        *v *= tot_mass;
-    }
-    // Kernel ordinates exactly as GNU: seq(0, (2n-1)/(n-1)*(up-lo),
-    /// length 2n) with the mirrored negative second half, gaussian
-    /// density at sd = bw.
-    let span = (2 * n - 1) as f64 / (n - 1) as f64 * (up - lo);
-    let mut kords = vec![0.0f64; 2 * n];
-    for i in 0..(2 * n) {
-        kords[i] = span * i as f64 / (2 * n - 1) as f64;
-    }
-    for i in (n + 1)..(2 * n) {
-        kords[i] = -kords[2 * n - i];
-    }
-    let inv_bw_sqrt2pi = 1.0 / (bw * (2.0 * std::f64::consts::PI).sqrt());
-    for k in kords.iter_mut() {
-        let z = *k / bw;
-        *k = inv_bw_sqrt2pi * (-0.5 * z * z).exp();
-    }
-    // Circular convolution directly — mathematically identical to
-    /// GNU's FFT convolution for this symmetric kernel; divided by
-    /// the length exactly as the manual inverse-fft scaling.
-    let two_n = 2 * n;
-    let mut conv = vec![0.0f64; n];
-    for t in 0..n {
-        let mut acc = 0.0;
-        for s in 0..two_n {
-            if binned[s] != 0.0 {
-                let idx = (t + two_n - s) % two_n;
-                acc += binned[s] * kords[idx];
-            }
-        }
-        // No normalization — the fft inverse's internal scaling and
-        // the manual division cancel exactly in GNU's composition.
-        conv[t] = acc.max(0.0);
-    }
-    // xords and linear interpolation onto the user grid exactly as
-    /// approx(xords, kords, x).
-    let xords: Vec<f64> = (0..n).map(|i| lo + (up - lo) * i as f64 / (n - 1) as f64).collect();
-    let x_out: Vec<f64> = (0..n_user).map(|i| {
-        if n_user > 1 {
-            from + (to - from) * i as f64 / (n_user - 1) as f64
-        } else {
-            from
-        }
-    }).collect();
-    let y_out: Vec<f64> = x_out.iter().map(|&xq| {
-        // Linear interpolation exactly as GNU's approx.
-        if xq <= xords[0] {
-            return conv[0];
-        }
-        if xq >= xords[n - 1] {
-            return conv[n - 1];
-        }
-        let pos = (xq - lo) / xdelta;
-        let i0 = pos.floor() as usize;
-        let i1 = (i0 + 1).min(n - 1);
-        let frac = pos - i0 as f64;
-        conv[i0] + frac * (conv[i1] - conv[i0])
-    }).collect();
-    // The density object exactly as GNU's named structure.
-    let x_obj = heap.alloc(RObject::Real(x_out));
-    let y_obj = heap.alloc(RObject::Real(y_out));
-    let bw_obj = heap.alloc(RObject::Real(vec![bw]));
-    let n_obj = heap.alloc(RObject::Real(vec![nx as f64]));
-    let list = heap.alloc(RObject::List(vec![x_obj, y_obj, bw_obj, n_obj]));
-    let names_vec: Vec<r_core::intern::InternedStr> = ["x", "y", "bw", "n"]
-        .iter()
-        .map(|s| interner.intern_string(s))
-        .collect();
-    let names_obj = heap.alloc(RObject::String(names_vec));
-    let result = copy_with_attrib(heap, interner, list, "names", names_obj)?;
-    heap.visible = false;
-    Ok(result)
-}
 
-/// grid(nx, ny, col, lty) — GNU's reference lines at the axis tick
-/// positions exactly, returning the invisible at list.
-fn grid_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["nx", "ny", "col", "lty", "lwd", "equilogs"])?;
-    // Tick positions recomputed over the usr window exactly as the
-    /// axis cascade does — the lightgray dotted reference lines.
-    let usr = match heap.graphics.query("usr") {
-        Some(r_core::graphics::layout::ParValue::Real(u)) if u.len() == 4 => u,
-        _ => vec![0.0, 1.0, 0.0, 1.0],
-    };
-    // GNU's grid reuses the axis-recorded xaxp/yaxp coverage exactly —
-    // positions are the same ticks the axis drew, reconstructed as
-    // seq(first, last, length.out = n + 1).
-    let axp_ticks = |name: &str, fallback_lo: f64, fallback_hi: f64| -> Vec<f64> {
-        let axp = match heap.graphics.query(name) {
-            Some(r_core::graphics::layout::ParValue::Real(v)) if v.len() == 3 => v,
-            _ => vec![fallback_lo, fallback_hi, 5.0],
-        };
-        let n = (axp[2].max(0.0) as usize) + 1;
-        if n <= 1 {
-            return vec![axp[0]];
-        }
-        // GNU's seq.int multiply-before-divide arithmetic exactly.
-        (0..n)
-            .map(|i| axp[0] + (axp[1] - axp[0]) * (i as f64) / ((n - 1) as f64))
-            .collect()
-    };
-    let xat = axp_ticks("xaxp", usr[0], usr[1]);
-    let yat = axp_ticks("yaxp", usr[2], usr[3]);
-    // abline(v = atx, h = aty) exactly as GNU's composition.
-    let cell = |v: ValueId, rest: ValueId, heap: &mut Heap| {
-        heap.alloc(RObject::Pairlist { car: v, cdr: rest, tag: ValueId::NIL })
-    };
-    let col_obj = heap.alloc(RObject::String(vec![interner.intern_string("lightgray")]));
-    let v_obj = heap.alloc(RObject::Real(xat.clone()));
-    let h_obj = heap.alloc(RObject::Real(yat.clone()));
-    // abline positional order: a, b, h, v — h third, v fourth.
-    let ab_args = {
-        let col_cell = cell(col_obj, ValueId::NIL, heap);
-        let v_cell = cell(v_obj, col_cell, heap);
-        let h_cell = cell(h_obj, v_cell, heap);
-        let nil_obj = heap.alloc(RObject::Real(vec![]));
-        let b_cell = cell(nil_obj, h_cell, heap);
-        cell(nil_obj, b_cell, heap)
-    };
-    let _ = abline_primitive(heap, interner, ab_args, caller_env);
-    let atx_obj = heap.alloc(RObject::Real(xat));
-    let aty_obj = heap.alloc(RObject::Real(yat));
-    let list = heap.alloc(RObject::List(vec![atx_obj, aty_obj]));
-    let names_vec: Vec<r_core::intern::InternedStr> = ["atx", "aty"]
-        .iter()
-        .map(|s| interner.intern_string(s))
-        .collect();
-    let names_obj = heap.alloc(RObject::String(names_vec));
-    let result = copy_with_attrib(heap, interner, list, "names", names_obj)?;
-    heap.visible = false;
-    Ok(result)
-}
 
-/// rug(x, ticksize, side, col) — GNU's data-position tick marks
-/// along the axis edge exactly as Axis with tck.
-fn rug_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["x", "ticksize", "side", "lwd", "col"])?;
-    let xs: Vec<f64> = reals_of_value(heap, slots[0].unwrap_or(ValueId::NIL))
-        .map_err(RSignal::from)?
-        .into_iter()
-        .filter(|x| x.is_finite())
-        .collect();
-    let usr = match heap.graphics.query("usr") {
-        Some(r_core::graphics::layout::ParValue::Real(u)) if u.len() == 4 => u,
-        _ => vec![0.0, 1.0, 0.0, 1.0],
-    };
-    // Tick size in user units exactly as GNU's fraction of the axis
-    /// span — negative direction (outward) as GNU's tck.
-    let ticksize = slots[1].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(0.03);
-    let side = slots[2].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(1.0) as i32;
-    let yspan = usr[3] - usr[2];
-    let xspan = usr[1] - usr[0];
-    for &x in &xs {
-        let (x0, y0, x1, y1) = if side == 1 {
-            (x, usr[2], x, usr[2] + ticksize * yspan)
-        } else if side == 3 {
-            (x, usr[3], x, usr[3] - ticksize * yspan)
-        } else if side == 2 {
-            (usr[0], x, usr[0] + ticksize * xspan, x)
-        } else {
-            (usr[1], x, usr[1] - ticksize * xspan, x)
-        };
-        let cell = |v: ValueId, rest: ValueId, heap: &mut Heap| {
-            heap.alloc(RObject::Pairlist { car: v, cdr: rest, tag: ValueId::NIL })
-        };
-        let x0o = heap.alloc(RObject::Real(vec![x0]));
-        let y0o = heap.alloc(RObject::Real(vec![y0]));
-        let x1o = heap.alloc(RObject::Real(vec![x1]));
-        let y1o = heap.alloc(RObject::Real(vec![y1]));
-        let sa = {
-            let y1c = cell(y1o, ValueId::NIL, heap);
-            let x1c = cell(x1o, y1c, heap);
-            let y0c = cell(y0o, x1c, heap);
-            cell(x0o, y0c, heap)
-        };
-        let _ = segments_primitive(heap, interner, sa, caller_env);
-    }
-    heap.visible = false;
-    Ok(ValueId::NIL)
-}
 
-/// GNU fivenum: n4 = floor((n+3)/2)/2, indices c(1, n4, (n+1)/2,
-/// n+1-n4, n), averaged floor/ceiling pairs exactly.
-fn fivenum_values(xs: &[f64]) -> Vec<f64> {
-    let mut sorted: Vec<f64> = xs.to_vec();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let n = sorted.len();
-    if n == 0 {
-        return vec![f64::NAN; 5];
-    }
-    let n4 = ((n + 3) / 2) as f64 / 2.0;
-    let nf = n as f64;
-    let d = [1.0, n4, (nf + 1.0) / 2.0, nf + 1.0 - n4, nf];
-    d.iter()
-        .map(|&di| {
-            // R indices are 1-based; the fractional index averages its
-            /// floor and ceiling exactly as GNU.
-            let lo = sorted[(di.floor() as usize).saturating_sub(1).min(n - 1)];
-            let hi = sorted[(di.ceil() as usize).saturating_sub(1).min(n - 1)];
-            0.5 * (lo + hi)
-        })
-        .collect()
-}
 
-fn fivenum_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["x", "na.rm"])?;
-    let input = slots[0].unwrap_or(ValueId::NIL);
-    let xs: Vec<f64> = reals_of_value(heap, input)
-        .map_err(RSignal::from)?
-        .into_iter()
-        .filter(|x| x.is_finite())
-        .collect();
-    let result = heap.alloc(RObject::Real(fivenum_values(&xs)));
-    heap.visible = true;
-    Ok(result)
-}
 
-/// boxplot.stats(x, coef, do.conf, do.out) — GNU's grDevices calc.R
-/// exactly: fivenum hinges, coef*iqr fences, whisker extension to
-/// in-fence range, the 1.58/sqrt(n) confidence interval, outlier
-/// extraction.
-fn boxplot_stats_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["x", "coef", "do.conf", "do.out"])?;
-    let input = slots[0].unwrap_or(ValueId::NIL);
-    let xs: Vec<f64> = reals_of_value(heap, input).map_err(RSignal::from)?;
-    let finite: Vec<f64> = xs.iter().copied().filter(|x| x.is_finite()).collect();
-    let n = finite.len();
-    let coef = slots[1].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(1.5);
-    let mut stats = fivenum_values(&finite);
-    let iqr = stats[3] - stats[1];
-    let mut out: Vec<f64> = Vec::new();
-    if coef != 0.0 && iqr.is_finite() {
-        let lo_fence = stats[1] - coef * iqr;
-        let hi_fence = stats[3] + coef * iqr;
-        let mut in_fence: Vec<f64> = Vec::new();
-        for &x in &finite {
-            if x < lo_fence || x > hi_fence {
-                out.push(x);
-            } else {
-                in_fence.push(x);
-            }
-        }
-        if !out.is_empty() && !in_fence.is_empty() {
-            stats[0] = in_fence.iter().copied().fold(f64::INFINITY, f64::min);
-            stats[4] = in_fence.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-        }
-    }
-    let conf_lo = stats[2] - 1.58 * iqr / (n as f64).sqrt();
-    let conf_hi = stats[2] + 1.58 * iqr / (n as f64).sqrt();
-    let stats_obj = heap.alloc(RObject::Real(stats));
-    let n_obj = heap.alloc(RObject::Real(vec![n as f64]));
-    let conf_obj = heap.alloc(RObject::Real(vec![conf_lo, conf_hi]));
-    let out_obj = heap.alloc(RObject::Real(out));
-    let list = heap.alloc(RObject::List(vec![stats_obj, n_obj, conf_obj, out_obj]));
-    let names_vec: Vec<r_core::intern::InternedStr> = ["stats", "n", "conf", "out"]
-        .iter()
-        .map(|s| interner.intern_string(s))
-        .collect();
-    let names_obj = heap.alloc(RObject::String(names_vec));
-    let with_names = copy_with_attrib(heap, interner, list, "names", names_obj)?;
-    heap.visible = true;
-    Ok(with_names)
-}
 
-/// stem(x, scale, width, atom) — GNU's stem.c ported exactly: the
-/// rounding-scale selection, mu switching, cell alignment, and row
-/// printing verbatim including the truncating casts.
-fn stem_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["x", "scale", "width", "atom"])?;
-    let input = slots[0].unwrap_or(ValueId::NIL);
-    let mut xs: Vec<f64> = reals_of_value(heap, input)
-        .map_err(RSignal::from)?
-        .into_iter()
-        .filter(|x| x.is_finite())
-        .collect();
-    let n = xs.len();
-    if n == 0 {
-        return Err(EvalError::TypeError("no finite and non-missing values").into());
-    }
-    let scale = slots[1].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(1.0);
-    let width = slots[2].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(80.0) as i64;
-    let atom = slots[3].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(1e-8);
-    if scale <= 0.0 {
-        return Err(EvalError::TypeError("'scale' must be positive").into());
-    }
-    xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let mut out = String::from("\n");
-    let mut mu = 10.0f64;
-    let mut c: f64;
-    if xs[n - 1] > xs[0] {
-        let r = atom + (xs[n - 1] - xs[0]) / scale;
-        c = 10f64.powi((1.0 - r.log10().floor()) as i32);
-        let mm = (2i32).min((0i32).max((r * c / 25.0) as i32));
-        let k = 3 * mm + 2 - 150 / (n as i32 + 50);
-        if (k - 1) * (k - 2) * (k - 5) == 0 {
-            c *= 10.0;
-        }
-        let mut x1 = xs[0].abs();
-        let x2 = xs[n - 1].abs();
-        if x2 > x1 {
-            x1 = x2;
-        }
-        while x1 * c > i32::MAX as f64 {
-            c /= 10.0;
-        }
-        if k * (k - 4) * (k - 8) == 0 {
-            mu = 5.0;
-        }
-        if (k - 1) * (k - 5) * (k - 6) == 0 {
-            mu = 20.0;
-        }
-    } else {
-        let r = atom + xs[0].abs() / scale;
-        c = 10f64.powi((1.0 - r.log10().floor()) as i32);
-    }
-    // rnd — GNU's exact truncating arithmetic: the +-0.5 shift with
-    /// truncation toward zero at the integer casts.
-    let rnd = |u: f64, c: f64| -> f64 {
-        if u < 0.0 { u * c - 0.5 } else { u * c + 0.5 }
-    };
-    let xlow = rnd(xs[0], c);
-    let xhigh = rnd(xs[n - 1], c);
-    let lo_nd = (xlow / mu).floor() * mu;
-    let hi_nd = (xhigh / mu).floor() * mu;
-    let ldigits = if lo_nd < 0.0 { (-lo_nd).log10().floor() as i64 + 1 } else { 0 };
-    let hdigits = if hi_nd > 0.0 { hi_nd.log10().floor() as i64 } else { 0 };
-    let ndigits = ldigits.max(hdigits);
-    // Starting cell exactly as GNU's alignment.
-    let mut lo = (xs[0] * c / mu).floor() * mu;
-    if lo < 0.0 && (xs[0] * c).floor() == lo {
-        lo -= mu;
-    }
-    let mut hi = lo + mu;
-    if (xs[0] * c + 0.5).floor() > hi {
-        lo = hi;
-        hi = lo + mu;
-    }
-    let pdigits = 1 - (c.log10().floor() + 0.5) as i64;
-    out.push_str("  The decimal point is ");
-    if pdigits == 0 {
-        out.push_str("at the |\n\n");
-    } else {
-        out.push_str(&format!(
-            "{} digit(s) to the {} of the |\n\n",
-            pdigits.abs(),
-            if pdigits > 0 { "right" } else { "left" }
-        ));
-    }
-    let stem_print = |close: i64, dist: i64, out: &mut String| {
-        if close / 10 == 0 && dist < 0 {
-            out.push_str(&format!("  {:>width$} | ", "-0", width = ndigits as usize));
-        } else {
-            out.push_str(&format!("  {:>width$} | ", close / 10, width = ndigits as usize));
-        }
-    };
-    let mut i = 0usize;
-    loop {
-        if lo < 0.0 {
-            stem_print(hi as i64, lo as i64, &mut out);
-        } else {
-            stem_print(lo as i64, hi as i64, &mut out);
-        }
-        let mut j = 0i64;
-        loop {
-            let xi = rnd(xs[i], c) as i64;
-            if (hi == 0.0 && xs[i] >= 0.0)
-                || (lo < 0.0 && xi > hi as i64)
-                || (lo >= 0.0 && xi >= hi as i64)
-            {
-                break;
-            }
-            j += 1;
-            if j <= width - 12 {
-                out.push_str(&format!("{}", xi.abs() % 10));
-            }
-            i += 1;
-            if i >= n {
-                break;
-            }
-        }
-        if j > width {
-            out.push_str(&format!("+{}", j - width));
-        }
-        out.push('\n');
-        if i >= n {
-            break;
-        }
-        hi += mu;
-        lo += mu;
-    }
-    // The trailing newline exactly as stem.c's final Rprintf.
-    out.push('\n');
-    heap.emit(&out);
-    Ok(ValueId::NIL)
-}
 
-/// barplot(height, width, space, beside, horiz, col) — GNU's layout
-/// arithmetic exactly: space scaled by mean width, cumulative right
-/// edges, midpoints returned invisibly. Vector input treats as a
-/// one-column beside matrix exactly as GNU.
-fn barplot_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env,
-        &["height", "width", "space", "names.arg", "legend.text", "beside", "horiz", "col", "border", "main", "xlab", "ylab", "plot"])?;
-    let input = slots[0].unwrap_or(ValueId::NIL);
-    // Shape detection: matrix spreads rows as series, vectors become
-    /// the one-column beside form exactly as GNU.
-    let mut heights: Vec<Vec<f64>> = Vec::new();
-    let mut nrow = 1usize;
-    let mut ncol = 0usize;
-    let mut vector_input = false;
-    if let Some(dim_id) = get_attrib(heap, interner, input, "dim") {
-        if let Some(RObject::Integer(dims)) = heap.object(dim_id).cloned() {
-            if dims.len() == 2 {
-                nrow = dims[0] as usize;
-                ncol = dims[1] as usize;
-                let vals = reals_of_value(heap, input).map_err(RSignal::from)?;
-                for r in 0..nrow {
-                    let mut series = Vec::new();
-                    for c in 0..ncol {
-                        series.push(vals.get(c * nrow + r).copied().unwrap_or(0.0));
-                    }
-                    heights.push(series);
-                }
-            }
-        }
-    }
-    if heights.is_empty() {
-        vector_input = true;
-        nrow = 1;
-        let vals = reals_of_value(heap, input).map_err(RSignal::from)?;
-        ncol = vals.len();
-        heights.push(vals);
-    }
-    let mut beside = slots[5]
-        .map(|v| matches!(heap.object(v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) != 0))
-        .unwrap_or(false);
-    if vector_input {
-        beside = true;
-    }
-    let width: Vec<f64> = {
-        let w = slots[1].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_else(|| vec![1.0]);
-        let target = if beside { nrow } else { ncol };
-        (0..target).map(|i| w[i % w.len()]).collect()
-    };
-    let mean_width = width.iter().sum::<f64>() / width.len() as f64;
-    // space scaled exactly as GNU — 0.2 default, c(0,1) for beside
-    /// matrices.
-    let spaces: Vec<f64> = match slots[2] {
-        Some(s) => {
-            let spec = reals_of_value(heap, s).unwrap_or_default();
-            if spec.len() == 2 && beside && !vector_input {
-                // c(0,1) means: intra-group space then inter-group —
-                /// expanded exactly as GNU's rep.int composition.
-                let mut expanded = Vec::new();
-                for _c in 0..ncol {
-                    expanded.push(spec[1]);
-                    for _r in 0..nrow.saturating_sub(1) {
-                        expanded.push(spec[0]);
-                    }
-                }
-                expanded.iter().map(|x| x * mean_width).collect()
-            } else {
-                vec![spec.first().copied().unwrap_or(0.2) * mean_width]
-            }
-        }
-        None => {
-            let base = if !vector_input && beside { 0.0 } else { 0.2 };
-            vec![base * mean_width]
-        }
-    };
-    // Cumulative positions exactly as GNU: w.r = cumsum(space+width),
-    /// midpoints and lefts derived.
-    let count = if beside { nrow * ncol } else { ncol };
-    let mut wr: Vec<f64> = Vec::new();
-    let mut acc = 0.0;
-    for i in 0..count {
-        let space = if spaces.len() == 1 { spaces[0] } else { spaces.get(i).copied().unwrap_or(0.0) };
-        let w = width[i % width.len()];
-        acc += space + w;
-        wr.push(acc);
-    }
-    let wm: Vec<f64> = wr.iter().enumerate().map(|(i, &r)| r - width[i % width.len()] / 2.0).collect();
-    let wl: Vec<f64> = wr.iter().enumerate().map(|(i, &r)| r - width[i % width.len()]).collect();
-    // Limits exactly as GNU: x spans the bar positions, y the stacked
-    /// heights with zero.
-    let stacked: Vec<f64> = (0..ncol).map(|c| {
-        heights.iter().map(|series| series.get(c).copied().unwrap_or(0.0)).sum()
-    }).collect();
-    let ymax = if beside {
-        heights.iter().flat_map(|s| s.iter().copied()).fold(0.0f64, f64::max)
-    } else {
-        stacked.iter().copied().fold(0.0f64, f64::max)
-    };
-    let ymin = heights.iter().flat_map(|s| s.iter().copied()).fold(0.0f64, f64::min);
-    let xlim = (wl[0], wr[wr.len() - 1]);
-    let ylim = (ymin.min(0.0), ymax);
-    let do_plot = slots[12]
-        .map(|v| matches!(heap.object(v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) != 0))
-        .unwrap_or(true);
-    if do_plot {
-        let cell = |v: ValueId, rest: ValueId, heap: &mut Heap| {
-            heap.alloc(RObject::Pairlist { car: v, cdr: rest, tag: ValueId::NIL })
-        };
-        plot_new_primitive(heap, interner, ValueId::NIL, caller_env)?;
-        // yaxs="i" exactly as GNU's opar — exact axis, no extension.
-        let xaxs_obj = heap.alloc(RObject::String(vec![interner.intern_string("i")]));
-        let _ = xaxs_obj;
-        let xlim_obj = heap.alloc(RObject::Real(vec![xlim.0, xlim.1]));
-        let ylim_obj = heap.alloc(RObject::Real(vec![ylim.0, ylim.1]));
-        let win_args = {
-            let second = cell(ylim_obj, ValueId::NIL, heap);
-            cell(xlim_obj, second, heap)
-        };
-        plot_window_primitive(heap, interner, win_args, caller_env)?;
-        // Bars: stacked series accumulate; beside rows sit at their own
-        /// positions exactly as GNU's per-series loop.
-        let col_default = if vector_input { "grey" } else { "grey" };
-        for r in 0..nrow {
-            let mut base = vec![0.0f64; ncol];
-            if r > 0 && !beside {
-                for c in 0..ncol {
-                    base[c] = (0..r).map(|rr| heights[rr].get(c).copied().unwrap_or(0.0)).sum();
-                }
-            }
-            for c in 0..ncol {
-                let h = heights[r].get(c).copied().unwrap_or(0.0);
-                let pos_index = if beside { c * nrow + r } else { c };
-                let bottom = if beside { 0.0 } else { base[c] };
-                let xleft = heap.alloc(RObject::Real(vec![wl[pos_index]]));
-                let ybot = heap.alloc(RObject::Real(vec![bottom]));
-                let xright = heap.alloc(RObject::Real(vec![wr[pos_index]]));
-                let ytop = heap.alloc(RObject::Real(vec![bottom + h]));
-                let col_obj = heap.alloc(RObject::String(vec![interner.intern_string(col_default)]));
-                let rect_args = {
-                    let col_cell = cell(col_obj, ValueId::NIL, heap);
-                    let ytop_cell = cell(ytop, col_cell, heap);
-                    let xright_cell = cell(xright, ytop_cell, heap);
-                    let ybot_cell = cell(ybot, xright_cell, heap);
-                    cell(xleft, ybot_cell, heap)
-                };
-                rect_primitive(heap, interner, rect_args, caller_env)?;
-            }
-        }
-    }
-    // Midpoints returned invisibly exactly as GNU — beside matrices
-    /// shape them back to rows.
-    let out: Vec<f64> = if beside && !vector_input {
-        wm
-    } else if beside {
-        wm
-    } else {
-        wm
-    };
-    let result = heap.alloc(RObject::Real(out));
-    heap.visible = false;
-    Ok(result)
-}
 
-/// segments(x0, y0, x1, y1) — GNU's lockstep-recycled segment paths
-/// with per-segment color resolution exactly as lines carries col.
-fn segments_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    use r_graphics_engine::{Color, DrawOperation, Path, PathCommand, Stroke};
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["x0", "y0", "x1", "y1", "col"])?;
-    let x0 = slots[0].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
-    let y0 = slots[1].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
-    let x1 = slots[2].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
-    let y1 = slots[3].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
-    let n = x0.len().max(y0.len()).max(x1.len()).max(y1.len());
-    if n == 0 {
-        return Ok(ValueId::NIL);
-    }
-    for i in 0..n {
-        let (xa, ya, xb, yb) = (
-            x0[i % x0.len()],
-            y0[i % y0.len()],
-            x1[i % x1.len()],
-            y1[i % y1.len()],
-        );
-        if !(xa.is_finite() && ya.is_finite() && xb.is_finite() && yb.is_finite()) {
-            continue;
-        }
-        let (dx0, dy0) = heap.graphics.user_to_device(xa, ya);
-        let (dx1, dy1) = heap.graphics.user_to_device(xb, yb);
-        let col = slots[4]
-            .and_then(|v| resolve_rcolor(heap, interner, v, i))
-            .unwrap_or(Color::BLACK);
-        let parstroke_2 = par_stroke(heap, col);
-        heap.graphics.scene_mut().push(DrawOperation::Path(Path {
-            commands: vec![
-                PathCommand::MoveTo(dx0, dy0),
-                PathCommand::LineTo(dx1, dy1),
-            ],
-            stroke: parstroke_2,
-            anti_alias: true,
-            ..Default::default()
-        }));
-    }
-    Ok(ValueId::NIL)
-}
 
-/// abline(a, b, h, v) — GNU's reference lines spanning the plot
-/// region exactly: intercept/slope pairs, horizontal levels, or
-/// vertical positions clipped to the usr window.
-fn abline_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    use r_graphics_engine::{Color, DrawOperation, Path, PathCommand, Stroke};
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["a", "b", "h", "v", "col"])?;
-    let usr = match heap.graphics.query("usr") {
-        Some(r_core::graphics::layout::ParValue::Real(u)) if u.len() == 4 => u,
-        _ => vec![0.0, 1.0, 0.0, 1.0],
-    };
-    let mut spans: Vec<(f64, f64, f64, f64)> = Vec::new();
-    // Horizontal levels span the x window exactly as h.
-    if let Some(hs) = slots[2].and_then(|v| reals_of_value(heap, v).ok()) {
-        for h in hs {
-            if h.is_finite() {
-                spans.push((usr[0], h, usr[1], h));
-            }
-        }
-    }
-    if let Some(vs) = slots[3].and_then(|v| reals_of_value(heap, v).ok()) {
-        for v in vs {
-            if v.is_finite() {
-                spans.push((v, usr[2], v, usr[3]));
-            }
-        }
-    }
-    if let Some(aa) = slots[0].and_then(|v| reals_of_value(heap, v).ok()) {
-        let bb = slots[1]
-            .and_then(|v| reals_of_value(heap, v).ok())
-            .unwrap_or_else(|| vec![1.0]);
-        for i in 0..aa.len() {
-            let a = aa[i];
-            let b = bb[i % bb.len()];
-            if !(a.is_finite() && b.is_finite()) {
-                continue;
-            }
-            // Evaluate at the window edges exactly as the line clips.
-            let y0 = a + b * usr[0];
-            let y1 = a + b * usr[1];
-            spans.push((usr[0], y0, usr[1], y1));
-        }
-    }
-    for (i, (xa, ya, xb, yb)) in spans.iter().enumerate() {
-        let (dx0, dy0) = heap.graphics.user_to_device(*xa, *ya);
-        let (dx1, dy1) = heap.graphics.user_to_device(*xb, *yb);
-        let col = slots[4]
-            .and_then(|v| resolve_rcolor(heap, interner, v, i))
-            .unwrap_or(Color::BLACK);
-        let parstroke_1 = par_stroke(heap, col);
-        heap.graphics.scene_mut().push(DrawOperation::Path(Path {
-            commands: vec![
-                PathCommand::MoveTo(dx0, dy0),
-                PathCommand::LineTo(dx1, dy1),
-            ],
-            stroke: parstroke_1,
-            anti_alias: true,
-            ..Default::default()
-        }));
-    }
-    Ok(ValueId::NIL)
-}
 
-/// polygon(x, y) — GNU's closed filled path exactly as rect carries
-/// col and border: NA coordinates split the polygon into separate
-/// subpaths, each closed.
-fn polygon_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    use r_graphics_engine::{Color, DrawOperation, Path, PathCommand, Stroke};
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["x", "y", "col", "border"])?;
-    let xs = slots[0].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
-    let ys = slots[1].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
-    let n = xs.len().min(ys.len());
-    if n == 0 {
-        return Ok(ValueId::NIL);
-    }
-    const TRANSPARENT: Color = Color { r: 0, g: 0, b: 0, a: 0 };
-    let fill = slots[2]
-        .and_then(|v| resolve_rcolor(heap, interner, v, 0))
-        .unwrap_or(TRANSPARENT);
-    let border = match slots[3] {
-        Some(v) => resolve_rcolor(heap, interner, v, 0).unwrap_or(TRANSPARENT),
-        None => Color::BLACK,
-    };
-    // Split at NA exactly as lines does, closing each run.
-    let mut run: Vec<(f32, f32)> = Vec::new();
-    let mut emit_run = |heap: &mut Heap, run: &mut Vec<(f32, f32)>| {
-        if run.len() >= 2 {
-            let mut commands = vec![PathCommand::MoveTo(run[0].0, run[0].1)];
-            for &(x, y) in &run[1..] {
-                commands.push(PathCommand::LineTo(x, y));
-            }
-            commands.push(PathCommand::Close);
-            let parstroke_0 = par_stroke(heap, border);
-            heap.graphics.scene_mut().push(DrawOperation::Path(Path {
-                commands,
-                fill,
-                stroke: parstroke_0,
-                anti_alias: true,
-            }));
-        }
-        run.clear();
-    };
-    for i in 0..n {
-        let (x, y) = (xs[i], ys[i]);
-        if x.is_finite() && y.is_finite() {
-            let (dx, dy) = heap.graphics.user_to_device(x, y);
-            run.push((dx, dy));
-        } else {
-            emit_run(heap, &mut run);
-        }
-    }
-    emit_run(heap, &mut run);
-    Ok(ValueId::NIL)
-}
 
-/// plot(x, y) — GNU's high-level numeric scatter exactly as
-/// plot.default composes: data-range limits, a fresh frame, the
-/// window, points, both axes, and the box. Type "p" points exactly
-/// as the default; the remaining types compose in their own time.
-fn plot_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["x", "y", "type"])?;
-    let mut xs = slots[0].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
-    let mut ys = slots[1].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
-    let plot_type = match slots[2].and_then(|v| match heap.object(v) {
-        Some(RObject::String(values)) => values.first().map(|s| interner.string_text(*s).to_string()),
-        _ => None,
-    }) {
-        Some(text) => text,
-        None => "p".to_string(),
-    };
-    // plot(x) with a single vector plots against the index exactly as
-    /// GNU's xy.coords default.
-    if ys.is_empty() && !xs.is_empty() {
-        ys = std::mem::take(&mut xs);
-        xs = (1..=ys.len()).map(|i| i as f64).collect();
-    }
-    let pairs: Vec<(f64, f64)> = xs
-        .iter()
-        .copied()
-        .zip(ys.iter().copied())
-        .filter(|(x, y)| x.is_finite() && y.is_finite())
-        .collect();
-    if pairs.is_empty() {
-        return Ok(ValueId::NIL);
-    }
-    let xlo = pairs.iter().map(|p| p.0).fold(f64::INFINITY, f64::min);
-    let xhi = pairs.iter().map(|p| p.0).fold(f64::NEG_INFINITY, f64::max);
-    let ylo = pairs.iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
-    let yhi = pairs.iter().map(|p| p.1).fold(f64::NEG_INFINITY, f64::max);
-    // Compose through the primitives exactly as user code would —
-    /// construct each call's evaluated arguments directly.
-    let xlim = heap.alloc(RObject::Real(vec![xlo, xhi]));
-    let ylim = heap.alloc(RObject::Real(vec![ylo, yhi]));
-    let xv = heap.alloc(RObject::Real(pairs.iter().map(|p| p.0).collect::<Vec<_>>()));
-    let yv = heap.alloc(RObject::Real(pairs.iter().map(|p| p.1).collect::<Vec<_>>()));
-    let cell = |v: ValueId, rest: ValueId, heap: &mut Heap| {
-        heap.alloc(RObject::Pairlist { car: v, cdr: rest, tag: ValueId::NIL })
-    };
-    // plot.new()
-    plot_new_primitive(heap, interner, ValueId::NIL, caller_env)?;
-    // plot.window(xlim, ylim)
-    let win_args = {
-        let second = cell(ylim, ValueId::NIL, heap);
-        cell(xlim, second, heap)
-    };
-    plot_window_primitive(heap, interner, win_args, caller_env)?;
-    // The glyph layer exactly as type selects: points, lines, both,
-    /// overplotted, or nothing — "n" still draws axes and the frame.
-    let xy_args = {
-        let second = cell(yv, ValueId::NIL, heap);
-        cell(xv, second, heap)
-    };
-    match plot_type.as_str() {
-        "l" => {
-            lines_primitive(heap, interner, xy_args, caller_env)?;
-        }
-        "b" | "o" => {
-            lines_primitive(heap, interner, xy_args, caller_env)?;
-            let second = cell(yv, ValueId::NIL, heap);
-            let again = cell(xv, second, heap);
-            points_primitive(heap, interner, again, caller_env)?;
-        }
-        "n" => {}
-        _ => {
-            points_primitive(heap, interner, xy_args, caller_env)?;
-        }
-    }
-    // axis(1); axis(2)
-    let one = heap.alloc(RObject::Real(vec![1.0]));
-    let two = heap.alloc(RObject::Real(vec![2.0]));
-    let a1 = cell(one, ValueId::NIL, heap);
-    axis_primitive(heap, interner, a1, caller_env)?;
-    let a2 = cell(two, ValueId::NIL, heap);
-    axis_primitive(heap, interner, a2, caller_env)?;
-    // box()
-    box_primitive(heap, interner, ValueId::NIL, caller_env)?;
-    Ok(ValueId::NIL)
-}
+
+
+
+
+
+
+
+
+
+
+
+
 
 /// GNU's character coercion — integers and logicals render as decimal and
 /// TRUE/FALSE exactly as paste does, real NA becomes the sentinel.
-fn coerce_character(
+pub fn coerce_character(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     value: ValueId,
@@ -19659,7 +16014,7 @@ fn coerce_character(
 /// GNU's identical() — deep structural equality: same type, same values
 /// bitwise (NaN payloads distinguish NA from NaN), same attributes in the
 /// same order. Environments compare by identity exactly as GNU.
-fn structural_identical(
+pub fn structural_identical(
     heap: &Heap,
     interner: &SymbolInterner,
     left: ValueId,
@@ -19801,7 +16156,7 @@ pub fn remove_attrib(
 /// data recycles to the dim product exactly as matrix() does, an absent
 /// data argument yields a logical NA, and dim attaches as the integer
 /// extent vector.
-fn array_primitive(
+pub fn array_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -19897,7 +16252,7 @@ fn array_primitive(
 
 
 /// Numeric payload of a vector as reals — integer input widens exactly.
-fn numeric_vector(heap: &Heap, value: ValueId) -> Vec<f64> {
+pub fn numeric_vector(heap: &Heap, value: ValueId) -> Vec<f64> {
     match heap.object(value) {
         Some(RObject::Real(vals)) => vals.clone(),
         Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals
@@ -19952,7 +16307,7 @@ pub fn unit_seconds(units: &str) -> f64 {
 /// GNU's auto unit selection for second-valued differences: the coarsest
 /// unit dividing every finite value exactly, defaulting to secs exactly as
 /// difftime's "auto" discipline.
-fn auto_difftime_units(secs: &[f64]) -> (&'static str, f64) {
+pub fn auto_difftime_units(secs: &[f64]) -> (&'static str, f64) {
     let finite: Vec<f64> = secs.iter().filter(|v| v.is_finite()).copied().collect();
     for (name, divisor) in [("weeks", 604800.0), ("days", 86400.0), ("hours", 3600.0), ("mins", 60.0)] {
         if !finite.is_empty() && finite.iter().all(|v| v % divisor == 0.0) {
@@ -19964,7 +16319,7 @@ fn auto_difftime_units(secs: &[f64]) -> (&'static str, f64) {
 
 /// Allocate a copy of the object's payload with no attribute chain — the
 /// stamping operations rebuild class-bearing objects from bare numerics.
-fn strip_all_attributes(heap: &mut Heap, value: ValueId) -> ValueId {
+pub fn strip_all_attributes(heap: &mut Heap, value: ValueId) -> ValueId {
     let body = match heap.object(value) {
         Some(obj) => obj.clone(),
         None => return value,
@@ -19977,7 +16332,7 @@ fn strip_all_attributes(heap: &mut Heap, value: ValueId) -> ValueId {
 /// tabulate per sorted-unique level combination column-major exactly as
 /// table semantics, and the result carries the xtabs/table class pair
 /// with dimnames named by the deparsed term text exactly as GNU.
-fn xtabs_primitive(
+pub fn xtabs_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -20207,7 +16562,7 @@ fn xtabs_primitive(
 /// Promote any arithmetic input to its complex vector form exactly as
 /// GNU's type lattice — integer/logical/real gain a zero imaginary part,
 /// NA propagating into both parts as GNU's complex NA does.
-fn as_complex_vec(heap: &Heap, value: ValueId) -> Result<Vec<r_core::object::RComplex>, EvalError> {
+pub fn as_complex_vec(heap: &Heap, value: ValueId) -> Result<Vec<r_core::object::RComplex>, EvalError> {
     use r_core::object::{NA_INTEGER, NA_REAL_BITS, RComplex};
     match heap.object(value) {
         Some(RObject::Complex(vals)) => Ok(vals.clone()),
@@ -20237,7 +16592,7 @@ fn as_complex_vec(heap: &Heap, value: ValueId) -> Result<Vec<r_core::object::RCo
 }
 
 /// Is this complex element NA — either part carrying GNU's NA payload.
-fn complex_na(z: r_core::object::RComplex) -> bool {
+pub fn complex_na(z: r_core::object::RComplex) -> bool {
     z.r.to_bits() == r_core::object::NA_REAL_BITS
         || z.i.to_bits() == r_core::object::NA_REAL_BITS
 }
@@ -20245,7 +16600,7 @@ fn complex_na(z: r_core::object::RComplex) -> bool {
 /// Binary complex arithmetic with GNU recycling and NA propagation — an
 /// NA operand element poisons both parts of the result element exactly as
 /// GNU's complex NA semantics.
-fn complex_arithmetic(
+pub fn complex_arithmetic(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -20309,7 +16664,7 @@ fn complex_arithmetic(
 /// Density/distribution family over nmath's pure-Rust cores — GNU's exact
 /// positional+named argument resolution with scalar parameter defaults,
 /// vectorized over the first argument exactly as GNU's DPQ dispatch.
-fn dpq_primitive(
+pub fn dpq_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     which: u32,
@@ -20470,7 +16825,7 @@ fn dpq_primitive(
 /// GNU's argument binding for fixed-formals primitives: named arguments
 /// claim their exact formal slots first, unnamed arguments fill the open
 /// slots in call order. Slots left open read as None.
-fn bind_formals(
+pub fn bind_formals(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -20527,7 +16882,7 @@ fn bind_formals(
 /// named or not — the caller interprets positions. GNU's exact matching
 /// of trailing named flags rides along positionally here because every
 /// consumer reads trailing slots with their own defaults.
-fn eval_args_up_to(
+pub fn eval_args_up_to(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -20561,7 +16916,7 @@ fn eval_args_up_to(
 
 
 /// Read one named field of a restart object as a plain string.
-fn restart_field_string(heap: &Heap, interner: &SymbolInterner, restart: ValueId, field: &str) -> Option<String> {
+pub fn restart_field_string(heap: &Heap, interner: &SymbolInterner, restart: ValueId, field: &str) -> Option<String> {
     if let Some(RObject::List(items)) = heap.object(restart) {
         let names = get_attrib(heap, interner, restart, "names").and_then(|id| match heap.object(id) {
             Some(RObject::String(entries)) => Some(entries.clone()),
@@ -20578,7 +16933,7 @@ fn restart_field_string(heap: &Heap, interner: &SymbolInterner, restart: ValueId
 /// Build GNU's restart record: the six-field list carrying name, exit,
 /// handler, description, test, interactive in exactly that order, classed
 /// as a restart.
-fn build_restart_object(
+pub fn build_restart_object(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     name: &str,
@@ -20601,7 +16956,7 @@ fn build_restart_object(
 
 /// Wrap values as pre-forced promise arguments exactly as the active-
 /// binding invocation does — the receiver's formals bind directly.
-fn promise_args(heap: &mut Heap, values: &[ValueId], env: ValueId) -> ValueId {
+pub fn promise_args(heap: &mut Heap, values: &[ValueId], env: ValueId) -> ValueId {
     let mut head = ValueId::NIL;
     for value in values.iter().rev() {
         let forced = heap.alloc(RObject::Promise { expr: *value, env, value: *value });
@@ -20611,7 +16966,7 @@ fn promise_args(heap: &mut Heap, values: &[ValueId], env: ValueId) -> ValueId {
 }
 
 /// Apply a closure value to already-computed argument values.
-fn apply_closure_value(
+pub fn apply_closure_value(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     fun: ValueId,
@@ -20631,7 +16986,7 @@ fn apply_closure_value(
 /// dynamic extent of the expression. An invokeRestart matching one of the
 /// frame's restarts unwinds here and the handler's value becomes the whole
 /// form's value exactly as GNU.
-fn with_restarts_primitive(
+pub fn with_restarts_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -20694,7 +17049,7 @@ fn with_restarts_primitive(
 /// invokeRestart/tryInvokeRestart — unwind to the owning frame with the
 /// argument values. The try form returns NULL quietly when no restart
 /// answers exactly as GNU.
-fn invoke_restart_primitive(
+pub fn invoke_restart_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -20727,7 +17082,7 @@ fn invoke_restart_primitive(
 }
 
 /// findRestart(name) — the innermost matching restart object or NULL.
-fn find_restart_primitive(
+pub fn find_restart_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -20748,7 +17103,7 @@ fn find_restart_primitive(
 /// withCallingHandlers(expr, ...) — register condition-class handlers for
 /// the dynamic extent. Handlers fire at signal time without unwinding
 /// exactly as GNU.
-fn with_calling_handlers_primitive(
+pub fn with_calling_handlers_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -20840,7 +17195,7 @@ pub fn fire_calling_handlers(
 /// (The exports-versus-everything distinction between :: and ::: lands
 /// with real package metadata; the machinery slice resolves both through
 /// the one namespace frame.)
-fn ns_get_primitive(
+pub fn ns_get_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -20894,7 +17249,7 @@ fn ns_get_primitive(
 /// base in collation order, and the namespace registers exactly as a
 /// baked one does. NAMESPACE export control and lazy-load databases
 /// are the documented gap: every binding lands exported.
-fn load_source_package(
+pub fn load_source_package(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     pkg_name: &str,
@@ -20932,7 +17287,7 @@ fn load_source_package(
     Some(namespace)
 }
 
-fn library_primitive(
+pub fn library_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -20999,7 +17354,7 @@ fn library_primitive(
 /// write.table/write.csv2 — tabular serialization: the header row of
 /// column names precedes the rows, empty frames write the bare quoted
 /// empty header exactly as GNU's three-byte artifact.
-fn write_table_primitive(
+pub fn write_table_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -21057,7 +17412,7 @@ fn write_table_primitive(
 /// read.fwf — fixed-width field parsing: positive widths read columns,
 /// zero widths contribute all-NA logical columns, negative widths skip
 /// characters exactly as GNU.
-fn read_fwf_primitive(
+pub fn read_fwf_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -21155,7 +17510,7 @@ fn read_fwf_primitive(
 /// NA-aware string coercion for the transform family: logical and integer
 /// NA positions coerce to the missing sentinel exactly as GNU's character
 /// coercion — not the two-letter text — while genuine strings pass through.
-fn transform_strings(
+pub fn transform_strings(
     heap: &Heap,
     interner: &mut SymbolInterner,
     value: ValueId,
@@ -21190,7 +17545,7 @@ fn transform_strings(
 
 /// toupper/tolower — ASCII case transforms with NA propagation exactly as
 /// GNU's C-locale behavior.
-fn case_transform_primitive(
+pub fn case_transform_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -21220,7 +17575,7 @@ fn case_transform_primitive(
 
 /// chartr(old, new, x) — character-by-character translation exactly as
 /// GNU: each old character maps to its positional new partner.
-fn chartr_primitive(
+pub fn chartr_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -21254,7 +17609,7 @@ fn chartr_primitive(
 }
 
 /// trimws — whitespace stripping at both margins, NA propagating.
-fn trimws_primitive(
+pub fn trimws_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -21279,7 +17634,7 @@ fn trimws_primitive(
 /// tabulate(bin, nbins) — bin counts for positive integer positions;
 /// NA, zero, negative, and out-of-range values drop exactly as GNU.
 /// Non-integer numerics truncate toward zero.
-fn tabulate_primitive(
+pub fn tabulate_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -21308,7 +17663,7 @@ fn tabulate_primitive(
 
 /// system2 — command execution: stdout=TRUE captures output lines as a
 /// character vector; the bare form returns the exit status invisibly.
-fn system2_primitive(
+pub fn system2_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -21354,7 +17709,7 @@ fn system2_primitive(
 
 /// with(data, expr) — evaluate the expression with the list or data-frame
 /// columns in scope, exactly as GNU's evaluation inside as.environment(data).
-fn with_primitive(
+pub fn with_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -21403,7 +17758,7 @@ fn with_primitive(
 
 /// lengths — per-element lengths of a list or vector, integer-typed
 /// exactly as GNU.
-fn lengths_primitive(
+pub fn lengths_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -21425,7 +17780,7 @@ fn lengths_primitive(
 /// split(x, f) — group elements by the factor or vector f. Group keys are
 /// the sorted unique non-NA levels; elements carry their names exactly as
 /// GNU; list input splits elementwise.
-fn split_primitive(
+pub fn split_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -21506,7 +17861,7 @@ fn split_primitive(
 
 /// Extract elements at positions from an atomic vector or list, preserving
 /// type and the slice of names exactly as `[` subsetting would.
-fn subset_positions(
+pub fn subset_positions(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     x: ValueId,
@@ -21538,7 +17893,7 @@ fn subset_positions(
 /// fall-through to the next non-empty named alternative, and the final
 /// unnamed alternative as default. Arguments evaluate lazily — only the
 /// selected branch is forced.
-fn switch_primitive(
+pub fn switch_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -21647,7 +18002,7 @@ fn switch_primitive(
 /// strwrap(x, width) — greedy word wrapping: words pack onto lines up to
 /// width with single-space separators; unbreakable long words stand alone
 /// exactly as GNU.
-fn strwrap_primitive(
+pub fn strwrap_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -21686,7 +18041,7 @@ fn strwrap_primitive(
 
 /// xtfrm — the ordering surrogate: numeric input passes through, character
 /// input ranks into integer positions exactly as GNU's sort permutation.
-fn xtfrm_primitive(
+pub fn xtfrm_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -21715,7 +18070,7 @@ fn xtfrm_primitive(
 }
 
 /// startsWith/endsWith — vectorized prefix and suffix probes.
-fn startsendswith_primitive(
+pub fn startsendswith_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -21747,7 +18102,7 @@ fn startsendswith_primitive(
 
 /// single — the numeric constructor carrying the Csingle attribute marker
 /// exactly as GNU's single-precision placeholder type.
-fn single_primitive(
+pub fn single_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -21762,7 +18117,7 @@ fn single_primitive(
 
 /// sink — output diversion. sink(file) opens the diversion; sink() with no
 /// arguments restores the capture buffer.
-fn sink_primitive(
+pub fn sink_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -21784,7 +18139,7 @@ fn sink_primitive(
 
 /// sort.list — ordering indices with GNU's na.last semantics: TRUE appends
 /// NA positions, FALSE fronts them, NA drops them entirely.
-fn sort_list_primitive(
+pub fn sort_list_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -21888,7 +18243,7 @@ fn sort_list_primitive(
 /// source/sys.source — parse the file through the native parser and
 /// evaluate each expression in sequence, output visibility suppressed
 /// exactly as GNU. sys.source targets the explicit environment.
-fn source_primitive(
+pub fn source_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -21920,7 +18275,7 @@ fn source_primitive(
 
 /// sign — the signum as double throughout exactly as GNU: even integer
 /// input yields double output, NA propagates.
-fn sign_primitive(
+pub fn sign_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -21947,7 +18302,7 @@ fn sign_primitive(
 
 /// seq.int — GNU's three forms relevant here: (from, to, by) stepped
 /// sequences and the single-argument form descending to seq_len behavior.
-fn seq_int_primitive(
+pub fn seq_int_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -21994,7 +18349,7 @@ fn seq_int_primitive(
 
 /// scan — whitespace-delimited file scanning driven by the template
 /// argument's type. The NA token decodes to the type's missing value.
-fn scan_primitive(
+pub fn scan_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -22042,7 +18397,7 @@ fn scan_primitive(
 
 /// Variadic argument collection shared by range/pmin/pmax: every unlabeled
 /// argument is an input, the tagged na.rm strips NA positions.
-fn collect_variadic_inputs(
+pub fn collect_variadic_inputs(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -22080,7 +18435,7 @@ fn collect_variadic_inputs(
 
 /// range(...) — min and max of the concatenated inputs as a two-element
 /// vector, integer-typed for integer inputs exactly as GNU.
-fn range_primitive(
+pub fn range_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -22121,7 +18476,7 @@ fn range_primitive(
 
 /// pmin/pmax — elementwise extrema across the input vectors with recycling.
 /// NA poisons a position unless na.rm strips it; integer inputs stay integer.
-fn pminmax_primitive(
+pub fn pminmax_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -22215,7 +18570,7 @@ fn pminmax_primitive(
 /// matching: exact matches consume table positions in x-order first, then
 /// unique prefix matches claim the rest. Empty x strings never match at
 /// all — not even the empty table entry — while NA matches NA exactly.
-fn pmatch_primitive(
+pub fn pmatch_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -22306,7 +18661,7 @@ fn pmatch_primitive(
 
 /// prop.table(x, margin) — x divided by its margin sums. The default sums
 /// everything; margin 1 divides by row sums, margin 2 by column sums.
-fn prop_table_primitive(
+pub fn prop_table_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -22371,7 +18726,7 @@ fn prop_table_primitive(
 
 /// row/col — the index matrices: row(x)[i,j] = i, col(x)[i,j] = j over the
 /// input's dimensions, carrying the dim attribute exactly as GNU.
-fn rowcol_primitive(
+pub fn rowcol_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -22406,7 +18761,7 @@ fn rowcol_primitive(
 
 /// relevel(factor, ref) — moves the reference level to the front of the
 /// levels vector and recodes the data positions to the new ordering.
-fn relevel_primitive(
+pub fn relevel_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -22470,7 +18825,7 @@ fn relevel_primitive(
 
 /// path.expand — tilde expansion against the HOME environment variable,
 /// vectorized over the input exactly as GNU.
-fn path_expand_primitive(
+pub fn path_expand_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -22499,7 +18854,7 @@ fn path_expand_primitive(
 
 /// pcre_config — the fixed capability quadruple. The new world's regex
 /// engine is Unicode-correct throughout, JIT-less, and stack-safe.
-fn pcre_config_primitive(heap: &mut Heap, interner: &mut SymbolInterner) -> EvalResult {
+pub fn pcre_config_primitive(heap: &mut Heap, interner: &mut SymbolInterner) -> EvalResult {
     let vals = heap.alloc(RObject::Logical(vec![1, 1, 0, 1]));
     let names: Vec<_> = ["UTF-8", "Unicode properties", "JIT", "stack"]
         .iter()
@@ -22510,7 +18865,7 @@ fn pcre_config_primitive(heap: &mut Heap, interner: &mut SymbolInterner) -> Eval
 }
 
 /// rawToChar — raw bytes reinterpreted as a single character string.
-fn rawtochar_primitive(
+pub fn rawtochar_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -22529,7 +18884,7 @@ fn rawtochar_primitive(
 
 /// qhyper(p, m, n, k) — three-parameter hypergeometric quantile, outside
 /// the two-parameter dpq machinery.
-fn qhyper_primitive(
+pub fn qhyper_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -22553,7 +18908,7 @@ fn qhyper_primitive(
 
 /// ptukey(q, nmeans, df, nranges) — the studentized range CDF; the core
 /// takes nranges ahead of nmeans, inverted at this boundary.
-fn ptukey_primitive(
+pub fn ptukey_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -22579,7 +18934,7 @@ fn ptukey_primitive(
 /// models exactly as GNU's user-first ordering: position 1 ".GlobalEnv",
 /// position 2 "package:base". The character form returns the environment
 /// name; numeric=TRUE returns the position as a named integer.
-fn find_primitive(
+pub fn find_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -22659,7 +19014,7 @@ fn find_primitive(
 
 
 /// The class attribute as a vector of class names — empty when unclassed.
-fn class_vector(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<String> {
+pub fn class_vector(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<String> {
     match get_attrib(heap, interner, value, "class") {
         Some(id) => string_vec(heap, interner, id)
             .into_iter()
@@ -22672,7 +19027,7 @@ fn class_vector(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<S
 /// Apply an S3 method closure to the object with the pre-forced promise
 /// discipline exactly as the apply family — the object passes as a value,
 /// never as a re-evaluated expression.
-fn s3_apply(
+pub fn s3_apply(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     method: ValueId,
@@ -22701,7 +19056,7 @@ fn s3_apply(
 
 /// The first frame binding in insertion order — UseMethod's implicit object
 /// exactly as GNU's first-formal rule for single-argument generics.
-fn first_frame_value(heap: &Heap, env: ValueId) -> Option<ValueId> {
+pub fn first_frame_value(heap: &Heap, env: ValueId) -> Option<ValueId> {
     match heap.object(env) {
         Some(RObject::Environment { frame: r_core::object::EnvFrame::List(entries), .. }) => {
             entries.first().map(|(_, binding)| binding.value)
@@ -22713,7 +19068,7 @@ fn first_frame_value(heap: &Heap, env: ValueId) -> Option<ValueId> {
 /// UseMethod(generic, object) — walk the object's class vector for
 /// `<generic>.<class>` in the method-lookup chain, fall back to `.default`,
 /// and apply with dispatch state pushed for NextMethod exactly as GNU.
-fn usemethod_primitive(
+pub fn usemethod_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -22765,7 +19120,7 @@ fn usemethod_primitive(
 
 /// NextMethod() — dispatch the next class in the active generic's walk,
 /// falling back to `.default` when the class walk exhausts exactly as GNU.
-fn nextmethod_primitive(
+pub fn nextmethod_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     caller_env: ValueId,
@@ -22797,7 +19152,7 @@ fn nextmethod_primitive(
 
 /// as.integer coercion — truncation toward zero exactly as GNU, with the
 /// typed NA lattice: real NaN and out-of-range collapse to NA_integer_.
-fn coerce_integer(
+pub fn coerce_integer(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     value: ValueId,
@@ -22845,7 +19200,7 @@ fn coerce_integer(
 
 /// as.numeric/as.double coercion — the real lattice exactly as GNU: logical
 /// and integer lift directly, strings parse with NA fallback.
-fn coerce_real(
+pub fn coerce_real(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     value: ValueId,
@@ -22879,7 +19234,7 @@ fn coerce_real(
 
 /// stopifnot(...) — every argument must be all-TRUE; a passing call returns
 /// NULL invisibly exactly as GNU, failures raise the argument-position error.
-fn stopifnot_primitive(
+pub fn stopifnot_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -22903,7 +19258,7 @@ fn stopifnot_primitive(
 
 /// sequence(nvec, from, by) — concatenated per-element sequences exactly
 /// as GNU: defaults from=1 by=1 with recycling across the expansion.
-fn sequence_primitive(
+pub fn sequence_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -22964,7 +19319,7 @@ fn sequence_primitive(
 
 /// rep.int(x, times) — pairwise element recycling with names dropped
 /// exactly as GNU's internal repetition (unlike rep, which preserves them).
-fn rep_int_primitive(
+pub fn rep_int_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -22981,7 +19336,7 @@ fn rep_int_primitive(
 
 /// rep_len(x, length.out) — recycle or pad to the exact output length;
 /// empty input fills the typed NA exactly as GNU.
-fn rep_len_primitive(
+pub fn rep_len_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -23102,7 +19457,7 @@ fn rep_len_primitive(
 
 /// Elementwise pairwise repetition shared by rep.int — names dropped when
 /// drop_names exactly as GNU's internal form.
-fn repeat_elements(
+pub fn repeat_elements(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     value: ValueId,
@@ -23160,7 +19515,7 @@ fn repeat_elements(
 /// type), so the deterministic order is observationally equivalent.
 /// Build the column-binding environment for a data frame exactly as
 /// with() does — columns bind by name with the caller enclosing.
-fn data_frame_env(heap: &mut Heap, interner: &mut SymbolInterner, data: ValueId, caller_env: ValueId) -> ValueId {
+pub fn data_frame_env(heap: &mut Heap, interner: &mut SymbolInterner, data: ValueId, caller_env: ValueId) -> ValueId {
     let data_env = r_core::env::new_environment(heap, caller_env);
     if let Some(RObject::List(items)) = heap.object(data).cloned() {
         let names = get_attrib(heap, interner, data, "names")
@@ -23184,7 +19539,7 @@ fn data_frame_env(heap: &mut Heap, interner: &mut SymbolInterner, data: ValueId,
 /// evaluates in the column environment, the frame row-subsets by the
 /// logical result with NA treated as FALSE exactly as `[.data.frame`'s
 /// logical NA handling drops those rows.
-fn subset_df_primitive(
+pub fn subset_df_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -23241,7 +19596,7 @@ fn subset_df_primitive(
 /// transform(x, tag=value, ...) — GNU exactly: each value evaluates in
 /// the column environment, matching names replace their column in place
 /// and new names append exactly as transform.data.frame.
-fn transform_primitive(
+pub fn transform_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -23310,7 +19665,7 @@ fn transform_primitive(
 /// environment, assignments landing in that environment, and the frame
 /// rebuilds from the environment's bindings with original column order
 /// preserved and new columns appending exactly as within.data.frame.
-fn within_primitive(
+pub fn within_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -23383,7 +19738,7 @@ fn within_primitive(
 /// as.data.frame(x) — GNU's coercion exactly: a data frame passes
 /// through, a list becomes columns, a vector becomes one column, and a
 /// matrix spreads its columns exactly as as.data.frame.matrix.
-fn as_data_frame_primitive(
+pub fn as_data_frame_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -23449,7 +19804,7 @@ fn as_data_frame_primitive(
 /// value exactly as R's == (1L == 1), strings byte-exactly, NA as a
 /// shared sentinel so NA keys match NA keys exactly as merge's
 /// interaction machinery.
-fn merge_key_encode(heap: &Heap, interner: &SymbolInterner, column: ValueId, row: usize) -> String {
+pub fn merge_key_encode(heap: &Heap, interner: &SymbolInterner, column: ValueId, row: usize) -> String {
     match heap.object(column) {
         Some(RObject::Real(values)) => {
             let v = values[row];
@@ -23476,7 +19831,7 @@ fn merge_key_encode(heap: &Heap, interner: &SymbolInterner, column: ValueId, row
 /// cartesian on duplicate keys, outer joins pad with NA, sort=TRUE
 /// orders by the key columns with NA last, and the output carries join
 /// columns first exactly as merge.data.frame.
-fn merge_primitive(
+pub fn merge_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -23656,7 +20011,7 @@ fn merge_primitive(
 }
 
 /// Build a length-n column of NA exactly like the template's type.
-fn na_column_like(heap: &mut Heap, interner: &mut SymbolInterner, template: ValueId, n: usize) -> ValueId {
+pub fn na_column_like(heap: &mut Heap, interner: &mut SymbolInterner, template: ValueId, n: usize) -> ValueId {
     match heap.object(template) {
         Some(RObject::Real(_)) => heap.alloc(RObject::Real(vec![f64::from_bits(r_core::object::NA_REAL_BITS); n])),
         Some(RObject::Integer(_)) => heap.alloc(RObject::Integer(vec![r_core::object::NA_INTEGER; n])),
@@ -23671,7 +20026,7 @@ fn na_column_like(heap: &mut Heap, interner: &mut SymbolInterner, template: Valu
 
 /// Coerce one single-row piece toward the template column's type
 /// exactly as GNU's common-type coercion in joins.
-fn coerce_column_piece(heap: &mut Heap, interner: &mut SymbolInterner, template: ValueId, piece: ValueId) -> ValueId {
+pub fn coerce_column_piece(heap: &mut Heap, interner: &mut SymbolInterner, template: ValueId, piece: ValueId) -> ValueId {
     let same_type = std::mem::discriminant(heap.object(template).unwrap_or(&RObject::Nil))
         == std::mem::discriminant(heap.object(piece).unwrap_or(&RObject::Nil));
     if same_type {
@@ -23706,7 +20061,7 @@ fn coerce_column_piece(heap: &mut Heap, interner: &mut SymbolInterner, template:
 
 /// Concatenate single-row pieces into one column preserving the
 /// template's type exactly as unlist-c row binding.
-fn concat_columns(heap: &mut Heap, interner: &mut SymbolInterner, template: ValueId, pieces: &[ValueId]) -> ValueId {
+pub fn concat_columns(heap: &mut Heap, interner: &mut SymbolInterner, template: ValueId, pieces: &[ValueId]) -> ValueId {
     let _ = interner;
     match heap.object(template) {
         Some(RObject::Real(_)) => {
@@ -23752,7 +20107,7 @@ fn concat_columns(heap: &mut Heap, interner: &mut SymbolInterner, template: Valu
 /// and punctuation first, then lowercase vowels, then lowercase
 /// consonants, always scanning right-to-left and never touching the
 /// first character, exactly as the utils C routine.
-fn abbreviate_primitive(
+pub fn abbreviate_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -23805,7 +20160,7 @@ fn abbreviate_primitive(
 /// formatC(x, digits, width, format, flag) — GNU's numeric formatting
 /// core: f fixed, e scientific, g significant — width padding and flag
 /// zero/sign handling exactly as the common cases demand.
-fn formatc_primitive(
+pub fn formatc_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -23907,50 +20262,14 @@ fn formatc_primitive(
     Ok(heap.alloc(RObject::String(out)))
 }
 
-/// rgb(red, green, blue, alpha, maxColorValue) — GNU's hex composition
-/// exactly: channels scale by 255/maxColorValue, round half away, and
-/// the hex renders uppercase exactly as #RRGGBB.
-fn rgb_primitive(
-    heap: &mut Heap,
-    interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
-) -> EvalResult {
-    let positional = eval_matched_args(heap, interner, args, caller_env,
-        &["red", "green", "blue", "alpha", "maxColorValue", "names"])?;
-    let max_value = positional.get(4).copied().flatten()
-        .and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(1.0);
-    let channel = |index: usize| -> Vec<f64> {
-        positional.get(index).copied().flatten()
-            .and_then(|v| reals_of_value(heap, v).ok())
-            .unwrap_or_default()
-    };
-    let reds = channel(0);
-    let greens = channel(1);
-    let blues = channel(2);
-    let n = reds.len().max(greens.len()).max(blues.len());
-    if n == 0 {
-        return Ok(heap.alloc(RObject::String(Vec::new())));
-    }
-    let quant = |v: f64| -> u32 {
-        let scaled = (v / max_value * 255.0).round();
-        scaled.clamp(0.0, 255.0) as u32
-    };
-    let out: Vec<r_core::intern::InternedStr> = (0..n).map(|i| {
-        let r = quant(reds[i % reds.len().max(1)]);
-        let g = quant(greens[i % greens.len().max(1)]);
-        let b = quant(blues[i % blues.len().max(1)]);
-        interner.intern_string(&format!("#{:02X}{:02X}{:02X}", r, g, b))
-    }).collect();
-    Ok(heap.alloc(RObject::String(out)))
-}
+
 
 /// GNU's weighted sampling exactly as random.c: FixupProb validation and
 /// normalization, then ProbSampleReplace (descending heapsort cumulative
 /// scan) or walker_ProbSampleReplace (alias method beyond 200 dense
 /// categories) with replacement, ProbSampleNoReplace (totalmass depletion)
 /// without. The draw sequence consumes the heap stream exactly as GNU.
-fn weighted_sample_indices_pure(
+pub fn weighted_sample_indices_pure(
     heap: &mut Heap,
     probs: &[f64],
     size: usize,
@@ -24047,7 +20366,7 @@ fn weighted_sample_indices_pure(
 /// tricube neighborhood weights, and cubic Hermite blending of the
 /// vertex value/slope pairs for evaluation. Univariate slice of the
 /// full algorithm — the smoke oracle matches at 3e-9.
-fn loess_core_fit(xs: &[f64], ys: &[f64], span: f64, degree: usize) -> Vec<f64> {
+pub fn loess_core_fit(xs: &[f64], ys: &[f64], span: f64, degree: usize) -> Vec<f64> {
     fn vertex_fit(xs: &[f64], ys: &[f64], q: f64, nf: usize, span: f64, degree: usize) -> (f64, f64) {
         let n = xs.len();
         let dist: Vec<f64> = xs.iter().map(|&x| (x - q) * (x - q)).collect();
@@ -24189,7 +20508,7 @@ fn loess_core_fit(xs: &[f64], ys: &[f64], span: f64, degree: usize) -> Vec<f64> 
 /// object carries class "loess" with GNU's component layout subset:
 /// fitted values, residuals, n, and the call exactly as predict.loess
 /// and print.loess consume them.
-fn loess_primitive(
+pub fn loess_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -24281,7 +20600,7 @@ fn loess_primitive(
 /// default: no newdata returns the fitted values. The full generic's
 /// UseMethod dispatch belongs with the stats R-level layer; this
 /// primitive covers the loess contract the graphics smoke consumes.
-fn predict_primitive(
+pub fn predict_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -24323,7 +20642,7 @@ fn predict_primitive(
 /// product through the LU inverse — mathematically the true condition
 /// number where Lapack estimates it, exact for the well-conditioned slice
 /// the estimator approximates.
-fn rcond_primitive(
+pub fn rcond_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -24419,7 +20738,7 @@ fn rcond_primitive(
 /// and backward triangular passes. solve(a) inverts through the identity
 /// exactly as GNU; vector right-hand sides return vectors exactly as
 /// GNU's shape discipline.
-fn solve_primitive(
+pub fn solve_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -24567,7 +20886,7 @@ fn solve_primitive(
 /// anything else is GNU's unimplemented-generator error. sample.kind
 /// switches the walker branch between Rounding and Rejection exactly as
 /// random.c. Returns the PRIOR triple invisibly exactly as GNU.
-fn rngkind_primitive(
+pub fn rngkind_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -24667,7 +20986,7 @@ fn rngkind_primitive(
 /// walker_ProbSampleReplace exactly as random.c: the alias tables build
 /// over q = n*p with the H/L cursors, the draw consuming one rejection
 /// index plus one uniform per sample exactly as the rejection branch.
-fn walker_sample_pure(heap: &mut Heap, p: &mut [f64], size: usize) -> Vec<usize> {
+pub fn walker_sample_pure(heap: &mut Heap, p: &mut [f64], size: usize) -> Vec<usize> {
     let n = p.len();
     let mut a = vec![0i32; n];
     let mut hl = vec![0i32; n];
@@ -24719,7 +21038,7 @@ fn walker_sample_pure(heap: &mut Heap, p: &mut [f64], size: usize) -> Vec<usize>
     out
 }
 
-fn sample_primitive(
+pub fn sample_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -24878,7 +21197,7 @@ fn sample_primitive(
 
 /// builtins(internal) — the primitive name table exactly as GNU's .Internal
 /// form: internals=TRUE lists the internal-only set, FALSE the full table.
-fn builtins_primitive(
+pub fn builtins_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -24909,7 +21228,7 @@ fn builtins_primitive(
 /// regexec(pattern, text) — the list form of regexpr: one integer vector
 /// per text element, each carrying match.length/index.type/useBytes
 /// attributes exactly as GNU.
-fn regexec_primitive(
+pub fn regexec_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -24955,7 +21274,7 @@ pub struct ConnState {
 
 /// Scoped access to the connection state through the shared cell — the
 /// downcast reference is enough because RefCell provides the mutation.
-fn with_conn<R>(heap: &Heap, value: ValueId, f: impl FnOnce(&mut ConnState) -> R) -> Option<R> {
+pub fn with_conn<R>(heap: &Heap, value: ValueId, f: impl FnOnce(&mut ConnState) -> R) -> Option<R> {
     match heap.object(value) {
         Some(RObject::External(any)) => any
             .downcast_ref::<ConnCell>()
@@ -24964,13 +21283,13 @@ fn with_conn<R>(heap: &Heap, value: ValueId, f: impl FnOnce(&mut ConnState) -> R
     }
 }
 
-fn is_connection(heap: &Heap, value: ValueId) -> bool {
+pub fn is_connection(heap: &Heap, value: ValueId) -> bool {
     matches!(heap.object(value), Some(RObject::External(any)) if any.downcast_ref::<ConnCell>().is_some())
 }
 
 /// file(path, mode) — create the connection exactly as GNU: write modes
 /// truncate the target immediately, read modes snapshot at open.
-fn file_primitive(
+pub fn file_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -24986,7 +21305,7 @@ fn file_primitive(
 /// The shared file-connection constructor behind `file()` and file://
 /// `url()` — identical open semantics either way. GNU classes every
 /// connection with its flavor riding in front of "connection".
-fn open_file_connection(heap: &mut Heap, interner: &mut SymbolInterner, path: String, mode: String, flavor: &str) -> EvalResult {
+pub fn open_file_connection(heap: &mut Heap, interner: &mut SymbolInterner, path: String, mode: String, flavor: &str) -> EvalResult {
     let readable = mode.starts_with('r');
     // Browser-file sessions treat the virtual store as the filesystem
     /// exactly as the facade's browser profile does — no host resolution
@@ -25042,7 +21361,7 @@ fn open_file_connection(heap: &mut Heap, interner: &mut SymbolInterner, path: St
 
 /// isOpen(con) — GNU errors "invalid connection" on closed connections
 /// because close drops the registration; open connections report TRUE.
-fn isopen_primitive(
+pub fn isopen_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -25076,7 +21395,7 @@ fn isopen_primitive(
 
 /// close(con) — mark closed through the shared cell; the write-through
 /// file is already byte-exact on disk.
-fn close_primitive(
+pub fn close_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -25095,7 +21414,7 @@ fn close_primitive(
 }
 
 /// Append bytes through a write connection — write-through to disk.
-fn connection_write(heap: &mut Heap, interner: &SymbolInterner, con: ValueId, bytes: &[u8]) -> Result<(), EvalError> {
+pub fn connection_write(heap: &mut Heap, interner: &SymbolInterner, con: ValueId, bytes: &[u8]) -> Result<(), EvalError> {
     // GNU accepts a filename in place of a connection — the write opens
     /// the path directly, truncating exactly as a freshly opened write
     /// connection would.
@@ -25136,7 +21455,7 @@ fn connection_write(heap: &mut Heap, interner: &SymbolInterner, con: ValueId, by
 
 /// writeChar(object, con, nchars, eos) — raw bytes through the connection
 /// exactly as GNU's binary write, nchars truncating the text.
-fn writechar_primitive(
+pub fn writechar_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -25187,7 +21506,7 @@ fn writechar_primitive(
 /// readChar(con, nchars, useBytes) — n raw bytes from the cursor as one
 /// string advancing exactly as GNU's binary read; the path form reads
 /// the file head directly.
-fn readchar_primitive(
+pub fn readchar_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -25239,7 +21558,7 @@ pub enum SetOp {
 /// Elements of a vector as comparable keys — strings verbatim with the NA
 /// sentinel distinct, numerics by bits so NaN/NA dedupe exactly as GNU's
 /// bitwise set membership, logicals/integer lifted through their values.
-fn element_keys(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<String> {
+pub fn element_keys(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<String> {
     match heap.object(value) {
         Some(RObject::String(vals)) => vals.iter().map(|v| format!("s:{}", interner.string_text(*v))).collect(),
         Some(RObject::Real(vals)) => vals.iter().map(|v| format!("r:{}", v.to_bits())).collect(),
@@ -25253,7 +21572,7 @@ fn element_keys(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<S
 /// union takes x's unique values in x-order then y's not-yet-seen in
 /// y-order; intersect and setdiff filter x's unique values in x-order;
 /// setequal compares deduplicated membership both directions.
-fn setop_primitive(
+pub fn setop_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -25352,7 +21671,7 @@ fn setop_primitive(
 /// integer counts carrying dim, dimnames (named by the argument tag),
 /// and class "table". Factors use level order, characters sort exactly
 /// as GNU's factor coercion.
-fn table_primitive(
+pub fn table_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -25439,7 +21758,7 @@ fn table_primitive(
 
 /// setClass(name, slots, contains) — register the definition in the heap
 /// class table exactly as GNU's session-wide registry. Returns invisible.
-fn setclass_primitive(
+pub fn setclass_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -25495,7 +21814,7 @@ fn setclass_primitive(
 
 /// All slots of a class — own first, then the contains chain exactly as
 /// GNU's slot ordering.
-fn s4_all_slots(heap: &Heap, class: &str) -> Vec<(String, String)> {
+pub fn s4_all_slots(heap: &Heap, class: &str) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = Vec::new();
     let mut current = Some(class.to_string());
     while let Some(name) = current {
@@ -25511,7 +21830,7 @@ fn s4_all_slots(heap: &Heap, class: &str) -> Vec<(String, String)> {
 }
 
 /// Class membership through the contains chain exactly as GNU's is().
-fn s4_inherits(heap: &Heap, class: &str, target: &str) -> bool {
+pub fn s4_inherits(heap: &Heap, class: &str, target: &str) -> bool {
     let mut current = Some(class.to_string());
     while let Some(name) = current {
         if name == target {
@@ -25528,7 +21847,7 @@ fn s4_inherits(heap: &Heap, class: &str, target: &str) -> bool {
 /// new("Class", slot = value, ...) — instantiate the S4 object as a named
 /// list carrying the slot values plus the class attribute exactly as
 /// GNU's attribute-backed S4SXP.
-fn new_s4_primitive(
+pub fn new_s4_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -25591,7 +21910,7 @@ fn new_s4_primitive(
 
 /// is(object, class) — class attribute membership through the contains
 /// chain exactly as GNU.
-fn is_s4_primitive(
+pub fn is_s4_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -25609,7 +21928,7 @@ fn is_s4_primitive(
 
 /// slot(object, name) — the named-element extraction exactly as GNU's
 /// attribute-backed slot storage.
-fn slot_primitive(
+pub fn slot_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -25622,7 +21941,7 @@ fn slot_primitive(
 
 /// S4 slot extraction: the object's slot list is a named list — position
 /// lookup exactly as the class definition orders it.
-fn s4_slot_get(heap: &Heap, interner: &SymbolInterner, obj: ValueId, slot_name: &str) -> EvalResult {
+pub fn s4_slot_get(heap: &Heap, interner: &SymbolInterner, obj: ValueId, slot_name: &str) -> EvalResult {
     let names: Vec<String> = match get_attrib(heap, interner, obj, "names") {
         Some(n) => string_vec(heap, interner, n),
         None => Vec::new(),
@@ -25639,7 +21958,7 @@ fn s4_slot_get(heap: &Heap, interner: &SymbolInterner, obj: ValueId, slot_name: 
 
 /// S4 slot replacement: copy the object's slot list substituting the
 /// named position exactly as GNU's `@<-` reconstruction.
-fn s4_slot_set(heap: &mut Heap, interner: &SymbolInterner, obj: ValueId, slot_name: &str, value: ValueId) -> EvalResult {
+pub fn s4_slot_set(heap: &mut Heap, interner: &SymbolInterner, obj: ValueId, slot_name: &str, value: ValueId) -> EvalResult {
     let names: Vec<String> = match get_attrib(heap, interner, obj, "names") {
         Some(n) => string_vec(heap, interner, n),
         None => Vec::new(),
@@ -25663,7 +21982,7 @@ fn s4_slot_set(heap: &mut Heap, interner: &SymbolInterner, obj: ValueId, slot_na
 
 /// slotNames(x) — definition-order slot names: the character form reads
 /// the registry, the object form identical through its class.
-fn slotnames_primitive(
+pub fn slotnames_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -25689,7 +22008,7 @@ fn slotnames_primitive(
 
 /// Remove one attribute exactly as unname needs — the chain rebuilt
 /// without the named entry.
-fn strip_attrib(
+pub fn strip_attrib(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     value: ValueId,
@@ -25710,7 +22029,7 @@ fn strip_attrib(
 
 /// Truncate or recycle a vector to an exact length — GNU's length.out
 /// semantics shared by rep and rep_len.
-fn resize_vector(
+pub fn resize_vector(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     value: ValueId,
@@ -25741,7 +22060,7 @@ fn resize_vector(
 
 /// Tagged-argument collection shared by the binary IO primitives —
 /// positionals in order plus the named size/endian/signed/n controls.
-fn collect_bin_args(
+pub fn collect_bin_args(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -25775,7 +22094,7 @@ fn collect_bin_args(
     Ok((positional, named))
 }
 
-fn scalar_usize(heap: &Heap, value: Option<&ValueId>, default: usize) -> usize {
+pub fn scalar_usize(heap: &Heap, value: Option<&ValueId>, default: usize) -> usize {
     match value.and_then(|v| heap.object(*v)) {
         Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals.first().copied().unwrap_or(default as i32) as usize,
         Some(RObject::Real(vals)) => vals.first().copied().unwrap_or(default as f64) as usize,
@@ -25786,7 +22105,7 @@ fn scalar_usize(heap: &Heap, value: Option<&ValueId>, default: usize) -> usize {
 /// writeBin(object, con, size, endian) — typed binary serialization
 /// exactly as GNU: integers little/big-endian at size, doubles IEEE, raw
 /// verbatim. The raw-vector form returns the bytes instead of writing.
-fn writebin_primitive(
+pub fn writebin_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -25835,7 +22154,7 @@ fn writebin_primitive(
 /// readBin(con, what, n, size, endian, signed) — typed binary reads
 /// exactly as GNU: the connection cursor advances per element, the
 /// raw-vector form reads from offset zero.
-fn readbin_primitive(
+pub fn readbin_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -25925,7 +22244,7 @@ fn readbin_primitive(
 /// attribute, character/numeric inputs truncate through integer coercion,
 /// NA dims and product mismatches raise the exact errors, and names plus
 /// incompatible dimnames drop with the reshape.
-fn dim_assign_primitive(
+pub fn dim_assign_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -25997,7 +22316,7 @@ fn dim_assign_primitive(
 }
 
 /// class vector membership — the shared predicate behind is.factor/is.ordered.
-fn class_contains(heap: &Heap, interner: &SymbolInterner, value: ValueId, class: &str) -> bool {
+pub fn class_contains(heap: &Heap, interner: &SymbolInterner, value: ValueId, class: &str) -> bool {
     match get_attrib(heap, interner, value, "class") {
         Some(id) => match heap.object(id) {
             Some(RObject::String(vals)) => vals.iter().any(|v| interner.string_text(*v) == class),
@@ -26009,7 +22328,7 @@ fn class_contains(heap: &Heap, interner: &SymbolInterner, value: ValueId, class:
 
 /// ordered() — the factor constructor plus the two-element class vector
 /// exactly as GNU: c("ordered", "factor").
-fn ordered_primitive(
+pub fn ordered_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -26030,7 +22349,7 @@ enum OrderKey {
     Na,
 }
 
-fn order_keys(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<OrderKey> {
+pub fn order_keys(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<OrderKey> {
     match heap.object(value) {
         Some(RObject::Real(vals)) => vals
             .iter()
@@ -26051,7 +22370,7 @@ fn order_keys(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<Ord
     }
 }
 
-fn compare_keys(a: &OrderKey, b: &OrderKey) -> std::cmp::Ordering {
+pub fn compare_keys(a: &OrderKey, b: &OrderKey) -> std::cmp::Ordering {
     use std::cmp::Ordering;
     match (a, b) {
         (OrderKey::Real(x), OrderKey::Real(y)) => x.partial_cmp(y).unwrap_or(Ordering::Equal),
@@ -26062,7 +22381,7 @@ fn compare_keys(a: &OrderKey, b: &OrderKey) -> std::cmp::Ordering {
 
 /// Positional+named argument collection shared by order/rank — first
 /// argument positional, flags resolved by tag with positional fallback.
-fn collect_order_args(
+pub fn collect_order_args(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -26092,7 +22411,7 @@ fn collect_order_args(
     Ok((positional, named))
 }
 
-fn flag_lookup(
+pub fn flag_lookup(
     heap: &Heap,
     positional: &[ValueId],
     named: &[(String, ValueId)],
@@ -26110,7 +22429,7 @@ fn flag_lookup(
         })
 }
 
-fn logical_or_na(heap: &Heap, value: ValueId) -> Option<bool> {
+pub fn logical_or_na(heap: &Heap, value: ValueId) -> Option<bool> {
     match heap.object(value) {
         Some(RObject::Logical(vals)) => {
             let first = vals.first().copied().unwrap_or(r_core::object::NA_INTEGER);
@@ -26127,7 +22446,7 @@ fn logical_or_na(heap: &Heap, value: ValueId) -> Option<bool> {
 /// order(x, ..., na.last=TRUE, decreasing=FALSE) — the stable 1-based
 /// permutation exactly as GNU's radix order: na.last=TRUE sorts missing
 /// last, FALSE first, NA removes them from the result entirely.
-fn order_primitive(
+pub fn order_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -26170,7 +22489,7 @@ fn order_primitive(
 /// missing entries join the ranking with sequential integer positions
 /// before (na.last=FALSE) or after (TRUE) the ranked values, or drop out
 /// entirely (na.last=NA); ties resolve average/first/last/min/max.
-fn rank_primitive(
+pub fn rank_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -26251,7 +22570,7 @@ fn rank_primitive(
 /// na.omit / na.exclude — drop missing entries and record their positions
 /// in the na.action attribute exactly as GNU: indices named after the
 /// dropped elements, classed "omit" or "exclude".
-fn na_action_primitive(
+pub fn na_action_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     which: u32,
@@ -26383,7 +22702,7 @@ fn na_action_primitive(
     Ok(result)
 }
 
-fn trig_unary(
+pub fn trig_unary(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -26479,7 +22798,7 @@ fn trig_unary(
 /// atan2/beta/lbeta/choose/lchoose — GNU's two-argument elementwise
 /// math exactly: both operands recycle in lockstep, NA propagates,
 /// and the nmath kernels carry GNU's domain semantics.
-fn math2_primitive(
+pub fn math2_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -26538,7 +22857,7 @@ fn math2_primitive(
 /// strsplit(x, split, fixed) — GNU's list-of-pieces exactly: empty
 /// split explodes into characters, fixed splits literally, otherwise
 /// successive non-overlapping regex matches delimit the pieces.
-fn strsplit_primitive(
+pub fn strsplit_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -26629,7 +22948,7 @@ fn strsplit_primitive(
 /// data reorders as out[j,m+i*n]... expressed index-exactly: element
 /// (i,j) of the input lands at (j,i), so out[k] where k = i + j*nrow
 /// maps from in[j + i*ncol_out]... the column-major permutation.
-fn transpose_primitive(
+pub fn transpose_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -26684,7 +23003,7 @@ fn transpose_primitive(
 
 /// The shape helper transpose and as.matrix share: (len, nrow, ncol)
 /// with vectors reading as single-column exactly as as.matrix.
-fn matrix_shape(heap: &mut Heap, interner: &mut SymbolInterner, x: r_core::id::ValueId) -> (usize, usize, usize) {
+pub fn matrix_shape(heap: &mut Heap, interner: &mut SymbolInterner, x: r_core::id::ValueId) -> (usize, usize, usize) {
     let len = vector_length(heap, x).unwrap_or(0);
     match get_attrib(heap, interner, x, "dim") {
         Some(dim_id) => {
@@ -26705,7 +23024,7 @@ fn matrix_shape(heap: &mut Heap, interner: &mut SymbolInterner, x: r_core::id::V
 }
 
 /// is.matrix(x) — exactly GNU: a two-dimensional dim attribute.
-fn is_matrix_primitive(
+pub fn is_matrix_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -26724,7 +23043,7 @@ fn is_matrix_primitive(
 
 /// as.matrix(x) — vectors gain the single-column dim exactly as GNU;
 /// matrices pass through unchanged.
-fn as_matrix_primitive(
+pub fn as_matrix_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -26749,7 +23068,7 @@ fn as_matrix_primitive(
 /// set.seed(x) — GNU's seeding entry exactly: integer truncation of
 /// the supplied value seeds the Mersenne stream; the return is NULL
 /// invisibly exactly as RNGkind's documented shape.
-fn set_seed_primitive(
+pub fn set_seed_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -26767,7 +23086,7 @@ fn set_seed_primitive(
 
 /// runif(n, min, max) — n draws scaled onto [min, max] exactly as
 /// GNU's stats layer composes over unif_rand.
-fn runif_primitive(
+pub fn runif_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -26797,7 +23116,7 @@ fn runif_primitive(
 }
 
 /// rnorm(n, mean, sd) — inversion normals scaled exactly as GNU.
-fn rnorm_primitive(
+pub fn rnorm_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -26828,7 +23147,7 @@ fn rnorm_primitive(
 /// Apply one function value to positionally-constructed arguments —
 /// the shared helper Filter/Reduce/mapply compose over, mirroring
 /// apply_family's closure path for the multi-argument case.
-fn apply_fun_multi(
+pub fn apply_fun_multi(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     fun: ValueId,
@@ -26886,7 +23205,7 @@ fn apply_fun_multi(
 
 /// Filter(f, x) — keep the elements f answers TRUE for exactly as
 /// GNU: truthy length-one logicals decide, anything else drops.
-fn filter_primitive(
+pub fn filter_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -26940,7 +23259,7 @@ fn filter_primitive(
 /// Reduce(f, x, init, right, accumulate) — GNU's fold exactly:
 /// left-to-right by default, init prepends, accumulate collects every
 /// intermediate exactly as accumulate=TRUE.
-fn reduce_primitive(
+pub fn reduce_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -27007,7 +23326,7 @@ fn reduce_primitive(
 /// recycle to the longest, f applies positionally, and simplification
 /// follows sapply's rule. USE.NAMES rides the first argument's names
 /// in the full implementation; the core composition first.
-fn mapply_primitive(
+pub fn mapply_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -27118,7 +23437,7 @@ fn mapply_primitive(
 /// Extract finite pairs from two equal-length numeric vectors — the
 /// complete-case discipline cor and cov share exactly as GNU's
 /// default use="everything" treats NA by propagation.
-fn finite_pairs(xs: &[f64], ys: &[f64]) -> Vec<(f64, f64)> {
+pub fn finite_pairs(xs: &[f64], ys: &[f64]) -> Vec<(f64, f64)> {
     xs.iter()
         .copied()
         .zip(ys.iter().copied())
@@ -27128,7 +23447,7 @@ fn finite_pairs(xs: &[f64], ys: &[f64]) -> Vec<(f64, f64)> {
 
 /// cov(x, y) — GNU's sample covariance exactly: centered cross
 /// products over n-1, with cov(x) the variance exactly as var.
-fn cov_primitive(
+pub fn cov_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -27156,7 +23475,7 @@ fn cov_primitive(
 
 /// cor(x, y) — Pearson exactly as GNU: covariance over the product
 /// of standard deviations computed on the same complete pairs.
-fn cor_primitive(
+pub fn cor_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -27186,7 +23505,7 @@ fn cor_primitive(
 /// quantile(x, probs) — GNU's type 7 exactly as the default: linear
 /// interpolation at h = 1 + (n-1)p, type 7 being the continuous
 /// mode of Hyndman and Fan's taxonomy.
-fn quantile_primitive(
+pub fn quantile_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -27249,7 +23568,7 @@ fn quantile_primitive(
 /// mad(x, center, constant) — GNU's median absolute deviation exactly:
 /// constant times the median of absolute deviations from center,
 /// center defaulting to the median itself.
-fn mad_primitive(
+pub fn mad_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -27289,7 +23608,7 @@ fn mad_primitive(
 
 /// weighted.mean(x, w) — GNU's weighted average exactly: weights
 /// recycle against x, zero total weight answers NaN.
-fn weighted_mean_primitive(
+pub fn weighted_mean_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -27319,7 +23638,7 @@ fn weighted_mean_primitive(
 
 /// Map(f, ...) — GNU's mapply without simplification exactly: the
 /// list-shaped answer every time.
-fn map_primitive(
+pub fn map_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -27356,7 +23675,7 @@ fn map_primitive(
 
 /// Negate(f) — GNU's function-transformer exactly: a closure whose body
 /// negates f's answer, preserving formals.
-fn negate_primitive(
+pub fn negate_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -27392,7 +23711,7 @@ fn negate_primitive(
 /// Construct the `-`(f(x, y, ...)) call over a formals chain — every
 /// argument forwarded by its own symbol exactly as GNU Negate's body.
 /// Calls are pairlist chains here exactly as GNU's LANGSXP shape.
-fn negation_body(heap: &mut Heap, interner: &mut SymbolInterner, fun: ValueId, formals: ValueId) -> ValueId {
+pub fn negation_body(heap: &mut Heap, interner: &mut SymbolInterner, fun: ValueId, formals: ValueId) -> ValueId {
     let mut nodes: Vec<(ValueId, ValueId)> = vec![(fun, ValueId::NIL)];
     let mut cursor = formals;
     for _ in 0..10_000 {
@@ -27434,7 +23753,7 @@ fn negation_body(heap: &mut Heap, interner: &mut SymbolInterner, fun: ValueId, f
 
 /// expand.grid(...) — GNU's argumentwise combination exactly: the first
 /// factor varies fastest, every input recycled to the full grid length.
-fn expand_grid_primitive(
+pub fn expand_grid_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -27501,7 +23820,7 @@ fn expand_grid_primitive(
 
 /// Allocate cells back into an atomic vector when homogeneous — the
 /// inverse of sequence_elements exactly as expand.grid's output shape.
-fn alloc_homogeneous(heap: &mut Heap, interner: &mut SymbolInterner, cells: Vec<RObject>) -> ValueId {
+pub fn alloc_homogeneous(heap: &mut Heap, interner: &mut SymbolInterner, cells: Vec<RObject>) -> ValueId {
     let _ = interner;
     let mut reals: Vec<f64> = Vec::new();
     let mut ints: Vec<i32> = Vec::new();
@@ -27547,7 +23866,7 @@ fn alloc_homogeneous(heap: &mut Heap, interner: &mut SymbolInterner, cells: Vec<
 /// findInterval(x, vec) — GNU's binary-search classification exactly:
 /// for each x the index of the largest vec element not exceeding it,
 /// zero when x precedes the first break.
-fn find_interval_primitive(
+pub fn find_interval_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -27580,7 +23899,7 @@ fn find_interval_primitive(
 /// make.names(x) — GNU's syntactic-name construction exactly: invalid
 /// characters map to dots, leading digits or leading-dot-digit gain an
 /// X prefix, reserved words gain a trailing dot.
-fn make_names_primitive(
+pub fn make_names_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -27601,7 +23920,7 @@ fn make_names_primitive(
     Ok(heap.alloc(RObject::String(out)))
 }
 
-fn make_one_name(input: &str) -> String {
+pub fn make_one_name(input: &str) -> String {
     let mut chars: Vec<char> = Vec::new();
     for (index, c) in input.chars().enumerate() {
         let valid = c.is_alphanumeric() || c == '.' || c == '_';
@@ -27637,7 +23956,7 @@ fn make_one_name(input: &str) -> String {
 
 /// make.unique(x) — GNU's deduplication exactly: the first occurrence
 /// keeps its name, repeats gain .1, .2, ... in order.
-fn make_unique_primitive(
+pub fn make_unique_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -27671,7 +23990,7 @@ fn make_unique_primitive(
 /// uniform source, then draw with GNU's parameter recycling exactly —
 /// parameter i of draw k is element k % len exactly as R's vectorized
 /// random functions recycle.
-fn r_zoo(
+pub fn r_zoo(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -27736,7 +24055,7 @@ zoo_primitive!(rnbinom_primitive, ["size", "prob"], [1.0, 0.5], |rng: &mut dyn F
 
 /// rgamma(n, shape, rate, scale) — GNU's parameterization exactly: scale
 /// defaults to 1/rate and an explicit scale overrides rate.
-fn rgamma_primitive(
+pub fn rgamma_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -27775,7 +24094,7 @@ fn rgamma_primitive(
 
 /// rexp(n, rate) — GNU's rate parameterization exactly: the kernel takes
 /// the scale, which is the rate's reciprocal.
-fn rexp_primitive(
+pub fn rexp_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -27788,7 +24107,7 @@ fn rexp_primitive(
 
 /// rhyper(nn, m, n, k) — GNU's urn parameterization exactly: m white
 /// balls, n black, k drawn.
-fn rhyper_primitive(
+pub fn rhyper_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -27822,7 +24141,7 @@ fn rhyper_primitive(
 
 /// `complex(length.out, real, imaginary)` — zeros by default exactly as
 /// GNU's constructor, real/imaginary parts recycling through the length.
-fn complex_ctor(
+pub fn complex_ctor(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -27879,7 +24198,7 @@ fn complex_ctor(
 
 /// First logical element as a boolean — the tagged-argument coercion every
 /// flag-style parameter shares.
-fn logical_scalar(heap: &Heap, value: ValueId) -> bool {
+pub fn logical_scalar(heap: &Heap, value: ValueId) -> bool {
     match heap.object(value) {
         Some(RObject::Logical(vals)) => vals.first().copied().unwrap_or(0) != 0,
         Some(RObject::Integer(vals)) => vals.first().copied().unwrap_or(0) != 0,
@@ -27894,7 +24213,7 @@ fn logical_scalar(heap: &Heap, value: ValueId) -> bool {
 /// The dependency on the legacy parser is a migration bridge: the parse
 /// tree crosses into ValueId form immediately, so evaluation stays
 /// entirely in the new world.
-fn parse_primitive(
+pub fn parse_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -27951,7 +24270,7 @@ fn parse_primitive(
 /// own parser — no legacy session, no bridge import: the migration's
 /// canonical path. Syntax errors surface as conditions exactly as GNU's
 /// parse() raises them.
-fn parse_source(heap: &mut Heap, interner: &mut SymbolInterner, source: &str) -> EvalResult {
+pub fn parse_source(heap: &mut Heap, interner: &mut SymbolInterner, source: &str) -> EvalResult {
     // Empty source parses to the empty expression vector exactly as GNU.
     if source.trim().is_empty() {
         return Ok(heap.alloc(RObject::Expression(Vec::new())));
@@ -27963,7 +24282,7 @@ fn parse_source(heap: &mut Heap, interner: &mut SymbolInterner, source: &str) ->
 
 /// Is this object a classed factor — the class chain carrying "factor"
 /// exactly as GNU's inherits check.
-fn is_factor(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
+pub fn is_factor(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
     match get_attrib(heap, interner, value, "class") {
         Some(id) => match heap.object(id) {
             Some(RObject::String(vals)) => vals
@@ -27978,7 +24297,7 @@ fn is_factor(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
 /// `gregexpr(pattern, text)` — every match position per input element as a
 /// list of integer vectors, each carrying match.length, index.type, and
 /// useBytes attributes exactly as GNU; no-match elements yield -1/-1.
-fn gregexpr_primitive(
+pub fn gregexpr_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -28044,7 +24363,7 @@ fn gregexpr_primitive(
 
 /// `gsub(pattern, replacement, x)` — every match replaced per element
 /// exactly as GNU's global substitution; sub replaces only the first.
-fn gsub_primitive(
+pub fn gsub_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -28108,7 +24427,7 @@ fn gsub_primitive(
 
 /// Read one tagged logical argument without disturbing positionals — the
 /// regex family shared flag extraction.
-fn has_true_tag(
+pub fn has_true_tag(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -28144,7 +24463,7 @@ fn has_true_tag(
 
 /// The option store lives on the heap as an insertion-ordered association
 /// exactly as GNU's session options; width defaults to 80 as GNU.
-fn lookup_option(heap: &Heap, interner: &mut SymbolInterner, name: &str) -> Option<ValueId> {
+pub fn lookup_option(heap: &Heap, interner: &mut SymbolInterner, name: &str) -> Option<ValueId> {
     let _ = interner;
     heap.options
         .iter()
@@ -28164,7 +24483,7 @@ fn lookup_option(heap: &Heap, interner: &mut SymbolInterner, name: &str) -> Opti
 /// `options(...)` — tagged pairs set values and the result carries the
 /// previous values as a named list; bare string arguments query the named
 /// options exactly as GNU's query form.
-fn options_primitive(
+pub fn options_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -28242,7 +24561,7 @@ fn options_primitive(
 /// `cbind`/`rbind` — atomic operands recycle to the longest length and
 /// bind into a column-major matrix exactly as GNU; tags become column or
 /// row names; mixed types coerce to the highest in the lattice.
-fn bind_primitive(
+pub fn bind_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -28395,7 +24714,7 @@ fn bind_primitive(
 /// `substitute(expr, env)` — GNU's matchArgs matrix in miniature for the
 /// two formals, then symbol substitution through the expression tree
 /// exactly as substitute does for list environments.
-fn substitute_primitive(
+pub fn substitute_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -28517,7 +24836,7 @@ fn substitute_primitive(
 /// Recursive symbol substitution through a language tree — symbols named
 /// in the environment list replace with their values exactly as GNU's
 /// substitute; everything else rebuilds structurally.
-fn substitute_in_tree(
+pub fn substitute_in_tree(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     expr: ValueId,
@@ -28569,7 +24888,7 @@ fn substitute_in_tree(
 /// unique/nchar profile, and factor/ordered yields level counts exactly
 /// as summary.factor. The classed object prints through the
 /// summaryDefault table path.
-fn summary_primitive(
+pub fn summary_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     args: ValueId,
@@ -28760,7 +25079,7 @@ fn summary_primitive(
 /// the inner product with column-major layout, crossprod and tcrossprod
 /// the transpose products, and max.col the row-wise maxima positions with
 /// first/last tie breaking.
-fn matrix_ops_primitive(
+pub fn matrix_ops_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     op: u32,
@@ -28885,7 +25204,7 @@ fn matrix_ops_primitive(
 
 /// Reverse any vector or list elementwise exactly as GNU's rev — names
 /// and attributes reverse with their elements.
-fn reverse_value(heap: &mut Heap, interner: &mut SymbolInterner, value: ValueId) -> EvalResult {
+pub fn reverse_value(heap: &mut Heap, interner: &mut SymbolInterner, value: ValueId) -> EvalResult {
     let names_rev = |heap: &mut Heap, interner: &mut SymbolInterner, result: ValueId, source: ValueId| -> EvalResult {
         if let Some(names_id) = get_attrib(heap, interner, source, "names") {
             if let Some(RObject::String(vals)) = heap.object(names_id) {
@@ -28938,7 +25257,7 @@ fn reverse_value(heap: &mut Heap, interner: &mut SymbolInterner, value: ValueId)
 
 /// Names for apply iteration exactly as GNU: pairlist inputs carry their
 /// node tags, vectors their names attribute.
-fn iteration_names(heap: &Heap, interner: &SymbolInterner, x: ValueId) -> Vec<String> {
+pub fn iteration_names(heap: &Heap, interner: &SymbolInterner, x: ValueId) -> Vec<String> {
     if matches!(heap.object(x), Some(RObject::Pairlist { .. })) {
         let mut out = Vec::new();
         let mut cursor = x;
@@ -28969,14 +25288,14 @@ fn iteration_names(heap: &Heap, interner: &SymbolInterner, x: ValueId) -> Vec<St
 
 /// Run a command capturing stdout trimmed — the system identity shells
 /// share exactly.
-fn run_command_output(cmd: &str, args: &[&str]) -> Result<String, std::io::Error> {
+pub fn run_command_output(cmd: &str, args: &[&str]) -> Result<String, std::io::Error> {
     let output = std::process::Command::new(cmd).args(args).output()?;
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
 /// GNU round semantics: half-to-even at the decimal digit position —
 /// negative digits round left of the decimal point exactly as GNU.
-fn round_half_even(v: f64, digits: i32) -> f64 {
+pub fn round_half_even(v: f64, digits: i32) -> f64 {
     let scale = 10f64.powi(digits);
     if digits >= 0 {
         let scaled = v * scale;
@@ -28991,7 +25310,7 @@ fn round_half_even(v: f64, digits: i32) -> f64 {
 }
 
 /// GNU signif semantics: round to the given count of significant digits.
-fn signif_digits(v: f64, digits: i32) -> f64 {
+pub fn signif_digits(v: f64, digits: i32) -> f64 {
     if v == 0.0 {
         return v;
     }
@@ -29003,7 +25322,7 @@ fn signif_digits(v: f64, digits: i32) -> f64 {
 
 /// GNU sinpi exactness: integer inputs are exactly zero, half-integers
 /// exactly ±1 — computed by remainder reduction, not raw π multiplication.
-fn sinpi_exact(x: f64) -> f64 {
+pub fn sinpi_exact(x: f64) -> f64 {
     if x.is_nan() || x.is_infinite() {
         return f64::NAN;
     }
@@ -29028,7 +25347,7 @@ fn sinpi_exact(x: f64) -> f64 {
 
 /// GNU cospi exactness: integer inputs alternate ±1, half-integers are
 /// exactly zero.
-fn cospi_exact(x: f64) -> f64 {
+pub fn cospi_exact(x: f64) -> f64 {
     if x.is_nan() || x.is_infinite() {
         return f64::NAN;
     }
@@ -29047,7 +25366,7 @@ fn cospi_exact(x: f64) -> f64 {
 
 /// GNU tanpi exactness: integer inputs are exactly zero, quarter inputs
 /// exactly ±1.
-fn tanpi_exact(x: f64) -> f64 {
+pub fn tanpi_exact(x: f64) -> f64 {
     if x.is_nan() || x.is_infinite() {
         return f64::NAN;
     }
@@ -29066,7 +25385,7 @@ fn tanpi_exact(x: f64) -> f64 {
 
 /// Scan any vector for missingness exactly as anyNA — NA integers,
 /// NA-real and NaN doubles, logical NA, the string sentinel.
-fn any_na_in_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
+pub fn any_na_in_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
     match heap.object(value) {
         Some(RObject::Integer(v)) => v.iter().any(|x| *x == r_core::object::NA_INTEGER),
         Some(RObject::Logical(v)) => v.iter().any(|x| *x == r_core::object::NA_INTEGER),
@@ -29084,7 +25403,7 @@ fn any_na_in_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bo
 /// pattern aligns against the best substring of the text — leading and
 /// trailing text outside the match is free. Classic DP with a zeroed
 /// first row.
-fn approximate_substring_distance(pattern: &str, text: &str) -> usize {
+pub fn approximate_substring_distance(pattern: &str, text: &str) -> usize {
     let p: Vec<char> = pattern.chars().collect();
     let s: Vec<char> = text.chars().collect();
     if p.is_empty() {
@@ -29109,7 +25428,7 @@ fn approximate_substring_distance(pattern: &str, text: &str) -> usize {
 
 /// The enclosure chain from the user environment to base — GNU's search
 /// path skeleton.
-fn enclosure_chain(heap: &Heap, start: ValueId) -> Vec<ValueId> {
+pub fn enclosure_chain(heap: &Heap, start: ValueId) -> Vec<ValueId> {
     let mut out = Vec::new();
     let mut cursor = start;
     for _ in 0..100 {
@@ -29131,7 +25450,7 @@ fn enclosure_chain(heap: &Heap, start: ValueId) -> Vec<ValueId> {
 /// Extract one margin slice from a column-major matrix exactly as GNU's
 /// apply indexing — margin 1 row idx strides by nrow, margin 2 column
 /// idx is contiguous.
-fn extract_matrix_margin(
+pub fn extract_matrix_margin(
     heap: &mut Heap,
     interner: &SymbolInterner,
     matrix: ValueId,
@@ -29179,7 +25498,7 @@ fn extract_matrix_margin(
 
 /// GNU's re-factorization: the original level order survives but levels
 /// absent from the data drop — as.ordered's factor-input semantics.
-fn refactor_dropping_unused(heap: &mut Heap, interner: &mut SymbolInterner, factor: ValueId) -> EvalResult {
+pub fn refactor_dropping_unused(heap: &mut Heap, interner: &mut SymbolInterner, factor: ValueId) -> EvalResult {
     let codes: Vec<i32> = match heap.object(factor) {
         Some(RObject::Integer(v)) => v.clone(),
         _ => return Ok(factor),
@@ -29226,7 +25545,7 @@ fn refactor_dropping_unused(heap: &mut Heap, interner: &mut SymbolInterner, fact
 
 /// The aperm element permutation: out multi-index (i_1..i_n) draws input
 /// element j where j_{perm[m]} = i_m — column-major strides throughout.
-fn aperm_impl(
+pub fn aperm_impl(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     value: ValueId,
@@ -29291,7 +25610,7 @@ fn aperm_impl(
 /// The asplit mechanics: result positions walk the margin subspace
 /// column-major, slices walk the complement subspace column-major —
 /// both dim-attributed exactly as GNU.
-fn asplit_impl(
+pub fn asplit_impl(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     value: ValueId,
@@ -29369,7 +25688,7 @@ fn asplit_impl(
 /// One environment's search-path name exactly as GNU composes it: the
 /// user environment is .GlobalEnv, the chain end package:base, attached
 /// environments their name attribute.
-fn env_search_name(heap: &Heap, interner: &SymbolInterner, env: ValueId, genv: ValueId, is_base: bool) -> String {
+pub fn env_search_name(heap: &Heap, interner: &SymbolInterner, env: ValueId, genv: ValueId, is_base: bool) -> String {
     if env == genv {
         return ".GlobalEnv".to_string();
     }
@@ -29384,7 +25703,7 @@ fn env_search_name(heap: &Heap, interner: &SymbolInterner, env: ValueId, genv: V
 
 /// The search-path names walking the enclosure chain from the user
 /// environment — dynamic exactly as GNU after attach/detach.
-fn search_path_names(heap: &Heap, interner: &SymbolInterner, genv: ValueId) -> Vec<String> {
+pub fn search_path_names(heap: &Heap, interner: &SymbolInterner, genv: ValueId) -> Vec<String> {
     let chain = enclosure_chain(heap, genv);
     let last = chain.len().saturating_sub(1);
     chain
@@ -29397,7 +25716,7 @@ fn search_path_names(heap: &Heap, interner: &SymbolInterner, genv: ValueId) -> V
 /// The bquote tree walk: a call headed by the symbol `.` evaluates its
 /// single argument in the caller's frame and splices the value;
 /// pairlist tags ride through the rebuild exactly as GNU.
-fn bquote_splice(
+pub fn bquote_splice(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     expr: ValueId,
@@ -29432,7 +25751,7 @@ fn bquote_splice(
 
 /// Element missingness at one position across the atomic lattice — the
 /// complete.cases row predicate.
-fn element_is_na(heap: &Heap, interner: &SymbolInterner, value: ValueId, index: usize) -> bool {
+pub fn element_is_na(heap: &Heap, interner: &SymbolInterner, value: ValueId, index: usize) -> bool {
     match heap.object(value) {
         Some(RObject::Integer(v)) | Some(RObject::Logical(v)) => {
             let v = match heap.object(value) {
@@ -29456,7 +25775,7 @@ fn element_is_na(heap: &Heap, interner: &SymbolInterner, value: ValueId, index: 
 /// dimensions keeping the trailing subspace; row variants keep the
 /// leading subspace summing the rest. NA poisoning exactly as GNU —
 /// na.rm drops missing terms from both sum and count.
-fn margin_summary_impl(
+pub fn margin_summary_impl(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     x: ValueId,
@@ -29554,7 +25873,7 @@ fn margin_summary_impl(
 
 /// Howard Hinnant's civil-from-days conversion — epoch day count to
 /// (year, month, day) exactly as the proleptic Gregorian calendar.
-fn civil_from_days(z: i64) -> (i64, u32, u32) {
+pub fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let z = z + 719468;
     let era = z.div_euclid(146097);
     let doe = z.rem_euclid(146097);
@@ -29569,13 +25888,13 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 }
 
 /// lgamma(x + 1) — log-factorial exactly as GNU's multinomial needs.
-fn lgamma1p(x: f64) -> f64 {
+pub fn lgamma1p(x: f64) -> f64 {
     rmath_nmath::special::gamma::lgammafn1p(x)
 }
 
 /// Build a named list from (name, value) entries — GNU's list shape with
 /// the names attribute exactly as introspection primitives report.
-fn named_list(
+pub fn named_list(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     entries: Vec<(&str, ValueId)>,
