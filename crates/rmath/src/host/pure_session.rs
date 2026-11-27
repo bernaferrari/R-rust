@@ -1157,6 +1157,63 @@ cat("after|", paste(par("mfg"), collapse=","), "|",
     }
 
     #[test]
+    fn graphics_points_emit_symbols() {
+        use r_graphics_engine::{DrawOperation, PathCommand};
+        let mut session = PureSession::new();
+        session.eval("plot.new(); plot.window(c(0,1), c(0,1)); points(c(.2,.8), c(.5,.5))");
+        let count = session
+            .session
+            .heap
+            .graphics
+            .scene()
+            .operations()
+            .iter()
+            .filter(|op| matches!(op, DrawOperation::Path(_)))
+            .count();
+        assert_eq!(count, 2, "two point symbols");
+        // filled circle: pch 16 fills exactly as GNU's solid bullet.
+        let mut session = PureSession::new();
+        session.eval("plot.new(); plot.window(c(0,1), c(0,1)); points(0.5, 0.5, pch=16, col=\"red\")");
+        let path = session
+            .session
+            .heap
+            .graphics
+            .scene()
+            .operations()
+            .iter()
+            .filter_map(|op| match op {
+                DrawOperation::Path(path) => Some(path),
+                _ => None,
+            })
+            .next()
+            .expect("one symbol");
+        assert_eq!(path.fill.a, 255, "filled symbol carries opaque color");
+        assert_eq!(path.fill.r, 255, "red channel");
+        // plus: pch 3 strokes two lines through the center
+        let mut session = PureSession::new();
+        session.eval("plot.new(); plot.window(c(0,1), c(0,1)); points(0.5, 0.5, pch=3)");
+        let path = session
+            .session
+            .heap
+            .graphics
+            .scene()
+            .operations()
+            .iter()
+            .filter_map(|op| match op {
+                DrawOperation::Path(path) => Some(path),
+                _ => None,
+            })
+            .next()
+            .expect("one symbol");
+        let moves = path
+            .commands
+            .iter()
+            .filter(|c| matches!(c, PathCommand::MoveTo(_, _)))
+            .count();
+        assert_eq!(moves, 2, "plus is two strokes");
+    }
+
+    #[test]
     fn data_loads_datasets_into_the_calling_environment() {
         let mut session = PureSession::new();
         let result = session.eval("data(iris)");
