@@ -105,6 +105,10 @@ pub(crate) struct LayoutState {
     numrows: i32,
     numcols: i32,
     mfind: bool,
+    // GNU's xaxp/yaxp exactly: the axis records its computed tick
+    // coverage for grid/axTicks to reuse.
+    xaxp: [f64; 3],
+    yaxp: [f64; 3],
     current_figure: i32,
     last_figure: i32,
     // Figure transform in dev units: [ax, bx, ay, by].
@@ -146,6 +150,8 @@ impl Default for LayoutState {
             numrows: 1,
             numcols: 1,
             mfind: false,
+            xaxp: [0.0, 1.0, 5.0],
+            yaxp: [0.0, 1.0, 5.0],
             current_figure: 1,
             last_figure: 1,
             fig2dev: [0.0; 4],
@@ -975,6 +981,8 @@ impl LayoutState {
             ]),
             "cra" => ParValue::Real(CRA.to_vec()),
             "cin" => ParValue::Real(vec![CRA[0] * IPR[0], CRA[1] * IPR[1]]),
+            "xaxp" => ParValue::Real(self.xaxp.to_vec()),
+            "yaxp" => ParValue::Real(self.yaxp.to_vec()),
             "mfrow" | "mfcol" => ParValue::Integer(vec![self.numrows, self.numcols]),
             "mfg" => {
                 let (row, col) = self.figure_row_col();
@@ -983,6 +991,15 @@ impl LayoutState {
             _ => return None,
         };
         Some(value)
+    }
+
+    /// Record axis tick coverage exactly as GNU's GAxis writing xaxp.
+    pub(crate) fn set_axp(&mut self, horizontal: bool, axp: [f64; 3]) {
+        if horizontal {
+            self.xaxp = axp;
+        } else {
+            self.yaxp = axp;
+        }
     }
 
     /// par("cxy"): character size in user units from the current usr

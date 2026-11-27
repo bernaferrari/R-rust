@@ -16122,6 +16122,12 @@ fn axis_primitive(
     if at.is_empty() {
         return Ok(ValueId::NIL);
     }
+    // GNU's GAxis records tick coverage into xaxp/yaxp exactly — grid
+    // and axTicks reconstruct positions from first/last/count-1.
+    heap.graphics.set_axp(
+        horizontal,
+        [at[0], at[at.len() - 1], (at.len() - 1) as f64],
+    );
     let plot = heap.graphics.layout.regions().plot;
     // One margin line in raster units exactly as the 0.2in portable
     /// contract; tcl -0.5 is GNU's outward default.
@@ -18177,24 +18183,25 @@ fn grid_primitive(
         Some(crate::value::graphics::layout::ParValue::Real(u)) if u.len() == 4 => u,
         _ => vec![0.0, 1.0, 0.0, 1.0],
     };
-    let pretty5 = |lo: f64, hi: f64| -> Vec<f64> {
-        let result = crate::value::graphics::pretty::r_pretty(lo, hi, 5, 5_i32.div_euclid(3), 0.75, 1.5, 0.5 + 1.5 * 1.5, 2f64.powi(-20), 0);
-        let (start, end, ndiv) = (result.lo, result.up, result.ndiv.max(1));
-        (0..=ndiv as usize)
-            .map(|i| {
-                if i == 0 {
-                    start
-                } else if i == ndiv as usize {
-                    end
-                } else {
-                    let t = i as f64 / ndiv as f64;
-                    start * (1.0 - t) + end * t
-                }
-            })
+    // GNU's grid reuses the axis-recorded xaxp/yaxp coverage exactly —
+    // positions are the same ticks the axis drew, reconstructed as
+    // seq(first, last, length.out = n + 1).
+    let axp_ticks = |name: &str, fallback_lo: f64, fallback_hi: f64| -> Vec<f64> {
+        let axp = match heap.graphics.query(name) {
+            Some(crate::value::graphics::layout::ParValue::Real(v)) if v.len() == 3 => v,
+            _ => vec![fallback_lo, fallback_hi, 5.0],
+        };
+        let n = (axp[2].max(0.0) as usize) + 1;
+        if n <= 1 {
+            return vec![axp[0]];
+        }
+        // GNU's seq.int multiply-before-divide arithmetic exactly.
+        (0..n)
+            .map(|i| axp[0] + (axp[1] - axp[0]) * (i as f64) / ((n - 1) as f64))
             .collect()
     };
-    let xat = pretty5(usr[0], usr[1]);
-    let yat = pretty5(usr[2], usr[3]);
+    let xat = axp_ticks("xaxp", usr[0], usr[1]);
+    let yat = axp_ticks("yaxp", usr[2], usr[3]);
     // abline(v = atx, h = aty) exactly as GNU's composition.
     let cell = |v: ValueId, rest: ValueId, heap: &mut Heap| {
         heap.alloc(RObject::Pairlist { car: v, cdr: rest, tag: ValueId::NIL })

@@ -167,6 +167,10 @@ impl GraphicsParState {
     /// Read a parameter exactly as par("name") — layout-owned names
     /// cascade, page computes, everything else reads the override or
     /// GNU's default.
+    pub(crate) fn set_axp(&mut self, horizontal: bool, axp: [f64; 3]) {
+        self.layout.set_axp(horizontal, axp);
+    }
+
     pub(crate) fn query(&self, name: &str) -> Option<ParValue> {
         match name {
             "page" => Some(ParValue::Logical(vec![i32::from(self.starts_new_page())])),
