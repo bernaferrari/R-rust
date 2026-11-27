@@ -1253,6 +1253,38 @@ cat("after|", paste(par("mfg"), collapse=","), "|",
     }
 
     #[test]
+    fn graphics_text_emit_labels() {
+        use r_graphics_engine::{DrawOperation, TextAnchor};
+        let mut session = PureSession::new();
+        session.eval("plot.new(); plot.window(c(0,1), c(0,1)); text(0.5, 0.5, \"hello\")");
+        let ops = session.session.heap.graphics.scene().operations();
+        let texts: Vec<_> = ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOperation::Text { text, params, .. } => Some((text, params)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts.len(), 1, "one label");
+        assert_eq!(texts[0].0, "hello");
+        assert_eq!(texts[0].1.text_anchor, TextAnchor::Middle, "adj 0.5 centers");
+        assert!((texts[0].1.font_size - 12.0).abs() < 1e-3, "12pt base at cex 1");
+        // labels recycle against coordinates exactly as GNU.
+        let mut session = PureSession::new();
+        session.eval("plot.new(); plot.window(c(0,1), c(0,1)); text(c(.2,.8), c(.5,.5), c(\"a\",\"b\"))");
+        let count = session
+            .session
+            .heap
+            .graphics
+            .scene()
+            .operations()
+            .iter()
+            .filter(|op| matches!(op, DrawOperation::Text { .. }))
+            .count();
+        assert_eq!(count, 2, "two labels at two positions");
+    }
+
+    #[test]
     fn data_loads_datasets_into_the_calling_environment() {
         let mut session = PureSession::new();
         let result = session.eval("data(iris)");
