@@ -79,6 +79,7 @@ pub struct PureRuntimeInfo {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PureResourceLimits {
     pub max_eval_depth: u64,
+    pub max_execution_time_ms: u64,
     pub max_alloc_bytes: Option<u64>,
     pub max_arena_nodes: Option<u64>,
 }
@@ -88,6 +89,7 @@ pub struct PureSession {
     result_limit: Option<usize>,
     session_id: u64,
     runtime_paths: super::facade::RuntimePaths,
+    max_execution_time_ms: u64,
 }
 
 /// Opaque, copyable identity for a privately retained pure-world value.
@@ -120,15 +122,19 @@ impl Default for PureSession {
 
 impl PureSession {
     pub fn new() -> Self {
+        let runtime_paths = super::facade::RuntimePaths::new(
+            std::env::temp_dir().to_string_lossy().into_owned(),
+            std::env::temp_dir().to_string_lossy().into_owned(),
+            None::<String>,
+        );
+        let mut session = Session::new();
+        session.heap.library_paths = runtime_paths.library_paths();
         PureSession {
-            session: Session::new(),
+            session,
+            max_execution_time_ms: 0,
             result_limit: None,
             session_id: NEXT_PURE_SESSION_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-            runtime_paths: super::facade::RuntimePaths::new(
-                std::env::temp_dir().to_string_lossy().into_owned(),
-                std::env::temp_dir().to_string_lossy().into_owned(),
-                None::<String>,
-            ),
+            runtime_paths,
         }
     }
 
@@ -300,6 +306,7 @@ impl PureSession {
     /// control. Zero means unlimited on each measure exactly as the
     /// facade's zero-configures-default contract.
     pub fn set_resource_limits(&mut self, limits: super::values::RResourceLimits) {
+        self.max_execution_time_ms = limits.max_execution_time_ms;
         self.session.heap.max_eval_depth = limits.max_eval_depth as usize;
         self.session.heap.eval_deadline = if limits.max_execution_time_ms == 0 {
             None
@@ -525,6 +532,7 @@ impl PureSession {
     pub fn resource_limits(&self) -> PureResourceLimits {
         PureResourceLimits {
             max_eval_depth: self.session.heap.max_eval_depth as u64,
+            max_execution_time_ms: self.max_execution_time_ms,
             max_alloc_bytes: self.session.heap.memory_cap_bytes.map(|v| v as u64),
             max_arena_nodes: self.session.heap.node_cap.map(|v| v as u64),
         }
@@ -692,6 +700,7 @@ impl PureSession {
     /// contexts do — the user library and temp locations derive from the
     /// application directories.
     pub fn configure_runtime_paths(&mut self, paths: super::facade::RuntimePaths) {
+        self.session.heap.library_paths = paths.library_paths();
         self.runtime_paths = paths;
     }
 
@@ -715,14 +724,80 @@ impl PureSession {
     /// Metadata for one baked package exactly as the facade's filesystem
     /// scan answers it — the pure world's inventory is the pinned
     /// registry, with fields read from the baked DESCRIPTION assets.
+    /// Android host bootstrap — the type alias collapses onto RuntimePaths
+    /// exactly as the facade's does, so configuration is path replacement.
+    pub fn configure_android_runtime(&mut self, paths: &super::facade::AndroidRuntimePaths) {
+        self.session.heap.library_paths = paths.library_paths();
+        self.runtime_paths = paths.clone();
+    }
+
+    /// The package's install directory when it exists under any library
+    /// path — GNU's find.package scan order exactly: first hit wins.
+    fn find_package_dir(&self, package: &str) -> Option<std::path::PathBuf> {
+        for library in self.runtime_paths.library_paths() {
+            let candidate = std::path::PathBuf::from(library).join(package);
+            if candidate.join("DESCRIPTION").is_file() {
+                return Some(candidate);
+            }
+        }
+        None
+    }
+
+    pub fn package_available(&self, package: &str) -> bool {
+        valid_package_name(package)
+            && (self.find_package_dir(package).is_some() || baked_package_info(package).is_some())
+    }
+
+    pub fn package_path(&self, package: &str) -> Option<String> {
+        if !valid_package_name(package) {
+            return None;
+        }
+        self.find_package_dir(package)
+            .map(|path| path.to_string_lossy().into_owned())
+    }
+
+    /// Loads the package through the R-level library path exactly as the
+    /// facade does — the primitive scans, builds and attaches namespaces.
+    pub fn load_package(&mut self, package: &str) -> Result<(), String> {
+        if !valid_package_name(package) {
+            return Err("invalid package name".to_string());
+        }
+        let result = self.eval(&format!("library(\"{package}\")"));
+        match result.typed {
+            RValue::Error(message) => Err(message),
+            _ => Ok(()),
+        }
+    }
+
     pub fn package_info(&self, package: &str) -> Option<super::packages::RPackageInfo> {
+        if valid_package_name(package) {
+            if let Some(dir) = self.find_package_dir(package) {
+                if let Some(info) = super::packages::package_info_from_path(
+                    package,
+                    &dir,
+                    &self.runtime_paths.library_paths(),
+                ) {
+                    return Some(info);
+                }
+            }
+        }
         baked_package_info(package)
     }
 
     /// Every baked package exactly as the facade's installed-package
     /// enumeration — the pure world carries the base set pinned.
     pub fn installed_packages(&self) -> Vec<super::packages::RPackageInfo> {
-        baked_package_inventory()
+        let mut packages = super::packages::installed_packages_from_library_paths(
+            &self.runtime_paths.library_paths(),
+        );
+        let scanned: std::collections::HashSet<String> =
+            packages.iter().map(|info| info.name.clone()).collect();
+        for info in baked_package_inventory() {
+            if !scanned.contains(&info.name) {
+                packages.push(info);
+            }
+        }
+        packages
     }
 
     pub fn close(&mut self) {}
@@ -846,6 +921,19 @@ fn description_field(description: &str, field: &str) -> String {
         }
     }
     value
+}
+
+fn valid_package_name(package: &str) -> bool {
+    let mut chars = package.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    first.is_ascii_alphabetic()
+        && package
+            .as_bytes()
+            .last()
+            .is_some_and(u8::is_ascii_alphanumeric)
+        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '.')
 }
 
 fn baked_package_info(package: &str) -> Option<super::packages::RPackageInfo> {
@@ -2217,6 +2305,43 @@ cat(grconvertX(0:1, "user", "device"), grconvertY(0:1, "user", "device"), "\n")
         assert_eq!(session.user_library_dir(), "/data/app/R/library");
         assert_eq!(session.temp_dir(), "/data/cache/Rtmp");
         assert_eq!(session.library_paths(), vec!["/data/app/R/library".to_string()]);
+    }
+
+    #[test]
+    fn filesystem_package_loads_and_evaluates() {
+        // The tiny-package shape exactly as the embedding contract pins:
+        /// a DESCRIPTION plus one R source, loaded through library() and
+        /// called from the global environment.
+        let root = std::env::temp_dir().join(format!(
+            "rport-pure-pkg-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let library = root.join("bundled");
+        let r_dir = library.join("tiny").join("R");
+        std::fs::create_dir_all(&r_dir).expect("package dirs");
+        std::fs::write(
+            library.join("tiny").join("DESCRIPTION"),
+            "Package: tiny\nVersion: 0.0.1\nTitle: Tiny\n",
+        )
+        .expect("description");
+        std::fs::write(r_dir.join("tiny.R"), "tiny_value <- function() 42L\n").expect("source");
+
+        let mut session = PureSession::new();
+        session.configure_android_runtime(&crate::host::facade::AndroidRuntimePaths::new(
+            root.join("files").to_string_lossy().into_owned(),
+            root.join("cache").to_string_lossy().into_owned(),
+            Some(library.to_string_lossy().into_owned()),
+        ));
+        assert!(session.package_available("tiny"), "scan should find tiny");
+        assert!(session.package_path("tiny").expect("path").ends_with("tiny"));
+        session.load_package("tiny").expect("library should load");
+        let result = session.eval("tiny_value()");
+        assert_eq!(result.output.trim(), "[1] 42", "eval output: {}", result.output);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

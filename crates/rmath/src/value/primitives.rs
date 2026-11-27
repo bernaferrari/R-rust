@@ -20692,6 +20692,49 @@ fn ns_get_primitive(
 /// spliced environment. The package name arrives as a literal symbol or a
 /// character scalar exactly as GNU's unevaluated package argument does;
 /// require answers TRUE/FALSE rather than erroring when absent.
+/// Filesystem package loading — GNU's source-package shape exactly:
+/// the package's R/ sources evaluate into a fresh namespace enclosing
+/// base in collation order, and the namespace registers exactly as a
+/// baked one does. NAMESPACE export control and lazy-load databases
+/// are the documented gap: every binding lands exported.
+fn load_source_package(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    pkg_name: &str,
+) -> Option<ValueId> {
+    let base = heap.base_env_id?;
+    let mut package_dir = None;
+    for library in heap.library_paths.clone() {
+        let candidate = std::path::PathBuf::from(library).join(pkg_name);
+        if candidate.join("DESCRIPTION").is_file() {
+            package_dir = Some(candidate);
+            break;
+        }
+    }
+    let r_dir = package_dir?.join("R");
+    let mut sources: Vec<std::path::PathBuf> = std::fs::read_dir(&r_dir)
+        .ok()?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "R"))
+        .collect();
+    if sources.is_empty() {
+        return None;
+    }
+    sources.sort();
+    let namespace = super::env::new_environment(heap, base);
+    for file in sources {
+        let source = std::fs::read_to_string(&file).ok()?;
+        let expressions =
+            crate::value::parser::parse_native_expressions(&source, heap, interner).ok()?;
+        for expression in expressions {
+            eval(heap, interner, expression, namespace).ok()?;
+        }
+    }
+    heap.package_registry.insert(pkg_name.to_string(), namespace);
+    Some(namespace)
+}
+
 fn library_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
@@ -20710,7 +20753,10 @@ fn library_primitive(
             string_operand(heap, interner, v).unwrap_or_default()
         }
     };
-    let found = heap.package_registry.get(&pkg_name).copied();
+    let mut found = heap.package_registry.get(&pkg_name).copied();
+    if found.is_none() {
+        found = load_source_package(heap, interner, &pkg_name);
+    }
     let Some(namespace) = found else {
         if require_form {
             heap.visible = false;
