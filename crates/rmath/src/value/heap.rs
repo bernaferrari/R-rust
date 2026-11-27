@@ -45,6 +45,13 @@ pub struct Heap {
     /// explicitly at file/dir creation since the test harness shares the
     /// real process mask.
     pub umask_state: i64,
+    /// The closure context stack GNU's sys.* family reads — one entry per
+    /// active closure application, innermost last.
+    pub contexts: Vec<crate::value::eval::ContextFrame>,
+    /// on.exit registrations keyed by the closure frame they were
+    /// registered in — expressions stored unevaluated, run in order when
+    /// the frame exits exactly as GNU.
+    pub exit_handlers: std::collections::HashMap<crate::value::id::ValueId, Vec<crate::value::id::ValueId>>,
     /// Active S3 dispatch entries — (generic, object, remaining classes) —
     /// pushed by UseMethod/NextMethod exactly as GNU's dispatch context.
     pub s3_dispatch: Vec<(String, crate::value::id::ValueId, Vec<String>)>,

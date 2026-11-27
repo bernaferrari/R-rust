@@ -471,6 +471,22 @@ pub mod primitive_ids {
     pub const MAKE_ACTIVE_BINDING: u32 = 453;
     pub const BINDING_IS_ACTIVE: u32 = 454;
     pub const SYS_UMASK: u32 = 455;
+    pub const NORMALIZE_PATH: u32 = 456;
+    pub const OLDCLASS: u32 = 457;
+    pub const OLDCLASS_ASSIGN: u32 = 458;
+    pub const IS_OBJECT: u32 = 459;
+    pub const PAIRLIST_CTOR: u32 = 460;
+    pub const AS_PAIRLIST: u32 = 461;
+    pub const OUTER: u32 = 462;
+    pub const ON_EXIT: u32 = 463;
+    pub const IS_S4_TEST: u32 = 464;
+    pub const NARGS: u32 = 465;
+    pub const SYS_NFRAME: u32 = 466;
+    pub const SYS_CALL: u32 = 467;
+    pub const SYS_FRAME: u32 = 468;
+    pub const SYS_FUNCTION: u32 = 469;
+    pub const PARENT_FRAME: u32 = 470;
+    pub const IS_FUNCTION: u32 = 471;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -501,7 +517,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN, SUMMARY_FN, MATRIX_MULT, CROSSPROD, TCROSSPROD, MAXCOL, IDIV, NROW_FN, NCOL_FN, SYS_GETPID, OLSONNAMES, IQR_FN, SYS_CHMOD, FILE_INFO, SYS_GETLOCALE, SYS_SETLOCALE, NZCHAR, AT_OP, AT_ASSIGN, SYS_INFO, SYS_TIME, SYS_DATE, SYS_WHICH, FLOOR, CEILING, TRUNC, ROUND, SIGNIF, EXPM1, LOG1P, ACOSH, ASINH, ATANH, COSPI, SINPI, TANPI, ANYNA, SYS_LOCALECONV, AGREP, AGREPL, APPLY, AS_ENVIRONMENT, AS_CALL, ENC2NATIVE, ENC2UTF8, SEARCH_FN, AS_FACTOR, AS_ORDERED, ADDNA, APERM, ADDMARGINS, DOT_SUBSET, DOT_SUBSET2, ASPLIT, ATTACH, DETACH, POS_TO_ENV, DOT_CLASS2, GC_TIME, AVE, BACKSOLVE, BQUOTE, CALL_FN, CHAR_TO_RAW, CHARMATCH, CUMSUM, CUMPROD, CUMMIN, CUMMAX, COMMENT_FN, COMMENT_ASSIGN, COMPLETE_CASES, COLSUMS, ROWSUMS, COLMEANS, ROWMEANS, DCAUCHY, DCHISQ, DEXP, CUT, DATE_FN, CAPABILITIES, BY_FN, BROWSER_FN, DGAMMA, DGEOM, DNBINOM, DIFF, DIAG, DO_CALL, DWEIBULL, DROP_FN, DROPLEVELS, DUPLICATED, ANYDUPLICATED, DIR_EXISTS, FILE_CREATE, FILE_ACCESS, ENVIRONMENT_ASSIGN, FORCEANDCALL, DECLARE, PRIMTRACE, PRIMUNTRACE, STANDARDGENERIC, DMULTINOM, DOTS_LENGTH, DOTS_NAMES, DOTS_ELT, IS_DATA_FRAME, FILE_APPEND, FILE_LINK, FILE_SYMLINK, SYS_READLINK, FILE_SIZE, FILE_MTIME, GL, HEAD_FN, TAIL_FN, INTERACTION, GCINFO, GCTORTURE, GCTORTURE2, IS_FINITE, IS_INFINITE, IS_NAN, IS_VECTOR, IS_LOADED, L10N_INFO, CSTACK_INFO, EXTSOFTVERSION, LIST_FILES, MEMORY_PROFILE, ENV_IS_LOCKED, LOCK_BINDING, BINDING_IS_LOCKED, UNLOCK_BINDING, LOCK_ENVIRONMENT, MAKE_ACTIVE_BINDING, BINDING_IS_ACTIVE, SYS_UMASK};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN, SUMMARY_FN, MATRIX_MULT, CROSSPROD, TCROSSPROD, MAXCOL, IDIV, NROW_FN, NCOL_FN, SYS_GETPID, OLSONNAMES, IQR_FN, SYS_CHMOD, FILE_INFO, SYS_GETLOCALE, SYS_SETLOCALE, NZCHAR, AT_OP, AT_ASSIGN, SYS_INFO, SYS_TIME, SYS_DATE, SYS_WHICH, FLOOR, CEILING, TRUNC, ROUND, SIGNIF, EXPM1, LOG1P, ACOSH, ASINH, ATANH, COSPI, SINPI, TANPI, ANYNA, SYS_LOCALECONV, AGREP, AGREPL, APPLY, AS_ENVIRONMENT, AS_CALL, ENC2NATIVE, ENC2UTF8, SEARCH_FN, AS_FACTOR, AS_ORDERED, ADDNA, APERM, ADDMARGINS, DOT_SUBSET, DOT_SUBSET2, ASPLIT, ATTACH, DETACH, POS_TO_ENV, DOT_CLASS2, GC_TIME, AVE, BACKSOLVE, BQUOTE, CALL_FN, CHAR_TO_RAW, CHARMATCH, CUMSUM, CUMPROD, CUMMIN, CUMMAX, COMMENT_FN, COMMENT_ASSIGN, COMPLETE_CASES, COLSUMS, ROWSUMS, COLMEANS, ROWMEANS, DCAUCHY, DCHISQ, DEXP, CUT, DATE_FN, CAPABILITIES, BY_FN, BROWSER_FN, DGAMMA, DGEOM, DNBINOM, DIFF, DIAG, DO_CALL, DWEIBULL, DROP_FN, DROPLEVELS, DUPLICATED, ANYDUPLICATED, DIR_EXISTS, FILE_CREATE, FILE_ACCESS, ENVIRONMENT_ASSIGN, FORCEANDCALL, DECLARE, PRIMTRACE, PRIMUNTRACE, STANDARDGENERIC, DMULTINOM, DOTS_LENGTH, DOTS_NAMES, DOTS_ELT, IS_DATA_FRAME, FILE_APPEND, FILE_LINK, FILE_SYMLINK, SYS_READLINK, FILE_SIZE, FILE_MTIME, GL, HEAD_FN, TAIL_FN, INTERACTION, GCINFO, GCTORTURE, GCTORTURE2, IS_FINITE, IS_INFINITE, IS_NAN, IS_VECTOR, IS_LOADED, L10N_INFO, CSTACK_INFO, EXTSOFTVERSION, LIST_FILES, MEMORY_PROFILE, ENV_IS_LOCKED, LOCK_BINDING, BINDING_IS_LOCKED, UNLOCK_BINDING, LOCK_ENVIRONMENT, MAKE_ACTIVE_BINDING, BINDING_IS_ACTIVE, SYS_UMASK, NORMALIZE_PATH, OLDCLASS, OLDCLASS_ASSIGN, IS_OBJECT, PAIRLIST_CTOR, AS_PAIRLIST, OUTER, ON_EXIT, IS_S4_TEST, NARGS, SYS_NFRAME, SYS_CALL, SYS_FRAME, SYS_FUNCTION, PARENT_FRAME, IS_FUNCTION};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -531,7 +547,7 @@ pub(crate) fn call_primitive(
                 | SYS_SETENV | SYS_UNSETENV | UNLINK | DIR_CREATE | SAVE | RM | DPUT
                 | WARNING | MESSAGE_FN | CLOSE_FN | FLUSH_FN | WRITECHAR | SETCLASS | STOPIFNOT
                 | WRITEBIN | ATTACH | DETACH | LOCK_BINDING | UNLOCK_BINDING | LOCK_ENVIRONMENT
-                | MAKE_ACTIVE_BINDING
+                | MAKE_ACTIVE_BINDING | ON_EXIT
         );
     }
     result
@@ -3219,6 +3235,283 @@ fn call_primitive_inner(
             heap.umask_state = parsed;
             heap.visible = false;
             render(heap, interner, old_mask)
+        }
+        NORMALIZE_PATH => {
+            // GNU's canonicalization contract: existing paths resolve
+            // symlinks and relative segments; mustWork=FALSE passes
+            // missing entries through verbatim while mustWork=TRUE errors
+            // with the system message; NA propagates.
+            let mut positional: Vec<ValueId> = Vec::new();
+            let mut must_work = false;
+            let mut cursor = args;
+            for _ in 0..1000 {
+                if cursor == ValueId::NIL { break; }
+                let (car, tag, next) = match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, tag, cdr, .. }) => (*car, *tag, *cdr),
+                    _ => break,
+                };
+                let tname = match heap.object(tag) {
+                    Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+                    _ => None,
+                };
+                let vpre = eval(heap, interner, car, caller_env)?;
+                let v = force_if_promise(heap, interner, vpre)?;
+                match tname.as_deref() {
+                    Some("mustWork") => must_work = logical_scalar(heap, v),
+                    Some("winslash") => {}
+                    Some(_) => positional.push(v),
+                    None => positional.push(v),
+                }
+                cursor = next;
+            }
+            let paths = string_vec(heap, interner, positional.first().copied().unwrap_or(ValueId::NIL));
+            let mut out: Vec<super::intern::InternedStr> = Vec::new();
+            for path in &paths {
+                if path == "\0NA" {
+                    out.push(interner.intern_string("\0NA"));
+                    continue;
+                }
+                match std::fs::canonicalize(path) {
+                    Ok(resolved) => {
+                        let text = resolved.to_string_lossy().to_string();
+                        // macOS canonicalize surfaces the /private prefix —
+                        // GNU's realpath does the same, so it rides through.
+                        out.push(interner.intern_string(&text));
+                    }
+                    Err(_) => {
+                        if must_work {
+                            return Err(EvalError::Condition(format!(
+                                "path[1]=\"{}\": No such file or directory", path
+                            )).into());
+                        }
+                        out.push(interner.intern_string(path));
+                    }
+                }
+            }
+            Ok(heap.alloc(RObject::String(out)))
+        }
+        OLDCLASS => {
+            // GNU's oldClass reads the explicit attribute only — no
+            // implicit class fallback exactly as documented.
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            match get_attrib(heap, interner, operands[0], "class") {
+                Some(v) => Ok(v),
+                None => Ok(ValueId::NIL),
+            }
+        }
+        OLDCLASS_ASSIGN => {
+            let operands = eval_args(heap, interner, args, caller_env, 2)?;
+            copy_with_attrib(heap, interner, operands[0], "class", operands[1]).map_err(RSignal::from)
+        }
+        IS_OBJECT => {
+            // GNU: object-ness is exactly the presence of a class attribute.
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let present = get_attrib(heap, interner, operands[0], "class").is_some();
+            Ok(heap.alloc(RObject::Logical(vec![present as i32])))
+        }
+        PAIRLIST_CTOR => {
+            // pairlist(...) links its evaluated arguments into the chain,
+            // argument tags riding exactly as GNU's dotted-pair shape.
+            let mut nodes: Vec<(ValueId, ValueId)> = Vec::new();
+            let mut cursor = args;
+            for _ in 0..1000 {
+                if cursor == ValueId::NIL { break; }
+                let (car, tag, next) = match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, tag, cdr, .. }) => (*car, *tag, *cdr),
+                    _ => break,
+                };
+                let vpre = eval(heap, interner, car, caller_env)?;
+                let v = force_if_promise(heap, interner, vpre)?;
+                nodes.push((v, tag));
+                cursor = next;
+            }
+            let mut chain = ValueId::NIL;
+            for (v, tag) in nodes.into_iter().rev() {
+                chain = heap.alloc(RObject::Pairlist { car: v, cdr: chain, tag });
+            }
+            Ok(chain)
+        }
+        AS_PAIRLIST => {
+            // List-to-chain conversion — the names attribute becomes the
+            // node tags exactly as GNU.
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let items: Vec<ValueId> = match heap.object(operands[0]) {
+                Some(RObject::List(vals)) => vals.clone(),
+                _ => return Err(EvalError::TypeError("as.pairlist requires a list").into()),
+            };
+            let names: Vec<String> = get_attrib(heap, interner, operands[0], "names")
+                .map(|id| string_vec(heap, interner, id))
+                .unwrap_or_default();
+            let mut chain = ValueId::NIL;
+            for (index, item) in items.iter().enumerate().rev() {
+                let tag = match names.get(index) {
+                    Some(n) if !n.is_empty() => {
+                        let sym = interner.intern_symbol(&n.clone());
+                        heap.alloc(RObject::Symbol { name: sym, value: ValueId::NIL, internal: ValueId::NIL })
+                    }
+                    _ => ValueId::NIL,
+                };
+                chain = heap.alloc(RObject::Pairlist { car: *item, cdr: chain, tag });
+            }
+            Ok(chain)
+        }
+        OUTER => {
+            // outer(x, y) defaults to multiplication — the [i,j] entry is
+            // x[i]*y[j] in column-major layout exactly as GNU, dimensions
+            // c(length(x), length(y)) even when either side is empty.
+            let operands = eval_args(heap, interner, args, caller_env, 2)?;
+            let xs = reals_of_value(heap, operands[0]).map_err(RSignal::from)?;
+            let ys = reals_of_value(heap, operands[1]).map_err(RSignal::from)?;
+            let mut out: Vec<f64> = Vec::with_capacity(xs.len() * ys.len());
+            for &y in &ys {
+                for &x in &xs {
+                    out.push(x * y);
+                }
+            }
+            let value = heap.alloc(RObject::Real(out));
+            let dim = heap.alloc(RObject::Integer(vec![xs.len() as i32, ys.len() as i32]));
+            copy_with_attrib(heap, interner, value, "dim", dim).map_err(RSignal::from)
+        }
+        ON_EXIT => {
+            // GNU's exit-handler registration: the expression stays
+            // UNEVALUATED until the enclosing frame exits. Plain on.exit
+            // replaces; add=TRUE appends; after=FALSE prepends; a NULL
+            // expression without add clears the handlers outright.
+            let mut expr = ValueId::NIL;
+            let mut add = false;
+            let mut after = true;
+            let mut positional_seen = false;
+            let mut cursor = args;
+            for _ in 0..1000 {
+                if cursor == ValueId::NIL { break; }
+                let (car, tag, next) = match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, tag, cdr, .. }) => (*car, *tag, *cdr),
+                    _ => break,
+                };
+                let tname = match heap.object(tag) {
+                    Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+                    _ => None,
+                };
+                match tname.as_deref() {
+                    Some("add") => {
+                        let v = eval(heap, interner, car, caller_env)?;
+                        let v = force_if_promise(heap, interner, v)?;
+                        add = logical_scalar(heap, v);
+                    }
+                    Some("after") => {
+                        let v = eval(heap, interner, car, caller_env)?;
+                        let v = force_if_promise(heap, interner, v)?;
+                        after = logical_scalar(heap, v);
+                    }
+                    _ => {
+                        if !positional_seen {
+                            expr = car;
+                            positional_seen = true;
+                        }
+                    }
+                }
+                cursor = next;
+            }
+            let is_null_expr = expr == ValueId::NIL
+                || matches!(heap.object(expr), Some(RObject::Nil));
+            let handlers = heap.exit_handlers.entry(caller_env).or_default();
+            if is_null_expr && !add {
+                handlers.clear();
+            } else if is_null_expr {
+                // on.exit(NULL, add=TRUE) is a no-op exactly as GNU.
+            } else if !add {
+                handlers.clear();
+                handlers.push(expr);
+            } else if after {
+                handlers.push(expr);
+            } else {
+                handlers.insert(0, expr);
+            }
+            heap.visible = false;
+            Ok(ValueId::NIL)
+        }
+        IS_S4_TEST => {
+            // GNU's isS4 reads the object bit — the S4Object variant in
+            /// this slice — one argument exactly.
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let is_s4 = matches!(heap.object(operands[0]), Some(RObject::S4Object));
+            Ok(heap.alloc(RObject::Logical(vec![is_s4 as i32])))
+        }
+        NARGS => {
+            // Supplied-argument count of the innermost closure activation
+            /// exactly as GNU — zero outside any closure.
+            let n = heap.contexts.last().map(|c| c.nargs).unwrap_or(0);
+            Ok(heap.alloc(RObject::Integer(vec![n as i32])))
+        }
+        SYS_NFRAME => {
+            let n = heap.contexts.len();
+            Ok(heap.alloc(RObject::Integer(vec![n as i32])))
+        }
+        SYS_CALL => {
+            // sys.call(which) — negative or absent indexing reads the
+            /// innermost activation exactly as GNU's default.
+            let raw = raw_args(heap, args);
+            let which = match raw.first() {
+                Some(expr) => {
+                    let v = eval(heap, interner, *expr, caller_env)?;
+                    let v = force_if_promise(heap, interner, v)?;
+                    first_real(heap, v).unwrap_or(-1.0) as i64
+                }
+                None => -1,
+            };
+            let len = heap.contexts.len() as i64;
+            let index = if which <= 0 { len + which } else { which };
+            match heap.contexts.get(index.max(0) as usize).or_else(|| heap.contexts.last()) {
+                Some(ctx) => Ok(ctx.call),
+                None => Ok(ValueId::NIL),
+            }
+        }
+        SYS_FRAME => {
+            // Frame numbering reads innermost-first at the top exactly as
+            /// GNU — sys.frame(sys.nframe()) is the innermost activation.
+            let raw = raw_args(heap, args);
+            let which = match raw.first() {
+                Some(expr) => {
+                    let v = eval(heap, interner, *expr, caller_env)?;
+                    let v = force_if_promise(heap, interner, v)?;
+                    first_real(heap, v).unwrap_or(0.0) as i64
+                }
+                None => 0,
+            };
+            let len = heap.contexts.len() as i64;
+            let index = if which == len {
+                len - 1
+            } else if which < len && which > 0 {
+                which - 1
+            } else {
+                len - 1
+            };
+            match heap.contexts.get(index.max(0) as usize).or_else(|| heap.contexts.last()) {
+                Some(ctx) => Ok(ctx.frame),
+                None => Ok(caller_env),
+            }
+        }
+        SYS_FUNCTION => {
+            match heap.contexts.last() {
+                Some(ctx) if ctx.closure != ValueId::NIL => Ok(ctx.closure),
+                _ => Ok(ValueId::NIL),
+            }
+        }
+        PARENT_FRAME => {
+            // One activation outward exactly as GNU's default — the
+            /// caller's frame; beyond the outermost closure the caller's
+            /// own environment is the conservative answer.
+            let len = heap.contexts.len();
+            if len >= 2 {
+                Ok(heap.contexts[len - 2].frame)
+            } else {
+                Ok(caller_env)
+            }
+        }
+        IS_FUNCTION => {
+            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            let yes = matches!(heap.object(operands[0]), Some(RObject::Closure { .. }) | Some(RObject::Primitive(_)));
+            Ok(heap.alloc(RObject::Logical(vec![yes as i32])))
         }
         LIST_FILES => {
             // GNU's directory listing contract: byte-sorted names, hidden
@@ -6903,7 +7196,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom", "message", "missing", "parent.env", "order", "rank", "ordered", "is.ordered", "is.factor", "na.omit", "na.exclude", "pbeta", "dbeta", "qbeta", "find", "UseMethod", "NextMethod", "getS3method", "emptyenv", "as.integer", "as.numeric", "as.double", "stopifnot", "sequence", "rep.int", "rep_len", "dt", "pt", "qt", "sample", "sample.int", "builtins", "regexec", "df", "pf", "qf", "substr", "file", "isOpen", "close", "flush", "writeChar", "readChar", "union", "intersect", "setdiff", "setequal", "table", "setClass", "new", "is", "slot", "slotNames", "unname", "which.min", "which.max", "withVisible", "system", "writeBin", "readBin", "url", "dim<-", "storage.mode<-", "as.list", "body", "summary", "%*%", "crossprod", "tcrossprod", "max.col", "%/%", "NROW", "NCOL", "Sys.getpid", "OlsonNames", "IQR", "Sys.chmod", "file.info", "Sys.getlocale", "Sys.setlocale", "nzchar", "@", "@<-", "Sys.info", "Sys.time", "Sys.Date", "Sys.which", "floor", "ceiling", "trunc", "round", "signif", "expm1", "log1p", "acosh", "asinh", "atanh", "cospi", "sinpi", "tanpi", "anyNA", "Sys.localeconv", "agrep", "agrepl", "apply", "as.environment", "as.call", "enc2native", "enc2utf8", "search", "as.factor", "as.ordered", "addNA", "aperm", "addmargins", ".subset", ".subset2", "asplit", "attach", "detach", "pos.to.env", ".class2", "gc.time", "ave", "backsolve", "bquote", "call", "charToRaw", "charmatch", "cumsum", "cumprod", "cummin", "cummax", "comment", "comment<-", "complete.cases", "colSums", "rowSums", "colMeans", "rowMeans", "dcauchy", "dchisq", "dexp", "cut", "date", "capabilities", "by", "browser", "bzfile", "gzfile", "dgamma", "dgeom", "dnbinom", "diff", "diag", "do.call", "dweibull", "drop", "droplevels", "duplicated", "anyDuplicated", "dir.exists", "file.create", "file.access", "environment<-", "forceAndCall", "declare", ".primTrace", ".primUntrace", "standardGeneric", "dmultinom", "...length", "...names", "...elt", "is.data.frame", "file.append", "file.link", "file.symlink", "Sys.readlink", "file.size", "file.mtime", "gl", "head", "tail", "interaction", "gcinfo", "gctorture", "gctorture2", "is.finite", "is.infinite", "is.nan", "is.vector", "is.loaded", "l10n_info", "Cstack_info", "extSoftVersion", "list.files", "memory.profile", "environmentIsLocked", "lockBinding", "bindingIsLocked", "unlockBinding", "lockEnvironment", "makeActiveBinding", "bindingIsActive", "Sys.umask",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom", "message", "missing", "parent.env", "order", "rank", "ordered", "is.ordered", "is.factor", "na.omit", "na.exclude", "pbeta", "dbeta", "qbeta", "find", "UseMethod", "NextMethod", "getS3method", "emptyenv", "as.integer", "as.numeric", "as.double", "stopifnot", "sequence", "rep.int", "rep_len", "dt", "pt", "qt", "sample", "sample.int", "builtins", "regexec", "df", "pf", "qf", "substr", "file", "isOpen", "close", "flush", "writeChar", "readChar", "union", "intersect", "setdiff", "setequal", "table", "setClass", "new", "is", "slot", "slotNames", "unname", "which.min", "which.max", "withVisible", "system", "writeBin", "readBin", "url", "dim<-", "storage.mode<-", "as.list", "body", "summary", "%*%", "crossprod", "tcrossprod", "max.col", "%/%", "NROW", "NCOL", "Sys.getpid", "OlsonNames", "IQR", "Sys.chmod", "file.info", "Sys.getlocale", "Sys.setlocale", "nzchar", "@", "@<-", "Sys.info", "Sys.time", "Sys.Date", "Sys.which", "floor", "ceiling", "trunc", "round", "signif", "expm1", "log1p", "acosh", "asinh", "atanh", "cospi", "sinpi", "tanpi", "anyNA", "Sys.localeconv", "agrep", "agrepl", "apply", "as.environment", "as.call", "enc2native", "enc2utf8", "search", "as.factor", "as.ordered", "addNA", "aperm", "addmargins", ".subset", ".subset2", "asplit", "attach", "detach", "pos.to.env", ".class2", "gc.time", "ave", "backsolve", "bquote", "call", "charToRaw", "charmatch", "cumsum", "cumprod", "cummin", "cummax", "comment", "comment<-", "complete.cases", "colSums", "rowSums", "colMeans", "rowMeans", "dcauchy", "dchisq", "dexp", "cut", "date", "capabilities", "by", "browser", "bzfile", "gzfile", "dgamma", "dgeom", "dnbinom", "diff", "diag", "do.call", "dweibull", "drop", "droplevels", "duplicated", "anyDuplicated", "dir.exists", "file.create", "file.access", "environment<-", "forceAndCall", "declare", ".primTrace", ".primUntrace", "standardGeneric", "dmultinom", "...length", "...names", "...elt", "is.data.frame", "file.append", "file.link", "file.symlink", "Sys.readlink", "file.size", "file.mtime", "gl", "head", "tail", "interaction", "gcinfo", "gctorture", "gctorture2", "is.finite", "is.infinite", "is.nan", "is.vector", "is.loaded", "l10n_info", "Cstack_info", "extSoftVersion", "list.files", "memory.profile", "environmentIsLocked", "lockBinding", "bindingIsLocked", "unlockBinding", "lockEnvironment", "makeActiveBinding", "bindingIsActive", "Sys.umask", "normalizePath", "oldClass", "oldClass<-", "is.object", "pairlist", "as.pairlist", "outer", "on.exit", "isS4", "nargs", "sys.nframe", "sys.call", "sys.frame", "sys.function", "parent.frame", "is.function",
     ]
 }
 
@@ -7050,6 +7343,22 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "makeActiveBinding" => Some(MAKE_ACTIVE_BINDING),
         "bindingIsActive" => Some(BINDING_IS_ACTIVE),
         "Sys.umask" => Some(SYS_UMASK),
+        "normalizePath" => Some(NORMALIZE_PATH),
+        "oldClass" => Some(OLDCLASS),
+        "oldClass<-" => Some(OLDCLASS_ASSIGN),
+        "is.object" => Some(IS_OBJECT),
+        "pairlist" => Some(PAIRLIST_CTOR),
+        "as.pairlist" => Some(AS_PAIRLIST),
+        "outer" => Some(OUTER),
+        "on.exit" => Some(ON_EXIT),
+        "isS4" => Some(IS_S4_TEST),
+        "nargs" => Some(NARGS),
+        "sys.nframe" => Some(SYS_NFRAME),
+        "sys.call" => Some(SYS_CALL),
+        "sys.frame" => Some(SYS_FRAME),
+        "sys.function" => Some(SYS_FUNCTION),
+        "parent.frame" => Some(PARENT_FRAME),
+        "is.function" => Some(IS_FUNCTION),
         // bzfile/gzfile share the raw-byte connection machinery — GNU pipes
         // through the codec, but within-R observable behavior (write/read
         // roundtrips, append semantics) is identical; real compression is
@@ -7756,6 +8065,22 @@ fn length_primitive(
         Some(RObject::List(v)) => v.len(),
         Some(RObject::Expression(v)) => v.len(),
         Some(RObject::Nil) => 0,
+        // GNU: length of a pairlist counts the chain nodes.
+        Some(RObject::Pairlist { .. }) => {
+            let mut count = 0usize;
+            let mut cursor = operands[0];
+            for _ in 0..100_000 {
+                match heap.object(cursor) {
+                    Some(RObject::Pairlist { cdr: next, .. }) if count < 100_000 => {
+                        count += 1;
+                        cursor = *next;
+                    }
+                    _ => break,
+                }
+                if cursor == ValueId::NIL { break; }
+            }
+            count
+        }
         // GNU: length of a call counts the operator plus every argument.
         Some(RObject::Language { cdr, .. }) => {
             let mut count = 1usize;
@@ -9286,6 +9611,27 @@ fn names_primitive(
     caller_env: ValueId,
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    // Pairlists carry their names as node tags rather than an attribute
+    /// exactly as GNU's dotted-pair shape.
+    if matches!(heap.object(operands[0]), Some(RObject::Pairlist { .. })) {
+        let mut out: Vec<super::intern::InternedStr> = Vec::new();
+        let mut cursor = operands[0];
+        for _ in 0..100_000 {
+            if cursor == ValueId::NIL { break; }
+            match heap.object(cursor) {
+                Some(RObject::Pairlist { tag, cdr, .. }) => {
+                    let text = match heap.object(*tag) {
+                        Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+                        _ => String::new(),
+                    };
+                    out.push(interner.intern_string(&text));
+                    cursor = *cdr;
+                }
+                _ => break,
+            }
+        }
+        return Ok(heap.alloc(RObject::String(out)));
+    }
     match get_attrib(heap, interner, operands[0], "names") {
         Some(names) => Ok(names),
         None => Ok(ValueId::NIL),

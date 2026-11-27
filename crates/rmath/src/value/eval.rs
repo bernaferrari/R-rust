@@ -119,6 +119,7 @@ pub fn eval(
                             Some(RObject::Closure { formals, body, env: clos_env }) => {
                                 let applied = apply_closure(
                                     heap, interner, formals, body, clos_env, ValueId::NIL, env_id,
+                                    ValueId::NIL, binding.value,
                                 )?;
                                 force_if_promise(heap, interner, applied)
                             }
@@ -143,7 +144,7 @@ pub fn eval(
         RObject::Language { car, cdr, .. } => {
             let (car, cdr) = (*car, *cdr);
             let callee = eval(heap, interner, car, env_id)?;
-            call(heap, interner, callee, cdr, env_id)
+            call(heap, interner, callee, cdr, env_id, expr)
         }
         RObject::List(_) | RObject::Expression(_) => Ok(expr),
         RObject::Pairlist { .. } | RObject::Closure { .. } | RObject::Environment { .. } => {
@@ -210,6 +211,7 @@ fn call(
     callee: ValueId,
     args: ValueId,
     caller_env: ValueId,
+    call_expr: ValueId,
 ) -> EvalResult {
     // Dots forwarding: a bare `...` argument splices the caller's dots
     /// pairlist into the call exactly as GNU — promises carried intact so
@@ -285,7 +287,7 @@ fn call(
         }
         Some(RObject::Closure { formals, body, env }) => {
             let (formals, body, closure_env) = (*formals, *body, *env);
-            apply_closure(heap, interner, formals, body, closure_env, args, caller_env)
+            apply_closure(heap, interner, formals, body, closure_env, args, caller_env, call_expr, callee)
         }
         _ => Err(EvalError::NotCallable.into()),
     }
@@ -293,6 +295,17 @@ fn call(
 
 /// Apply a closure: match arguments to formals as lazy promises, then
 /// evaluate the body in the application frame.
+/// One closure-activation record — GNU's context-stack entry shape: the
+/// application frame, the originating call expression, the closure object,
+/// and the supplied-argument count nargs() reports.
+#[derive(Debug, Clone, Copy)]
+pub struct ContextFrame {
+    pub frame: ValueId,
+    pub call: ValueId,
+    pub closure: ValueId,
+    pub nargs: usize,
+}
+
 ///
 /// Argument matching implements GNU's order — exact names first, then
 /// positional — with lazy promise construction. Formals without defaults
@@ -308,7 +321,7 @@ pub(crate) fn apply_closure_public(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    apply_closure(heap, interner, formals, body, closure_env, args, caller_env)
+    apply_closure(heap, interner, formals, body, closure_env, args, caller_env, ValueId::NIL, ValueId::NIL)
 }
 
 fn apply_closure(
@@ -319,6 +332,8 @@ fn apply_closure(
     closure_env: ValueId,
     args: ValueId,
     caller_env: ValueId,
+    call_expr: ValueId,
+    closure_id: ValueId,
 ) -> EvalResult {
     let frame = env::new_environment(heap, closure_env);
 
@@ -428,9 +443,27 @@ fn apply_closure(
         env::define(heap, frame, dots_sym, dots).map_err(|_| RSignal::Error(EvalError::UnsupportedForm("dots define")))?;
     }
 
+    // The context entry GNU's sys.* family reads — pushed for the body
+    /// evaluation exactly as GNU's context stack, popped on every exit.
+    heap.contexts.push(ContextFrame {
+        frame,
+        call: call_expr,
+        closure: closure_id,
+        nargs: arg_list.len(),
+    });
     // The closure boundary absorbs a `return` signal — exactly one frame
     // of unwinding — while break/next/errors propagate outward.
-    match eval(heap, interner, body, frame) {
+    let result = eval(heap, interner, body, frame);
+    heap.contexts.pop();
+    // on.exit handlers fire on every exit path exactly as GNU — normal
+    // completion, return, and error unwinding alike — in registration
+    // order within the closure's own frame.
+    if let Some(handlers) = heap.exit_handlers.remove(&frame) {
+        for handler in handlers {
+            let _ = eval(heap, interner, handler, frame);
+        }
+    }
+    match result {
         Err(RSignal::Return(value)) => Ok(value),
         other => other,
     }
