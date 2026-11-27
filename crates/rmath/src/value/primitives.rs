@@ -639,6 +639,8 @@ pub mod primitive_ids {
     pub const RWEIBULL: u32 = 630;
     pub const RNBINOM: u32 = 631;
     pub const RHYPER: u32 = 632;
+    pub const SUBSET_DF: u32 = 633;
+    pub const TRANSFORM: u32 = 634;
     pub const GRCONVERTX: u32 = 564;
     pub const GRCONVERTY: u32 = 565;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
@@ -671,7 +673,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN, SUMMARY_FN, MATRIX_MULT, CROSSPROD, TCROSSPROD, MAXCOL, IDIV, NROW_FN, NCOL_FN, SYS_GETPID, OLSONNAMES, IQR_FN, SYS_CHMOD, FILE_INFO, SYS_GETLOCALE, SYS_SETLOCALE, NZCHAR, AT_OP, AT_ASSIGN, SYS_INFO, SYS_TIME, SYS_DATE, SYS_WHICH, FLOOR, CEILING, TRUNC, ROUND, SIGNIF, EXPM1, LOG1P, ACOSH, ASINH, ATANH, COSPI, SINPI, TANPI, ANYNA, SYS_LOCALECONV, AGREP, AGREPL, APPLY, AS_ENVIRONMENT, AS_CALL, ENC2NATIVE, ENC2UTF8, SEARCH_FN, AS_FACTOR, AS_ORDERED, ADDNA, APERM, ADDMARGINS, DOT_SUBSET, DOT_SUBSET2, ASPLIT, ATTACH, DETACH, POS_TO_ENV, DOT_CLASS2, GC_TIME, AVE, BACKSOLVE, BQUOTE, CALL_FN, CHAR_TO_RAW, CHARMATCH, CUMSUM, CUMPROD, CUMMIN, CUMMAX, COMMENT_FN, COMMENT_ASSIGN, COMPLETE_CASES, COLSUMS, ROWSUMS, COLMEANS, ROWMEANS, DCAUCHY, DCHISQ, DEXP, CUT, DATE_FN, CAPABILITIES, BY_FN, BROWSER_FN, DGAMMA, DGEOM, DNBINOM, DIFF, DIAG, DO_CALL, DWEIBULL, DROP_FN, DROPLEVELS, DUPLICATED, ANYDUPLICATED, DIR_EXISTS, FILE_CREATE, FILE_ACCESS, ENVIRONMENT_ASSIGN, FORCEANDCALL, DECLARE, PRIMTRACE, PRIMUNTRACE, STANDARDGENERIC, DMULTINOM, DOTS_LENGTH, DOTS_NAMES, DOTS_ELT, IS_DATA_FRAME, FILE_APPEND, FILE_LINK, FILE_SYMLINK, SYS_READLINK, FILE_SIZE, FILE_MTIME, GL, HEAD_FN, TAIL_FN, INTERACTION, GCINFO, GCTORTURE, GCTORTURE2, IS_FINITE, IS_INFINITE, IS_NAN, IS_VECTOR, IS_LOADED, L10N_INFO, CSTACK_INFO, EXTSOFTVERSION, LIST_FILES, MEMORY_PROFILE, ENV_IS_LOCKED, LOCK_BINDING, BINDING_IS_LOCKED, UNLOCK_BINDING, LOCK_ENVIRONMENT, MAKE_ACTIVE_BINDING, BINDING_IS_ACTIVE, SYS_UMASK, NORMALIZE_PATH, OLDCLASS, OLDCLASS_ASSIGN, IS_OBJECT, PAIRLIST_CTOR, AS_PAIRLIST, OUTER, ON_EXIT, IS_S4_TEST, NARGS, SYS_NFRAME, SYS_CALL, SYS_FRAME, SYS_FUNCTION, PARENT_FRAME, IS_FUNCTION, METHODS, PAR, LAYOUT, FORMAT_DF, LIB_PATHS, FIND_PACKAGE, SYSTEM_FILE, FORMAT_INFO, PCAUCHY, QCAUCHY, PCHISQ, QCHISQ, PEXP, QEXP, PGAMMA, QGAMMA, PGEOM, QGEOM, PNBINOM, QNBINOM, PWEIBULL, QWEIBULL, RANGE_FN, PMIN, PMAX, PMATCH, PROP_TABLE, ROW_FN, COL_FN, RELEVEL, SEARCHPATHS, PATH_EXPAND, PCRE_CONFIG, RAWTOCHAR, QHYPER, PTUKEY, QPOIS, QBINOM, DUNIF, PUNIF, QUNIF, SIGN, SEQ_ALONG, SEQ_INT, SCAN, SINGLE, SINK, SINK_NUMBER, SORT_LIST, SOURCE, SYS_SOURCE, SPLIT, SWITCH, SUPPRESS_MESSAGES, STRWRAP, XTFRM, CACHE_CLASS, STARTSWITH, ENDSWITH, TOUPPER, TOLOWER, CHARTR, TRIMWS, TABULATE, SYSTEM2, WITH, LENGTHS, WRITE_TABLE, WRITE_CSV2, READ_FWF, SAVE_RDS, READ_RDS, WITH_RESTARTS, INVOKE_RESTART, TRY_INVOKE_RESTART, FIND_RESTART, COMPUTE_RESTARTS, IS_RESTART, RESTART_DESCRIPTION, WITH_CALLING_HANDLERS, NS_GET, NS_GET3, LIBRARY, REQUIRE, DATA_FN, PLOT_NEW, PLOT_WINDOW, LINES_FN, RECT_FN, POINTS_FN, TEXT_FN, PRETTY_FN, GRCONVERTX, GRCONVERTY, AXIS_FN, BOX_FN, PLOT_FN, TITLE_FN, SEGMENTS_FN, ABLINE_FN, POLYGON_FN, LOG10, LOG2, TAN, ASIN, ACOS, ATAN, ATAN2, GAMMAFN, LGAMMAFN, DIGAMMA, TRIGAMMA, FACTORIAL, LFACTORIAL, BETA, LBETA, CHOOSE, LCHOOSE, STRSPLIT, TRANSPOSE, IS_MATRIX, AS_MATRIX, SET_SEED, RUNIF, RNORM, FILTER_FN, REDUCE_FN, MAPPLY, VAR_COV, COR_FN, QUANTILE, MAD, WEIGHTED_MEAN, MAP_FN, NEGATE, EXPAND_GRID, FINDINTERVAL, MAKE_NAMES, MAKE_UNIQUE, RBINOM, RPOIS, RGAMMA, REXP, RBETA, RCHISQ, RT, RF_DIST, RLNORM, RLOGIS, RCAUCHY, RGEOM, RWEIBULL, RNBINOM, RHYPER};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN, SUMMARY_FN, MATRIX_MULT, CROSSPROD, TCROSSPROD, MAXCOL, IDIV, NROW_FN, NCOL_FN, SYS_GETPID, OLSONNAMES, IQR_FN, SYS_CHMOD, FILE_INFO, SYS_GETLOCALE, SYS_SETLOCALE, NZCHAR, AT_OP, AT_ASSIGN, SYS_INFO, SYS_TIME, SYS_DATE, SYS_WHICH, FLOOR, CEILING, TRUNC, ROUND, SIGNIF, EXPM1, LOG1P, ACOSH, ASINH, ATANH, COSPI, SINPI, TANPI, ANYNA, SYS_LOCALECONV, AGREP, AGREPL, APPLY, AS_ENVIRONMENT, AS_CALL, ENC2NATIVE, ENC2UTF8, SEARCH_FN, AS_FACTOR, AS_ORDERED, ADDNA, APERM, ADDMARGINS, DOT_SUBSET, DOT_SUBSET2, ASPLIT, ATTACH, DETACH, POS_TO_ENV, DOT_CLASS2, GC_TIME, AVE, BACKSOLVE, BQUOTE, CALL_FN, CHAR_TO_RAW, CHARMATCH, CUMSUM, CUMPROD, CUMMIN, CUMMAX, COMMENT_FN, COMMENT_ASSIGN, COMPLETE_CASES, COLSUMS, ROWSUMS, COLMEANS, ROWMEANS, DCAUCHY, DCHISQ, DEXP, CUT, DATE_FN, CAPABILITIES, BY_FN, BROWSER_FN, DGAMMA, DGEOM, DNBINOM, DIFF, DIAG, DO_CALL, DWEIBULL, DROP_FN, DROPLEVELS, DUPLICATED, ANYDUPLICATED, DIR_EXISTS, FILE_CREATE, FILE_ACCESS, ENVIRONMENT_ASSIGN, FORCEANDCALL, DECLARE, PRIMTRACE, PRIMUNTRACE, STANDARDGENERIC, DMULTINOM, DOTS_LENGTH, DOTS_NAMES, DOTS_ELT, IS_DATA_FRAME, FILE_APPEND, FILE_LINK, FILE_SYMLINK, SYS_READLINK, FILE_SIZE, FILE_MTIME, GL, HEAD_FN, TAIL_FN, INTERACTION, GCINFO, GCTORTURE, GCTORTURE2, IS_FINITE, IS_INFINITE, IS_NAN, IS_VECTOR, IS_LOADED, L10N_INFO, CSTACK_INFO, EXTSOFTVERSION, LIST_FILES, MEMORY_PROFILE, ENV_IS_LOCKED, LOCK_BINDING, BINDING_IS_LOCKED, UNLOCK_BINDING, LOCK_ENVIRONMENT, MAKE_ACTIVE_BINDING, BINDING_IS_ACTIVE, SYS_UMASK, NORMALIZE_PATH, OLDCLASS, OLDCLASS_ASSIGN, IS_OBJECT, PAIRLIST_CTOR, AS_PAIRLIST, OUTER, ON_EXIT, IS_S4_TEST, NARGS, SYS_NFRAME, SYS_CALL, SYS_FRAME, SYS_FUNCTION, PARENT_FRAME, IS_FUNCTION, METHODS, PAR, LAYOUT, FORMAT_DF, LIB_PATHS, FIND_PACKAGE, SYSTEM_FILE, FORMAT_INFO, PCAUCHY, QCAUCHY, PCHISQ, QCHISQ, PEXP, QEXP, PGAMMA, QGAMMA, PGEOM, QGEOM, PNBINOM, QNBINOM, PWEIBULL, QWEIBULL, RANGE_FN, PMIN, PMAX, PMATCH, PROP_TABLE, ROW_FN, COL_FN, RELEVEL, SEARCHPATHS, PATH_EXPAND, PCRE_CONFIG, RAWTOCHAR, QHYPER, PTUKEY, QPOIS, QBINOM, DUNIF, PUNIF, QUNIF, SIGN, SEQ_ALONG, SEQ_INT, SCAN, SINGLE, SINK, SINK_NUMBER, SORT_LIST, SOURCE, SYS_SOURCE, SPLIT, SWITCH, SUPPRESS_MESSAGES, STRWRAP, XTFRM, CACHE_CLASS, STARTSWITH, ENDSWITH, TOUPPER, TOLOWER, CHARTR, TRIMWS, TABULATE, SYSTEM2, WITH, LENGTHS, WRITE_TABLE, WRITE_CSV2, READ_FWF, SAVE_RDS, READ_RDS, WITH_RESTARTS, INVOKE_RESTART, TRY_INVOKE_RESTART, FIND_RESTART, COMPUTE_RESTARTS, IS_RESTART, RESTART_DESCRIPTION, WITH_CALLING_HANDLERS, NS_GET, NS_GET3, LIBRARY, REQUIRE, DATA_FN, PLOT_NEW, PLOT_WINDOW, LINES_FN, RECT_FN, POINTS_FN, TEXT_FN, PRETTY_FN, GRCONVERTX, GRCONVERTY, AXIS_FN, BOX_FN, PLOT_FN, TITLE_FN, SEGMENTS_FN, ABLINE_FN, POLYGON_FN, LOG10, LOG2, TAN, ASIN, ACOS, ATAN, ATAN2, GAMMAFN, LGAMMAFN, DIGAMMA, TRIGAMMA, FACTORIAL, LFACTORIAL, BETA, LBETA, CHOOSE, LCHOOSE, STRSPLIT, TRANSPOSE, IS_MATRIX, AS_MATRIX, SET_SEED, RUNIF, RNORM, FILTER_FN, REDUCE_FN, MAPPLY, VAR_COV, COR_FN, QUANTILE, MAD, WEIGHTED_MEAN, MAP_FN, NEGATE, EXPAND_GRID, FINDINTERVAL, MAKE_NAMES, MAKE_UNIQUE, RBINOM, RPOIS, RGAMMA, REXP, RBETA, RCHISQ, RT, RF_DIST, RLNORM, RLOGIS, RCAUCHY, RGEOM, RWEIBULL, RNBINOM, RHYPER, SUBSET_DF, TRANSFORM};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -6098,6 +6100,8 @@ fn call_primitive_inner(
         RWEIBULL => rweibull_primitive(heap, interner, args, caller_env),
         RNBINOM => rnbinom_primitive(heap, interner, args, caller_env),
         RHYPER => rhyper_primitive(heap, interner, args, caller_env),
+        SUBSET_DF => subset_df_primitive(heap, interner, args, caller_env),
+        TRANSFORM => transform_primitive(heap, interner, args, caller_env),
         DNORM | PNORM | QNORM | DPOIS | PPOIS | DBINOM | PBINOM | PBETA | DBETA | QBETA | DT | PT | QT | DF | PF | QF | DCAUCHY | DCHISQ | DEXP | PCAUCHY | QCAUCHY | PCHISQ | QCHISQ | PEXP | QEXP | PGAMMA | QGAMMA | PGEOM | QGEOM | PNBINOM | QNBINOM | PWEIBULL | QWEIBULL | QPOIS | QBINOM | DUNIF | PUNIF | QUNIF => dpq_primitive(heap, interner, id.0, args, caller_env),
         WITH_RESTARTS => with_restarts_primitive(heap, interner, args, caller_env),
         INVOKE_RESTART => invoke_restart_primitive(heap, interner, args, caller_env, false),
@@ -7886,6 +7890,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "Map", "expand.grid", "findInterval", "make.names", "make.unique",
         "rbinom", "rpois", "rgamma", "rexp", "rbeta", "rchisq", "rt", "rf",
         "rlnorm", "rlogis", "rcauchy", "rgeom", "rweibull", "rnbinom", "rhyper",
+        "subset", "transform",
     ]
 }
 
@@ -8200,6 +8205,8 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "rweibull" => Some(RWEIBULL),
         "rnbinom" => Some(RNBINOM),
         "rhyper" => Some(RHYPER),
+        "subset" => Some(SUBSET_DF),
+        "transform" => Some(TRANSFORM),
         "grconvertX" => Some(GRCONVERTX),
         "grconvertY" => Some(GRCONVERTY),
         // bzfile/gzfile share the raw-byte connection machinery — GNU pipes
@@ -9035,6 +9042,179 @@ fn subset_primitive(
 /// element (r, c) lives at c*nrow + r zero-based, GNU exactly. Result keeps
 /// matrix shape when both extents exceed one; otherwise drops to a vector,
 /// GNU's default drop semantics shape.
+/// `[.data.frame` exactly as GNU: rows select within every column,
+/// columns select across the frame, character column indexes match the
+/// names, and the result drops to a plain vector exactly when a single
+/// column survives and drop is not FALSE. Row subsets never drop.
+fn data_frame_matrix_subset(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    object: ValueId,
+    raw: Vec<ValueId>,
+    caller_env: ValueId,
+) -> EvalResult {
+    let (nrow, ncol) = data_frame_shape(heap, interner, object).unwrap_or((0, 0));
+    let col_names: Vec<String> = get_attrib(heap, interner, object, "names")
+        .map(|id| string_vec(heap, interner, id))
+        .unwrap_or_default();
+    // Index resolution shared with the matrix path — numeric positions
+    /// 1-based, logicals recycle, the missing sentinel spans the extent.
+    /// Character vectors match column names exactly as GNU.
+    let resolve = |heap: &mut Heap, interner: &mut SymbolInterner, raw_index: ValueId, extent: usize, names: &[String]| -> Result<Vec<usize>, RSignal> {
+        if raw_index == ValueId::MISSING {
+            return Ok((0..extent).collect());
+        }
+        let evaluated = eval(heap, interner, raw_index, caller_env)?;
+        let evaluated = force_if_promise(heap, interner, evaluated)?;
+        match heap.object(evaluated) {
+            Some(RObject::Integer(values)) => Ok(values
+                .iter()
+                .map(|v| {
+                    if *v == crate::value::object::NA_INTEGER {
+                        usize::MAX
+                    } else if *v < 0 {
+                        // Negative indexes exclude — handled by the caller's
+                        // complement pass exactly as GNU.
+                        (*v) as isize as usize
+                    } else {
+                        (*v - 1) as usize
+                    }
+                })
+                .collect()),
+            Some(RObject::Real(values)) => Ok(values
+                .iter()
+                .map(|v| {
+                    if v.is_nan() {
+                        usize::MAX
+                    } else if *v < 0.0 {
+                        (*v as i32) as isize as usize
+                    } else {
+                        (*v as i32 - 1) as usize
+                    }
+                })
+                .collect()),
+            Some(RObject::Logical(values)) => {
+                let mut positions = Vec::new();
+                for i in 0..extent {
+                    let flag = values[i % values.len().max(1)];
+                    if flag == crate::value::object::NA_INTEGER {
+                        positions.push(usize::MAX);
+                    } else if flag != 0 {
+                        positions.push(i);
+                    }
+                }
+                Ok(positions)
+            }
+            Some(RObject::String(values)) => Ok(values
+                .iter()
+                .map(|v| {
+                    let text = interner.string_text(*v).to_string();
+                    names.iter().position(|n| n == &text).unwrap_or(usize::MAX)
+                })
+                .collect()),
+            _ => Err(EvalError::TypeError("unsupported subscript type").into()),
+        }
+    };
+    // Negative-index complement exactly as GNU: all-negative selections
+    /// invert to their complement over the extent.
+    let complement = |positions: Vec<usize>, extent: usize| -> Vec<usize> {
+        if positions.iter().any(|v| (*v as isize) < 0) {
+            let excluded: std::collections::HashSet<usize> = positions
+                .iter()
+                .filter(|v| (**v as isize) < 0)
+                .map(|v| (-(*v as isize) - 1) as usize)
+                .collect();
+            (0..extent).filter(|i| !excluded.contains(i)).collect()
+        } else {
+            positions
+        }
+    };
+    let rows_raw = resolve(heap, interner, raw[1], nrow, &[])?;
+    let rows = complement(rows_raw, nrow);
+    let cols_raw = resolve(heap, interner, raw[2], ncol, &col_names)?;
+    let cols = complement(cols_raw, ncol);
+    // drop semantics: an explicit third margin argument drop=FALSE keeps
+    /// the frame exactly as GNU.
+    let drop = match raw.get(3) {
+        Some(expr) if *expr != ValueId::MISSING => {
+            let evaluated = eval(heap, interner, *expr, caller_env)?;
+            let evaluated = force_if_promise(heap, interner, evaluated)?;
+            !matches!(heap.object(evaluated), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(1) == 0)
+        }
+        _ => true,
+    };
+    let columns_src: Vec<ValueId> = match heap.object(object) {
+        Some(RObject::List(items)) => items.clone(),
+        _ => Vec::new(),
+    };
+    // Extraction per column: gather the selected rows, NA positions as NA.
+    let mut extract_column = |heap: &mut Heap, source: ValueId, rows: &[usize]| -> ValueId {
+        let na_real = f64::from_bits(crate::value::object::NA_REAL_BITS);
+        match heap.object(source).cloned() {
+            Some(RObject::Real(vals)) => heap.alloc(RObject::Real(
+                rows.iter().map(|r| if *r == usize::MAX || *r >= vals.len() { na_real } else { vals[*r] }).collect(),
+            )),
+            Some(RObject::Integer(vals)) => heap.alloc(RObject::Integer(
+                rows.iter().map(|r| if *r == usize::MAX || *r >= vals.len() { crate::value::object::NA_INTEGER } else { vals[*r] }).collect(),
+            )),
+            Some(RObject::Logical(vals)) => heap.alloc(RObject::Logical(
+                rows.iter().map(|r| if *r == usize::MAX || *r >= vals.len() { crate::value::object::NA_INTEGER } else { vals[*r] }).collect(),
+            )),
+            Some(RObject::String(vals)) => {
+                let na_str = interner_na_string(heap, interner);
+                heap.alloc(RObject::String(
+                    rows.iter().map(|r| if *r == usize::MAX || *r >= vals.len() { na_str } else { vals[*r] }).collect(),
+                ))
+            }
+            _ => heap.alloc(RObject::List(Vec::new())),
+        }
+    };
+    if cols.len() == 1 && drop && cols[0] != usize::MAX && cols[0] < columns_src.len() {
+        // Single surviving column drops to the plain vector exactly as GNU.
+        let source = columns_src[cols[0]];
+        return Ok(extract_column(heap, source, &rows));
+    }
+    let mut columns: Vec<ValueId> = Vec::new();
+    let mut names: Vec<String> = Vec::new();
+    for col in cols.iter() {
+        if *col == usize::MAX || *col >= columns_src.len() {
+            continue;
+        }
+        columns.push(extract_column(heap, columns_src[*col], &rows));
+        names.push(col_names.get(*col).cloned().unwrap_or_default());
+    }
+    let frame = build_data_frame(heap, interner, columns, names)?;
+    // Row names subset along exactly as GNU: the source row names carry
+    /// forward by the selected positions, fresh numbering only when the
+    /// source lacked explicit names.
+    if let Some(source_rn) = get_attrib(heap, interner, object, "row.names") {
+        let source_names = string_vec(heap, interner, source_rn);
+        if !source_names.is_empty() {
+            let selected: Vec<super::intern::InternedStr> = rows
+                .iter()
+                .map(|r| {
+                    let text = if *r == usize::MAX {
+                        "NA".to_string()
+                    } else {
+                        source_names.get(*r).cloned().unwrap_or_else(|| (r + 1).to_string())
+                    };
+                    interner.intern_string(&text)
+                })
+                .collect();
+            let rn_obj = heap.alloc(RObject::String(selected));
+            return copy_with_attrib(heap, interner, frame, "row.names", rn_obj).map_err(RSignal::from);
+        }
+    }
+    Ok(frame)
+}
+
+/// The NA-string sentinel for character extraction — interned once per
+/// use exactly as the object model represents NA_character_.
+fn interner_na_string(heap: &mut Heap, interner: &mut SymbolInterner) -> super::intern::InternedStr {
+    let _ = heap;
+    interner.intern_string("NA")
+}
+
 fn matrix_subset(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
@@ -9043,6 +9223,11 @@ fn matrix_subset(
 ) -> EvalResult {
     let object = eval(heap, interner, raw[0], caller_env)?;
     let object = force_if_promise(heap, interner, object)?;
+    // data.frames carry no dim attribute — their matrix indexing routes
+    /// through the column-list shape exactly as GNU's `[.data.frame`.
+    if data_frame_shape(heap, interner, object).is_some() {
+        return data_frame_matrix_subset(heap, interner, object, raw, caller_env);
+    }
     let dims = match get_attrib(heap, interner, object, "dim") {
         Some(dim) => match heap.object(dim) {
             Some(RObject::Integer(dims)) if dims.len() >= 2 => (dims[0] as usize, dims[1] as usize),
@@ -19820,6 +20005,154 @@ fn repeat_elements(
 /// never selected, type and names of the source preserved exactly. The
 /// conformance goldens only ever check structure (membership, length,
 /// type), so the deterministic order is observationally equivalent.
+/// Build the column-binding environment for a data frame exactly as
+/// with() does — columns bind by name with the caller enclosing.
+fn data_frame_env(heap: &mut Heap, interner: &mut SymbolInterner, data: ValueId, caller_env: ValueId) -> ValueId {
+    let data_env = super::env::new_environment(heap, caller_env);
+    if let Some(RObject::List(items)) = heap.object(data).cloned() {
+        let names = get_attrib(heap, interner, data, "names")
+            .and_then(|n| match heap.object(n) {
+                Some(RObject::String(vals)) => Some(vals.clone()),
+                _ => None,
+            })
+            .unwrap_or_default();
+        for (i, item) in items.iter().enumerate() {
+            if i < names.len() {
+                let col_name = interner.string_text(names[i]).to_string();
+                let sym = interner.intern_symbol(&col_name);
+                let _ = super::env::define(heap, data_env, sym, *item);
+            }
+        }
+    }
+    data_env
+}
+
+/// subset(x, condition) — GNU's data-frame method exactly: the condition
+/// evaluates in the column environment, the frame row-subsets by the
+/// logical result with NA treated as FALSE exactly as `[.data.frame`'s
+/// logical NA handling drops those rows.
+fn subset_df_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    // The condition must not evaluate in the caller — read raw, evaluate
+    /// x only, then the condition inside the column environment.
+    let mut entries: Vec<ValueId> = Vec::new();
+    let mut cursor = args;
+    for _ in 0..1000 {
+        if cursor == ValueId::NIL { break; }
+        let (car, cdr) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, .. }) => (*car, *cdr),
+            _ => break,
+        };
+        entries.push(car);
+        if cdr == ValueId::NIL { break; }
+        cursor = cdr;
+    }
+    if entries.len() < 2 {
+        return Err(EvalError::TypeError("subset requires x and condition").into());
+    }
+    let x_evaluated = eval(heap, interner, entries[0], caller_env)?;
+    let x = force_if_promise(heap, interner, x_evaluated)?;
+    if data_frame_shape(heap, interner, x).is_none() {
+        return Err(EvalError::TypeError("subset requires a data frame").into());
+    }
+    let data_env = data_frame_env(heap, interner, x, caller_env);
+    let cond_evaluated = eval(heap, interner, entries[1], data_env)?;
+    let cond = force_if_promise(heap, interner, cond_evaluated)?;
+    // Logical positions exactly as matrix indexing — NA drops the row in
+    /// subset exactly as GNU's default.
+    let (nrow, _) = data_frame_shape(heap, interner, x).unwrap_or((0, 0));
+    let positions: Vec<i32> = match heap.object(cond) {
+        Some(RObject::Logical(values)) => {
+            let mut out = Vec::new();
+            for i in 0..nrow {
+                let flag = values[i % values.len().max(1)];
+                if flag != 0 && flag != crate::value::object::NA_INTEGER {
+                    out.push((i + 1) as i32);
+                }
+            }
+            out
+        }
+        Some(RObject::Integer(values)) => values.clone(),
+        _ => Vec::new(),
+    };
+    let index_obj = heap.alloc(RObject::Integer(positions));
+    // Compose over the matrix subset machinery — allocated vectors and
+    /// frames self-evaluate exactly as R's self-evaluating objects.
+    data_frame_matrix_subset(heap, interner, x, vec![x, index_obj, ValueId::MISSING], caller_env)
+}
+
+/// transform(x, tag=value, ...) — GNU exactly: each value evaluates in
+/// the column environment, matching names replace their column in place
+/// and new names append exactly as transform.data.frame.
+fn transform_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let mut entries: Vec<(ValueId, ValueId)> = Vec::new();
+    let mut cursor = args;
+    for _ in 0..1000 {
+        if cursor == ValueId::NIL { break; }
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag, .. }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        entries.push((car, tag));
+        if cdr == ValueId::NIL { break; }
+        cursor = cdr;
+    }
+    if entries.is_empty() {
+        return Err(EvalError::TypeError("transform requires a data frame").into());
+    }
+    let x_evaluated = eval(heap, interner, entries[0].0, caller_env)?;
+    let x = force_if_promise(heap, interner, x_evaluated)?;
+    if data_frame_shape(heap, interner, x).is_none() {
+        return Err(EvalError::TypeError("transform requires a data frame").into());
+    }
+    let data_env = data_frame_env(heap, interner, x, caller_env);
+    let mut columns: Vec<ValueId> = match heap.object(x) {
+        Some(RObject::List(items)) => items.clone(),
+        _ => Vec::new(),
+    };
+    let mut names: Vec<String> = get_attrib(heap, interner, x, "names")
+        .map(|id| string_vec(heap, interner, id))
+        .unwrap_or_default();
+    for (expr, tag) in entries.iter().skip(1) {
+        let tag_name = match heap.object(*tag) {
+            Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+            _ => String::new(),
+        };
+        if tag_name.is_empty() {
+            continue;
+        }
+        let value_evaluated = eval(heap, interner, *expr, data_env)?;
+        let value = force_if_promise(heap, interner, value_evaluated)?;
+        // GNU evaluates every expression against the original frame —
+        /// eval(substitute(list(...)), data) — so replacements never
+        /// chain into later expressions.
+        match names.iter().position(|n| n == &tag_name) {
+            Some(position) => {
+                columns[position] = value;
+            }
+            None => {
+                columns.push(value);
+                names.push(tag_name);
+            }
+        }
+    }
+    // Row names carry over unchanged exactly as transform keeps the frame.
+    let frame = build_data_frame(heap, interner, columns, names)?;
+    if let Some(rn) = get_attrib(heap, interner, x, "row.names") {
+        return copy_with_attrib(heap, interner, frame, "row.names", rn).map_err(RSignal::from);
+    }
+    Ok(frame)
+}
+
 /// GNU's weighted sampling exactly as random.c: FixupProb validation and
 /// normalization, then ProbSampleReplace (descending heapsort cumulative
 /// scan) or walker_ProbSampleReplace (alias method beyond 200 dense
