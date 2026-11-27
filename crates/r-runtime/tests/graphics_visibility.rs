@@ -3,7 +3,7 @@
 #![cfg(feature = "renderplot-device")]
 
 use r_graphics_engine::Scene;
-use rmath::host::RSession;
+use r_runtime::host::RSession;
 
 #[test]
 fn graphics_generics_are_invisible_but_explicit_print_null_is_visible() {

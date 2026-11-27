@@ -1,5 +1,5 @@
 use crate::comparisons::*;
-use rmath::nmath::dist::normal::*;
+use r_runtime::nmath::dist::normal::*;
 
 pub fn run_tests() -> Result<(), String> {
     // dnorm tests
@@ -80,12 +80,12 @@ pub fn run_tests() -> Result<(), String> {
     );
 
     // rnorm tests
-    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let mut rng_state = r_runtime::nmath::rng::RngState(42, 24);
     let r1 = rnorm_inner(&mut || rng_state.unif(), 0.0, 1.0);
     if !(r1.is_finite()) {
         return Err("rnorm(0,1) is finite".into());
     }
-    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let mut rng_state = r_runtime::nmath::rng::RngState(42, 24);
     let r2 = rnorm_inner(&mut || rng_state.unif(), 0.0, 1.0);
     assert_equiv(r1, r2, "rnorm reproducible");
     assert_nan(rnorm_inner(&mut || rng_state.unif(), f64::NAN, 1.0), "rnorm(NaN,1)");

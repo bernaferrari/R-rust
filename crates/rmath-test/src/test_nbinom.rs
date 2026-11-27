@@ -1,8 +1,8 @@
 use crate::comparisons::*;
-use rmath::nmath::dist::nbinom::*;
+use r_runtime::nmath::dist::nbinom::*;
 
 pub fn run_tests() -> Result<(), String> {
-    let mut ms_state = rmath::nmath::state::MathState::default();
+    let mut ms_state = r_runtime::nmath::state::MathState::default();
     // dnbinom tests
     assert_nan(
         dnbinom_inner(f64::NAN, 1.0, 0.5, false),
@@ -97,12 +97,12 @@ pub fn run_tests() -> Result<(), String> {
     }
 
     // rnbinom tests
-    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let mut rng_state = r_runtime::nmath::rng::RngState(42, 24);
     let r1 = rnbinom_inner(&mut || rng_state.unif(), &mut ms_state, 3.0, 0.5);
     if r1 < 0.0 {
         return Err(format!("rnbinom(3,0.5) = {}, expected >= 0", r1));
     }
-    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let mut rng_state = r_runtime::nmath::rng::RngState(42, 24);
     let r2 = rnbinom_inner(&mut || rng_state.unif(), &mut ms_state, 3.0, 0.5);
     assert_equiv(r1, r2, "rnbinom reproducible");
     assert_nan(rnbinom_inner(&mut || rng_state.unif(), &mut ms_state, f64::NAN, 0.5), "rnbinom(NaN,0.5)");

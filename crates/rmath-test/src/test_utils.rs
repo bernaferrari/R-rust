@@ -1,9 +1,9 @@
 use crate::comparisons::*;
 
 // Import Rust functions directly from rmath crate
-use rmath::nmath::special::cospi::*;
-use rmath::nmath::special::mlutils::*;
-use rmath::nmath::utils::*;
+use r_runtime::nmath::special::cospi::*;
+use r_runtime::nmath::special::mlutils::*;
+use r_runtime::nmath::utils::*;
 
 pub fn run_tests() -> Result<(), String> {
     let mut _errors = Vec::<String>::new();

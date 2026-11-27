@@ -1,7 +1,7 @@
 // The translated runtime is crate-private; embedding uses owned values.
 //~ ERROR: module `sexp` is private
 // A Clone handle roots its allocation automatically across collection.
-use rmath::sexp::{RSession, SEXPTYPE};
+use r_runtime::sexp::{RSession, SEXPTYPE};
 
 fn main() {
     let session = RSession::new();

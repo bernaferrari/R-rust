@@ -16,7 +16,7 @@ pub fn run_tests() -> Result<(), String> {
     // --- R level: dispatch wiring (nc > 200 -> walker, else plain path) ---
     // Values must match stock R exactly (see doc comment); n = 200/201 is
     // the dispatch boundary in random.c do_sample.
-    let mut session = rmath::host::pure_session::PureSession::new();
+    let mut session = r_runtime::host::pure_session::PureSession::new();
     session.enable_host_process_capabilities();
     let cases: &[(&str, &str)] = &[
         (

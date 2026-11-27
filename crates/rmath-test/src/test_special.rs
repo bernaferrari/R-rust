@@ -1,7 +1,7 @@
 use crate::comparisons::*;
-use rmath::nmath::fprec::{fprec, fround};
-use rmath::nmath::special::choose::{choose, lchoose};
-use rmath::nmath::special::lbeta::lbeta;
+use r_runtime::nmath::fprec::{fprec, fround};
+use r_runtime::nmath::special::choose::{choose, lchoose};
+use r_runtime::nmath::special::lbeta::lbeta;
 
 pub fn run_tests() -> Result<(), String> {
     // choose tests
@@ -40,7 +40,7 @@ pub fn run_tests() -> Result<(), String> {
     }
 
     // digamma/trigamma (dpsifn); goldens match stock R / Abramowitz & Stegun
-    use rmath::nmath::special::polygamma::{digamma, psigamma, trigamma};
+    use r_runtime::nmath::special::polygamma::{digamma, psigamma, trigamma};
     assert_nan(digamma(f64::NAN), "digamma(NaN)");
     assert_nan(trigamma(f64::NAN), "trigamma(NaN)");
     // digamma(1) = -Euler's constant
@@ -114,10 +114,10 @@ pub fn run_tests() -> Result<(), String> {
     }
 
     // Bessel function tests
-    use rmath::nmath::special::bessel_i::bessel_i;
-    use rmath::nmath::special::bessel_j::bessel_j;
-    use rmath::nmath::special::bessel_k::bessel_k;
-    use rmath::nmath::special::bessel_y::bessel_y;
+    use r_runtime::nmath::special::bessel_i::bessel_i;
+    use r_runtime::nmath::special::bessel_j::bessel_j;
+    use r_runtime::nmath::special::bessel_k::bessel_k;
+    use r_runtime::nmath::special::bessel_y::bessel_y;
 
     // J_0(0) = 1
     let j0_0 = bessel_j(0.0, 0.0);
@@ -500,7 +500,7 @@ pub fn run_tests() -> Result<(), String> {
     }
 
     // TOMS 708 bratio tests (incomplete beta function)
-    use rmath::nmath::special::toms708::bratio;
+    use r_runtime::nmath::special::toms708::bratio;
 
     // I_{0.5}(0.5, 0.5) = 0.5 (symmetric case)
     let (w, w1, ierr) = bratio(0.5, 0.5, 0.5, 0.5, false);

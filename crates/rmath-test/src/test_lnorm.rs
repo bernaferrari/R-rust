@@ -1,6 +1,6 @@
 use crate::comparisons::*;
-use rmath::nmath::dist::lnorm::*;
-use rmath::nmath::rng::*;
+use r_runtime::nmath::dist::lnorm::*;
+use r_runtime::nmath::rng::*;
 
 pub fn run_tests() -> Result<(), String> {
     // dlnorm tests
@@ -60,12 +60,12 @@ pub fn run_tests() -> Result<(), String> {
     assert_posinf(qlnorm_inner(1.0, 0.0, 1.0, true, false), "qlnorm(1)");
 
     // rlnorm tests
-    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let mut rng_state = r_runtime::nmath::rng::RngState(42, 24);
     let r1 = rlnorm_inner(&mut || rng_state.unif(), 0.0, 1.0);
     if r1 < 0.0 {
         return Err("rlnorm(0,1) >= 0".into());
     }
-    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let mut rng_state = r_runtime::nmath::rng::RngState(42, 24);
     let r2 = rlnorm_inner(&mut || rng_state.unif(), 0.0, 1.0);
     assert_equiv(r1, r2, "rlnorm reproducible");
     assert_nan(rlnorm_inner(&mut || rng_state.unif(), f64::NAN, 1.0), "rlnorm(NaN,1)");

@@ -1684,7 +1684,7 @@ dependencies = [
  "r-device-android-headless",
  "r-device-vello-gpu",
  "r-graphics-engine",
- "rmath",
+ "r-runtime",
  "tempfile",
  "thiserror 2.0.20",
 ]
@@ -1714,6 +1714,35 @@ name = "r-math"
 version = "0.1.0"
 dependencies = [
  "libm",
+]
+
+[[package]]
+name = "r-runtime"
+version = "0.1.0"
+dependencies = [
+ "allocator-api2",
+ "bzip2",
+ "faer",
+ "fancy-regex",
+ "flate2",
+ "getrandom",
+ "hashbrown 0.17.1",
+ "js-sys",
+ "libc",
+ "libm",
+ "lzma-rust2",
+ "md-5",
+ "num",
+ "r-base",
+ "r-core",
+ "r-device-android-headless",
+ "r-graphics-engine",
+ "r-math",
+ "regex-syntax",
+ "serde",
+ "serde_json",
+ "sha2",
+ "web-time",
 ]
 
 [[package]]
@@ -1821,40 +1850,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
-name = "rmath"
-version = "0.1.0"
-dependencies = [
- "allocator-api2",
- "bzip2",
- "faer",
- "fancy-regex",
- "flate2",
- "getrandom",
- "hashbrown 0.17.1",
- "js-sys",
- "libc",
- "libm",
- "lzma-rust2",
- "md-5",
- "num",
- "r-base",
- "r-core",
- "r-device-android-headless",
- "r-graphics-engine",
- "r-math",
- "regex-syntax",
- "serde",
- "serde_json",
- "sha2",
- "web-time",
-]
-
-[[package]]
 name = "rmath-test"
 version = "0.1.0"
 dependencies = [
  "libm",
- "rmath",
+ "r-runtime",
 ]
 
 [[package]]

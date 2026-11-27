@@ -1,4 +1,4 @@
-use rmath::host::{RSession, RValue};
+use r_runtime::host::{RSession, RValue};
 #[test]
 fn for_loop_sum_survives_per_iteration_gc() {
     let mut session = RSession::new().unwrap();

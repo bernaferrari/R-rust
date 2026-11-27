@@ -13,8 +13,8 @@
 //!
 //! Expected: error[E0597] — `session_a` does not live long enough.
 
-use rmath::sexp::session::RSession;
-use rmath::sexp::SEXPTYPE;
+use r_runtime::sexp::session::RSession;
+use r_runtime::sexp::SEXPTYPE;
 
 pub fn forbidden() {
     let session_b = RSession::new();

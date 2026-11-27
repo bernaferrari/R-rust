@@ -9,9 +9,9 @@
 //!
 //! Expected: error[E0624] — `from_owned` is private.
 
-use rmath::sexp::memory::RArena;
-use rmath::sexp::object::SexpMut;
-use rmath::sexp::SEXPTYPE;
+use r_runtime::sexp::memory::RArena;
+use r_runtime::sexp::object::SexpMut;
+use r_runtime::sexp::SEXPTYPE;
 
 pub fn forbidden() {
     let mut arena = RArena::new();

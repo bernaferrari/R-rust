@@ -14,8 +14,8 @@
 //! Expected: error[E0204] — `Copy` requires all fields to be `Copy`
 //! (`Sexp` is not); error[E0382] — the moved handle is gone.
 
-use rmath::sexp::memory::RArena;
-use rmath::sexp::{Sexp, SEXPTYPE};
+use r_runtime::sexp::memory::RArena;
+use r_runtime::sexp::{Sexp, SEXPTYPE};
 
 /// Deriving `Copy` on a local wrapper around `Sexp` is rejected: every
 /// field of a `Copy` struct must itself be `Copy`, and `Sexp` is not.

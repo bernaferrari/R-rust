@@ -2,7 +2,7 @@ use r_graphics_engine::Scene;
 
 #[test]
 fn failed_plot_new_preserves_mfrow_index_and_session_for_recovery() {
-    let mut session = rmath::host::RSession::new().unwrap();
+    let mut session = r_runtime::host::RSession::new().unwrap();
     let mut scene = Scene::new(640, 480);
 
     let failed = session.eval_script_with_renderplot_backend(
@@ -19,7 +19,7 @@ emit("failed")
         &mut scene,
     );
     assert!(
-        !matches!(failed.typed, rmath::host::RValue::Error(_)),
+        !matches!(failed.typed, r_runtime::host::RValue::Error(_)),
         "{}",
         failed.output
     );
@@ -41,7 +41,7 @@ cat("wrapped|", paste(par("mfg"), collapse=","),
         &mut scene,
     );
     assert!(
-        !matches!(recovered.typed, rmath::host::RValue::Error(_)),
+        !matches!(recovered.typed, r_runtime::host::RValue::Error(_)),
         "{}",
         recovered.output
     );
@@ -57,8 +57,8 @@ cat("wrapped|", paste(par("mfg"), collapse=","),
 
 #[test]
 fn failed_first_plot_keeps_fresh_device_state_and_other_session_isolated() {
-    let mut failed_session = rmath::host::RSession::new().unwrap();
-    let mut other_session = rmath::host::RSession::new().unwrap();
+    let mut failed_session = r_runtime::host::RSession::new().unwrap();
+    let mut other_session = r_runtime::host::RSession::new().unwrap();
     let mut failed_scene = Scene::new(640, 480);
     let mut other_scene = Scene::new(640, 480);
 
@@ -75,7 +75,7 @@ emit("failed")
         &mut failed_scene,
     );
     assert!(
-        !matches!(failed.typed, rmath::host::RValue::Error(_)),
+        !matches!(failed.typed, r_runtime::host::RValue::Error(_)),
         "{}",
         failed.output
     );
@@ -93,7 +93,7 @@ cat("other|", paste(par("mfg"), collapse=","),
         &mut other_scene,
     );
     assert!(
-        !matches!(other.typed, rmath::host::RValue::Error(_)),
+        !matches!(other.typed, r_runtime::host::RValue::Error(_)),
         "{}",
         other.output
     );
@@ -117,7 +117,7 @@ cat("wrapped|", paste(par("mfg"), collapse=","),
         &mut failed_scene,
     );
     assert!(
-        !matches!(recovered.typed, rmath::host::RValue::Error(_)),
+        !matches!(recovered.typed, r_runtime::host::RValue::Error(_)),
         "{}",
         recovered.output
     );

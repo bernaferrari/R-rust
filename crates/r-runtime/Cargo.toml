@@ -1,5 +1,5 @@
 [package]
-name = "rmath"
+name = "r-runtime"
 version = "0.1.0"
 edition = "2024"
 license.workspace = true
@@ -8,7 +8,7 @@ description = "Rust port of R's core runtime (parser, evaluator, SEXP object mod
 
 [lib]
 crate-type = ["rlib"]
-name = "rmath"
+name = "r_runtime"
 
 [features]
 browser-analysis-tools = []

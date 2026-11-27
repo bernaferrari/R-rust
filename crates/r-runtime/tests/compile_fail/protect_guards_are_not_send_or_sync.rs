@@ -1,7 +1,7 @@
 // The translated runtime is crate-private; embedding uses owned values.
 //~ ERROR: module `sexp` is private
 // Automatic handles and their owning runtime remain thread-confined.
-use rmath::sexp::{RSession, Sexp};
+use r_runtime::sexp::{RSession, Sexp};
 
 fn require_send<T: Send>() {}
 fn require_sync<T: Sync>() {}

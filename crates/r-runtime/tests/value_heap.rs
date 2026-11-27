@@ -2,9 +2,9 @@
 //! generational safety, rooting, collection, cycles, finalizers, weakrefs,
 //! and ALTREP providers.
 
-use rmath::value::gc::{collect, RootSet};
-use rmath::value::object::RObject;
-use rmath::value::{Heap, RootStack, RootTable, ValueId};
+use r_runtime::value::gc::{collect, RootSet};
+use r_runtime::value::object::RObject;
+use r_runtime::value::{Heap, RootStack, RootTable, ValueId};
 
 fn empty_fixture() -> (RootStack, RootTable, Vec<ValueId>) {
     (RootStack::new(), RootTable::new(), Vec::new())
@@ -118,7 +118,7 @@ fn weakref_live_key_keeps_value_strong() {
 
 #[test]
 fn altrep_provider_edges_are_traced() {
-    use rmath::value::object::AltrepProvider;
+    use r_runtime::value::object::AltrepProvider;
 
     #[derive(Debug)]
     struct LazySeq {
@@ -163,7 +163,7 @@ fn altrep_provider_edges_are_traced() {
 #[test]
 fn environment_frames_trace_bindings_and_enclosure() {
     let mut heap = Heap::new();
-    let mut interner = rmath::value::SymbolInterner::new();
+    let mut interner = r_runtime::value::SymbolInterner::new();
     let sym = interner.intern_symbol("x");
     heap.interner = interner;
     let bound = heap.alloc(RObject::Real(vec![3.0]));

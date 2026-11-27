@@ -6,9 +6,9 @@
 #![cfg(feature = "renderplot-device")]
 
 use r_graphics_engine::{DrawTarget, Scene};
-use rmath::host::{RSession, RValue};
+use r_runtime::host::{RSession, RValue};
 
-fn assert_ok(result: &rmath::host::RResult) {
+fn assert_ok(result: &r_runtime::host::RResult) {
     assert!(
         !matches!(result.typed, RValue::Error(_)),
         "{}",

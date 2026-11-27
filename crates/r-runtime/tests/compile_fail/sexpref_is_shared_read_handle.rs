@@ -9,9 +9,9 @@
 //! `freeze()`. The compile-fail harness compiles this file as a binary and
 //! runs it; process exit status 0 is the pass condition.
 
-use rmath::sexp::SEXPTYPE;
-use rmath::sexp::SexpRef;
-use rmath::sexp::memory::RArena;
+use r_runtime::sexp::SEXPTYPE;
+use r_runtime::sexp::SexpRef;
+use r_runtime::sexp::memory::RArena;
 
 fn main() {
     let mut arena = RArena::new();

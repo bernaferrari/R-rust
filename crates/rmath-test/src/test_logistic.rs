@@ -1,6 +1,6 @@
 use crate::comparisons::*;
-use rmath::nmath::dist::logistic::*;
-use rmath::nmath::rng::*;
+use r_runtime::nmath::dist::logistic::*;
+use r_runtime::nmath::rng::*;
 
 pub fn run_tests() -> Result<(), String> {
     // dlogis tests
@@ -40,12 +40,12 @@ pub fn run_tests() -> Result<(), String> {
     assert_nan(qlogis_inner(-1.0, 0.0, 1.0, true, false), "qlogis(-1)");
 
     // rlogis tests
-    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let mut rng_state = r_runtime::nmath::rng::RngState(42, 24);
     let r1 = rlogis_inner(&mut || rng_state.unif(), 0.0, 1.0);
     if !(r1.is_finite()) {
         return Err("rlogis(0,1) is finite".into());
     }
-    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let mut rng_state = r_runtime::nmath::rng::RngState(42, 24);
     let r2 = rlogis_inner(&mut || rng_state.unif(), 0.0, 1.0);
     assert_equiv(r1, r2, "rlogis reproducible");
     assert_nan(rlogis_inner(&mut || rng_state.unif(), f64::NAN, 1.0), "rlogis(NaN,1)");

@@ -10,8 +10,8 @@
 //! original handle. The compile-fail harness compiles this file as a
 //! binary and runs it; process exit status 0 is the pass condition.
 
-use rmath::sexp::memory::RArena;
-use rmath::sexp::SEXPTYPE;
+use r_runtime::sexp::memory::RArena;
+use r_runtime::sexp::SEXPTYPE;
 
 fn main() {
     let mut arena = RArena::new();

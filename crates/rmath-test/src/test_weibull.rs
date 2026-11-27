@@ -1,6 +1,6 @@
 use crate::comparisons::*;
-use rmath::nmath::dist::weibull::*;
-use rmath::nmath::rng::*;
+use r_runtime::nmath::dist::weibull::*;
+use r_runtime::nmath::rng::*;
 
 pub fn run_tests() -> Result<(), String> {
     // dweibull tests
@@ -86,15 +86,15 @@ pub fn run_tests() -> Result<(), String> {
     );
 
     // rweibull tests
-    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let mut rng_state = r_runtime::nmath::rng::RngState(42, 24);
     let r1 = rweibull_inner(&mut || rng_state.unif(), 1.0, 1.0);
     if r1 < 0.0 {
         return Err("rweibull(1,1) >= 0".into());
     }
-    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let mut rng_state = r_runtime::nmath::rng::RngState(42, 24);
     let r2 = rweibull_inner(&mut || rng_state.unif(), 1.0, 1.0);
     assert_equiv(r1, r2, "rweibull reproducible");
-    let mut rng_state = rmath::nmath::rng::RngState(1234, 5678);
+    let mut rng_state = r_runtime::nmath::rng::RngState(1234, 5678);
     let shape_zero = rweibull_inner(&mut || rng_state.unif(), 0.0, 1.0);
     assert_posinf(shape_zero, "rweibull(0,1)");
     assert_nan(rweibull_inner(&mut || rng_state.unif(), -1.0, 1.0), "rweibull(-1,1)");

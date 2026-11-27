@@ -1,7 +1,7 @@
 // The translated runtime is crate-private; embedding uses owned values.
 //~ ERROR: module `sexp` is private
-use rmath::sexp::memory::RArena;
-use rmath::sexp::SEXPTYPE;
+use r_runtime::sexp::memory::RArena;
+use r_runtime::sexp::SEXPTYPE;
 
 pub fn forbidden() {
     let mut arena = RArena::new();

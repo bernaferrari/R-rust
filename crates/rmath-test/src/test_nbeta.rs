@@ -1,5 +1,5 @@
 use crate::comparisons::*;
-use rmath::nmath::dist::nbeta::*;
+use r_runtime::nmath::dist::nbeta::*;
 
 pub fn run_tests() -> Result<(), String> {
     // dnbeta tests

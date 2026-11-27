@@ -1,5 +1,5 @@
 use crate::comparisons::*;
-use rmath::nmath::dist::tukey::*;
+use r_runtime::nmath::dist::tukey::*;
 
 pub fn run_tests() -> Result<(), String> {
     // ptukey tests

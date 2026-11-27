@@ -1,5 +1,5 @@
 use r_embed::{RSession, RuntimePathPolicy};
-use rmath::host::RValue;
+use r_runtime::host::RValue;
 
 fn capture_example(session: &mut RSession, topic: &str, package: &str) -> Vec<Option<String>> {
     let code = format!("capture.output(example({topic:?}, package={package:?}, echo=TRUE))");

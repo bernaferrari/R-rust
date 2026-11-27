@@ -15,19 +15,19 @@
 //! # Ok::<(), r_embed::RSessionError>(())
 //! ```
 
-// The canonical public session lives in rmath::host exactly as the
+// The canonical public session lives in r_runtime::host exactly as the
 // pure-Rust foundation plan pins — one core session, one public host
 // session. This crate is the stable re-export boundary embedders depend on.
-pub use rmath::host::{
+pub use r_runtime::host::{
     AndroidRuntimePaths, EvalOutput, HostCancellationToken as CancellationToken, RArenaStats,
     RAttribute, RComplexValue, RMetadata, RPackageInfo, RResourceLimits, RRuntimeInfo,
     RSessionError, RValue, RuntimePaths,
 };
-pub use rmath::host::pure_session::{
+pub use r_runtime::host::pure_session::{
     PureResourceLimits, PureRuntimeInfo, PureSession,
 };
-pub use rmath::host::InteractiveOutput;
-pub use rmath::{MAX_BROWSER_FILE_BYTES, MAX_BROWSER_FILE_PATH_BYTES};
+pub use r_runtime::host::InteractiveOutput;
+pub use r_runtime::{MAX_BROWSER_FILE_BYTES, MAX_BROWSER_FILE_PATH_BYTES};
 
 #[cfg(feature = "vello-gpu")]
 pub use r_device_vello_gpu::{GpuError, GpuRenderer};

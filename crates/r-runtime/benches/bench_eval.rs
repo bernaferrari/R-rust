@@ -1,4 +1,4 @@
-use rmath::host::{RSession, RValue};
+use r_runtime::host::{RSession, RValue};
 use std::{hint::black_box, time::Instant};
 fn main() {
     let iterations = std::env::var("RMATH_BENCH_ITERS")

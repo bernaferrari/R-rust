@@ -1,8 +1,8 @@
 use crate::comparisons::*;
-use rmath::nmath::dist::wilcox::*;
+use r_runtime::nmath::dist::wilcox::*;
 
 pub fn run_tests() -> Result<(), String> {
-    let mut ms_state = rmath::nmath::state::MathState::default();
+    let mut ms_state = r_runtime::nmath::state::MathState::default();
     // dwilcox tests
     assert_nan(dwilcox_inner(&mut ms_state, f64::NAN, 5.0, 5.0, false), "dwilcox(&mut ms_state, NaN,5,5)");
     assert_nan(dwilcox_inner(&mut ms_state, 0.0, f64::NAN, 5.0, false), "dwilcox(&mut ms_state, 0,NaN,5)");
@@ -57,12 +57,12 @@ pub fn run_tests() -> Result<(), String> {
     );
 
     // rwilcox tests
-    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let mut rng_state = r_runtime::nmath::rng::RngState(42, 24);
     let r1 = rwilcox_inner(&mut || rng_state.unif(), 5.0, 5.0);
     if r1 < 0.0 {
         return Err(format!("rwilcox(5,5) = {}, expected >= 0", r1));
     }
-    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let mut rng_state = r_runtime::nmath::rng::RngState(42, 24);
     let r2 = rwilcox_inner(&mut || rng_state.unif(), 5.0, 5.0);
     assert_equiv(r1, r2, "rwilcox reproducible");
     assert_nan(rwilcox_inner(&mut || rng_state.unif(), f64::NAN, 5.0), "rwilcox(NaN,5)");

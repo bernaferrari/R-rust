@@ -10,7 +10,7 @@
 //! job's budget. The full-corpus torture differential (native, fast)
 //! lives in scripts/gc_torture_stress.sh.
 
-use rmath::host::{RSession, RValue};
+use r_runtime::host::{RSession, RValue};
 
 fn eval_script(session: &mut RSession, code: &str) -> String {
     let result = session.eval_engine(code);

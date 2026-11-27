@@ -1,7 +1,7 @@
 use crate::comparisons::*;
 
-use rmath::nmath::dist::exponential::*;
-use rmath::nmath::rng::*;
+use r_runtime::nmath::dist::exponential::*;
+use r_runtime::nmath::rng::*;
 
 pub fn run_tests() -> Result<(), String> {
     // dexp tests
@@ -70,19 +70,19 @@ pub fn run_tests() -> Result<(), String> {
     assert_nan(qexp_inner(0.5, -1.0, true, false), "qexp(0.5,-1,...)");
 
     // rexp tests
-    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let mut rng_state = r_runtime::nmath::rng::RngState(42, 24);
     let r1 = rexp_inner(&mut || rng_state.unif(), 1.0);
     assert!(r1 > 0.0, "rexp(1) > 0");
 
     // Reproducibility
-    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let mut rng_state = r_runtime::nmath::rng::RngState(42, 24);
     let r2 = rexp_inner(&mut || rng_state.unif(), 1.0);
     assert_equiv(r1, r2, "rexp reproducible");
 
     // rexp with scale != 1
-    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let mut rng_state = r_runtime::nmath::rng::RngState(42, 24);
     let r3 = rexp_inner(&mut || rng_state.unif(), 2.0);
-    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let mut rng_state = r_runtime::nmath::rng::RngState(42, 24);
     let er1 = exp_rand(&mut || rng_state.unif(), );
     assert_equiv(r3, 2.0 * er1, "rexp(2) = 2*exp_rand(&mut || rng_state.unif(), )");
 

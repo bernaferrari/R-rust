@@ -12,9 +12,9 @@
 //! in-module golden tests (e.g. optim.rs `bfgs_restarts_...`); it is NOT
 //! re-asserted here.
 
-use rmath::appl::linpack_qr::{dqrdc2, dqrsl};
-use rmath::appl::optim::{OptimFn, OptimGr, vmmin};
-use rmath::nmath::dist::beta::{dbeta_inner, pbeta_inner, qbeta_inner};
+use r_runtime::appl::linpack_qr::{dqrdc2, dqrsl};
+use r_runtime::appl::optim::{OptimFn, OptimGr, vmmin};
+use r_runtime::nmath::dist::beta::{dbeta_inner, pbeta_inner, qbeta_inner};
 
 // ===========================================================================
 // qbeta / pbeta / dbeta: tail behavior, d/p/q identity, extremes, endpoints
