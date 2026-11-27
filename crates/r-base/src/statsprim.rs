@@ -4,6 +4,7 @@
 //! from the flat registry as the second domain module.
 
 use crate::primitives::*;
+use r_core::prim::*;
 use crate::primitives::primitive_ids::*;
 use r_core::attrib::{get_attrib, string_vec};
 use r_core::eval::{eval, force_if_promise, EvalError, EvalResult, RSignal};
