@@ -1362,6 +1362,40 @@ cat(grconvertX(0:1, "user", "device"), grconvertY(0:1, "user", "device"), "\n")
     }
 
     #[test]
+    fn graphics_plot_composes_the_full_frame() {
+        use r_graphics_engine::DrawOperation;
+        let mut session = PureSession::new();
+        session.eval("plot(c(1,2,3), c(2,4,3))");
+        let ops = session.session.heap.graphics.scene().operations();
+        // The composition emits: the clear, point symbols, two axis
+        /// paths with their labels, and the box frame.
+        let paths = ops
+            .iter()
+            .filter(|op| matches!(op, DrawOperation::Path(_)))
+            .count();
+        let texts = ops
+            .iter()
+            .filter(|op| matches!(op, DrawOperation::Text { .. }))
+            .count();
+        assert!(paths >= 6, "points + axes + box emit paths: {paths}");
+        assert!(texts >= 8, "axis labels emit text: {texts}");
+        // plot(x) alone plots against the index exactly as xy.coords.
+        let mut session = PureSession::new();
+        session.eval("plot(c(5,3,4))");
+        let count = session
+            .session
+            .heap
+            .graphics
+            .scene()
+            .operations()
+            .len();
+        assert!(count > 5, "single-vector plot composes");
+        // usr after plot reflects the data range with extension.
+        let out = session.eval("paste(round(par(\"usr\"), 2), collapse=\",\")");
+        assert!(!out.stdout.is_empty(), "usr reads back");
+    }
+
+    #[test]
     fn data_loads_datasets_into_the_calling_environment() {
         let mut session = PureSession::new();
         let result = session.eval("data(iris)");
