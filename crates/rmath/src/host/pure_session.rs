@@ -1450,6 +1450,63 @@ cat(grconvertX(0:1, "user", "device"), grconvertY(0:1, "user", "device"), "\n")
     }
 
     #[test]
+    fn graphics_lwd_lty_cascade_into_strokes() {
+        use r_graphics_engine::DrawOperation;
+        // par(lwd) scales stroke width exactly.
+        let mut session = PureSession::new();
+        session.eval("plot.new(); plot.window(c(0,1), c(0,1)); par(lwd=3); lines(c(0,1), c(0,1))");
+        let width = session
+            .session
+            .heap
+            .graphics
+            .scene()
+            .operations()
+            .iter()
+            .filter_map(|op| match op {
+                DrawOperation::Path(path) => Some(path.stroke.width),
+                _ => None,
+            })
+            .last()
+            .unwrap();
+        assert_eq!(width, 3.0, "lwd scales the stroke width");
+        // par(lty='dashed') produces the 4,4 dash in width units.
+        let mut session = PureSession::new();
+        session.eval(
+            "plot.new(); plot.window(c(0,1), c(0,1)); par(lty='dashed'); lines(c(0,1), c(0,1))",
+        );
+        let dashed = session
+            .session
+            .heap
+            .graphics
+            .scene()
+            .operations()
+            .iter()
+            .filter_map(|op| match op {
+                DrawOperation::Path(path) => path.stroke.dash_pattern.clone(),
+                _ => None,
+            })
+            .last()
+            .expect("dashed stroke carries a dash pattern");
+        assert_eq!(dashed.intervals, vec![4.0, 4.0], "GNU dashed intervals");
+        // solid is the default — no dash pattern.
+        let mut session = PureSession::new();
+        session.eval("plot.new(); plot.window(c(0,1), c(0,1)); lines(c(0,1), c(0,1))");
+        let solid = session
+            .session
+            .heap
+            .graphics
+            .scene()
+            .operations()
+            .iter()
+            .filter_map(|op| match op {
+                DrawOperation::Path(path) => Some(path.stroke.dash_pattern.is_none()),
+                _ => None,
+            })
+            .all(|none| none);
+        assert!(solid, "default strokes carry no dash pattern");
+    }
+
+    #[test]
     fn data_loads_datasets_into_the_calling_environment() {
         let mut session = PureSession::new();
         let result = session.eval("data(iris)");

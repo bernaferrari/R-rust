@@ -14994,7 +14994,7 @@ fn lines_primitive(
     if !commands.is_empty() {
         let path = Path {
             commands,
-            stroke: Stroke::new(1.0, color),
+            stroke: par_stroke(heap, color),
             anti_alias: true,
             ..Default::default()
         };
@@ -15074,6 +15074,54 @@ fn eval_matched_args(
 /// Resolve one R color exactly as GNU's portable reach: palette
 /// indices (1-based), the common names, hex literals, transparent.
 /// NA and unknown colors yield None exactly as col2rgb's NA.
+/// Build the stroke GNU's lwd/lty cascade specifies exactly: lwd
+/// scales the base width, lty maps both its numeric and string forms
+/// onto GNU's dash intervals in units of the width — dashed 4,4,
+/// dotted 1,3, dotdash 1,3,4,4, longdash 7,3, twodash 2,2,6,2,
+/// blank suppressing stroke through transparency.
+fn par_stroke(heap: &Heap, color: r_graphics_engine::Color) -> r_graphics_engine::Stroke {
+    use r_graphics_engine::{Color, DashPattern, Stroke};
+    const TRANSPARENT: Color = Color { r: 0, g: 0, b: 0, a: 0 };
+    let lwd = match heap.graphics.query("lwd") {
+        Some(crate::value::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0] as f32,
+        Some(crate::value::graphics::layout::ParValue::Integer(v)) if v.len() == 1 => v[0] as f32,
+        _ => 1.0,
+    };
+    let width = lwd.max(0.0);
+    let lty_name = match heap.graphics.query("lty") {
+        Some(crate::value::graphics::layout::ParValue::String(text)) => text,
+        Some(crate::value::graphics::layout::ParValue::Integer(v)) if !v.is_empty() => {
+            match v[0] {
+                0 => "blank".to_string(),
+                2 => "dashed".to_string(),
+                3 => "dotted".to_string(),
+                4 => "dotdash".to_string(),
+                5 => "longdash".to_string(),
+                6 => "twodash".to_string(),
+                _ => "solid".to_string(),
+            }
+        }
+        _ => "solid".to_string(),
+    };
+    let intervals: Option<Vec<f32>> = match lty_name.as_str() {
+        "dashed" => Some(vec![4.0 * width, 4.0 * width]),
+        "dotted" => Some(vec![width, 3.0 * width]),
+        "dotdash" => Some(vec![width, 3.0 * width, 4.0 * width, 4.0 * width]),
+        "longdash" => Some(vec![7.0 * width, 3.0 * width]),
+        "twodash" => Some(vec![2.0 * width, 2.0 * width, 6.0 * width, 2.0 * width]),
+        "blank" => None,
+        _ => None,
+    };
+    let color = if lty_name == "blank" { TRANSPARENT } else { color };
+    let mut stroke = Stroke::new(width.max(0.5), color);
+    if lty_name != "solid" && lty_name != "blank" {
+        if let Some(iv) = intervals {
+            stroke.dash_pattern = Some(DashPattern { intervals: iv, offset: 0.0 });
+        }
+    }
+    stroke
+}
+
 fn resolve_rcolor(
     heap: &Heap,
     interner: &SymbolInterner,
@@ -15202,7 +15250,7 @@ fn rect_primitive(
         };
         let path = Path {
             fill,
-            stroke: Stroke::new(1.0, border),
+            stroke: par_stroke(heap, border),
             anti_alias: true,
             ..Path::rect(x, y, w, h)
         };
@@ -15277,7 +15325,7 @@ fn points_primitive(
                         PathCommand::MoveTo(dx, dy - r),
                         PathCommand::LineTo(dx, dy + r),
                     ],
-                    stroke: Stroke::new(1.0, color),
+                    stroke: par_stroke(heap, color),
                     anti_alias: true,
                     ..Default::default()
                 }
@@ -15646,9 +15694,10 @@ fn axis_primitive(
         PathCommand::LineTo(ax1, ay1),
     ];
     line_commands.extend(commands);
+    let parstroke_4 = par_stroke(heap, Color::BLACK);
     heap.graphics.scene_mut().push(DrawOperation::Path(Path {
         commands: line_commands,
-        stroke: Stroke::new(1.0, Color::BLACK),
+        stroke: parstroke_4,
         anti_alias: true,
         ..Default::default()
     }));
@@ -15687,8 +15736,9 @@ fn box_primitive(
     let y = plot[1] as f32;
     let w = (plot[2] - plot[0]) as f32;
     let h = (plot[3] - plot[1]) as f32;
+    let parstroke_3 = par_stroke(heap, Color::BLACK);
     heap.graphics.scene_mut().push(DrawOperation::Path(Path {
-        stroke: Stroke::new(1.0, Color::BLACK),
+        stroke: parstroke_3,
         anti_alias: true,
         ..Path::rect(x, y, w, h)
     }));
@@ -15801,12 +15851,13 @@ fn segments_primitive(
         let col = slots[4]
             .and_then(|v| resolve_rcolor(heap, interner, v, i))
             .unwrap_or(Color::BLACK);
+        let parstroke_2 = par_stroke(heap, col);
         heap.graphics.scene_mut().push(DrawOperation::Path(Path {
             commands: vec![
                 PathCommand::MoveTo(dx0, dy0),
                 PathCommand::LineTo(dx1, dy1),
             ],
-            stroke: Stroke::new(1.0, col),
+            stroke: parstroke_2,
             anti_alias: true,
             ..Default::default()
         }));
@@ -15867,12 +15918,13 @@ fn abline_primitive(
         let col = slots[4]
             .and_then(|v| resolve_rcolor(heap, interner, v, i))
             .unwrap_or(Color::BLACK);
+        let parstroke_1 = par_stroke(heap, col);
         heap.graphics.scene_mut().push(DrawOperation::Path(Path {
             commands: vec![
                 PathCommand::MoveTo(dx0, dy0),
                 PathCommand::LineTo(dx1, dy1),
             ],
-            stroke: Stroke::new(1.0, col),
+            stroke: parstroke_1,
             anti_alias: true,
             ..Default::default()
         }));
@@ -15914,10 +15966,11 @@ fn polygon_primitive(
                 commands.push(PathCommand::LineTo(x, y));
             }
             commands.push(PathCommand::Close);
+            let parstroke_0 = par_stroke(heap, border);
             heap.graphics.scene_mut().push(DrawOperation::Path(Path {
                 commands,
                 fill,
-                stroke: Stroke::new(1.0, border),
+                stroke: parstroke_0,
                 anti_alias: true,
             }));
         }

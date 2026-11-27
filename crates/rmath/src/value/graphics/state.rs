@@ -169,6 +169,11 @@ impl GraphicsParState {
             "new" => Some(ParValue::Logical(vec![i32::from(self.logical_override("new"))])),
             "cex" => Some(ParValue::Real(vec![self.cexbase()])),
             "mex" => Some(ParValue::Real(vec![self.mex()])),
+            "lwd" => Some(ParValue::Real(vec![self.real_override("lwd", 1.0)])),
+            "lty" => match self.overrides.get("lty") {
+                Some(value) => Some(value.clone()),
+                None => Some(ParValue::String("solid".into())),
+            },
             _ => {
                 if let Some(value) = self.layout.query(name) {
                     return Some(value);
