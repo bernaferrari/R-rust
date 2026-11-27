@@ -18,23 +18,34 @@ use crate::diagnostics::Text;
 /// valid for the whole hook call, as required by its Rust shared borrow.
 pub type WarningHook = fn(message: &str);
 
+#[cfg(test)]
 thread_local! {
     static WARNING_HOOK: RefCell<Option<WarningHook>> = const { RefCell::new(None) };
 }
 
 /// Install (or clear, with `None`) this thread's mathlib warning hook.
+///
+/// Test-only capture seam: production builds have no hook consumers, so
+/// warnings write to stderr exactly as standalone libRmath does.
+#[cfg(test)]
 pub fn set_warning_hook(hook: Option<WarningHook>) {
     WARNING_HOOK.with(|slot| *slot.borrow_mut() = hook);
 }
 
 /// Deliver a formatted mathlib warning through the installed host hook,
 /// falling back to stderr in standalone mode.
+#[cfg(test)]
 fn emit_warning(message: &str) {
     let hook = WARNING_HOOK.with(|slot| *slot.borrow());
     match hook {
         Some(hook) => hook(message),
         None => eprint!("{message}"),
     }
+}
+
+#[cfg(not(test))]
+fn emit_warning(message: &str) {
+    eprint!("{message}");
 }
 
 /// `MATHLIB_WARNING(_("non-integer %s = %f"), which, value)` — dpq.h's
