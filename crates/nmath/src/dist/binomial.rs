@@ -346,7 +346,6 @@ pub struct RbinomState {
 
 impl Default for RbinomState {
     fn default() -> Self {
-        let mut rng_state = crate::rng::RngState::default();
         Self::new()
     }
 }

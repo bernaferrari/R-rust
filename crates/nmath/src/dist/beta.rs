@@ -943,7 +943,6 @@ pub struct BetaState {
 
 impl Default for BetaState {
     fn default() -> Self {
-        let mut rng_state = crate::rng::RngState::default();
         BetaState {
             olda: -1.0,
             oldb: -1.0,

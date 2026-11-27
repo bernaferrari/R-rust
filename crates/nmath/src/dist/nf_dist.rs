@@ -502,7 +502,6 @@ fn qnchisq(p: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f64 {
 /// Random variates from noncentral chi-squared distribution
 /// Ported from rnchisq.c
 fn rnchisq(rng: &mut dyn FnMut() -> f64, df: f64, lambda: f64) -> f64 {
-        let mut rng_state = crate::rng::RngState::default();
     if isnan(df) || !r_finite(lambda) || df < 0.0 || lambda < 0.0 {
         return ml_warn_return_nan();
     }

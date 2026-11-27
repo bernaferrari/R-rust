@@ -835,7 +835,6 @@ pub struct GammaState {
 
 impl Default for GammaState {
     fn default() -> Self {
-        let mut rng_state = crate::rng::RngState::default();
         GammaState {
             aa: 0.0,
             aaa: 0.0,

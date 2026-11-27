@@ -304,7 +304,6 @@ pub struct RpoisState {
 
 impl Default for RpoisState {
     fn default() -> Self {
-        let mut rng_state = crate::rng::RngState::default();
         Self::new()
     }
 }

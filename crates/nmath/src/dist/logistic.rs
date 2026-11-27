@@ -14,7 +14,6 @@ use libm::*;
 ///   curve(x+exp(-x) - log1p(exp(x)), 15, 25,   n=2^11)
 #[inline]
 fn log1pexp(x: f64) -> f64 {
-        let mut rng_state = crate::rng::RngState::default();
     if x <= 18.0 {
         log1p(exp(x))
     } else if x > 33.3 {

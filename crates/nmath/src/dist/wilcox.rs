@@ -267,7 +267,6 @@ pub fn qwilcox_inner(x: f64, m: f64, n: f64, lower_tail: bool, log_p: bool) -> f
 /// using rejection sampling from integers below the next larger power of two.
 /// Ported from R's standalone/sunif.c
 fn r_unif_index(rng: &mut dyn FnMut() -> f64, dn: i32) -> i32 {
-        let mut rng_state = crate::rng::RngState::default();
     if dn <= 0 {
         return 0;
     }
