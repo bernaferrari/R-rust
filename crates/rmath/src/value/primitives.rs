@@ -648,6 +648,14 @@ pub mod primitive_ids {
     pub const FORMATC: u32 = 639;
     pub const RGB_FN: u32 = 640;
     pub const MTEXT: u32 = 641;
+    pub const HSV_FN: u32 = 642;
+    pub const RAINBOW: u32 = 643;
+    pub const HEAT_COLORS: u32 = 644;
+    pub const TERRAIN_COLORS: u32 = 645;
+    pub const TOPO_COLORS: u32 = 646;
+    pub const CM_COLORS: u32 = 647;
+    pub const GRAY_FN: u32 = 648;
+    pub const GREY_FN: u32 = 649;
     pub const GRCONVERTX: u32 = 564;
     pub const GRCONVERTY: u32 = 565;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
@@ -680,7 +688,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN, SUMMARY_FN, MATRIX_MULT, CROSSPROD, TCROSSPROD, MAXCOL, IDIV, NROW_FN, NCOL_FN, SYS_GETPID, OLSONNAMES, IQR_FN, SYS_CHMOD, FILE_INFO, SYS_GETLOCALE, SYS_SETLOCALE, NZCHAR, AT_OP, AT_ASSIGN, SYS_INFO, SYS_TIME, SYS_DATE, SYS_WHICH, FLOOR, CEILING, TRUNC, ROUND, SIGNIF, EXPM1, LOG1P, ACOSH, ASINH, ATANH, COSPI, SINPI, TANPI, ANYNA, SYS_LOCALECONV, AGREP, AGREPL, APPLY, AS_ENVIRONMENT, AS_CALL, ENC2NATIVE, ENC2UTF8, SEARCH_FN, AS_FACTOR, AS_ORDERED, ADDNA, APERM, ADDMARGINS, DOT_SUBSET, DOT_SUBSET2, ASPLIT, ATTACH, DETACH, POS_TO_ENV, DOT_CLASS2, GC_TIME, AVE, BACKSOLVE, BQUOTE, CALL_FN, CHAR_TO_RAW, CHARMATCH, CUMSUM, CUMPROD, CUMMIN, CUMMAX, COMMENT_FN, COMMENT_ASSIGN, COMPLETE_CASES, COLSUMS, ROWSUMS, COLMEANS, ROWMEANS, DCAUCHY, DCHISQ, DEXP, CUT, DATE_FN, CAPABILITIES, BY_FN, BROWSER_FN, DGAMMA, DGEOM, DNBINOM, DIFF, DIAG, DO_CALL, DWEIBULL, DROP_FN, DROPLEVELS, DUPLICATED, ANYDUPLICATED, DIR_EXISTS, FILE_CREATE, FILE_ACCESS, ENVIRONMENT_ASSIGN, FORCEANDCALL, DECLARE, PRIMTRACE, PRIMUNTRACE, STANDARDGENERIC, DMULTINOM, DOTS_LENGTH, DOTS_NAMES, DOTS_ELT, IS_DATA_FRAME, FILE_APPEND, FILE_LINK, FILE_SYMLINK, SYS_READLINK, FILE_SIZE, FILE_MTIME, GL, HEAD_FN, TAIL_FN, INTERACTION, GCINFO, GCTORTURE, GCTORTURE2, IS_FINITE, IS_INFINITE, IS_NAN, IS_VECTOR, IS_LOADED, L10N_INFO, CSTACK_INFO, EXTSOFTVERSION, LIST_FILES, MEMORY_PROFILE, ENV_IS_LOCKED, LOCK_BINDING, BINDING_IS_LOCKED, UNLOCK_BINDING, LOCK_ENVIRONMENT, MAKE_ACTIVE_BINDING, BINDING_IS_ACTIVE, SYS_UMASK, NORMALIZE_PATH, OLDCLASS, OLDCLASS_ASSIGN, IS_OBJECT, PAIRLIST_CTOR, AS_PAIRLIST, OUTER, ON_EXIT, IS_S4_TEST, NARGS, SYS_NFRAME, SYS_CALL, SYS_FRAME, SYS_FUNCTION, PARENT_FRAME, IS_FUNCTION, METHODS, PAR, LAYOUT, FORMAT_DF, LIB_PATHS, FIND_PACKAGE, SYSTEM_FILE, FORMAT_INFO, PCAUCHY, QCAUCHY, PCHISQ, QCHISQ, PEXP, QEXP, PGAMMA, QGAMMA, PGEOM, QGEOM, PNBINOM, QNBINOM, PWEIBULL, QWEIBULL, RANGE_FN, PMIN, PMAX, PMATCH, PROP_TABLE, ROW_FN, COL_FN, RELEVEL, SEARCHPATHS, PATH_EXPAND, PCRE_CONFIG, RAWTOCHAR, QHYPER, PTUKEY, QPOIS, QBINOM, DUNIF, PUNIF, QUNIF, SIGN, SEQ_ALONG, SEQ_INT, SCAN, SINGLE, SINK, SINK_NUMBER, SORT_LIST, SOURCE, SYS_SOURCE, SPLIT, SWITCH, SUPPRESS_MESSAGES, STRWRAP, XTFRM, CACHE_CLASS, STARTSWITH, ENDSWITH, TOUPPER, TOLOWER, CHARTR, TRIMWS, TABULATE, SYSTEM2, WITH, LENGTHS, WRITE_TABLE, WRITE_CSV2, READ_FWF, SAVE_RDS, READ_RDS, WITH_RESTARTS, INVOKE_RESTART, TRY_INVOKE_RESTART, FIND_RESTART, COMPUTE_RESTARTS, IS_RESTART, RESTART_DESCRIPTION, WITH_CALLING_HANDLERS, NS_GET, NS_GET3, LIBRARY, REQUIRE, DATA_FN, PLOT_NEW, PLOT_WINDOW, LINES_FN, RECT_FN, POINTS_FN, TEXT_FN, PRETTY_FN, GRCONVERTX, GRCONVERTY, AXIS_FN, BOX_FN, PLOT_FN, TITLE_FN, SEGMENTS_FN, ABLINE_FN, POLYGON_FN, LOG10, LOG2, TAN, ASIN, ACOS, ATAN, ATAN2, GAMMAFN, LGAMMAFN, DIGAMMA, TRIGAMMA, FACTORIAL, LFACTORIAL, BETA, LBETA, CHOOSE, LCHOOSE, STRSPLIT, TRANSPOSE, IS_MATRIX, AS_MATRIX, SET_SEED, RUNIF, RNORM, FILTER_FN, REDUCE_FN, MAPPLY, VAR_COV, COR_FN, QUANTILE, MAD, WEIGHTED_MEAN, MAP_FN, NEGATE, EXPAND_GRID, FINDINTERVAL, MAKE_NAMES, MAKE_UNIQUE, RBINOM, RPOIS, RGAMMA, REXP, RBETA, RCHISQ, RT, RF_DIST, RLNORM, RLOGIS, RCAUCHY, RGEOM, RWEIBULL, RNBINOM, RHYPER, SUBSET_DF, TRANSFORM, WITHIN, AS_DATA_FRAME, MERGE_DF, ABBREVIATE, FORMATC, RGB_FN, MTEXT};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN, SUMMARY_FN, MATRIX_MULT, CROSSPROD, TCROSSPROD, MAXCOL, IDIV, NROW_FN, NCOL_FN, SYS_GETPID, OLSONNAMES, IQR_FN, SYS_CHMOD, FILE_INFO, SYS_GETLOCALE, SYS_SETLOCALE, NZCHAR, AT_OP, AT_ASSIGN, SYS_INFO, SYS_TIME, SYS_DATE, SYS_WHICH, FLOOR, CEILING, TRUNC, ROUND, SIGNIF, EXPM1, LOG1P, ACOSH, ASINH, ATANH, COSPI, SINPI, TANPI, ANYNA, SYS_LOCALECONV, AGREP, AGREPL, APPLY, AS_ENVIRONMENT, AS_CALL, ENC2NATIVE, ENC2UTF8, SEARCH_FN, AS_FACTOR, AS_ORDERED, ADDNA, APERM, ADDMARGINS, DOT_SUBSET, DOT_SUBSET2, ASPLIT, ATTACH, DETACH, POS_TO_ENV, DOT_CLASS2, GC_TIME, AVE, BACKSOLVE, BQUOTE, CALL_FN, CHAR_TO_RAW, CHARMATCH, CUMSUM, CUMPROD, CUMMIN, CUMMAX, COMMENT_FN, COMMENT_ASSIGN, COMPLETE_CASES, COLSUMS, ROWSUMS, COLMEANS, ROWMEANS, DCAUCHY, DCHISQ, DEXP, CUT, DATE_FN, CAPABILITIES, BY_FN, BROWSER_FN, DGAMMA, DGEOM, DNBINOM, DIFF, DIAG, DO_CALL, DWEIBULL, DROP_FN, DROPLEVELS, DUPLICATED, ANYDUPLICATED, DIR_EXISTS, FILE_CREATE, FILE_ACCESS, ENVIRONMENT_ASSIGN, FORCEANDCALL, DECLARE, PRIMTRACE, PRIMUNTRACE, STANDARDGENERIC, DMULTINOM, DOTS_LENGTH, DOTS_NAMES, DOTS_ELT, IS_DATA_FRAME, FILE_APPEND, FILE_LINK, FILE_SYMLINK, SYS_READLINK, FILE_SIZE, FILE_MTIME, GL, HEAD_FN, TAIL_FN, INTERACTION, GCINFO, GCTORTURE, GCTORTURE2, IS_FINITE, IS_INFINITE, IS_NAN, IS_VECTOR, IS_LOADED, L10N_INFO, CSTACK_INFO, EXTSOFTVERSION, LIST_FILES, MEMORY_PROFILE, ENV_IS_LOCKED, LOCK_BINDING, BINDING_IS_LOCKED, UNLOCK_BINDING, LOCK_ENVIRONMENT, MAKE_ACTIVE_BINDING, BINDING_IS_ACTIVE, SYS_UMASK, NORMALIZE_PATH, OLDCLASS, OLDCLASS_ASSIGN, IS_OBJECT, PAIRLIST_CTOR, AS_PAIRLIST, OUTER, ON_EXIT, IS_S4_TEST, NARGS, SYS_NFRAME, SYS_CALL, SYS_FRAME, SYS_FUNCTION, PARENT_FRAME, IS_FUNCTION, METHODS, PAR, LAYOUT, FORMAT_DF, LIB_PATHS, FIND_PACKAGE, SYSTEM_FILE, FORMAT_INFO, PCAUCHY, QCAUCHY, PCHISQ, QCHISQ, PEXP, QEXP, PGAMMA, QGAMMA, PGEOM, QGEOM, PNBINOM, QNBINOM, PWEIBULL, QWEIBULL, RANGE_FN, PMIN, PMAX, PMATCH, PROP_TABLE, ROW_FN, COL_FN, RELEVEL, SEARCHPATHS, PATH_EXPAND, PCRE_CONFIG, RAWTOCHAR, QHYPER, PTUKEY, QPOIS, QBINOM, DUNIF, PUNIF, QUNIF, SIGN, SEQ_ALONG, SEQ_INT, SCAN, SINGLE, SINK, SINK_NUMBER, SORT_LIST, SOURCE, SYS_SOURCE, SPLIT, SWITCH, SUPPRESS_MESSAGES, STRWRAP, XTFRM, CACHE_CLASS, STARTSWITH, ENDSWITH, TOUPPER, TOLOWER, CHARTR, TRIMWS, TABULATE, SYSTEM2, WITH, LENGTHS, WRITE_TABLE, WRITE_CSV2, READ_FWF, SAVE_RDS, READ_RDS, WITH_RESTARTS, INVOKE_RESTART, TRY_INVOKE_RESTART, FIND_RESTART, COMPUTE_RESTARTS, IS_RESTART, RESTART_DESCRIPTION, WITH_CALLING_HANDLERS, NS_GET, NS_GET3, LIBRARY, REQUIRE, DATA_FN, PLOT_NEW, PLOT_WINDOW, LINES_FN, RECT_FN, POINTS_FN, TEXT_FN, PRETTY_FN, GRCONVERTX, GRCONVERTY, AXIS_FN, BOX_FN, PLOT_FN, TITLE_FN, SEGMENTS_FN, ABLINE_FN, POLYGON_FN, LOG10, LOG2, TAN, ASIN, ACOS, ATAN, ATAN2, GAMMAFN, LGAMMAFN, DIGAMMA, TRIGAMMA, FACTORIAL, LFACTORIAL, BETA, LBETA, CHOOSE, LCHOOSE, STRSPLIT, TRANSPOSE, IS_MATRIX, AS_MATRIX, SET_SEED, RUNIF, RNORM, FILTER_FN, REDUCE_FN, MAPPLY, VAR_COV, COR_FN, QUANTILE, MAD, WEIGHTED_MEAN, MAP_FN, NEGATE, EXPAND_GRID, FINDINTERVAL, MAKE_NAMES, MAKE_UNIQUE, RBINOM, RPOIS, RGAMMA, REXP, RBETA, RCHISQ, RT, RF_DIST, RLNORM, RLOGIS, RCAUCHY, RGEOM, RWEIBULL, RNBINOM, RHYPER, SUBSET_DF, TRANSFORM, WITHIN, AS_DATA_FRAME, MERGE_DF, ABBREVIATE, FORMATC, RGB_FN, MTEXT, HSV_FN, RAINBOW, HEAT_COLORS, TERRAIN_COLORS, TOPO_COLORS, CM_COLORS, GRAY_FN, GREY_FN};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -6116,6 +6124,13 @@ fn call_primitive_inner(
         FORMATC => formatc_primitive(heap, interner, args, caller_env),
         RGB_FN => rgb_primitive(heap, interner, args, caller_env),
         MTEXT => mtext_primitive(heap, interner, args, caller_env),
+        HSV_FN => hsv_primitive(heap, interner, args, caller_env),
+        RAINBOW => color_ramp_primitive(heap, interner, RAINBOW, args, caller_env),
+        HEAT_COLORS => color_ramp_primitive(heap, interner, HEAT_COLORS, args, caller_env),
+        TERRAIN_COLORS => color_ramp_primitive(heap, interner, TERRAIN_COLORS, args, caller_env),
+        TOPO_COLORS => color_ramp_primitive(heap, interner, TOPO_COLORS, args, caller_env),
+        CM_COLORS => color_ramp_primitive(heap, interner, CM_COLORS, args, caller_env),
+        GRAY_FN | GREY_FN => gray_primitive(heap, interner, args, caller_env),
         DNORM | PNORM | QNORM | DPOIS | PPOIS | DBINOM | PBINOM | PBETA | DBETA | QBETA | DT | PT | QT | DF | PF | QF | DCAUCHY | DCHISQ | DEXP | PCAUCHY | QCAUCHY | PCHISQ | QCHISQ | PEXP | QEXP | PGAMMA | QGAMMA | PGEOM | QGEOM | PNBINOM | QNBINOM | PWEIBULL | QWEIBULL | QPOIS | QBINOM | DUNIF | PUNIF | QUNIF => dpq_primitive(heap, interner, id.0, args, caller_env),
         WITH_RESTARTS => with_restarts_primitive(heap, interner, args, caller_env),
         INVOKE_RESTART => invoke_restart_primitive(heap, interner, args, caller_env, false),
@@ -7905,7 +7920,8 @@ pub fn primitive_names() -> &'static [&'static str] {
         "rbinom", "rpois", "rgamma", "rexp", "rbeta", "rchisq", "rt", "rf",
         "rlnorm", "rlogis", "rcauchy", "rgeom", "rweibull", "rnbinom", "rhyper",
         "subset", "transform", "within", "as.data.frame", "merge",
-        "abbreviate", "formatC", "rgb", "mtext",
+        "abbreviate", "formatC", "rgb", "mtext", "hsv", "rainbow",
+        "heat.colors", "terrain.colors", "topo.colors", "cm.colors", "gray", "grey",
     ]
 }
 
@@ -8229,6 +8245,14 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "formatC" => Some(FORMATC),
         "rgb" => Some(RGB_FN),
         "mtext" => Some(MTEXT),
+        "hsv" => Some(HSV_FN),
+        "rainbow" => Some(RAINBOW),
+        "heat.colors" => Some(HEAT_COLORS),
+        "terrain.colors" => Some(TERRAIN_COLORS),
+        "topo.colors" => Some(TOPO_COLORS),
+        "cm.colors" => Some(CM_COLORS),
+        "gray" => Some(GRAY_FN),
+        "grey" => Some(GREY_FN),
         "grconvertX" => Some(GRCONVERTX),
         "grconvertY" => Some(GRCONVERTY),
         // bzfile/gzfile share the raw-byte connection machinery — GNU pipes
@@ -15493,15 +15517,17 @@ fn resolve_rcolor(
     index: usize,
 ) -> Option<r_graphics_engine::Color> {
     use r_graphics_engine::Color;
+    // The R 4.x default palette exactly as the pinned oracle — black,
+    /// the six hues, then gray62.
     const PALETTE: [Color; 8] = [
         Color::BLACK,
-        Color::RED,
-        Color { r: 0, g: 205, b: 0, a: 255 },
-        Color::BLUE,
-        Color { r: 0, g: 255, b: 255, a: 255 },
-        Color { r: 255, g: 0, b: 255, a: 255 },
-        Color { r: 255, g: 255, b: 0, a: 255 },
-        Color { r: 190, g: 190, b: 190, a: 255 },
+        Color { r: 0xDF, g: 0x53, b: 0x6B, a: 255 },
+        Color { r: 0x61, g: 0xD0, b: 0x4F, a: 255 },
+        Color { r: 0x22, g: 0x97, b: 0xE6, a: 255 },
+        Color { r: 0x28, g: 0xE2, b: 0xE5, a: 255 },
+        Color { r: 0xCD, g: 0x0B, b: 0xBC, a: 255 },
+        Color { r: 0xF5, g: 0xC7, b: 0x10, a: 255 },
+        Color { r: 0x9E, g: 0x9E, b: 0x9E, a: 255 },
     ];
     match heap.object(value) {
         Some(RObject::String(values)) => {
@@ -16237,6 +16263,205 @@ fn mtext_primitive(
         },
     });
     Ok(ValueId::NIL)
+}
+
+/// GNU's hsv2rgb exactly as colors.c — modf in the same fp order,
+/// the sector table verbatim, intensities scaling (255*x + 0.5)
+/// truncated exactly as ScaleColor.
+fn gnu_hsv2rgb(h: f64, s: f64, v: f64) -> (u32, u32, u32) {
+    let h6 = h * 6.0;
+    let f = h6.fract();
+    let i = (h6.trunc() as i64).rem_euclid(6);
+    let p = v * (1.0 - s);
+    let q = v * (1.0 - s * f);
+    let t = v * (1.0 - s * (1.0 - f));
+    let (r, g, b) = match i {
+        0 => (v, t, p),
+        1 => (q, v, p),
+        2 => (p, v, t),
+        3 => (p, q, v),
+        4 => (t, p, v),
+        _ => (v, p, q),
+    };
+    let scale = |x: f64| -> u32 { (255.0 * x + 0.5) as u32 };
+    (scale(r), scale(g), scale(b))
+}
+
+fn hex_rgb(r: u32, g: u32, b: u32) -> String {
+    format!("#{:02X}{:02X}{:02X}", r, g, b)
+}
+
+/// GNU's seq.int(from, to, length.out) — integer index times by,
+/// exactly as the C sequence generator's fp order.
+fn gnu_seq(from: f64, to: f64, n: usize) -> Vec<f64> {
+    if n == 0 { return Vec::new(); }
+    if n == 1 { return vec![from]; }
+    let by = (to - from) / (n as f64 - 1.0);
+    (0..n).map(|i| from + i as f64 * by).collect()
+}
+
+/// hsv(h, s, v) — recycling exactly as GNU's longest-rule.
+fn hsv_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let slots = eval_matched_args(heap, interner, args, caller_env, &["h", "s", "v", "alpha"])?;
+    let channel = |index: usize, default: f64| -> Vec<f64> {
+        match slots[index] {
+            Some(v) => reals_of_value(heap, v).unwrap_or_default(),
+            None => vec![default],
+        }
+    };
+    let hs = channel(0, 1.0);
+    let ss = channel(1, 1.0);
+    let vs = channel(2, 1.0);
+    let n = hs.len().max(ss.len()).max(vs.len());
+    if n == 0 {
+        return Ok(heap.alloc(RObject::String(Vec::new())));
+    }
+    let out: Vec<super::intern::InternedStr> = (0..n).map(|i| {
+        let (r, g, b) = gnu_hsv2rgb(hs[i % hs.len()], ss[i % ss.len()], vs[i % vs.len()]);
+        interner.intern_string(&hex_rgb(r, g, b))
+    }).collect();
+    Ok(heap.alloc(RObject::String(out)))
+}
+
+/// gray(level) — GNU's rgb(level, level, level) exactly.
+fn gray_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let slots = eval_matched_args(heap, interner, args, caller_env, &["level", "alpha"])?;
+    let levels = match slots[0] {
+        Some(v) => reals_of_value(heap, v).map_err(RSignal::from)?,
+        None => Vec::new(),
+    };
+    let out: Vec<super::intern::InternedStr> = levels.iter().map(|&lv| {
+        let scaled = (255.0 * lv + 0.5) as u32;
+        interner.intern_string(&hex_rgb(scaled, scaled, scaled))
+    }).collect();
+    Ok(heap.alloc(RObject::String(out)))
+}
+
+/// The color-ramp generators exactly as GNU's colorstuff.R — each a
+/// composition of hsv over exact sequence expressions.
+fn color_ramp_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    op: u32,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let slots = eval_matched_args(heap, interner, args, caller_env, &["n", "s", "v", "start", "end", "alpha", "rev"])?;
+    let n = slots[0].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(0.0) as usize;
+    if n == 0 {
+        return Ok(heap.alloc(RObject::String(Vec::new())));
+    }
+    let emit = |heap: &mut Heap, interner: &mut SymbolInterner, triples: &[(f64, f64, f64)]| -> Vec<super::intern::InternedStr> {
+        triples.iter().map(|&(h, s, v)| {
+            let (r, g, b) = gnu_hsv2rgb(h, s, v);
+            interner.intern_string(&hex_rgb(r, g, b))
+        }).collect()
+    };
+    let _ = heap;
+    let mut colors: Vec<(f64, f64, f64)> = Vec::new();
+    match op {
+        RAINBOW => {
+            let s = slots[1].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(1.0);
+            let v = slots[2].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(1.0);
+            let start = slots[3].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(0.0);
+            let end = slots[4].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied())
+                .unwrap_or((n.max(1) as f64 - 1.0) / n as f64);
+            // seq.int(start, (start > end)*1 + end) %% 1 exactly as GNU.
+            let target = if start > end { 1.0 + end } else { end };
+            for h in gnu_seq(start, target, n) {
+                colors.push((h - h.floor(), s, v));
+            }
+        }
+        HEAT_COLORS => {
+            // rainbow(i, start=0, end=1/6) then fading-saturation yellows
+            /// exactly as GNU's two-part composition.
+            let j = n / 4;
+            let i = n - j;
+            for h in gnu_seq(0.0, 1.0 / 6.0, i) {
+                colors.push((h, 1.0, 1.0));
+            }
+            if j > 0 {
+                let sats = gnu_seq(1.0 - 1.0 / (2.0 * j as f64), 1.0 / (2.0 * j as f64), j);
+                for s in sats {
+                    colors.push((1.0 / 6.0, s, 1.0));
+                }
+            }
+        }
+        TERRAIN_COLORS => {
+            let k = n / 2;
+            // First half green-to-tan, second half continuing to
+            /// near-white exactly as GNU's split sequences with the
+            /// overlapping first element dropped.
+            let h1 = gnu_seq(4.0 / 12.0, 2.0 / 12.0, k);
+            let s1 = gnu_seq(1.0, 1.0, k);
+            let v1 = gnu_seq(0.65, 0.9, k);
+            for idx in 0..k {
+                colors.push((h1[idx], s1[idx], v1[idx]));
+            }
+            let rest = n - k + 1;
+            let h2 = gnu_seq(2.0 / 12.0, 0.0, rest);
+            let s2 = gnu_seq(1.0, 0.0, rest);
+            let v2 = gnu_seq(0.9, 0.95, rest);
+            for idx in 1..rest {
+                colors.push((h2[idx], s2[idx], v2[idx]));
+            }
+        }
+        TOPO_COLORS => {
+            let j = n / 3;
+            let k = n / 3;
+            let i = n - j - k;
+            for h in gnu_seq(43.0 / 60.0, 31.0 / 60.0, i) {
+                colors.push((h, 1.0, 1.0));
+            }
+            for h in gnu_seq(23.0 / 60.0, 11.0 / 60.0, j) {
+                colors.push((h, 1.0, 1.0));
+            }
+            let hues = gnu_seq(10.0 / 60.0, 6.0 / 60.0, k);
+            let sats = gnu_seq(1.0, 0.3, k);
+            for idx in 0..k {
+                colors.push((hues[idx], sats[idx], 1.0));
+            }
+        }
+        CM_COLORS => {
+            let even_n = n % 2 == 0;
+            let k = n / 2;
+            let l1 = if even_n { k + 1 - 1 } else { k + 1 };
+            let l2 = n - k + if even_n { 1 } else { 0 };
+            // Cyan half fading to white then magenta growing exactly as
+            /// GNU's mirrored saturation sequences.
+            if l1 > 0 {
+                let target = if even_n { 0.5 / k as f64 } else { 0.0 };
+                for s in gnu_seq(0.5, target, l1) {
+                    colors.push((6.0 / 12.0, s, 1.0));
+                }
+            }
+            if l2 > 1 {
+                let sats = gnu_seq(0.0, 0.5, l2);
+                for &s in sats.iter().skip(1) {
+                    colors.push((10.0 / 12.0, s, 1.0));
+                }
+            }
+        }
+        _ => {}
+    }
+    let rev_flag = slots[6]
+        .map(|v| matches!(heap.object(v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) != 0))
+        .unwrap_or(false);
+    if rev_flag {
+        colors.reverse();
+    }
+    let out = emit(heap, interner, &colors);
+    Ok(heap.alloc(RObject::String(out)))
 }
 
 /// segments(x0, y0, x1, y1) — GNU's lockstep-recycled segment paths
