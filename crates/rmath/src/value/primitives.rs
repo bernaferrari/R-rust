@@ -2013,9 +2013,16 @@ fn call_primitive_inner(
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
-                    let ok = std::fs::metadata(path)
-                        .map(|_| std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).is_ok())
-                        .unwrap_or(false);
+                    let ok = crate::value::path_policy::resolve_host_path(
+                        heap.path_policy.as_ref(),
+                        path,
+                    )
+                    .and_then(|host| {
+                        std::fs::metadata(&host)
+                            .map(|_| std::fs::set_permissions(&host, std::fs::Permissions::from_mode(mode)).is_ok())
+                            .ok()
+                    })
+                    .unwrap_or(false);
                     out.push(ok as i32);
                 }
                 #[cfg(not(unix))]
@@ -2036,9 +2043,16 @@ fn call_primitive_inner(
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
-                    let text = std::fs::metadata(path)
-                        .map(|m| format!("{:o}", m.permissions().mode() & 0o7777))
-                        .unwrap_or_else(|_| "\0NA".to_string());
+                    let text = crate::value::path_policy::resolve_host_path(
+                        heap.path_policy.as_ref(),
+                        path,
+                    )
+                    .and_then(|host| {
+                        std::fs::metadata(&host)
+                            .map(|m| format!("{:o}", m.permissions().mode() & 0o7777))
+                            .ok()
+                    })
+                    .unwrap_or_else(|| "\0NA".to_string());
                     modes.push(text);
                 }
                 #[cfg(not(unix))]
