@@ -1061,6 +1061,67 @@ cat("after|", paste(par("mfg"), collapse=","), "|",
     }
 
     #[test]
+    fn graphics_user_conversion_hits_plot_corners_exactly() {
+        use r_graphics_engine::{DrawOperation, PathCommand};
+        let mut session = PureSession::new();
+        session.session.heap.graphics.set_device_size(640.0, 480.0);
+        session.eval("plot.new(); plot.window(c(0,1), c(0,1)); lines(c(0,1), c(0,1))");
+        let g = &session.session.heap.graphics;
+        let plot = g.layout.regions().plot;
+        let ops = g.scene().operations();
+        let path = ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOperation::Path(path) => Some(path),
+                _ => None,
+            })
+            .next()
+            .expect("one path");
+        // usr (0,0) is the plot bottom-left, usr (1,1) the top-right —
+        /// exact against the oracle-proven raster rectangles.
+        match (path.commands[0].clone(), path.commands[1].clone()) {
+            (PathCommand::MoveTo(x0, y0), PathCommand::LineTo(x1, y1)) => {
+                assert!((f64::from(x0) - plot[0]).abs() < 1e-4, "left edge");
+                assert!((f64::from(y0) - plot[3]).abs() < 1e-4, "bottom edge");
+                assert!((f64::from(x1) - plot[2]).abs() < 1e-4, "right edge");
+                assert!((f64::from(y1) - plot[1]).abs() < 1e-4, "top edge");
+            }
+            other => panic!("unexpected commands: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn graphics_rect_emit_fills_and_recycles() {
+        use r_graphics_engine::{DrawOperation, PathCommand};
+        let mut session = PureSession::new();
+        session.eval("plot.new(); plot.window(c(0,1), c(0,1)); rect(0.1, 0.1, 0.5, 0.9)");
+        let ops = session.session.heap.graphics.scene().operations();
+        let quads: Vec<_> = ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOperation::Path(path) => Some(path),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(quads.len(), 1, "one rect emitted");
+        assert!(matches!(quads[0].commands.last(), Some(PathCommand::Close)));
+        // Recycling: scalar left/bottom against vector right/top yields
+        /// the vector length exactly as GNU's lockstep recycling.
+        let mut session = PureSession::new();
+        session.eval("plot.new(); plot.window(c(0,1), c(0,1)); rect(0, 0, c(.3,.6,.9), 1)");
+        let count = session
+            .session
+            .heap
+            .graphics
+            .scene()
+            .operations()
+            .iter()
+            .filter(|op| matches!(op, DrawOperation::Path(_)))
+            .count();
+        assert_eq!(count, 3, "recycled to three quads");
+    }
+
+    #[test]
     fn data_loads_datasets_into_the_calling_environment() {
         let mut session = PureSession::new();
         let result = session.eval("data(iris)");
