@@ -111,6 +111,16 @@ pub fn eval(
             )));
         }
     }
+    // The memory cap rides the same poll — payload bytes are the heap's
+    // pressure measure exactly as the facade's arena accounting measures
+    // the old world's occupancy.
+    if let Some(cap) = heap.memory_cap_bytes {
+        if heap.payload_bytes() > cap {
+            return Err(RSignal::from(EvalError::Condition(
+                "memory limit exceeded".to_string(),
+            )));
+        }
+    }
     heap.eval_depth += 1;
     let result = eval_node(heap, interner, expr, env_id);
     heap.eval_depth -= 1;

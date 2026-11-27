@@ -140,6 +140,10 @@ pub fn collect(heap: &mut Heap, roots: &RootSet<'_>) -> GcOutcome {
     // ---------- sweep ----------
     let mut collected = 0usize;
     let mut surviving = 0usize;
+    // Freed payload accumulates outside the loop — the slot borrow and the
+    // heap-wide accounting can't overlap, and one subtraction after the
+    // walk is the same measure either way.
+    let mut freed_payload = 0usize;
     for index in 0..heap.slots.len() {
         let state = &mut heap.slots[index];
         if let SlotState::Occupied(slot) = state {
@@ -148,6 +152,7 @@ pub fn collect(heap: &mut Heap, roots: &RootSet<'_>) -> GcOutcome {
                 surviving += 1;
             } else {
                 let generation = slot.generation;
+                freed_payload += crate::value::heap::payload_estimate(&slot.body);
                 *state = SlotState::Free {
                     generation,
                     next_free: heap.free_head,
@@ -158,6 +163,7 @@ pub fn collect(heap: &mut Heap, roots: &RootSet<'_>) -> GcOutcome {
             }
         }
     }
+    heap.dec_payload(freed_payload);
     heap.note_collection(surviving);
 
     GcOutcome {

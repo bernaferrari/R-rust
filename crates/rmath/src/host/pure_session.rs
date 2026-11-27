@@ -161,6 +161,18 @@ impl PureSession {
         self.session.heap.live_count()
     }
 
+    /// The host memory ceiling in payload bytes — allocation pressure
+    /// past the cap unwinds evaluation with a memory-limit error exactly
+    /// as the facade's arena cap contract.
+    pub fn set_memory_cap_bytes(&mut self, cap: Option<usize>) {
+        self.session.heap.memory_cap_bytes = cap;
+    }
+
+    /// Current heap payload bytes — the occupancy measure the cap polls.
+    pub fn payload_bytes(&self) -> usize {
+        self.session.heap.payload_bytes()
+    }
+
     /// Evaluate code and retain the result as a host-held handle — the
     /// facade's define_retained exactly: the value stays live across
     /// collections until the embedder releases it.
@@ -596,6 +608,28 @@ mod tests {
             .eval_output("synthetic::absent_name")
             .expect_err("expected an error");
         assert!(err.contains("not an exported object"), "err: {err}");
+    }
+
+    #[test]
+    fn memory_cap_unwinds_runaway_allocation() {
+        let mut session = PureSession::new();
+        // A cap far below what the loop allocates — each iteration's
+        // vector payload accumulates until the poll trips exactly as the
+        // facade's arena cap unwinds the old world.
+        session.set_memory_cap_bytes(Some(4096));
+        let err = session
+            .eval_output("x <- numeric(0); for (i in 1:1000) x <- c(x, rep(1.0, 100))")
+            .expect_err("cap must trip");
+        assert!(err.contains("memory limit exceeded"), "err: {err}");
+    }
+
+    #[test]
+    fn generous_memory_cap_lets_evaluation_finish() {
+        let mut session = PureSession::new();
+        session.set_memory_cap_bytes(Some(64 * 1024 * 1024));
+        let result = session.eval_output("sum(1:100)");
+        assert!(result.is_ok(), "err: {:?}", result.err());
+        session.set_memory_cap_bytes(None);
     }
 
     #[test]

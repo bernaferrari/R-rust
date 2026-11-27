@@ -124,6 +124,11 @@ pub struct Heap {
     pub eval_depth: usize,
     /// The configured depth ceiling; zero selects the GNU default.
     pub max_eval_depth: usize,
+    /// The host-configured memory ceiling in payload bytes, polled
+    /// alongside cancellation and the deadline — allocation pressure
+    /// past the cap unwinds evaluation exactly as the facade's arena
+        /// limit does.
+    pub memory_cap_bytes: Option<usize>,
     /// The host-configured execution deadline, polled alongside
     /// cancellation at eval entry exactly as the time limit needs.
     pub eval_deadline: Option<std::time::Instant>,
@@ -245,6 +250,12 @@ impl Heap {
         self.live_count
     }
 
+    /// Sweep-side accounting — a freed object's payload leaves the
+    /// occupancy measure exactly as its allocation entered it.
+    pub(crate) fn dec_payload(&mut self, bytes: usize) {
+        self.payload_bytes = self.payload_bytes.saturating_sub(bytes);
+    }
+
     pub fn payload_bytes(&self) -> usize {
         self.payload_bytes
     }
@@ -267,7 +278,7 @@ impl Heap {
     }
 }
 
-fn payload_estimate(body: &RObject) -> usize {
+pub(crate) fn payload_estimate(body: &RObject) -> usize {
     match body {
         RObject::Logical(v) | RObject::Integer(v) => v.len() * 4,
         RObject::Real(v) => v.len() * 8,
