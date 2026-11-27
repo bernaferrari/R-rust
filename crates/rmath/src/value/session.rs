@@ -112,6 +112,118 @@ impl Session {
         }
         Ok(last)
     }
+
+    /// Evaluate R source into the comprehensive result the host facade
+    /// consumes: per-expression output chunks join stdout exactly as GNU's
+    /// Rscript, deferred warnings and the final error render onto stderr,
+    /// and both streams interleave chronologically in `output`. The first
+    /// error aborts the remaining script with output-so-far preserved.
+    pub fn eval_full(&mut self, source: &str) -> FullEval {
+        let mut full = FullEval::default();
+        let expressions = match parse_native_expressions(source, &mut self.heap, &mut self.interner) {
+            Ok(expressions) => expressions,
+            Err(error) => {
+                let text = format!("{error}");
+                full.stderr.push_str(&format!("Error: {text}\n"));
+                full.output.push_str(&format!("Error: {text}\n"));
+                full.error = Some(text);
+                return full;
+            }
+        };
+        for expr in &expressions {
+            match eval(&mut self.heap, &mut self.interner, *expr, self.global_env) {
+                Ok(value) => {
+                    // Primitive writes accumulate in the output buffer; the
+                    /// auto-printed value joins them before the chunk is
+                    /// lifted — the interleave is evaluation order exactly.
+                    if self.heap.visible {
+                        let text = super::print::format_value(&self.heap, &self.interner, value);
+                        self.heap.emit(&text);
+                        self.heap.emit("\n");
+                    }
+                    let chunk = std::mem::take(&mut self.heap.output);
+                    full.stdout.push_str(&chunk);
+                    full.output.push_str(&chunk);
+                    if !self.heap.pending_warnings.is_empty() {
+                        let pending = std::mem::take(&mut self.heap.pending_warnings);
+                        let mut block = String::new();
+                        if pending.len() == 1 {
+                            block.push_str("Warning message:\n");
+                            block.push_str(&pending[0]);
+                            block.push('\n');
+                        } else {
+                            block.push_str("Warning messages:\n");
+                            for (i, text) in pending.iter().enumerate() {
+                                block.push_str(&format!("{}: {}\n", i + 1, text));
+                            }
+                        }
+                        full.stderr.push_str(&block);
+                        full.output.push_str(&block);
+                    }
+                    full.value = Some(value);
+                }
+                Err(signal) => {
+                    let chunk = std::mem::take(&mut self.heap.output);
+                    full.stdout.push_str(&chunk);
+                    full.output.push_str(&chunk);
+                    let text = render_eval_error(&signal);
+                    let line = format!("Error: {text}\n");
+                    full.stderr.push_str(&line);
+                    full.output.push_str(&line);
+                    full.error = Some(text);
+                    return full;
+                }
+            }
+        }
+        full
+    }
+}
+
+/// The comprehensive evaluation result the host facade consumes —
+/// separated stdout/stderr streams, the chronological interleave, the
+/// final value handle, and the rendered error when evaluation failed.
+#[derive(Debug, Default)]
+pub struct FullEval {
+    /// print/cat/auto-print output — Rscript's stdout exactly.
+    pub stdout: String,
+    /// Warning and error rendering — Rscript's stderr exactly.
+    pub stderr: String,
+    /// Every emission in chronological order — the console transcript.
+    pub output: String,
+    /// The final expression's value when evaluation completed.
+    pub value: Option<ValueId>,
+    /// GNU-rendered error text when evaluation aborted.
+    pub error: Option<String>,
+}
+
+/// GNU's error text for one evaluation failure — the message body without
+/// the "Error" prefix, exactly as `stop()` users and the runtime produce it.
+pub fn render_eval_error(signal: &RSignal) -> String {
+    match signal {
+        RSignal::Error(crate::value::eval::EvalError::UnboundVariable(name)) => {
+            format!("object '{name}' not found")
+        }
+        RSignal::Error(crate::value::eval::EvalError::NotCallable) => {
+            "attempt to apply non-function".to_string()
+        }
+        RSignal::Error(crate::value::eval::EvalError::MissingArgument(name)) => {
+            format!("argument \"{name}\" is missing, with no default")
+        }
+        RSignal::Error(crate::value::eval::EvalError::RecursiveForcing) => {
+            "promise already under evaluation: recursive default argument reference or earlier problems?"
+                .to_string()
+        }
+        RSignal::Error(crate::value::eval::EvalError::UnsupportedForm(form)) => {
+            format!("unsupported form: {form}")
+        }
+        RSignal::Error(crate::value::eval::EvalError::TypeError(message)) => {
+            message.to_string()
+        }
+        RSignal::Error(crate::value::eval::EvalError::Condition(message)) => message.clone(),
+        // Control-flow signals reaching top level are evaluator bugs in
+        /// disguise; surface them readably rather than panicking.
+        other => format!("{other:?}"),
+    }
 }
 
 /// GNU's environment structure: primitives live in a base environment

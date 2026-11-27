@@ -40,6 +40,8 @@ pub use resources::{RMemoryUsage, RWorkspaceReservation};
 pub(crate) mod packages;
 mod session;
 mod values;
+pub mod pure_session;
+mod shadow_tests;
 pub mod value_snapshot;
 
 pub mod facade;
