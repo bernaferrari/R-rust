@@ -44,6 +44,13 @@ pub struct CallingHandlerEntry {
 /// The object heap: a flat slot vector with a free list. All access goes
 /// through generation-checked `ValueId` handles — O(1) array indexing with
 /// no reverse lookups, pinning, or unsafe projection.
+/// The primitive dispatch inversion exactly as the DAG requires: eval
+/// (in this crate) applies primitive implementations owned by the crates
+/// above without a static reference — the upper crate installs its
+/// dispatch function at session construction.
+pub type PrimitiveDispatcher =
+    fn(&mut Heap, &mut crate::intern::SymbolInterner, crate::object::BuiltinId, ValueId, ValueId) -> crate::eval::EvalResult;
+
 #[derive(Debug, Default)]
 pub struct Heap {
     pub slots: Vec<SlotState>,
@@ -96,6 +103,8 @@ pub struct Heap {
     /// The closure context stack GNU's sys.* family reads — one entry per
     /// active closure application, innermost last.
     pub contexts: Vec<crate::heap::ContextFrame>,
+    /// The upper crate's primitive dispatch, installed at session construction.
+    pub primitive_dispatcher: Option<PrimitiveDispatcher>,
     /// on.exit registrations keyed by the closure frame they were
     /// registered in — expressions stored unevaluated, run in order when
     /// the frame exits exactly as GNU.

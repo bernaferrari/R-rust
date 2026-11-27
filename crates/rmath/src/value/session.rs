@@ -51,6 +51,9 @@ impl Default for Session {
 impl Session {
     pub fn new() -> Self {
         let mut heap = Heap::new();
+        // The dispatch inversion exactly as the DAG requires: eval in
+        // r-core applies primitives without a static reference upward.
+        heap.primitive_dispatcher = Some(crate::value::primitives::call_primitive);
         let mut interner = SymbolInterner::new();
         let global_env = bootstrap_env(&mut heap, &mut interner);
         Session {

@@ -20,7 +20,8 @@ pub mod graphics { pub use r_core::graphics::*; }
 pub mod parser { pub use r_core::parser::*; }
 pub mod env { pub use r_core::env::*; }
 pub mod support { pub use r_core::support::*; }
-pub mod eval;
+pub mod eval { pub use r_core::eval::*; }
+pub mod eval_tests;
 pub mod primitives;
 pub mod print;
 pub mod regex;

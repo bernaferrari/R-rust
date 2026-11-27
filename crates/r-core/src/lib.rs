@@ -10,6 +10,7 @@
 //! of the rmath monolith split (rport-c2v5f.15).
 
 pub mod env;
+pub mod eval;
 pub mod gc;
 pub mod graphics;
 pub mod heap;
