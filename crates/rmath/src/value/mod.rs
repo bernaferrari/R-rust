@@ -7,27 +7,28 @@
 //! (docs/pure-rust-foundation-plan.md section 2.1). It shares no code with
 //! the legacy `sexp` machinery and forbids unsafe code throughout.
 
+
+pub mod id { pub use r_core::id::*; }
+pub mod intern { pub use r_core::intern::*; }
+pub mod object { pub use r_core::object::*; }
+pub mod heap { pub use r_core::heap::*; }
+pub mod gc { pub use r_core::gc::*; }
+pub mod roots { pub use r_core::roots::*; }
+pub mod rng { pub use r_core::rng::*; }
+pub mod path_policy { pub use r_core::path_policy::*; }
+pub mod graphics { pub use r_core::graphics::*; }
 pub mod env;
 pub mod eval;
-pub mod gc;
-pub mod heap;
-pub mod id;
-pub mod intern;
-pub mod object;
 pub mod primitives;
 pub mod print;
 pub mod regex;
-pub mod rng;
 pub mod rbg1;
 pub mod datasets;
-pub mod graphics;
 pub mod civil;
-pub mod roots;
 pub mod parser;
 pub mod conformance_sweep;
 pub mod session;
 pub mod support;
-pub mod path_policy;
 pub mod vfile;
 
 pub use heap::Heap;

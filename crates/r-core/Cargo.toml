@@ -1,0 +1,16 @@
+[package]
+name = "r-core"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+repository.workspace = true
+description = "Pure-Rust object model foundation: generational ValueId handles, direct O(1) Heap<Slot>, typed RObject payloads, unified rooting, mark-and-sweep collection, and per-device graphics parameter state"
+
+[lib]
+crate-type = ["rlib"]
+name = "r_core"
+
+[dependencies]
+r-graphics-engine = { path = "../r-graphics-engine" }
+rmath-nmath = { path = "../nmath" }
+web-time = "1"

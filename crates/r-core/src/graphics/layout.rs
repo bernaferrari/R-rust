@@ -17,7 +17,7 @@ use std::sync::Arc;
 /// The parameter-value shape exactly as the old world's ParValue — GNU
 /// coerces vectors elementwise at the setter boundary.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ParValue {
+pub enum ParValue {
     Logical(Vec<i32>),
     Integer(Vec<i32>),
     Real(Vec<f64>),
@@ -26,7 +26,7 @@ pub(crate) enum ParValue {
 
 /// Layout validation failures surface as Err strings exactly as GNU's
 /// error messages; the primitive boundary converts them to conditions.
-pub(crate) type LayoutResult<T> = Result<T, String>;
+pub type LayoutResult<T> = Result<T, String>;
 /// Portable-device nominal font metrics: the default device reports
 /// `cra` in raster pixels at 72 dpi, derived from the 12pt nominal
 /// pointsize exactly like `pdf()` (0.9/1.2 em; the products are NOT the
@@ -62,7 +62,7 @@ enum RegionUnits {
 /// Raster-unit rectangles with y growing downward (portable device
 /// convention), converted from GNU's y-up dev coordinates.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct Regions {
+pub struct Regions {
     /// [left, top, right, bottom] of the whole device.
     pub device: [f64; 4],
     /// [left, top, right, bottom] of the inner (outer-margin-clipped)
@@ -75,7 +75,7 @@ pub(crate) struct Regions {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct LayoutState {
+pub struct LayoutState {
     // Device geometry in raster units.
     width: f64,
     height: f64,
@@ -463,13 +463,13 @@ impl LayoutState {
 
     /// Re-run GReset with the given expansion and line spacing (used
     /// after a `par(mex=)` style change).
-    pub(crate) fn refresh(&mut self, cexbase: f64, mex: f64, font_scale: f64) {
+    pub fn refresh(&mut self, cexbase: f64, mex: f64, font_scale: f64) {
         self.refresh_device_geometry();
         self.reset(cexbase, mex, font_scale);
     }
 
     /// par("page") logic: does the next plot start a new page?
-    pub(crate) fn starts_new_page(&self) -> bool {
+    pub fn starts_new_page(&self) -> bool {
         self.current_figure >= self.last_figure
     }
 
@@ -478,16 +478,16 @@ impl LayoutState {
     /// This performs no device callbacks and does not mutate live par state.
     /// Install the device geometry the session's device reports —
     /// raster units at 72dpi exactly as the portable contract.
-    pub(crate) fn set_device_size(&mut self, width: f64, height: f64) {
+    pub fn set_device_size(&mut self, width: f64, height: f64) {
         self.width = width;
         self.height = height;
     }
 
-    pub(crate) fn device_size(&self) -> (f64, f64) {
+    pub fn device_size(&self) -> (f64, f64) {
         (self.width, self.height)
     }
 
-    pub(crate) fn refresh_to_size(
+    pub fn refresh_to_size(
         &mut self,
         width: f64,
         height: f64,
@@ -575,7 +575,7 @@ fn real_values(value: &ParValue, name: &str, n: usize) -> LayoutResult<Vec<f64>>
 
 impl LayoutState {
     /// GNU's cex policy at an mfrow/mfcol/layout split.
-    pub(crate) fn split_cex(nrow: i32, ncol: i32) -> f64 {
+    pub fn split_cex(nrow: i32, ncol: i32) -> f64 {
         if nrow > 2 || ncol > 2 {
             0.66
         } else if nrow == 2 && ncol == 2 {
@@ -585,7 +585,7 @@ impl LayoutState {
         }
     }
 
-    pub(crate) fn set_mai(
+    pub fn set_mai(
         &mut self,
         value: &ParValue,
         cexbase: f64,
@@ -603,7 +603,7 @@ impl LayoutState {
         Ok(())
     }
 
-    pub(crate) fn set_mar(
+    pub fn set_mar(
         &mut self,
         value: &ParValue,
         cexbase: f64,
@@ -622,7 +622,7 @@ impl LayoutState {
     }
 
     /// Validates a mex= specification and returns its value.
-    pub(crate) fn check_mex(&mut self, value: &ParValue) -> LayoutResult<f64> {
+    pub fn check_mex(&mut self, value: &ParValue) -> LayoutResult<f64> {
         let values = real_values(value, "mex", 1)?;
         if !values[0].is_finite() || values[0] <= 0.0 {
             return Err(invalid("mex"));
@@ -630,7 +630,7 @@ impl LayoutState {
         Ok(values[0])
     }
 
-    pub(crate) fn set_oma(
+    pub fn set_oma(
         &mut self,
         value: &ParValue,
         cexbase: f64,
@@ -649,7 +649,7 @@ impl LayoutState {
         Ok(())
     }
 
-    pub(crate) fn set_omi(
+    pub fn set_omi(
         &mut self,
         value: &ParValue,
         cexbase: f64,
@@ -667,7 +667,7 @@ impl LayoutState {
         Ok(())
     }
 
-    pub(crate) fn set_omd(
+    pub fn set_omd(
         &mut self,
         value: &ParValue,
         cexbase: f64,
@@ -687,7 +687,7 @@ impl LayoutState {
         Ok(())
     }
 
-    pub(crate) fn set_fig(
+    pub fn set_fig(
         &mut self,
         value: &ParValue,
         cexbase: f64,
@@ -713,7 +713,7 @@ impl LayoutState {
         Ok(())
     }
 
-    pub(crate) fn set_fin(
+    pub fn set_fin(
         &mut self,
         value: &ParValue,
         cexbase: f64,
@@ -734,7 +734,7 @@ impl LayoutState {
         Ok(())
     }
 
-    pub(crate) fn set_pin(
+    pub fn set_pin(
         &mut self,
         value: &ParValue,
         cexbase: f64,
@@ -752,7 +752,7 @@ impl LayoutState {
         Ok(())
     }
 
-    pub(crate) fn set_plt(
+    pub fn set_plt(
         &mut self,
         value: &ParValue,
         cexbase: f64,
@@ -772,7 +772,7 @@ impl LayoutState {
 
     /// par(pty=): GNU stores the value but does not run GReset here;
     /// the plot region is rebuilt at the next plot.new.
-    pub(crate) fn set_pty(&mut self, value: &str) -> LayoutResult<()> {
+    pub fn set_pty(&mut self, value: &str) -> LayoutResult<()> {
         let first = value.chars().next().unwrap_or('\0');
         if first == 'm' || first == 's' {
             self.pty = first as u8;
@@ -785,7 +785,7 @@ impl LayoutState {
 
     /// par(mfrow=) / par(mfcol=): validates and installs the grid,
     /// returning (nrow, ncol).
-    pub(crate) fn set_mfrow(
+    pub fn set_mfrow(
         &mut self,
         value: &ParValue,
         column_first: bool,
@@ -823,7 +823,7 @@ impl LayoutState {
 
     /// par(mfg=): returns the warning GNU emits for a wrong nr/nc
     /// declaration, if any.
-    pub(crate) fn set_mfg(
+    pub fn set_mfg(
         &mut self,
         value: &ParValue,
         cexbase: f64,
@@ -881,7 +881,7 @@ impl LayoutState {
     /// layout(): grid with an explicit order matrix. Region widths and
     /// heights are honored in uniform proportions (portable contract);
     /// mfind keeps its previous value as in GNU's C_layout.
-    pub(crate) fn set_layout(
+    pub fn set_layout(
         &mut self,
         nrow: i32,
         ncol: i32,
@@ -908,7 +908,7 @@ impl LayoutState {
     /// new page), then GReset with the base character expansion and
     /// line spacing captured for this plot. Returns true when the
     /// advance started a new page.
-    pub(crate) fn begin_figure(&mut self, cexbase: f64, mex: f64, font_scale: f64) -> bool {
+    pub fn begin_figure(&mut self, cexbase: f64, mex: f64, font_scale: f64) -> bool {
         self.refresh_device_geometry();
         let mut new_page = false;
         if self.current_figure >= self.last_figure {
@@ -923,7 +923,7 @@ impl LayoutState {
 
     /// GNewPlot on an unused device ignores a previously selected `mfg`
     /// cell and initializes the first figure of the page.
-    pub(crate) fn begin_first_figure(&mut self, cexbase: f64, mex: f64, font_scale: f64) -> bool {
+    pub fn begin_first_figure(&mut self, cexbase: f64, mex: f64, font_scale: f64) -> bool {
         self.refresh_device_geometry();
         self.current_figure = 1;
         self.reset(cexbase, mex, font_scale);
@@ -932,7 +932,7 @@ impl LayoutState {
 
 
     /// Y-down raster rectangles for the drawing layer.
-    pub(crate) fn regions(&self) -> Regions {
+    pub fn regions(&self) -> Regions {
         let height = self.height;
         let device = [0.0, 0.0, self.width, height];
         let inner = [
@@ -960,7 +960,7 @@ impl LayoutState {
         }
     }
 
-    pub(crate) fn query(&self, name: &str) -> Option<ParValue> {
+    pub fn query(&self, name: &str) -> Option<ParValue> {
         let value = match name {
             "mai" => ParValue::Real(self.mai.to_vec()),
             "mar" => ParValue::Real(self.mar.to_vec()),
@@ -994,7 +994,7 @@ impl LayoutState {
     }
 
     /// Record axis tick coverage exactly as GNU's GAxis writing xaxp.
-    pub(crate) fn set_axp(&mut self, horizontal: bool, axp: [f64; 3]) {
+    pub fn set_axp(&mut self, horizontal: bool, axp: [f64; 3]) {
         if horizontal {
             self.xaxp = axp;
         } else {
@@ -1004,7 +1004,7 @@ impl LayoutState {
 
     /// par("cxy"): character size in user units from the current usr
     /// and plot region (GNU's ldexp overflow-safe form).
-    pub(crate) fn query_cxy(&self, usr: [f64; 4]) -> ParValue {
+    pub fn query_cxy(&self, usr: [f64; 4]) -> ParValue {
         let span = |hi: f64, lo: f64| hi * 0.5 - lo * 0.5;
         ParValue::Real(vec![
             CRA[0] * IPR[0] / self.pin[0] * span(usr[1], usr[0]) * 2.0,

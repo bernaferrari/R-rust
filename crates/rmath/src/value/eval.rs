@@ -10,7 +10,7 @@
 //! heap; no legacy machinery participates.
 
 use super::env;
-use super::heap::Heap;
+use super::heap::{ContextFrame, Heap};
 use super::id::ValueId;
 use super::intern::SymId;
 use super::intern::SymbolInterner;
@@ -434,14 +434,6 @@ fn call(
 /// One closure-activation record — GNU's context-stack entry shape: the
 /// application frame, the originating call expression, the closure object,
 /// and the supplied-argument count nargs() reports.
-#[derive(Debug, Clone, Copy)]
-pub struct ContextFrame {
-    pub frame: ValueId,
-    pub call: ValueId,
-    pub closure: ValueId,
-    pub nargs: usize,
-}
-
 ///
 /// Argument matching implements GNU's order — exact names first, then
 /// positional — with lazy promise construction. Formals without defaults

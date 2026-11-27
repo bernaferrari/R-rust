@@ -19,7 +19,7 @@ fn default_logical(name: &str) -> Option<bool> {
 /// The whole par/device state a session carries — one device per
 /// session exactly as the portable contract's single render target.
 #[derive(Debug)]
-pub(crate) struct GraphicsParState {
+pub struct GraphicsParState {
     pub layout: LayoutState,
     overrides: BTreeMap<String, ParValue>,
     /// GNU keeps `par(mfg=)`'s implicit `new=TRUE` on an unused device
@@ -37,10 +37,10 @@ pub(crate) struct GraphicsParState {
     scene: Scene,
     /// File-backed device target exactly as GNU's one-active-device
     /// model — svg()/png() set it, dev.off() flushes and clears.
-    pub(crate) device_file: Option<String>,
+    pub device_file: Option<String>,
     /// The open device's serialization format — vector text or raster
     /// pixels exactly as GNU's device types distinguish.
-    pub(crate) device_kind: DeviceKind,
+    pub device_kind: DeviceKind,
     /// Pages begun on this device — the clear events the reset display
     /// list itself can no longer distinguish.
     page_count: u32,
@@ -49,14 +49,14 @@ pub(crate) struct GraphicsParState {
 /// The file-backed device's output format exactly as GNU's device
 /// types: vector text for svg(), raster pixels for png().
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DeviceKind {
+pub enum DeviceKind {
     Svg,
     Png,
 }
 
 /// The validated figure transition exactly as the old world's
 /// prepare/commit split — a failed region check consumes nothing.
-pub(crate) struct PlotFigureTransition {
+pub struct PlotFigureTransition {
     layout: Option<LayoutState>,
     pending_mfg_before_first_plot: bool,
 }
@@ -68,7 +68,7 @@ impl Default for GraphicsParState {
 }
 
 impl GraphicsParState {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             layout: LayoutState::default(),
             overrides: BTreeMap::new(),
@@ -84,19 +84,19 @@ impl GraphicsParState {
     }
 
     /// Read the frame's display list — embedders replay or diff it.
-    pub(crate) fn scene(&self) -> &Scene {
+    pub fn scene(&self) -> &Scene {
         &self.scene
     }
 
     /// Mutable scene access for primitive emission exactly as GNU's
     /// device holds the frame under construction.
-    pub(crate) fn scene_mut(&mut self) -> &mut Scene {
+    pub fn scene_mut(&mut self) -> &mut Scene {
         &mut self.scene
     }
 
     /// Begin a fresh page exactly as GNU's device clear: the display
     /// list resets with the background clear as its first operation.
-    pub(crate) fn clear_scene(&mut self) {
+    pub fn clear_scene(&mut self) {
         self.scene.reset();
         self.scene.push(DrawOperation::Clear(Color::WHITE));
         self.page_count += 1;
@@ -104,7 +104,7 @@ impl GraphicsParState {
 
     /// How many pages this device has begun — embedders diffing the
     /// scene across evals use the counter to detect page turns.
-    pub(crate) fn page_count(&self) -> u32 {
+    pub fn page_count(&self) -> u32 {
         self.page_count
     }
 
@@ -113,7 +113,7 @@ impl GraphicsParState {
     /// rectangle, y flipping bottom-up into the y-down raster.
     /// Non-finite or zero-span usr yields the degenerate edge exactly
     /// as far as the caller cares — primitives clip regardless.
-    pub(crate) fn user_to_device(&self, x: f64, y: f64) -> (f32, f32) {
+    pub fn user_to_device(&self, x: f64, y: f64) -> (f32, f32) {
         // The state cascade exactly as every other consumer — plot.window's
         // usr rides in overrides, and layout has no opinion of its own;
         // querying layout directly here missed every plot.window call.
@@ -131,7 +131,7 @@ impl GraphicsParState {
 
     /// Install the device raster geometry and refresh the cascade
     /// exactly as a device replacement does.
-    pub(crate) fn set_device_size(&mut self, width: f64, height: f64) {
+    pub fn set_device_size(&mut self, width: f64, height: f64) {
         self.device_width = width;
         self.device_height = height;
         self.layout.set_device_size(width, height);
@@ -139,7 +139,7 @@ impl GraphicsParState {
         self.scene = Scene::new(width.round().max(1.0) as u32, height.round().max(1.0) as u32);
     }
 
-    pub(crate) fn frame_started(&self) -> bool {
+    pub fn frame_started(&self) -> bool {
         self.frame_started
     }
 
@@ -151,7 +151,7 @@ impl GraphicsParState {
         self.real_override("mex", 1.0)
     }
 
-    pub(crate) fn logical_override(&self, name: &str) -> bool {
+    pub fn logical_override(&self, name: &str) -> bool {
         match self.overrides.get(name) {
             Some(ParValue::Logical(values)) if values.first().is_some_and(|v| *v != 0) => true,
             _ => default_logical(name).unwrap_or(false),
@@ -171,7 +171,7 @@ impl GraphicsParState {
     /// GNU's par.c page logic exactly: with `new` set the next plot
     /// starts a page only when no frame ever began; otherwise the
     /// layout's wrap position decides.
-    pub(crate) fn starts_new_page(&self) -> bool {
+    pub fn starts_new_page(&self) -> bool {
         if self.logical_override("new") {
             !self.frame_started
         } else {
@@ -182,11 +182,11 @@ impl GraphicsParState {
     /// Read a parameter exactly as par("name") — layout-owned names
     /// cascade, page computes, everything else reads the override or
     /// GNU's default.
-    pub(crate) fn set_axp(&mut self, horizontal: bool, axp: [f64; 3]) {
+    pub fn set_axp(&mut self, horizontal: bool, axp: [f64; 3]) {
         self.layout.set_axp(horizontal, axp);
     }
 
-    pub(crate) fn query(&self, name: &str) -> Option<ParValue> {
+    pub fn query(&self, name: &str) -> Option<ParValue> {
         match name {
             "page" => Some(ParValue::Logical(vec![i32::from(self.starts_new_page())])),
             "new" => Some(ParValue::Logical(vec![i32::from(self.logical_override("new"))])),
@@ -214,7 +214,7 @@ impl GraphicsParState {
     /// mfg establishes the implicit new, and everything else is plain
     /// override storage. Warnings surface as strings exactly as GNU's
     /// mfg nr/nc mismatches.
-    pub(crate) fn apply(&mut self, name: &str, value: &ParValue) -> LayoutResult<Vec<String>> {
+    pub fn apply(&mut self, name: &str, value: &ParValue) -> LayoutResult<Vec<String>> {
         let cexbase = self.cexbase();
         let mex = self.mex();
         let mut warnings = Vec::new();
@@ -293,7 +293,7 @@ impl GraphicsParState {
     /// means a failed region check consumes neither cell nor page.
     /// Returns the candidate regions, whether the page clears, and the
     /// transition to commit after validation.
-    pub(crate) fn prepare_plot_figure(&mut self) -> (Regions, bool, PlotFigureTransition) {
+    pub fn prepare_plot_figure(&mut self) -> (Regions, bool, PlotFigureTransition) {
         let cexbase = self.cexbase();
         let mex = self.mex();
         if self.logical_override("new") && self.frame_started {
@@ -327,7 +327,7 @@ impl GraphicsParState {
 
     /// Commit after the candidate regions validate — the frame has
     /// now begun exactly as GNU's device flag.
-    pub(crate) fn commit_plot_figure(&mut self, transition: PlotFigureTransition) {
+    pub fn commit_plot_figure(&mut self, transition: PlotFigureTransition) {
         if let Some(layout) = transition.layout {
             self.layout = layout;
             self.pending_mfg_before_first_plot = transition.pending_mfg_before_first_plot;

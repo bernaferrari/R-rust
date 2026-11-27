@@ -1615,6 +1615,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "r-core"
+version = "0.1.0"
+dependencies = [
+ "r-graphics-engine",
+ "rmath-nmath",
+ "web-time",
+]
+
+[[package]]
 name = "r-device-android-headless"
 version = "0.1.0"
 dependencies = [
@@ -1799,6 +1808,7 @@ dependencies = [
  "lzma-rust2",
  "md-5",
  "num",
+ "r-core",
  "r-device-android-headless",
  "r-graphics-engine",
  "regex-syntax",

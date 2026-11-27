@@ -15,7 +15,7 @@ fn ldexp(x: f64, exp: i32) -> f64 {
 
 /// The result of one pretty computation: adjusted bounds, interval
 /// count and cell unit exactly as R_pretty's in/out contract.
-pub(crate) struct PrettyResult {
+pub struct PrettyResult {
     pub lo: f64,
     pub up: f64,
     pub ndiv: i32,
@@ -28,7 +28,7 @@ pub(crate) struct PrettyResult {
 /// eps_correction nudges bounds outward when set. Bounds tighten to
 /// exact multiples exactly as return_bounds=1.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn r_pretty(
+pub fn r_pretty(
     mut lo: f64,
     mut up: f64,
     ndiv: i32,

@@ -10,6 +10,7 @@ members = [
   "crates/r-wasm",
   "crates/r-uniffi",
   "crates/nmath",
+  "crates/r-core",
   "crates/rmath",
   "crates/rmath-test",
   "tests/script-diff",

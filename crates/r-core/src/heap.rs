@@ -1,15 +1,26 @@
 #![forbid(unsafe_code)]
 //! Direct O(1) generational heap.
 
-use super::id::ValueId;
-use super::intern::SymbolInterner;
-use super::object::{RObject, Slot};
+use crate::id::ValueId;
+use crate::intern::SymbolInterner;
+use crate::object::{RObject, Slot};
+
+/// The evaluation context frame exactly as GNU's RCNTXT data — the
+/// heap-owned call-stack record eval pushes per closure invocation.
+#[derive(Clone, Copy, Debug)]
+pub struct ContextFrame {
+    pub frame: ValueId,
+    pub call: ValueId,
+    pub closure: ValueId,
+    pub nargs: usize,
+}
+
 
 /// Slot occupancy: either a live object or a free-list link. Free slots
 /// retain their generation counter so reuse bumps it and stale handles fail
 /// the generation check.
 #[derive(Debug)]
-pub(crate) enum SlotState {
+pub enum SlotState {
     Occupied(Slot),
     Free { generation: u32, next_free: Option<u32> },
 }
@@ -19,15 +30,15 @@ pub(crate) enum SlotState {
 #[derive(Debug, Clone, Copy)]
 pub struct RestartEntry {
     pub id: u64,
-    pub handler: crate::value::id::ValueId,
-    pub object: crate::value::id::ValueId,
+    pub handler: crate::id::ValueId,
+    pub object: crate::id::ValueId,
 }
 
 /// One withCallingHandlers entry — a condition-class name and its closure.
 #[derive(Debug, Clone, Copy)]
 pub struct CallingHandlerEntry {
-    pub class_name: crate::value::intern::InternedStr,
-    pub handler: crate::value::id::ValueId,
+    pub class_name: crate::intern::InternedStr,
+    pub handler: crate::id::ValueId,
 }
 
 /// The object heap: a flat slot vector with a free list. All access goes
@@ -35,14 +46,14 @@ pub struct CallingHandlerEntry {
 /// no reverse lookups, pinning, or unsafe projection.
 #[derive(Debug, Default)]
 pub struct Heap {
-    pub(crate) slots: Vec<SlotState>,
-    pub(crate) free_head: Option<u32>,
+    pub slots: Vec<SlotState>,
+    pub free_head: Option<u32>,
     live_count: usize,
     /// Bytes of vector payload data, used as a GC pressure heuristic.
     payload_bytes: usize,
     /// Allocation count at which the next collection triggers; grows
     // geometrically after each collection.
-    pub(crate) next_gc_threshold: usize,
+    pub next_gc_threshold: usize,
     allocations_since_gc: usize,
     pub interner: SymbolInterner,
     /// The last error message — GNU's geterrmessage/seterrmessage state.
@@ -68,9 +79,9 @@ pub struct Heap {
     /// vectors keyed by parameter name exactly as the device layer holds.
     /// The graphics device state exactly as GNU's per-device GPar —
     /// the layout cascade, dumb overrides, and frame progression.
-    pub graphics: crate::value::graphics::GraphicsParState,
+    pub graphics: crate::graphics::GraphicsParState,
     /// The session-owned Mersenne stream — see value/rng.rs.
-    pub rng: crate::value::rng::PureRng,
+    pub rng: crate::rng::PureRng,
     /// GNU's sample.kind state — false is Rejection (the default since
     /// R 3.6.0), true the legacy Rounding branch of walker sampling.
     /// Lives session-locally exactly as the generator state does.
@@ -78,25 +89,25 @@ pub struct Heap {
     /// Per-session sampler memoization — GNU's static setup state in
     /// rbinom.c/rpois.c/rgamma.c/rbeta.c/rhyper.c and the signrank/wilcox
     /// distribution caches, owned by the session instead of thread-locals.
-    pub math: crate::nmath::state::MathState,
+    pub math: rmath_nmath::state::MathState,
     /// The color palette exactly as GNU's per-device state — palette()
     /// reads and replaces it, empty falling back to the R 4.x default.
     pub palette: Vec<String>,
     /// The closure context stack GNU's sys.* family reads — one entry per
     /// active closure application, innermost last.
-    pub contexts: Vec<crate::value::eval::ContextFrame>,
+    pub contexts: Vec<crate::heap::ContextFrame>,
     /// on.exit registrations keyed by the closure frame they were
     /// registered in — expressions stored unevaluated, run in order when
     /// the frame exits exactly as GNU.
-    pub exit_handlers: std::collections::HashMap<crate::value::id::ValueId, Vec<crate::value::id::ValueId>>,
+    pub exit_handlers: std::collections::HashMap<crate::id::ValueId, Vec<crate::id::ValueId>>,
     /// Active S3 dispatch entries — (generic, object, remaining classes) —
     /// pushed by UseMethod/NextMethod exactly as GNU's dispatch context.
-    pub s3_dispatch: Vec<(String, crate::value::id::ValueId, Vec<String>)>,
+    pub s3_dispatch: Vec<(String, crate::id::ValueId, Vec<String>)>,
     /// S4 class registry — name → (ordered slots with types, contains
     /// parent) exactly as GNU's class table.
     pub s4_classes: std::collections::HashMap<String, (Vec<(String, String)>, Option<String>)>,
     /// Debug-marked closures — the .Internal debug machinery's state.
-    pub debugged: std::collections::HashSet<crate::value::id::ValueId>,
+    pub debugged: std::collections::HashSet<crate::id::ValueId>,
     /// Interrupt suspension flag — GNU's interruptsSuspended state.
     pub interrupts_suspended: bool,
     /// bindtextdomain registry — domain to translation directory.
@@ -127,18 +138,18 @@ pub struct Heap {
     /// maps it to the T_GLOBALENV pseudo-reference exactly as GNU
     /// writes globalenv, since the environment graph itself never
     /// crosses the wire. Recorded at bootstrap.
-    pub global_env_id: Option<crate::value::id::ValueId>,
+    pub global_env_id: Option<crate::id::ValueId>,
     /// The base environment identity — same pseudo-reference
     /// treatment for closures serialized inside base.
-    pub base_env_id: Option<crate::value::id::ValueId>,
+    pub base_env_id: Option<crate::id::ValueId>,
     /// The loaded-package registry — package name to namespace
     /// environment exactly as GNU's loadedNamespaces. Synthetic
     /// registration seeds it today; RBG1 asset loading supplies
     /// real package content when the conversion lands.
-    pub package_registry: std::collections::HashMap<String, crate::value::id::ValueId>,
+    pub package_registry: std::collections::HashMap<String, crate::id::ValueId>,
     /// Long-lived host roots — retained FFI values stay live across
     /// collections exactly as the facade's retained surface needs.
-    pub retained_roots: crate::value::roots::RootTable,
+    pub retained_roots: crate::roots::RootTable,
     /// The embedder's virtual file store — browser files persist
     /// bytes by path exactly as the wasm/android hosts consume them.
     pub browser_files: std::collections::HashMap<String, Vec<u8>>,
@@ -150,7 +161,7 @@ pub struct Heap {
     /// policy contracts: when set, absolute paths and paths escaping the
     /// virtual root are refused before any host access. None is the
     /// permissive native default.
-    pub path_policy: Option<crate::value::path_policy::PathPolicy>,
+    pub path_policy: Option<crate::path_policy::PathPolicy>,
     /// The live evaluation recursion depth — the resource limit
     /// embedders configure exactly as the legacy world's guard.
     pub eval_depth: usize,
@@ -169,7 +180,7 @@ pub struct Heap {
     /// attached once at the frame that raised, never overwritten as the
     /// error unwinds outward, cleared when the condition is handled or
     /// reaches the top level. NIL means no error in flight.
-    pub error_call: crate::value::id::ValueId,
+    pub error_call: crate::id::ValueId,
     /// Cumulative bytes emitted this evaluation — the cap measures the
     /// eval's total output, not the drained buffer's momentary length,
     /// exactly as the facade's per-eval limit contract needs. The session
@@ -358,7 +369,7 @@ impl Heap {
 
     /// Sweep-side accounting — a freed object's payload leaves the
     /// occupancy measure exactly as its allocation entered it.
-    pub(crate) fn dec_payload(&mut self, bytes: usize) {
+    pub fn dec_payload(&mut self, bytes: usize) {
         self.payload_bytes = self.payload_bytes.saturating_sub(bytes);
     }
 
@@ -372,19 +383,19 @@ impl Heap {
         self.allocations_since_gc >= self.next_gc_threshold
     }
 
-    pub(crate) fn note_collection(&mut self, surviving: usize) {
+    pub fn note_collection(&mut self, surviving: usize) {
         self.allocations_since_gc = 0;
         // Grow the threshold geometrically relative to the surviving set so
         // collection frequency stays proportional to live data.
         self.next_gc_threshold = (surviving.max(256) * 2).max(1024);
     }
 
-    pub(crate) fn dec_live(&mut self) {
+    pub fn dec_live(&mut self) {
         self.live_count = self.live_count.saturating_sub(1);
     }
 }
 
-pub(crate) fn payload_estimate(body: &RObject) -> usize {
+pub fn payload_estimate(body: &RObject) -> usize {
     match body {
         RObject::Logical(v) | RObject::Integer(v) => v.len() * 4,
         RObject::Real(v) => v.len() * 8,

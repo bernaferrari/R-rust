@@ -123,7 +123,7 @@ impl PureRng {
     pub fn norm(&mut self) -> f64 {
         let mut u1 = self.unif();
         u1 = (BIG * u1) as i64 as f64 + self.unif();
-        crate::nmath::dist::normal::qnorm5_inner(u1 / BIG, 0.0, 1.0, true, false)
+        rmath_nmath::dist::normal::qnorm5_inner(u1 / BIG, 0.0, 1.0, true, false)
     }
 
     /// A uniform index in [0, dn) exactly as R_unif_index's rounding

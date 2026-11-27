@@ -42,7 +42,7 @@ impl ValueId {
         }
     }
 
-    pub(crate) const fn new(slot: u32, generation: u32) -> ValueId {
+    pub const fn new(slot: u32, generation: u32) -> ValueId {
         ValueId { slot, generation }
     }
 
@@ -51,7 +51,7 @@ impl ValueId {
         self.slot == u32::MAX
     }
 
-    pub(crate) fn slot_index(self) -> Option<usize> {
+    pub fn slot_index(self) -> Option<usize> {
         if self.is_sentinel() {
             None
         } else {
@@ -59,7 +59,7 @@ impl ValueId {
         }
     }
 
-    pub(crate) fn generation(self) -> u32 {
+    pub fn generation(self) -> u32 {
         self.generation
     }
 }

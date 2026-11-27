@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
 //! Typed object payloads and heap slot layout.
 
-use super::id::ValueId;
-use super::intern::{InternedStr, SymId};
+use crate::id::ValueId;
+use crate::intern::{InternedStr, SymId};
 use std::any::Any;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -195,7 +195,7 @@ impl EnvFrame {
     }
 
     /// Collect every binding edge for GC tracing.
-    pub(crate) fn trace_edges(&self, out: &mut Vec<ValueId>) {
+    pub fn trace_edges(&self, out: &mut Vec<ValueId>) {
         match self {
             EnvFrame::Empty => {}
             EnvFrame::List(entries) => {
@@ -282,7 +282,7 @@ pub enum RObject {
 impl RObject {
     /// Append every direct heap edge of this object to `out` — the single
     /// exhaustive traversal the garbage collector relies on.
-    pub(crate) fn trace_edges(&self, out: &mut Vec<ValueId>) {
+    pub fn trace_edges(&self, out: &mut Vec<ValueId>) {
         match self {
             RObject::Nil | RObject::Primitive(_) | RObject::S4Object => {}
             RObject::Symbol { value, internal, .. } => {
@@ -355,15 +355,15 @@ pub struct ObjectFlags {
 /// for collection, attribute edge, and the typed payload.
 #[derive(Debug)]
 pub struct Slot {
-    pub(crate) generation: u32,
-    pub(crate) gc_mark: bool,
+    pub generation: u32,
+    pub gc_mark: bool,
     pub flags: ObjectFlags,
     pub attrib: ValueId,
     pub body: RObject,
 }
 
 impl Slot {
-    pub(crate) fn new(generation: u32, body: RObject) -> Slot {
+    pub fn new(generation: u32, body: RObject) -> Slot {
         Slot {
             generation,
             gc_mark: false,

@@ -3,8 +3,8 @@
 //! Drawing primitives build on the region math here — the state machine
 //! is the spine every high-level plot command threads through.
 
-pub(crate) mod layout;
-pub(crate) mod state;
+pub mod layout;
+pub mod state;
 
-pub(crate) use state::GraphicsParState;
-pub(crate) mod pretty;
+pub use state::GraphicsParState;
+pub mod pretty;

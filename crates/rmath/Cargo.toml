@@ -23,6 +23,7 @@ memory-profiling = []
 
 [dependencies]
 rmath-nmath = { path = "../nmath" }
+r-core = { path = "../r-core" }
 web-time = "1"
 # Keep math in portable Rust, including when another dependency enables arch.
 # Decimal parsing still requires the correctly rounded software FMA.

@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 //! Unified rooting: scoped evaluation roots and stable host handles.
 
-use super::id::ValueId;
+use crate::id::ValueId;
 
 /// A scoped stack of root frames for evaluator temporaries.
 ///
@@ -32,7 +32,7 @@ impl RootStack {
     }
 
     /// Rooted handles across all live frames, innermost-last ordering.
-    pub(crate) fn roots(&self) -> impl Iterator<Item = ValueId> + '_ {
+    pub fn roots(&self) -> impl Iterator<Item = ValueId> + '_ {
         // Collect eagerly: the iterator cannot borrow the RefCell across
         // collection-time mutation points without risking a borrow panic
         // if a finalizer evaluation roots new temporaries mid-trace.
@@ -199,7 +199,7 @@ impl RootTable {
         self.free_head = Some(token.index);
     }
 
-    pub(crate) fn roots(&self) -> impl Iterator<Item = ValueId> + '_ {
+    pub fn roots(&self) -> impl Iterator<Item = ValueId> + '_ {
         self.entries.iter().filter_map(|entry| match entry {
             RootEntry::Occupied { id, .. } => Some(*id),
             RootEntry::Free { .. } => None,

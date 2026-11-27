@@ -6,9 +6,9 @@
 //! references are resolved in a fixpoint pass after the strong mark; dead
 //! keys queue their finalizers for the runtime to invoke after collection.
 
-use super::heap::{Heap, SlotState};
-use super::id::ValueId;
-use super::object::RObject;
+use crate::heap::{Heap, SlotState};
+use crate::id::ValueId;
+use crate::object::RObject;
 
 /// What the collector discovered, handed back for the runtime to act on.
 #[derive(Debug, Default)]
@@ -23,8 +23,8 @@ pub struct GcOutcome {
 /// One extra root set the host session injects (e.g. its environment chain
 /// heads and evaluation state) alongside the unified root machinery.
 pub struct RootSet<'a> {
-    pub stack: &'a super::roots::RootStack,
-    pub table: &'a super::roots::RootTable,
+    pub stack: &'a crate::roots::RootStack,
+    pub table: &'a crate::roots::RootTable,
     pub extra: &'a [ValueId],
 }
 
@@ -152,7 +152,7 @@ pub fn collect(heap: &mut Heap, roots: &RootSet<'_>) -> GcOutcome {
                 surviving += 1;
             } else {
                 let generation = slot.generation;
-                freed_payload += crate::value::heap::payload_estimate(&slot.body);
+                freed_payload += crate::heap::payload_estimate(&slot.body);
                 *state = SlotState::Free {
                     generation,
                     next_free: heap.free_head,
@@ -206,7 +206,7 @@ fn mark_deep(heap: &mut Heap, id: ValueId, worklist: &mut Vec<ValueId>, scratch:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::roots::{RootStack, RootTable};
+    use crate::roots::{RootStack, RootTable};
 
     fn fixture(heap: &Heap) -> (RootStack, RootTable, Vec<ValueId>) {
         let _ = heap;
