@@ -68,7 +68,11 @@ impl Session {
     /// then decide whether the expression answered over budget. The
     /// flags clear here so one transgression poisons exactly one
     /// expression, never the session.
-    fn boundary_maintenance(&mut self, value: ValueId) -> Result<(), String> {
+    fn boundary_maintenance(
+        &mut self,
+        value: ValueId,
+        pending: &[ValueId],
+    ) -> Result<(), String> {
         let pressured = self.heap.gc_pressure();
         let capped = self.heap.memory_cap_bytes.is_some() || self.heap.node_cap.is_some();
         let memory_tripped = self.heap.memory_cap_tripped;
@@ -98,6 +102,11 @@ impl Session {
             extra.extend(self.heap.s3_dispatch.iter().map(|(_, method, _)| *method));
             extra.extend(self.heap.debugged.iter().copied());
             extra.extend(self.heap.retained_roots.roots());
+            // Parsed-but-unevaluated expressions are live roots held in
+            // the caller's Rust local — invisible to the collector, so
+            // the boundary must preserve them explicitly or the rest of
+            // the script is freed mid-evaluation.
+            extra.extend(pending.iter().copied());
             let stack = super::roots::RootStack::new();
             let table = super::roots::RootTable::default();
             let roots = super::gc::RootSet {
@@ -130,11 +139,11 @@ impl Session {
                     // The error path still collects — reclaiming the
                     // unwound garbage is what lets the next expression
                     // admit again after a budget failure.
-                    let _ = self.boundary_maintenance(ValueId::NIL);
+                    let _ = self.boundary_maintenance(ValueId::NIL, &expressions);
                     return Err(SessionError::Eval(signal));
                 }
             };
-            if let Err(text) = self.boundary_maintenance(value) {
+            if let Err(text) = self.boundary_maintenance(value, &expressions) {
                 return Err(SessionError::Eval(RSignal::from(EvalError::Condition(text))));
             }
             // Primitive writes (cat/print/writeLines) and auto-printed
@@ -175,7 +184,7 @@ impl Session {
         for expr in &expressions {
             last = eval(&mut self.heap, &mut self.interner, *expr, self.global_env)
                 .map_err(SessionError::Eval)?;
-            if let Err(text) = self.boundary_maintenance(last) {
+            if let Err(text) = self.boundary_maintenance(last, &expressions) {
                 return Err(SessionError::Eval(RSignal::from(EvalError::Condition(text))));
             }
         }
@@ -203,7 +212,7 @@ impl Session {
         for expr in &expressions {
             match eval(&mut self.heap, &mut self.interner, *expr, self.global_env) {
                 Ok(value) => {
-                    if let Err(text) = self.boundary_maintenance(value) {
+                    if let Err(text) = self.boundary_maintenance(value, &expressions) {
                         let chunk = std::mem::take(&mut self.heap.output);
                         full.stdout.push_str(&chunk);
                         full.output.push_str(&chunk);
@@ -245,7 +254,7 @@ impl Session {
                 Err(signal) => {
                     // Collection still runs — the unwound garbage must
                     // leave the admission measure before the next eval.
-                    let _ = self.boundary_maintenance(ValueId::NIL);
+                    let _ = self.boundary_maintenance(ValueId::NIL, &expressions);
                     let chunk = std::mem::take(&mut self.heap.output);
                     full.stdout.push_str(&chunk);
                     full.output.push_str(&chunk);
