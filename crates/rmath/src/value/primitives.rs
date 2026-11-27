@@ -1067,10 +1067,21 @@ fn call_primitive_inner(
                     // GNU: file connections open write or append per the
                     /// tagged append argument.
                     use std::io::Write;
-                    let file = if append {
-                        std::fs::OpenOptions::new().append(true).create(true).open(&path)
-                    } else {
-                        std::fs::File::create(&path)
+                    let file = match crate::value::path_policy::resolve_host_path(
+                        heap.path_policy.as_ref(),
+                        &path,
+                    ) {
+                        Some(host) => {
+                            if append {
+                                std::fs::OpenOptions::new().append(true).create(true).open(&host)
+                            } else {
+                                std::fs::File::create(&host)
+                            }
+                        }
+                        None => Err(std::io::Error::new(
+                            std::io::ErrorKind::PermissionDenied,
+                            "path refused",
+                        )),
                     };
                     let mut file = file.map_err(|_| RSignal::Error(EvalError::TypeError(
                         "cat: cannot open file",
@@ -1566,7 +1577,8 @@ fn call_primitive_inner(
                                     }
                                     let delete = ops.get(3).map(|v| matches!(heap.object(*v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) == 1)).unwrap_or(false);
                                     for path in &files {
-                                        if let Ok(content) = std::fs::read_to_string(path) {
+                                        if let Some(content) = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), path)
+                                            .and_then(|host| std::fs::read_to_string(host).ok()) {
                                             heap.emit(&content);
                                             if !content.ends_with('\n') {
                                                 heap.emit("\n");
@@ -4734,10 +4746,14 @@ fn call_primitive_inner(
             let out: Vec<i32> = paths
                 .iter()
                 .map(|p| {
-                    if std::path::Path::new(p).exists() {
+                    let host = crate::value::path_policy::resolve_host_path(
+                        heap.path_policy.as_ref(),
+                        p,
+                    );
+                    if host.as_deref().map(|h| std::path::Path::new(h).exists()).unwrap_or(true) {
                         0
                     } else {
-                        match std::fs::File::create(p) {
+                        match std::fs::File::create(host.as_deref().unwrap_or(p)) {
                             Ok(_) => {
                                 // GNU applies the process mask at creation —
                                 // 0666 & ~umask — shadowed through the heap
@@ -6214,7 +6230,9 @@ fn call_primitive_inner(
             let object = bound[0].ok_or(EvalError::TypeError("saveRDS requires an object")).map_err(RSignal::from)?;
             let path = bound[1].and_then(|v| string_operand(heap, interner, v)).unwrap_or_default();
             let bytes = super::rbg1::encode_rds(heap, interner, object);
-            std::fs::write(&path, &bytes)
+            let host = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path)
+                .ok_or_else(|| RSignal::from(EvalError::Condition(format!("cannot write file: {path}"))))?;
+            std::fs::write(&host, &bytes)
                 .map_err(|e| RSignal::from(EvalError::Condition(format!("cannot write file: {e}"))))?;
             heap.visible = false;
             Ok(ValueId::NIL)
@@ -6483,7 +6501,9 @@ fn call_primitive_inner(
                     _ => String::new(),
                 };
                 if !path.is_empty() {
-                    std::fs::write(&path, format!("{text}\n"))
+                    crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path)
+                        .map(|host| std::fs::write(&host, format!("{text}\n")))
+                        .unwrap_or_else(|| Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "path refused")))
                         .map_err(|e| RSignal::from(EvalError::TypeError(Box::leak(format!("cannot open file: {e}").into_boxed_str()))))?;
                     heap.visible = false;
                     return Ok(operands[0]);
@@ -13604,9 +13624,15 @@ fn file_exists_primitive(
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 1)?;
     let paths = string_vec(heap, interner, operands[0]);
+    let policy = heap.path_policy.clone();
     let out: Vec<i32> = paths
         .iter()
-        .map(|p| if std::path::Path::new(p).exists() { 1 } else { 0 })
+        .map(|p| {
+            match crate::value::path_policy::resolve_host_path(policy.as_ref(), p) {
+                Some(host) if std::path::Path::new(&host).exists() => 1,
+                _ => 0,
+            }
+        })
         .collect();
     Ok(heap.alloc(RObject::Logical(out)))
 }
@@ -13627,9 +13653,15 @@ fn file_remove_primitive(
         let v = eval(heap, interner, *expr, caller_env)?;
         paths.extend(string_vec(heap, interner, v));
     }
+    let policy = heap.path_policy.clone();
     let out: Vec<i32> = paths
         .iter()
-        .map(|p| if std::fs::remove_file(p).is_ok() { 1 } else { 0 })
+        .map(|p| {
+            match crate::value::path_policy::resolve_host_path(policy.as_ref(), p) {
+                Some(host) if std::fs::remove_file(&host).is_ok() => 1,
+                _ => 0,
+            }
+        })
         .collect();
     Ok(heap.alloc(RObject::Logical(out)))
 }
@@ -13646,7 +13678,13 @@ fn file_copy_primitive(
         .ok_or(EvalError::TypeError("file.copy source"))?;
     let to = string_operand(heap, interner, operands[1])
         .ok_or(EvalError::TypeError("file.copy target"))?;
-    let ok = std::fs::copy(&from, &to).is_ok();
+    let ok = match (
+        crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &from),
+        crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &to),
+    ) {
+        (Some(host_from), Some(host_to)) => std::fs::copy(&host_from, &host_to).is_ok(),
+        _ => false,
+    };
     Ok(heap.alloc(RObject::Logical(vec![if ok { 1 } else { 0 }])))
 }
 
@@ -13662,7 +13700,13 @@ fn file_rename_primitive(
         .ok_or(EvalError::TypeError("file.rename source"))?;
     let to = string_operand(heap, interner, operands[1])
         .ok_or(EvalError::TypeError("file.rename target"))?;
-    let ok = std::fs::rename(&from, &to).is_ok();
+    let ok = match (
+        crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &from),
+        crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &to),
+    ) {
+        (Some(host_from), Some(host_to)) => std::fs::rename(&host_from, &host_to).is_ok(),
+        _ => false,
+    };
     Ok(heap.alloc(RObject::Logical(vec![if ok { 1 } else { 0 }])))
 }
 

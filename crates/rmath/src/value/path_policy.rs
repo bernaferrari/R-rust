@@ -97,6 +97,14 @@ impl PathPolicy {
     }
 }
 
+/// The enforcement primitive for iterator-shaped file operations: the
+/// resolved host path, or None when the policy refuses exactly as the
+/// operation's own failure channel needs — denied removals report false,
+/// denied reads error, denied writes fail, each in GNU's shape.
+pub fn resolve_host_path(policy: Option<&PathPolicy>, path: &str) -> Option<String> {
+    gate_host_path(policy, path).ok()
+}
+
 /// The heap-facing gate: permissive when no policy is configured exactly
 /// as the native default, enforcing otherwise. Returns the path the host
 /// operation may use.
