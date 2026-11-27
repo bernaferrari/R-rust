@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# R errors, return/break and restart handling need catch_unwind on Wasm too.
+# The pure world propagates R errors, return/break and restarts through
+# Result values; nothing unwinds, so the runtime builds with the wasm
+# default panic=abort against the stock precompiled std.
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
@@ -14,10 +16,9 @@ if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
 else
     export CARGO_TARGET_DIR="$ROOT_DIR/target/wasm-unwind"
 fi
-export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-Cpanic=unwind -Clink-arg=--max-memory=268435456"
-# build-std needs rust-src from this exact toolchain. Keep setup explicit in CI.
+export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-Clink-arg=--max-memory=268435456"
 if ! rustup run "$WASM_TOOLCHAIN" rustc --version >/dev/null 2>&1; then
-    echo "Install prerequisites: rustup toolchain install $WASM_TOOLCHAIN --profile minimal --component rust-src --target wasm32-unknown-unknown" >&2
+    echo "Install prerequisites: rustup toolchain install $WASM_TOOLCHAIN --profile minimal --target wasm32-unknown-unknown" >&2
     exit 2
 fi
 WASM_PACK_ARGS=("$@")
@@ -41,9 +42,9 @@ fi
 # Release assets use the separately pinned, verified Binaryen below.
 # Optional GPU builds stay separate from the default CPU distribution.
 if [[ -n "${RPORT_WASM_FEATURES:-}" ]]; then
-    wasm-pack build crates/r-wasm --no-opt "${WASM_PACK_ARGS[@]}" -- -Zbuild-std=std,panic_unwind --features "$RPORT_WASM_FEATURES"
+    wasm-pack build crates/r-wasm --no-opt "${WASM_PACK_ARGS[@]}" -- --features "$RPORT_WASM_FEATURES"
 else
-    wasm-pack build crates/r-wasm --no-opt "${WASM_PACK_ARGS[@]}" -- -Zbuild-std=std,panic_unwind
+    wasm-pack build crates/r-wasm --no-opt "${WASM_PACK_ARGS[@]}"
 fi
 
 if [[ "$OPTIMIZE" == 1 ]]; then

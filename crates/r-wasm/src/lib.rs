@@ -52,9 +52,9 @@ use native_shim::JsError;
 /// JS side with `new WasmRSession()`.
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct WasmRSession {
-    // Every access is exclusive and catches unexpected panics below. Such a
-    // panic closes the session before another JavaScript request can enter.
-    inner: std::panic::AssertUnwindSafe<Option<r_embed::PureSession>>,
+    // Every access is exclusive: JavaScript's run-to-completion model means
+    // one request finishes before another can enter.
+    inner: Option<r_embed::PureSession>,
 }
 
 /// Owned result from one interactive evaluation.
@@ -160,11 +160,6 @@ impl WasmRSession {
     /// Throws a `JsError` when interpreter initialization fails.
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen(constructor))]
     pub fn new() -> Result<Self, JsError> {
-        if cfg!(all(target_arch = "wasm32", panic = "abort")) {
-            return Err(JsError::new(
-                "R requires Wasm exception handling; build with scripts/build_wasm_runtime.sh",
-            ));
-        }
         // The browser facade must not discover installed host R libraries on
         // native test hosts. Use the same real portable initialization profile
         // on every target before applying the browser's resource budget.
@@ -181,7 +176,7 @@ impl WasmRSession {
             max_arena_nodes: 500_000,
         });
         Ok(WasmRSession {
-            inner: std::panic::AssertUnwindSafe(Some(inner)),
+            inner: Some(inner),
         })
     }
 
@@ -310,7 +305,7 @@ impl WasmRSession {
 
     /// Close the session and release its interpreter resources.
     pub fn close(&mut self) {
-        if let Some(mut session) = self.inner.0.take() {
+        if let Some(mut session) = self.inner.take() {
             session.close();
         }
     }
@@ -325,15 +320,7 @@ impl WasmRSession {
             .inner
             .as_mut()
             .ok_or_else(|| JsError::new("Session closed"))?;
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(session))) {
-            Ok(result) => result,
-            Err(_) => {
-                self.close();
-                Err(JsError::new(
-                    "Unexpected interpreter panic; session closed. Reset the worker before continuing.",
-                ))
-            }
-        }
+f(session)
     }
 }
 
@@ -597,24 +584,6 @@ mod tests {
             include_str!("../../r-embed/tests/fixtures/unserialize-connection-contract.out")
         );
         session.close();
-    }
-
-    #[test]
-    fn unexpected_panic_closes_session_before_reuse() {
-        let mut session = WasmRSession::new().unwrap();
-        session.eval("x <- 41");
-        let error = session
-            .with_session::<()>(|_| panic!("injected host failure"))
-            .unwrap_err();
-        assert!(error.to_string().contains("session closed"));
-        assert!(session.inner.0.is_none());
-        assert!(
-            session
-                .eval_checked("x + 1")
-                .unwrap_err()
-                .to_string()
-                .contains("Session closed")
-        );
     }
 
     #[test]

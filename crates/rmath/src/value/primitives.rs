@@ -979,6 +979,7 @@ fn call_primitive_inner(
             /// hidden bindings.
             let mut env = caller_env;
             let mut all_names = false;
+            let mut pattern: Option<String> = None;
             let mut positional = 0usize;
             let mut cursor = args;
             loop {
@@ -999,6 +1000,16 @@ fn call_primitive_inner(
                             all_names = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
                         }
                     }
+                    Some("envir") | Some("name") => {
+                        env = v;
+                    }
+                    Some("pattern") => {
+                        if let Some(RObject::String(vals)) = heap.object(v) {
+                            if let Some(first) = vals.first() {
+                                pattern = Some(interner.string_text(*first).to_string());
+                            }
+                        }
+                    }
                     _ => {
                         if positional == 1 {
                             env = v;
@@ -1010,7 +1021,7 @@ fn call_primitive_inner(
                 }
                 cursor = cdr;
             }
-            ls_primitive(heap, interner, env, all_names)
+            ls_primitive(heap, interner, env, all_names, pattern.as_deref())
         }
         DOLLAR_ASSIGN => dollar_assign_primitive(heap, interner, args, caller_env),
         CAT => {
@@ -2228,8 +2239,8 @@ fn call_primitive_inner(
         }
         SYS_TIME => {
             // Current epoch seconds classed POSIXct/POSIXt exactly as GNU.
-            let secs = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            let secs = web_time::SystemTime::now()
+                .duration_since(web_time::UNIX_EPOCH)
                 .map(|d| d.as_secs_f64())
                 .unwrap_or(0.0);
             let result = heap.alloc(RObject::Real(vec![secs]));
@@ -2241,8 +2252,8 @@ fn call_primitive_inner(
         }
         SYS_DATE => {
             // Current civil date as epoch days classed Date exactly as GNU.
-            let secs = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            let secs = web_time::SystemTime::now()
+                .duration_since(web_time::UNIX_EPOCH)
                 .map(|d| d.as_secs() as f64)
                 .unwrap_or(0.0);
             let days = (secs / 86400.0).floor();
@@ -5045,8 +5056,8 @@ fn call_primitive_inner(
         DATE_FN => {
             // GNU's fixed-shape timestamp: abbreviated weekday and month,
             /// space-padded day, colon time, year — 24 characters exactly.
-            let secs = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            let secs = web_time::SystemTime::now()
+                .duration_since(web_time::UNIX_EPOCH)
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(0);
             let days = secs.div_euclid(86400);
@@ -6934,7 +6945,13 @@ fn call_primitive_inner(
         GREP => grep_primitive(heap, interner, args, caller_env, false),
         REGEXPR => regexpr_primitive(heap, interner, args, caller_env),
         TEMPDIR => {
-            let text = interner.intern_string(&std::env::temp_dir().to_string_lossy());
+            // std::env::temp_dir panics on wasm32-unknown-unknown; the
+            // browser store resolves the virtual root instead.
+            #[cfg(target_arch = "wasm32")]
+            let temp = "/tmp".to_owned();
+            #[cfg(not(target_arch = "wasm32"))]
+            let temp = std::env::temp_dir().to_string_lossy().into_owned();
+            let text = interner.intern_string(&temp);
             Ok(heap.alloc(RObject::String(vec![text])))
         }
         DIMNAMES => attrib_getter(heap, interner, args, caller_env, "dimnames"),
@@ -12741,6 +12758,7 @@ fn ls_primitive(
     interner: &mut SymbolInterner,
     env: ValueId,
     all_names: bool,
+    pattern: Option<&str>,
 ) -> EvalResult {
     let mut names: Vec<String> = Vec::new();
     if let Some(RObject::Environment { frame, .. }) = heap.object(env) {
@@ -12753,6 +12771,10 @@ fn ls_primitive(
     // GNU hides dot-prefixed bindings unless all.names=TRUE.
     if !all_names {
         names.retain(|n| !n.starts_with('.'));
+    }
+    // GNU: pattern filters with the same regex semantics grep uses.
+    if let Some(pat) = pattern {
+        names.retain(|n| crate::value::regex::regex_search(pat, n).is_some());
     }
     names.sort();
     let interned: Vec<super::intern::InternedStr> = names
@@ -13631,8 +13653,8 @@ fn tempfile_primitive(
     if heap.browser_files_enabled {
         loop {
             let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let nanos = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            let nanos = web_time::SystemTime::now()
+                .duration_since(web_time::UNIX_EPOCH)
                 .map(|d| d.subsec_nanos())
                 .unwrap_or(0);
             let key = format!("Rtmpfile{}x{:x}{}", std::process::id(), nanos, n);
@@ -13642,11 +13664,14 @@ fn tempfile_primitive(
             }
         }
     }
+    #[cfg(target_arch = "wasm32")]
+    let dir = std::path::PathBuf::from("/tmp");
+    #[cfg(not(target_arch = "wasm32"))]
     let dir = std::env::temp_dir();
     loop {
         let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+        let nanos = web_time::SystemTime::now()
+            .duration_since(web_time::UNIX_EPOCH)
             .map(|d| d.subsec_nanos())
             .unwrap_or(0);
         let path = dir.join(format!(
@@ -18337,7 +18362,7 @@ fn system_time_primitive(
         Some(RObject::Pairlist { car, .. }) => *car,
         _ => ValueId::NIL,
     };
-    let start = std::time::Instant::now();
+    let start = web_time::Instant::now();
     let _ = eval(heap, interner, raw_expr, caller_env)?;
     let elapsed = start.elapsed().as_secs_f64();
     let vals = heap.alloc(RObject::Real(vec![elapsed, 0.0, elapsed, 0.0, 0.0]));

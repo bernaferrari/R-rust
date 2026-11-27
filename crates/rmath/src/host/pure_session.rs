@@ -122,9 +122,15 @@ impl Default for PureSession {
 
 impl PureSession {
     pub fn new() -> Self {
+        // std::env::temp_dir panics on wasm32-unknown-unknown; browser
+        // sessions sandbox every path through the virtual store anyway.
+        #[cfg(target_arch = "wasm32")]
+        let host_temp = "/tmp".to_owned();
+        #[cfg(not(target_arch = "wasm32"))]
+        let host_temp = std::env::temp_dir().to_string_lossy().into_owned();
         let runtime_paths = super::facade::RuntimePaths::new(
-            std::env::temp_dir().to_string_lossy().into_owned(),
-            std::env::temp_dir().to_string_lossy().into_owned(),
+            host_temp.clone(),
+            host_temp,
             None::<String>,
         );
         let mut session = Session::new();
@@ -316,7 +322,7 @@ impl PureSession {
             None
         } else {
             Some(
-                std::time::Instant::now()
+                web_time::Instant::now()
                     + std::time::Duration::from_millis(limits.max_execution_time_ms),
             )
         };
@@ -2323,8 +2329,8 @@ cat(grconvertX(0:1, "user", "device"), grconvertY(0:1, "user", "device"), "\n")
         let root = std::env::temp_dir().join(format!(
             "rport-pure-pkg-{}-{}",
             std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            web_time::SystemTime::now()
+                .duration_since(web_time::UNIX_EPOCH)
                 .expect("clock")
                 .as_nanos()
         ));

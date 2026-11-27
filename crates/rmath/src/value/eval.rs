@@ -105,7 +105,7 @@ pub fn eval(
     // The deadline shares the cancellation poll site — one cheap check
     /// pair per node against the tree walk's cost.
     if let Some(deadline) = heap.eval_deadline {
-        if std::time::Instant::now() >= deadline {
+        if web_time::Instant::now() >= deadline {
             return Err(RSignal::from(EvalError::Condition(
                 "evaluation time limit exceeded".to_string(),
             )));

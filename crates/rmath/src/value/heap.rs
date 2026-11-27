@@ -187,7 +187,7 @@ pub struct Heap {
     pub node_cap_tripped: bool,
     /// The host-configured execution deadline, polled alongside
     /// cancellation at eval entry exactly as the time limit needs.
-    pub eval_deadline: Option<std::time::Instant>,
+    pub eval_deadline: Option<web_time::Instant>,
     /// Cooperative cancellation cell — the host's token observes
     /// SIGINT exactly as the legacy world's does; eval polls it at entry.
     pub cancellation: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
