@@ -35,6 +35,9 @@ pub(crate) struct GraphicsParState {
     /// output exactly as GNU's device bitmap, backend-neutral so
     /// embedders replay onto any target.
     scene: Scene,
+    /// File-backed device target exactly as GNU's one-active-device
+    /// model — svg() sets it, dev.off() flushes and clears.
+    pub(crate) device_file: Option<String>,
     /// Pages begun on this device — the clear events the reset display
     /// list itself can no longer distinguish.
     page_count: u32,
@@ -63,6 +66,7 @@ impl GraphicsParState {
             device_width: 504.0,
             device_height: 504.0,
             scene: Scene::new(504, 504),
+            device_file: None,
             page_count: 0,
         }
     }
