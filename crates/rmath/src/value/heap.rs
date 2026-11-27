@@ -71,6 +71,10 @@ pub struct Heap {
     pub graphics: crate::value::graphics::GraphicsParState,
     /// The session-owned Mersenne stream — see value/rng.rs.
     pub rng: crate::value::rng::PureRng,
+    /// GNU's sample.kind state — false is Rejection (the default since
+    /// R 3.6.0), true the legacy Rounding branch of walker sampling.
+    /// Lives session-locally exactly as the generator state does.
+    pub sample_kind_rounding: bool,
     /// Per-session sampler memoization — GNU's static setup state in
     /// rbinom.c/rpois.c/rgamma.c/rbeta.c/rhyper.c and the signrank/wilcox
     /// distribution caches, owned by the session instead of thread-locals.
