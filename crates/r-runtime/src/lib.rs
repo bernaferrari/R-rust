@@ -28,7 +28,6 @@
 #![allow(clippy::cast_sign_loss)]
 #![allow(clippy::cast_precision_loss)]
 #![allow(clippy::cast_lossless)]
-#![allow(clippy::cast_ptr_alignment)]
 #![allow(clippy::unnecessary_cast)]
 #![allow(clippy::bool_to_int_with_if)]
 // Pointer operations: inherent to C FFI and memory allocation patterns
@@ -50,7 +49,6 @@
 #![allow(clippy::doc_markdown)]
 // Safety docs: every unsafe fn in this C FFI port operates on raw SEXP pointers;
 // adding 1600+ boilerplate "# Safety" sections adds no real safety value.
-#![allow(clippy::missing_safety_doc)]
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::missing_panics_doc)]
 // C control flow idioms: direct translations from C if/else/match patterns
@@ -153,7 +151,6 @@
 #![allow(clippy::no_mangle_with_rust_abi)]
 #![allow(clippy::ptr_offset_by_literal)]
 #![allow(clippy::cast_abs_to_unsigned)]
-#![allow(clippy::manual_dangling_ptr)]
 #![allow(clippy::bool_assert_comparison)]
 #![allow(clippy::bool_comparison)]
 #![allow(clippy::doc_overindented_list_items)]

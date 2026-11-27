@@ -11,6 +11,7 @@
 //! core-runtime crate embeds them in its per-session instance; standalone
 //! consumers fall back to per-thread defaults.
 
+#![forbid(unsafe_code)]
 // C-to-Rust translation conventions (R's nmath library uses C naming)
 #![allow(non_upper_case_globals)]
 #![allow(non_snake_case)]
@@ -54,7 +55,6 @@
 #![allow(clippy::approx_constant)]
 // Documentation: C code doesn't follow Rust doc conventions
 #![allow(clippy::doc_markdown)]
-// Safety docs: every unsafe fn in this C FFI port operates on raw SEXP pointers;
 // adding 1600+ boilerplate "# Safety" sections adds no real safety value.
 #![allow(clippy::missing_safety_doc)]
 #![allow(clippy::missing_errors_doc)]

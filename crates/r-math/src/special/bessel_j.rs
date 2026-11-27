@@ -715,24 +715,6 @@ pub fn bessel_j_positive_status(
     })
 }
 
-/// C FFI wrapper for bessel_j_ex
-/// # Safety
-/// For a non-null `bj` and positive `nb`, `bj` must point to `nb` initialized,
-/// properly aligned `f64` values in one live allocation, exclusively accessible
-/// for the whole call, including any reentrant warning hooks. Prefer
-/// [`bessel_j_ex`] when a safe mutable slice is available.
-///
-/// ```compile_fail
-/// rmath_nmath::special::bessel_j::bessel_j_ex_c(1.0, 0.0, std::ptr::null_mut(), 1);
-/// ```
-pub unsafe fn bessel_j_ex_c(x: f64, alpha: f64, bj: *mut f64, nb: i32) -> f64 {
-    if bj.is_null() || nb <= 0 {
-        return ML_NAN;
-    }
-    let bj_slice = unsafe { std::slice::from_raw_parts_mut(bj, nb as usize) };
-    bessel_j_ex(x, alpha, bj_slice)
-}
-
 #[cfg(test)]
 mod shared_diagnostic_tests {
     use super::*;
