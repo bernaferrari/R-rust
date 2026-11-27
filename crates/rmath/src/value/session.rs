@@ -311,6 +311,136 @@ pub fn bootstrap_env(heap: &mut Heap, interner: &mut SymbolInterner) -> ValueId 
     }
     let na_str = heap.alloc(RObject::String(vec![interner.intern_string("\0NA")]));
     let sym = interner.intern_symbol("NA_character_");
-    env::define(heap, base, sym, na_str).expect("NA_character_");
+    env::define(heap, base, sym, na_str).expect("NA_character_");    register_baked_packages(heap, interner, base);
+    attach_default_packages(heap, interner, base, user);
     user
+}
+
+/// The pinned baked-package export manifests, decoded and resolved at
+/// bootstrap: every package namespace binds the exports the pinned
+/// metadata declares, resolved against the base environment's bindings
+/// exactly as GNU's namespace population links package code — the pure
+/// world carries the implementations as base primitives, so population
+/// is a name-linking pass with no code loading. Names without a base
+/// binding belong to the unimplemented remainder and stay absent until
+/// the primitive lands, exactly mirroring GNU's undefined-export error
+/// surface at use time rather than at attach time.
+fn register_baked_packages(heap: &mut Heap, interner: &mut SymbolInterner, base: ValueId) {
+    use std::io::Read;
+    const PACKAGES: &[(&str, &[u8])] = &[
+        ("stats", include_bytes!("../library/portable_package/assets/stats/exports.rds")),
+        ("utils", include_bytes!("../library/portable_package/assets/utils/exports.rds")),
+        ("graphics", include_bytes!("../library/portable_package/assets/graphics/exports.rds")),
+        ("grDevices", include_bytes!("../library/portable_package/assets/grDevices/exports.rds")),
+        ("stats4", include_bytes!("../library/portable_package/assets/stats4/exports.rds")),
+        ("tools", include_bytes!("../library/portable_package/assets/tools/exports.rds")),
+        ("methods", include_bytes!("../library/methods/portable/assets/exports.rds")),
+    ];
+    for &(package, gzipped) in PACKAGES {
+        let namespace = env::new_environment(heap, base);
+        // The attached-package name exactly as GNU's search() reports —
+        // library() splices this very environment into the chain.
+        {
+            let name_sym = interner.intern_symbol("name");
+            let name_val = heap.alloc(RObject::String(vec![
+                interner.intern_string(&format!("package:{package}")),
+            ]));
+            let tag_obj = heap.alloc(RObject::Symbol {
+                name: name_sym,
+                value: ValueId::UNBOUND,
+                internal: ValueId::NIL,
+            });
+            let chain = heap.alloc(RObject::Pairlist {
+                car: name_val,
+                cdr: ValueId::NIL,
+                tag: tag_obj,
+            });
+            if let Some(slot) = heap.get_mut(namespace) {
+                slot.attrib = chain;
+            }
+        }
+        let mut plain = Vec::new();
+        if flate2::read::GzDecoder::new(gzipped).read_to_end(&mut plain).is_ok() {
+            if let Some(manifest) = super::rbg1::decode_rds(heap, interner, &plain, base) {
+                let names: Vec<String> = match heap.object(manifest) {
+                    Some(RObject::String(entries)) => entries
+                        .iter()
+                        .map(|entry| interner.string_text(*entry).to_string())
+                        .collect(),
+                    _ => Vec::new(),
+                };
+                for export in names {
+                    let sym = interner.intern_symbol(&export);
+                    if let Some(binding) = env::lookup_in_frame(heap, base, sym) {
+                        let _ = env::define(heap, namespace, sym, binding.value);
+                    }
+                }
+            }
+        }
+        heap.package_registry.insert(package.to_string(), namespace);
+    }
+    // base resolves through itself — every primitive is already there —
+    // and datasets carries its contents through data() rather than
+    // exports, so an empty namespace satisfies library(datasets).
+    heap.package_registry.insert("base".to_string(), base);
+    let datasets = env::new_environment(heap, base);
+    name_environment(heap, interner, datasets, "package:datasets");
+    heap.package_registry.insert("datasets".to_string(), datasets);
+}
+
+/// Attach the printed name exactly as GNU's environment naming — the
+/// attribute chain search() reads when reporting the path.
+fn name_environment(heap: &mut Heap, interner: &mut SymbolInterner, target: ValueId, label: &str) {
+    let name_sym = interner.intern_symbol("name");
+    let name_val = heap.alloc(RObject::String(vec![interner.intern_string(label)]));
+    let tag_obj = heap.alloc(RObject::Symbol {
+        name: name_sym,
+        value: ValueId::UNBOUND,
+        internal: ValueId::NIL,
+    });
+    let chain = heap.alloc(RObject::Pairlist {
+        car: name_val,
+        cdr: ValueId::NIL,
+        tag: tag_obj,
+    });
+    if let Some(slot) = heap.get_mut(target) {
+        slot.attrib = chain;
+    }
+}
+
+/// GNU's default search path exactly as Rscript assembles it: the six
+/// standard packages pre-attached between .GlobalEnv and base, with the
+/// Autoloads environment ahead of base. Namespaces chain through their
+/// enclosure slots in attachment order — the pure world's namespaces are
+/// the attached environments directly, since implementations live in
+/// base and attachment is a name-resolution shell either way.
+fn attach_default_packages(heap: &mut Heap, interner: &mut SymbolInterner, base: ValueId, user: ValueId) {
+    let order = ["stats", "graphics", "grDevices", "utils", "datasets", "methods"];
+    let autoloads = env::new_environment(heap, base);
+    name_environment(heap, interner, autoloads, "Autoloads");
+    // Link base-ward: each package's enclosure is the next environment
+    /// down the chain exactly as GNU's attach ordering arranges.
+    let mut chain_envs: Vec<ValueId> = Vec::new();
+    for package in order {
+        if let Some(ns) = heap.package_registry.get(package).copied() {
+            chain_envs.push(ns);
+        }
+    }
+    chain_envs.push(autoloads);
+    chain_envs.push(base);
+    // user -> stats -> graphics -> ... -> methods -> Autoloads -> base
+    let mut head = user;
+    for window in chain_envs.windows(2) {
+        let (env, next) = (window[0], window[1]);
+        if let Some(RObject::Environment { enclos, .. }) = heap.object_mut(env) {
+            *enclos = next;
+        }
+        let _ = head;
+        head = env;
+    }
+    if let Some(first) = chain_envs.first() {
+        if let Some(RObject::Environment { enclos, .. }) = heap.object_mut(user) {
+            *enclos = *first;
+        }
+    }
 }
