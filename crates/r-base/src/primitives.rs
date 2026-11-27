@@ -10,7 +10,7 @@
 // Attribute machinery lives in r-core's object model exactly as the DAG
 // requires — re-exported here so the registry's existing paths resolve.
 pub use r_stats::*;
-use crate::gfxprim::*;
+use r_graphics::*;
 pub use r_core::attrib::{attrib_names, get_attrib, get_attrib_public, is_date_classed, is_posixct_classed, string_vec_pub};
 pub use r_core::prim::*;
 use r_core::attrib::string_vec;

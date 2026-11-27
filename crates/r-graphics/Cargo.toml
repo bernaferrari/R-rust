@@ -1,0 +1,10 @@
+[package]
+name = "r-graphics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The graphics domain builtins exactly as GNU's grDevices organizes them — plots, axes, colors, devices, and the par() surface"
+
+[dependencies]
+r-core = { path = "../r-core" }
+r-graphics-engine = { path = "../r-graphics-engine" }

@@ -11,6 +11,7 @@ crate-type = ["rlib"]
 name = "r_base"
 
 [dependencies]
+r-graphics = { path = "../r-graphics" }
 r-stats = { path = "../r-stats" }
 r-core = { path = "../r-core" }
 r-math = { path = "../r-math" }

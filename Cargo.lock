@@ -1628,6 +1628,7 @@ dependencies = [
  "md-5",
  "num",
  "r-core",
+ "r-graphics",
  "r-graphics-engine",
  "r-math",
  "r-stats",
@@ -1688,6 +1689,14 @@ dependencies = [
  "r-runtime",
  "tempfile",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "r-graphics"
+version = "0.1.0"
+dependencies = [
+ "r-core",
+ "r-graphics-engine",
 ]
 
 [[package]]

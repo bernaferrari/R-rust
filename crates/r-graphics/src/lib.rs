@@ -2,6 +2,7 @@
 //! them — the device-state consumers extracted from the flat registry as
 //! the first domain module of the r-base internal split.
 
+#![forbid(unsafe_code)]
 use r_core::prim::*;
 use r_core::attrib::{get_attrib, string_vec};
 use r_core::attrib;
