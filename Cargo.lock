@@ -1615,6 +1615,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "r-base"
+version = "0.1.0"
+dependencies = [
+ "bzip2",
+ "fancy-regex",
+ "flate2",
+ "getrandom",
+ "hashbrown 0.17.1",
+ "libm",
+ "lzma-rust2",
+ "md-5",
+ "num",
+ "r-core",
+ "r-graphics-engine",
+ "rmath-nmath",
+ "sha2",
+ "web-time",
+]
+
+[[package]]
 name = "r-core"
 version = "0.1.0"
 dependencies = [
@@ -1810,6 +1830,7 @@ dependencies = [
  "lzma-rust2",
  "md-5",
  "num",
+ "r-base",
  "r-core",
  "r-device-android-headless",
  "r-graphics-engine",

@@ -11,6 +11,7 @@ members = [
   "crates/r-uniffi",
   "crates/nmath",
   "crates/r-core",
+  "crates/r-base",
   "crates/rmath",
   "crates/rmath-test",
   "tests/script-diff",

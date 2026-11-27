@@ -5,17 +5,17 @@
 //! materialize through the flat-graph codec. The inventory is generated
 //! from the pinned export; offsets address the database byte image.
 
-use super::heap::Heap;
-use super::id::ValueId;
-use super::intern::SymbolInterner;
+use r_core::heap::Heap;
+use r_core::id::ValueId;
+use r_core::intern::SymbolInterner;
 
 /// The database byte image — the canonical asset, shared with the legacy
 /// world's copy rather than duplicated.
-pub(crate) const DATABASE: &[u8] = include_bytes!("assets/datasets/Rdata.rdb");
+pub const DATABASE: &[u8] = include_bytes!("assets/datasets/Rdata.rdb");
 
 /// Object inventory — name, database offset, slice length — generated
 /// from the pinned export exactly as the legacy world's table.
-pub(crate) const OBJECTS: &[(&str, u32, u32)] = &[
+pub const OBJECTS: &[(&str, u32, u32)] = &[
     ("AirPassengers", 0, 396),
     ("BJsales", 396, 438),
     ("BJsales.lead", 834, 517),
@@ -183,7 +183,7 @@ pub fn load_dataset(
     let end = start.checked_add(*size as usize)?;
     let slice = DATABASE.get(start..end)?;
     let inflated = inflate_record(slice)?;
-    super::rbg1::decode_rds(heap, interner, &inflated, default_env)
+    r_core::rbg1::decode_rds(heap, interner, &inflated, default_env)
 }
 
 /// The object names in inventory order — the data() enumeration exactly.
@@ -198,7 +198,7 @@ mod tests {
     fn test_session() -> (Heap, SymbolInterner, ValueId) {
         let mut heap = Heap::new();
         let mut interner = SymbolInterner::new();
-        let env = crate::value::session::bootstrap_env(&mut heap, &mut interner);
+        let env = crate::session::bootstrap_env(&mut heap, &mut interner);
         (heap, interner, env)
     }
 
@@ -210,7 +210,7 @@ mod tests {
         // GNU: a monthly time series 1949-1960 — 144 real observations
         // with the tsp attribute pinning the series geometry.
         match heap.object(value) {
-            Some(crate::value::object::RObject::Real(items)) => {
+            Some(r_core::object::RObject::Real(items)) => {
                 assert_eq!(items.len(), 144, "len {}", items.len());
                 assert!((items[0] - 112.0).abs() < 1e-9, "first {}", items[0]);
             }
@@ -226,7 +226,7 @@ mod tests {
         // The data frame shape: a list of five columns with names, class
         // and row.names attributes riding the slot chain.
         match heap.object(value) {
-            Some(crate::value::object::RObject::List(items)) => {
+            Some(r_core::object::RObject::List(items)) => {
                 assert_eq!(items.len(), 5, "cols {}", items.len());
             }
             other => panic!("expected list, got {other:?}"),

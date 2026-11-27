@@ -27,11 +27,11 @@ pub mod civil { pub use r_core::civil::*; }
 pub mod rbg1 { pub use r_core::rbg1::*; }
 pub mod vfile { pub use r_core::vfile::*; }
 pub mod attrib { pub use r_core::attrib::*; }
+pub mod primitives { pub use r_base::primitives::*; }
+pub mod datasets { pub use r_base::datasets::*; }
+pub mod session { pub use r_base::session::*; }
 pub mod eval_tests;
-pub mod primitives;
-pub mod datasets;
 pub mod conformance_sweep;
-pub mod session;
 
 pub use heap::Heap;
 pub use id::ValueId;

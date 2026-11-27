@@ -894,16 +894,6 @@ impl PureSession {
 /// The baked package set exactly as the pinned assets carry it — the
 /// base-package inventory GNU R installs, minus the internal compiler
 /// assets that never surface as a user package.
-const BAKED_PACKAGES: &[(&str, &str)] = &[
-    ("datasets", include_str!("../value/assets/datasets/DESCRIPTION")),
-    ("methods", include_str!("../value/assets/methods/DESCRIPTION")),
-    ("stats", include_str!("../value/assets/packages/stats/DESCRIPTION")),
-    ("utils", include_str!("../value/assets/packages/utils/DESCRIPTION")),
-    ("graphics", include_str!("../value/assets/packages/graphics/DESCRIPTION")),
-    ("grDevices", include_str!("../value/assets/packages/grDevices/DESCRIPTION")),
-    ("stats4", include_str!("../value/assets/packages/stats4/DESCRIPTION")),
-    ("tools", include_str!("../value/assets/packages/tools/DESCRIPTION")),
-];
 
 /// Read one field of a Debian-control-format DESCRIPTION exactly as the
 /// facade's filesystem parser does — continuation lines join with spaces.
@@ -939,7 +929,7 @@ fn valid_package_name(package: &str) -> bool {
 }
 
 fn baked_package_info(package: &str) -> Option<super::packages::RPackageInfo> {
-    let (name, description) = BAKED_PACKAGES.iter().find(|(n, _)| *n == package)?;
+    let (name, description) = r_base::assets::BAKED_PACKAGES.iter().find(|(n, _)| *n == package)?;
     Some(super::packages::RPackageInfo {
         name: name.to_string(),
         version: description_field(description, "Version"),
@@ -956,7 +946,7 @@ fn baked_package_info(package: &str) -> Option<super::packages::RPackageInfo> {
 }
 
 fn baked_package_inventory() -> Vec<super::packages::RPackageInfo> {
-    BAKED_PACKAGES
+    r_base::assets::BAKED_PACKAGES
         .iter()
         .filter_map(|(name, _)| baked_package_info(name))
         .collect()

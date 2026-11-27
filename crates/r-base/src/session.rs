@@ -7,13 +7,13 @@
 //! never prints, deferred warnings flush after each expression's output
 //! exactly as the REPL end-of-task discipline pins.
 
-use super::env;
-use super::eval::{eval, EvalError, RSignal};
-use super::heap::Heap;
-use super::id::ValueId;
-use super::intern::SymbolInterner;
-use super::object::{BuiltinId, RObject};
-use super::parser::{parse_native_expressions, ParseError};
+use r_core::env;
+use r_core::eval::{eval, EvalError, RSignal};
+use r_core::heap::Heap;
+use r_core::id::ValueId;
+use r_core::intern::SymbolInterner;
+use r_core::object::{BuiltinId, RObject};
+use r_core::parser::{parse_native_expressions, ParseError};
 
 /// A script evaluation failure — parse errors surface upstream-rendered,
 /// evaluation errors as the evaluator's structured conditions.
@@ -53,7 +53,7 @@ impl Session {
         let mut heap = Heap::new();
         // The dispatch inversion exactly as the DAG requires: eval in
         // r-core applies primitives without a static reference upward.
-        heap.primitive_dispatcher = Some(crate::value::primitives::call_primitive);
+        heap.primitive_dispatcher = Some(crate::primitives::call_primitive);
         let mut interner = SymbolInterner::new();
         let global_env = bootstrap_env(&mut heap, &mut interner);
         Session {
@@ -78,7 +78,7 @@ impl Session {
     ) -> Result<(), String> {
         // An error that reached the top level leaves no raising call
         // behind — the channel belongs to the error in flight only.
-        self.heap.error_call = crate::value::id::ValueId::NIL;
+        self.heap.error_call = r_core::id::ValueId::NIL;
         let pressured = self.heap.gc_pressure();
         let capped = self.heap.memory_cap_bytes.is_some() || self.heap.node_cap.is_some();
         let memory_tripped = self.heap.memory_cap_tripped;
@@ -113,14 +113,14 @@ impl Session {
             // the boundary must preserve them explicitly or the rest of
             // the script is freed mid-evaluation.
             extra.extend(pending.iter().copied());
-            let stack = super::roots::RootStack::new();
-            let table = super::roots::RootTable::default();
-            let roots = super::gc::RootSet {
+            let stack = r_core::roots::RootStack::new();
+            let table = r_core::roots::RootTable::default();
+            let roots = r_core::gc::RootSet {
                 stack: &stack,
                 table: &table,
                 extra: &extra,
             };
-            super::gc::collect(&mut self.heap, &roots);
+            r_core::gc::collect(&mut self.heap, &roots);
         }
         if memory_tripped {
             return Err("memory limit exceeded".to_string());
@@ -156,7 +156,7 @@ impl Session {
             /// values interleave in evaluation order exactly as GNU's
             /// stdout does — both append to the one output buffer.
             if self.heap.visible {
-                let text = super::print::format_value(&self.heap, &self.interner, value);
+                let text = r_core::print::format_value(&self.heap, &self.interner, value);
                 self.heap.emit(&text);
                 self.heap.emit("\n");
             }
@@ -233,7 +233,7 @@ impl Session {
                     /// auto-printed value joins them before the chunk is
                     /// lifted — the interleave is evaluation order exactly.
                     if self.heap.visible {
-                        let text = super::print::format_value(&self.heap, &self.interner, value);
+                        let text = r_core::print::format_value(&self.heap, &self.interner, value);
                         self.heap.emit(&text);
                         self.heap.emit("\n");
                     }
@@ -312,26 +312,26 @@ pub struct FullEval {
 /// the "Error" prefix, exactly as `stop()` users and the runtime produce it.
 pub fn render_eval_error(signal: &RSignal) -> String {
     match signal {
-        RSignal::Error(crate::value::eval::EvalError::UnboundVariable(name)) => {
+        RSignal::Error(r_core::eval::EvalError::UnboundVariable(name)) => {
             format!("object '{name}' not found")
         }
-        RSignal::Error(crate::value::eval::EvalError::NotCallable) => {
+        RSignal::Error(r_core::eval::EvalError::NotCallable) => {
             "attempt to apply non-function".to_string()
         }
-        RSignal::Error(crate::value::eval::EvalError::MissingArgument(name)) => {
+        RSignal::Error(r_core::eval::EvalError::MissingArgument(name)) => {
             format!("argument \"{name}\" is missing, with no default")
         }
-        RSignal::Error(crate::value::eval::EvalError::RecursiveForcing) => {
+        RSignal::Error(r_core::eval::EvalError::RecursiveForcing) => {
             "promise already under evaluation: recursive default argument reference or earlier problems?"
                 .to_string()
         }
-        RSignal::Error(crate::value::eval::EvalError::UnsupportedForm(form)) => {
+        RSignal::Error(r_core::eval::EvalError::UnsupportedForm(form)) => {
             format!("unsupported form: {form}")
         }
-        RSignal::Error(crate::value::eval::EvalError::TypeError(message)) => {
+        RSignal::Error(r_core::eval::EvalError::TypeError(message)) => {
             message.to_string()
         }
-        RSignal::Error(crate::value::eval::EvalError::Condition(message)) => message.clone(),
+        RSignal::Error(r_core::eval::EvalError::Condition(message)) => message.clone(),
         // Control-flow signals reaching top level are evaluator bugs in
         /// disguise; surface them readably rather than panicking.
         other => format!("{other:?}"),
@@ -343,9 +343,9 @@ pub fn render_eval_error(signal: &RSignal) -> String {
 /// enclosure chain reaches base — ls() sees only user bindings and
 /// definitions never pollute the base frame.
 pub fn bootstrap_env(heap: &mut Heap, interner: &mut SymbolInterner) -> ValueId {
-    use super::primitives::primitive_id_for_name;
+    use crate::primitives::primitive_id_for_name;
     let base = env::new_environment(heap, ValueId::EMPTY_ENV);
-    for &name in super::primitives::primitive_names() {
+    for &name in crate::primitives::primitive_names() {
         let sym = interner.intern_symbol(name);
         let prim = primitive_id_for_name(name).expect("mapped primitive");
         let object = heap.alloc(RObject::Primitive(BuiltinId(prim)));
@@ -353,10 +353,10 @@ pub fn bootstrap_env(heap: &mut Heap, interner: &mut SymbolInterner) -> ValueId 
     }
     // GNU's reserved typed-NA constants — bindings in base exactly as
     // GNU's base namespace carries them.
-    let na_int = heap.alloc(RObject::Integer(vec![super::object::NA_INTEGER]));
+    let na_int = heap.alloc(RObject::Integer(vec![r_core::object::NA_INTEGER]));
     let sym = interner.intern_symbol("NA_integer_");
     env::define(heap, base, sym, na_int).expect("NA_integer_");
-    let na_real = heap.alloc(RObject::Real(vec![f64::from_bits(super::object::NA_REAL_BITS)]));
+    let na_real = heap.alloc(RObject::Real(vec![f64::from_bits(r_core::object::NA_REAL_BITS)]));
     let sym = interner.intern_symbol("NA_real_");
     env::define(heap, base, sym, na_real).expect("NA_real_");
     let pi_val = heap.alloc(RObject::Real(vec![std::f64::consts::PI]));
@@ -438,16 +438,12 @@ pub fn bootstrap_env(heap: &mut Heap, interner: &mut SymbolInterner) -> ValueId 
 /// whose primitives are unimplemented stays absent, mirroring the
 /// unimplemented-export surface exactly as the primitive remainder does.
 fn populate_rlevel_namespaces(heap: &mut Heap, interner: &mut SymbolInterner) {
-    use super::eval::eval;
-    use super::parser::parse_native_expressions;
+    use r_core::eval::eval;
+    use r_core::parser::parse_native_expressions;
     // Base functions install into the base environment itself exactly as
     // GNU's base R sources do; package functions install into their
     // namespace environments.
-    const SOURCES: &[(&str, &str)] = &[
-        ("base", include_str!("assets/rlevel/base.R")),
-        ("utils", include_str!("assets/rlevel/utils.R")),
-    ];
-    for &(package, source) in SOURCES {
+    for &(package, source) in crate::assets::RLEVEL_SOURCES {
         let target = if package == "base" {
             heap.base_env_id
         } else {
@@ -476,16 +472,7 @@ fn populate_rlevel_namespaces(heap: &mut Heap, interner: &mut SymbolInterner) {
 /// surface at use time rather than at attach time.
 fn register_baked_packages(heap: &mut Heap, interner: &mut SymbolInterner, base: ValueId) {
     use std::io::Read;
-    const PACKAGES: &[(&str, &[u8])] = &[
-        ("stats", include_bytes!("assets/packages/stats/exports.rds")),
-        ("utils", include_bytes!("assets/packages/utils/exports.rds")),
-        ("graphics", include_bytes!("assets/packages/graphics/exports.rds")),
-        ("grDevices", include_bytes!("assets/packages/grDevices/exports.rds")),
-        ("stats4", include_bytes!("assets/packages/stats4/exports.rds")),
-        ("tools", include_bytes!("assets/packages/tools/exports.rds")),
-        ("methods", include_bytes!("assets/methods/exports.rds")),
-    ];
-    for &(package, gzipped) in PACKAGES {
+    for &(package, gzipped) in crate::assets::PACKAGE_EXPORTS {
         let namespace = env::new_environment(heap, base);
         // The attached-package name exactly as GNU's search() reports —
         // library() splices this very environment into the chain.
@@ -510,7 +497,7 @@ fn register_baked_packages(heap: &mut Heap, interner: &mut SymbolInterner, base:
         }
         let mut plain = Vec::new();
         if flate2::read::GzDecoder::new(gzipped).read_to_end(&mut plain).is_ok() {
-            if let Some(manifest) = super::rbg1::decode_rds(heap, interner, &plain, base) {
+            if let Some(manifest) = r_core::rbg1::decode_rds(heap, interner, &plain, base) {
                 let names: Vec<String> = match heap.object(manifest) {
                     Some(RObject::String(entries)) => entries
                         .iter()

@@ -12,11 +12,11 @@
 pub use r_core::attrib::{attrib_names, get_attrib, get_attrib_public, is_date_classed, is_posixct_classed, string_vec_pub};
 use r_core::attrib::string_vec;
 
-use super::eval::{eval, force_if_promise, EvalError, EvalResult, RSignal};
-use super::heap::Heap;
-use super::id::ValueId;
-use super::intern::SymbolInterner;
-use super::object::RObject;
+use r_core::eval::{eval, force_if_promise, EvalError, EvalResult, RSignal};
+use r_core::heap::Heap;
+use r_core::id::ValueId;
+use r_core::intern::SymbolInterner;
+use r_core::object::RObject;
 
 /// Scaffolding primitive identifiers. Values are arbitrary within this
 /// module; the migration registry will own the canonical numbering.
@@ -732,7 +732,7 @@ pub mod primitive_ids {
     pub const ABS: u32 = 57;
 }
 
-use crate::value::object::BuiltinId;
+use r_core::object::BuiltinId;
 use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN, SUMMARY_FN, MATRIX_MULT, CROSSPROD, TCROSSPROD, MAXCOL, IDIV, NROW_FN, NCOL_FN, SYS_GETPID, OLSONNAMES, IQR_FN, SYS_CHMOD, FILE_INFO, SYS_GETLOCALE, SYS_SETLOCALE, NZCHAR, AT_OP, AT_ASSIGN, SYS_INFO, SYS_TIME, SYS_DATE, SYS_WHICH, FLOOR, CEILING, TRUNC, ROUND, SIGNIF, EXPM1, LOG1P, ACOSH, ASINH, ATANH, COSPI, SINPI, TANPI, ANYNA, SYS_LOCALECONV, AGREP, AGREPL, APPLY, AS_ENVIRONMENT, AS_CALL, ENC2NATIVE, ENC2UTF8, SEARCH_FN, AS_FACTOR, AS_ORDERED, ADDNA, APERM, ADDMARGINS, DOT_SUBSET, DOT_SUBSET2, ASPLIT, ATTACH, DETACH, POS_TO_ENV, DOT_CLASS2, GC_TIME, AVE, BACKSOLVE, BQUOTE, CALL_FN, CHAR_TO_RAW, CHARMATCH, CUMSUM, CUMPROD, CUMMIN, CUMMAX, COMMENT_FN, COMMENT_ASSIGN, COMPLETE_CASES, COLSUMS, ROWSUMS, COLMEANS, ROWMEANS, DCAUCHY, DCHISQ, DEXP, CUT, DATE_FN, CAPABILITIES, BY_FN, BROWSER_FN, DGAMMA, DGEOM, DNBINOM, DIFF, DIAG, DO_CALL, DWEIBULL, DROP_FN, DROPLEVELS, DUPLICATED, ANYDUPLICATED, DIR_EXISTS, FILE_CREATE, FILE_ACCESS, ENVIRONMENT_ASSIGN, FORCEANDCALL, DECLARE, PRIMTRACE, PRIMUNTRACE, STANDARDGENERIC, DMULTINOM, DOTS_LENGTH, DOTS_NAMES, DOTS_ELT, IS_DATA_FRAME, FILE_APPEND, FILE_LINK, FILE_SYMLINK, SYS_READLINK, FILE_SIZE, FILE_MTIME, GL, HEAD_FN, TAIL_FN, INTERACTION, GCINFO, GCTORTURE, GCTORTURE2, IS_FINITE, IS_INFINITE, IS_NAN, IS_VECTOR, IS_LOADED, L10N_INFO, CSTACK_INFO, EXTSOFTVERSION, LIST_FILES, MEMORY_PROFILE, ENV_IS_LOCKED, LOCK_BINDING, BINDING_IS_LOCKED, UNLOCK_BINDING, LOCK_ENVIRONMENT, MAKE_ACTIVE_BINDING, BINDING_IS_ACTIVE, SYS_UMASK, NORMALIZE_PATH, OLDCLASS, OLDCLASS_ASSIGN, IS_OBJECT, PAIRLIST_CTOR, AS_PAIRLIST, OUTER, ON_EXIT, IS_S4_TEST, NARGS, SYS_NFRAME, SYS_CALL, SYS_FRAME, SYS_FUNCTION, PARENT_FRAME, IS_FUNCTION, METHODS, PAR, LAYOUT, FORMAT_DF, LIB_PATHS, FIND_PACKAGE, SYSTEM_FILE, FORMAT_INFO, PCAUCHY, QCAUCHY, PCHISQ, QCHISQ, PEXP, QEXP, PGAMMA, QGAMMA, PGEOM, QGEOM, PNBINOM, QNBINOM, PWEIBULL, QWEIBULL, RANGE_FN, PMIN, PMAX, PMATCH, PROP_TABLE, ROW_FN, COL_FN, RELEVEL, SEARCHPATHS, PATH_EXPAND, PCRE_CONFIG, RAWTOCHAR, QHYPER, PTUKEY, QPOIS, QBINOM, DUNIF, PUNIF, QUNIF, SIGN, SEQ_ALONG, SEQ_INT, SCAN, SINGLE, SINK, SINK_NUMBER, SORT_LIST, SOURCE, SYS_SOURCE, SPLIT, SWITCH, SUPPRESS_MESSAGES, STRWRAP, XTFRM, CACHE_CLASS, STARTSWITH, ENDSWITH, TOUPPER, TOLOWER, CHARTR, TRIMWS, TABULATE, SYSTEM2, WITH, LENGTHS, WRITE_TABLE, WRITE_CSV2, READ_FWF, SAVE_RDS, READ_RDS, WITH_RESTARTS, INVOKE_RESTART, TRY_INVOKE_RESTART, FIND_RESTART, COMPUTE_RESTARTS, IS_RESTART, RESTART_DESCRIPTION, WITH_CALLING_HANDLERS, NS_GET, NS_GET3, LIBRARY, REQUIRE, DATA_FN, PLOT_NEW, PLOT_WINDOW, LINES_FN, RECT_FN, POINTS_FN, TEXT_FN, PRETTY_FN, GRCONVERTX, GRCONVERTY, AXIS_FN, BOX_FN, PLOT_FN, TITLE_FN, SEGMENTS_FN, ABLINE_FN, POLYGON_FN, LOG10, LOG2, TAN, ASIN, ACOS, ATAN, ATAN2, GAMMAFN, LGAMMAFN, DIGAMMA, TRIGAMMA, FACTORIAL, LFACTORIAL, BETA, LBETA, CHOOSE, LCHOOSE, STRSPLIT, TRANSPOSE, IS_MATRIX, AS_MATRIX, SET_SEED, RUNIF, RNORM, FILTER_FN, REDUCE_FN, MAPPLY, VAR_COV, COR_FN, QUANTILE, MAD, WEIGHTED_MEAN, MAP_FN, NEGATE, EXPAND_GRID, FINDINTERVAL, MAKE_NAMES, MAKE_UNIQUE, RBINOM, RPOIS, RGAMMA, REXP, RBETA, RCHISQ, RT, RF_DIST, RLNORM, RLOGIS, RCAUCHY, RGEOM, RWEIBULL, RNBINOM, RHYPER, SUBSET_DF, TRANSFORM, WITHIN, AS_DATA_FRAME, MERGE_DF, ABBREVIATE, FORMATC, RGB_FN, MTEXT, HSV_FN, RAINBOW, HEAT_COLORS, TERRAIN_COLORS, TOPO_COLORS, CM_COLORS, GRAY_FN, GREY_FN, COLORS_FN, COLOURS_FN, COL2RGB, PALETTE_FN, HCL_FN, ADJUSTCOLOR, ARROWS_FN, RGB2HSV, HIST, STEM, BARPLOT, FIVENUM, BOXPLOT_STATS, BOXPLOT, CURVE_FN, MATPLOT, SVG_FN, DEV_OFF, DEV_CUR, PIE_FN, STRIPCHART, DOTCHART, PRETTYNUM, SYSTEM_TIME, DENSITY_FN, GRID_FN, RUG_FN, PNG_FN, LOCAL_FN, CONDITION_CALL, EXTERNAL_GRAPHICS, IS_GENERIC, PUSH_BACK_LENGTH, SUBSET2_ASSIGN, RNGKIND, SOLVE_FN, RCOND_FN, LOESS_FN, PREDICT_FN, PSIGAMMA};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
@@ -740,7 +740,7 @@ use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ,
 /// flag lands here centrally: every primitive is visible except GNU's
 /// invisible-returning forms, and the flag is set AFTER the body completes
 /// so inner evaluations never leak their state into the caller's answer.
-pub(crate) fn call_primitive(
+pub fn call_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     id: BuiltinId,
@@ -868,7 +868,7 @@ fn call_primitive_inner(
                 "logical" => RObject::Logical(vec![0; length]),
                 "integer" => RObject::Integer(vec![0; length]),
                 "numeric" | "double" => RObject::Real(vec![0.0; length]),
-                "complex" => RObject::Complex(vec![crate::value::object::RComplex { r: 0.0, i: 0.0 }; length]),
+                "complex" => RObject::Complex(vec![r_core::object::RComplex { r: 0.0, i: 0.0 }; length]),
                 "character" => RObject::String(vec![interner.intern_string(""); length]),
                 "raw" => RObject::Raw(vec![0u8; length]),
                 "list" => RObject::List(vec![ValueId::NIL; length]),
@@ -988,7 +988,7 @@ fn call_primitive_inner(
                 }
                 cursor = cdr;
             }
-            Ok(crate::value::env::new_environment(heap, parent))
+            Ok(r_core::env::new_environment(heap, parent))
         }
         EXISTS => exists_primitive(heap, interner, args, caller_env),
         LS => {
@@ -1015,7 +1015,7 @@ fn call_primitive_inner(
                 match tag_name.as_deref() {
                     Some("all.names") => {
                         if let Some(RObject::Logical(vals)) = heap.object(v) {
-                            all_names = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
+                            all_names = !vals.is_empty() && vals[0] != 0 && vals[0] != r_core::object::NA_INTEGER;
                         }
                     }
                     Some("envir") | Some("name") => {
@@ -1074,7 +1074,7 @@ fn call_primitive_inner(
                     file_target = string_operand(heap, interner, value);
                 } else if tag_name.as_deref() == Some("append") {
                     if let Some(RObject::Logical(vals)) = heap.object(value) {
-                        append = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
+                        append = !vals.is_empty() && vals[0] != 0 && vals[0] != r_core::object::NA_INTEGER;
                     }
                 } else {
                     // Every element of the operand contributes, vector or scalar.
@@ -1083,7 +1083,7 @@ fn call_primitive_inner(
                         match object {
                             RObject::Real(_) | RObject::Integer(_) | RObject::Logical(_) | RObject::String(_) => {
                                 for i in 0..length {
-                                    pieces.push(super::print::format_cat_element(heap, interner, object, i));
+                                    pieces.push(r_core::print::format_cat_element(heap, interner, object, i));
                                 }
                             }
                             _ => {}
@@ -1102,7 +1102,7 @@ fn call_primitive_inner(
                     // GNU: file connections open write or append per the
                     /// tagged append argument.
                     use std::io::Write;
-                    let file = match crate::value::path_policy::resolve_host_path(
+                    let file = match r_core::path_policy::resolve_host_path(
                         heap.path_policy.as_ref(),
                         &path,
                     ) {
@@ -1264,7 +1264,7 @@ fn call_primitive_inner(
             }
             let unset_text = string_operand(heap, interner, unset_arg);
             let names = string_vec(heap, interner, names_arg);
-            let out: Vec<super::intern::InternedStr> = names
+            let out: Vec<r_core::intern::InternedStr> = names
                 .iter()
                 .map(|n| {
                     // Session overrides first, the genuine process
@@ -1294,7 +1294,7 @@ fn call_primitive_inner(
         UNLINK => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             for path in string_vec(heap, interner, operands[0]) {
-                if let Some(host) = crate::value::path_policy::resolve_host_path(
+                if let Some(host) = r_core::path_policy::resolve_host_path(
                     heap.path_policy.as_ref(),
                     &path,
                 ) {
@@ -1327,7 +1327,7 @@ fn call_primitive_inner(
                 let v = force_if_promise(heap, interner, evaluated)?;
                 if tag_name.as_deref() == Some("recursive") {
                     if let Some(RObject::Logical(vals)) = heap.object(v) {
-                        recursive = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
+                        recursive = !vals.is_empty() && vals[0] != 0 && vals[0] != r_core::object::NA_INTEGER;
                     }
                 } else if positional == 1 {
                     path_arg = v;
@@ -1339,7 +1339,7 @@ fn call_primitive_inner(
             }
             let mut created = true;
             for path in string_vec(heap, interner, path_arg) {
-                let host_path = crate::value::path_policy::resolve_host_path(
+                let host_path = r_core::path_policy::resolve_host_path(
                     heap.path_policy.as_ref(),
                     &path,
                 );
@@ -1393,12 +1393,12 @@ fn call_primitive_inner(
                 match tag_name.as_deref() {
                     Some("full.names") => {
                         if let Some(RObject::Logical(vals)) = heap.object(v) {
-                            full_names = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
+                            full_names = !vals.is_empty() && vals[0] != 0 && vals[0] != r_core::object::NA_INTEGER;
                         }
                     }
                     Some("recursive") => {
                         if let Some(RObject::Logical(vals)) = heap.object(v) {
-                            recursive = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
+                            recursive = !vals.is_empty() && vals[0] != 0 && vals[0] != r_core::object::NA_INTEGER;
                         }
                     }
                     _ => {
@@ -1413,7 +1413,7 @@ fn call_primitive_inner(
                 cursor = cdr;
             }
             let roots = string_vec(heap, interner, path_arg);
-            let mut out: Vec<super::intern::InternedStr> = Vec::new();
+            let mut out: Vec<r_core::intern::InternedStr> = Vec::new();
             for root in &roots {
                 // GNU's recursive listing leads with the root itself —
                 /// empty text under full.names=FALSE exactly as "." resolves.
@@ -1425,7 +1425,7 @@ fn call_primitive_inner(
                 // The echoed root line keeps the user-facing text exactly as
                 // GNU; descent walks the resolved host path, denial mirroring
                 // the unreadable-directory empty listing.
-                let host_root = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), root);
+                let host_root = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), root);
                 let mut stack: Vec<(String, String)> = match host_root {
                     Some(host) => vec![(host, String::new())],
                     None => Vec::new(),
@@ -1466,7 +1466,7 @@ fn call_primitive_inner(
         }
         BASENAME => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
-            let out: Vec<super::intern::InternedStr> = string_vec(heap, interner, operands[0])
+            let out: Vec<r_core::intern::InternedStr> = string_vec(heap, interner, operands[0])
                 .iter()
                 .map(|path| {
                     let trimmed = path.trim_end_matches('/');
@@ -1535,7 +1535,7 @@ fn call_primitive_inner(
                                         value: ValueId::UNBOUND,
                                     });
                                     let sym = interner.intern_symbol(&name);
-                                    super::env::define(heap, assign_env_v, sym, promise)
+                                    r_core::env::define(heap, assign_env_v, sym, promise)
                                         .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("delayedAssign define")))?;
                                     return Ok(ValueId::NIL);
                                 }
@@ -1574,7 +1574,7 @@ fn call_primitive_inner(
                                         .map(|(i, k)| (i, k.clone()))
                                         .collect();
                                     let is_na = |k: &str| k == "\0NA";
-                                    if na_last == crate::value::object::NA_INTEGER {
+                                    if na_last == r_core::object::NA_INTEGER {
                                         indexed.retain(|(_, k)| !is_na(k));
                                     }
                                     indexed.sort_by(|(ai, ak), (bi, bk)| {
@@ -1647,7 +1647,7 @@ fn call_primitive_inner(
                                     }
                                     let delete = ops.get(3).map(|v| matches!(heap.object(*v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) == 1)).unwrap_or(false);
                                     for path in &files {
-                                        if let Some(content) = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), path)
+                                        if let Some(content) = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), path)
                                             .and_then(|host| std::fs::read_to_string(host).ok()) {
                                             heap.emit(&content);
                                             if !content.ends_with('\n') {
@@ -1656,7 +1656,7 @@ fn call_primitive_inner(
                                             heap.emit("\n");
                                         }
                                         if delete {
-                                            if let Some(host) = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), path) {
+                                            if let Some(host) = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), path) {
                                                 let _ = std::fs::remove_file(host);
                                             }
                                         }
@@ -1789,7 +1789,7 @@ fn call_primitive_inner(
             if let Some(first) = raw.first() {
                 if let Some(RObject::Symbol { name, .. }) = heap.object(*first) {
                     let sym = *name;
-                    missing = match super::env::lookup_in_frame(heap, caller_env, sym) {
+                    missing = match r_core::env::lookup_in_frame(heap, caller_env, sym) {
                         Some(binding) => binding.value == ValueId::MISSING,
                         None => false,
                     };
@@ -1827,7 +1827,7 @@ fn call_primitive_inner(
             let texts = string_vec(heap, interner, operands[0]);
             let starts = numerics_of(heap, operands[1]).map_err(RSignal::from)?;
             let stops = numerics_of(heap, operands[2]).map_err(RSignal::from)?;
-            let mut out: Vec<super::intern::InternedStr> = Vec::new();
+            let mut out: Vec<r_core::intern::InternedStr> = Vec::new();
             for (index, text) in texts.iter().enumerate() {
                 let start = if starts.is_empty() { 1.0 } else { starts[index % starts.len()] } as isize;
                 let stop = if stops.is_empty() { text.len() as f64 } else { stops[index % stops.len()] } as isize;
@@ -1949,7 +1949,7 @@ fn call_primitive_inner(
             if intern {
                 // GNU splits captured output into lines; a trailing newline
                 // does not yield a spurious empty final element.
-                let mut lines: Vec<super::intern::InternedStr> = stdout
+                let mut lines: Vec<r_core::intern::InternedStr> = stdout
                     .split('\n')
                     .map(|line| interner.intern_string(line))
                     .collect();
@@ -2095,7 +2095,7 @@ fn call_primitive_inner(
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
-                    let ok = crate::value::path_policy::resolve_host_path(
+                    let ok = r_core::path_policy::resolve_host_path(
                         heap.path_policy.as_ref(),
                         path,
                     )
@@ -2125,7 +2125,7 @@ fn call_primitive_inner(
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
-                    let text = crate::value::path_policy::resolve_host_path(
+                    let text = r_core::path_policy::resolve_host_path(
                         heap.path_policy.as_ref(),
                         path,
                     )
@@ -2148,10 +2148,10 @@ fn call_primitive_inner(
             let mut sizes = Vec::new();
             let mut dirs = Vec::new();
             for path in &paths {
-                let meta = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), path)
+                let meta = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), path)
                     .and_then(|host| std::fs::metadata(&host).ok());
                 sizes.push(meta.as_ref().map(|m| m.len() as f64).unwrap_or(f64::NAN));
-                dirs.push(meta.map(|m| if m.is_dir() { 1 } else { 0 }).unwrap_or(crate::value::object::NA_INTEGER));
+                dirs.push(meta.map(|m| if m.is_dir() { 1 } else { 0 }).unwrap_or(r_core::object::NA_INTEGER));
             }
             let size_col = heap.alloc(RObject::Real(sizes));
             let isdir_col = heap.alloc(RObject::Logical(dirs));
@@ -2189,7 +2189,7 @@ fn call_primitive_inner(
                 .iter()
                 .map(|s| {
                     if s.starts_with('\0') {
-                        crate::value::object::NA_INTEGER
+                        r_core::object::NA_INTEGER
                     } else {
                         (!s.is_empty()) as i32
                     }
@@ -2296,7 +2296,7 @@ fn call_primitive_inner(
             let names_in = string_vec(heap, interner, operands[0]);
             let path_var = std::env::var("PATH").unwrap_or_default();
             let dirs: Vec<&str> = path_var.split(':').collect();
-            let mut out: Vec<super::intern::InternedStr> = Vec::new();
+            let mut out: Vec<r_core::intern::InternedStr> = Vec::new();
             for name in &names_in {
                 let mut found = String::new();
                 if name.contains('/') {
@@ -2367,7 +2367,7 @@ fn call_primitive_inner(
                 "p_cs_precedes", "p_sep_by_space", "n_cs_precedes", "n_sep_by_space",
                 "p_sign_posn", "n_sign_posn",
             ];
-            let values: Vec<super::intern::InternedStr> = fields
+            let values: Vec<r_core::intern::InternedStr> = fields
                 .iter()
                 .map(|f| interner.intern_string(if *f == "decimal_point" { "." } else { "" }))
                 .collect();
@@ -2450,7 +2450,7 @@ fn call_primitive_inner(
                 return Ok(heap.alloc(RObject::Logical(out)));
             }
             if value_form {
-                let out: Vec<super::intern::InternedStr> = texts
+                let out: Vec<r_core::intern::InternedStr> = texts
                     .iter()
                     .zip(matches.iter())
                     .filter(|(_, m)| **m)
@@ -2567,7 +2567,7 @@ fn call_primitive_inner(
             // name attribute, base last exactly as GNU.
             let genv = {
                 let sym = interner.intern_symbol(".GlobalEnv");
-                match super::env::lookup(heap, caller_env, sym) {
+                match r_core::env::lookup(heap, caller_env, sym) {
                     Some((_, binding)) => binding.value,
                     None => caller_env,
                 }
@@ -2634,7 +2634,7 @@ fn call_primitive_inner(
                 Some(RObject::Integer(v)) => v.clone(),
                 _ => return Err(EvalError::TypeError("addNA requires a factor").into()),
             };
-            let has_na = codes.iter().any(|c| *c == crate::value::object::NA_INTEGER);
+            let has_na = codes.iter().any(|c| *c == r_core::object::NA_INTEGER);
             let already = match get_attrib(heap, interner, factored, "levels") {
                 Some(l) => string_vec(heap, interner, l).iter().any(|s| s == "\0NA"),
                 None => false,
@@ -2649,7 +2649,7 @@ fn call_primitive_inner(
             levels.push("\0NA".to_string());
             let na_index = levels.len() as i32;
             for code in codes.iter_mut() {
-                if *code == crate::value::object::NA_INTEGER {
+                if *code == r_core::object::NA_INTEGER {
                     *code = na_index;
                 }
             }
@@ -2801,7 +2801,7 @@ fn call_primitive_inner(
             };
             let genv = {
                 let sym = interner.intern_symbol(".GlobalEnv");
-                match super::env::lookup(heap, caller_env, sym) {
+                match r_core::env::lookup(heap, caller_env, sym) {
                     Some((_, binding)) => binding.value,
                     None => caller_env,
                 }
@@ -2826,7 +2826,7 @@ fn call_primitive_inner(
             let name = string_operand(heap, interner, operands[0]).unwrap_or_default();
             let genv = {
                 let sym = interner.intern_symbol(".GlobalEnv");
-                match super::env::lookup(heap, caller_env, sym) {
+                match r_core::env::lookup(heap, caller_env, sym) {
                     Some((_, binding)) => binding.value,
                     None => caller_env,
                 }
@@ -2868,7 +2868,7 @@ fn call_primitive_inner(
             let pos = first_real(heap, operands[0])? as usize;
             let genv = {
                 let sym = interner.intern_symbol(".GlobalEnv");
-                match super::env::lookup(heap, caller_env, sym) {
+                match r_core::env::lookup(heap, caller_env, sym) {
                     Some((_, binding)) => binding.value,
                     None => caller_env,
                 }
@@ -2963,7 +2963,7 @@ fn call_primitive_inner(
                 .iter()
                 .map(|key| {
                     if poisoned.get(key).copied().unwrap_or(false) {
-                        f64::from_bits(crate::value::object::NA_REAL_BITS)
+                        f64::from_bits(r_core::object::NA_REAL_BITS)
                     } else {
                         let sum = sums.get(key).copied().unwrap_or(0.0);
                         let count = counts.get(key).copied().unwrap_or(1) as f64;
@@ -3147,12 +3147,12 @@ fn call_primitive_inner(
             let table = string_vec(heap, interner, operands[1]);
             let nomatch = if operands.len() > 2 {
                 match heap.object(operands[2]) {
-                    Some(RObject::Integer(v)) => v.first().copied().unwrap_or(crate::value::object::NA_INTEGER),
-                    Some(RObject::Real(v)) => v.first().map(|x| *x as i32).unwrap_or(crate::value::object::NA_INTEGER),
-                    _ => crate::value::object::NA_INTEGER,
+                    Some(RObject::Integer(v)) => v.first().copied().unwrap_or(r_core::object::NA_INTEGER),
+                    Some(RObject::Real(v)) => v.first().map(|x| *x as i32).unwrap_or(r_core::object::NA_INTEGER),
+                    _ => r_core::object::NA_INTEGER,
                 }
             } else {
-                crate::value::object::NA_INTEGER
+                r_core::object::NA_INTEGER
             };
             let out: Vec<i32> = xs
                 .iter()
@@ -3207,7 +3207,7 @@ fn call_primitive_inner(
                     };
                     v.iter()
                         .map(|x| {
-                            if *x == crate::value::object::NA_INTEGER {
+                            if *x == r_core::object::NA_INTEGER {
                                 (0.0, true)
                             } else {
                                 (*x as f64, false)
@@ -3226,7 +3226,7 @@ fn call_primitive_inner(
                     poisoned = true;
                 }
                 if poisoned {
-                    out.push(f64::from_bits(crate::value::object::NA_REAL_BITS));
+                    out.push(f64::from_bits(r_core::object::NA_REAL_BITS));
                     continue;
                 }
                 acc = Some(match (acc, id.0) {
@@ -3247,7 +3247,7 @@ fn call_primitive_inner(
                     .iter()
                     .map(|v| {
                         if v.is_nan() {
-                            crate::value::object::NA_INTEGER
+                            r_core::object::NA_INTEGER
                         } else {
                             *v as i32
                         }
@@ -3339,7 +3339,7 @@ fn call_primitive_inner(
             // Dots introspection reads the visible pairlist exactly as
             /// GNU — missing dots mean zero-length answers.
             let dots_sym = interner.intern_symbol("...");
-            let cells = super::eval::dots_cells(heap, interner, caller_env).unwrap_or_default();
+            let cells = r_core::eval::dots_cells(heap, interner, caller_env).unwrap_or_default();
             let _ = dots_sym;
             match id.0 {
                 DOTS_LENGTH => Ok(heap.alloc(RObject::Integer(vec![cells.len() as i32]))),
@@ -3358,7 +3358,7 @@ fn call_primitive_inner(
                 _ => {
                     let operands = eval_args(heap, interner, args, caller_env, 1)?;
                     let index = first_real(heap, operands[0]).map_err(RSignal::from)? as usize;
-                    super::eval::dots_elt(heap, interner, caller_env, index)
+                    r_core::eval::dots_elt(heap, interner, caller_env, index)
                         .ok_or(EvalError::TypeError("dots index out of range").into())
                 }
             }
@@ -3468,7 +3468,7 @@ fn call_primitive_inner(
             };
             let ordered_flag = match lookup("ordered", 4) {
                 Some(v) => match heap.object(v) {
-                    Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) == crate::value::object::NA_INTEGER => {
+                    Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) == r_core::object::NA_INTEGER => {
                         return Err(EvalError::Condition("missing value where TRUE/FALSE needed".to_string()).into());
                     }
                     _ => logical_scalar(heap, v),
@@ -3477,7 +3477,7 @@ fn call_primitive_inner(
             };
             // Cycling exactly as GNU: position i is level ((i / k) mod n)+1.
             let codes: Vec<i32> = (0..total_len)
-                .map(|i| if n_levels == 0 { crate::value::object::NA_INTEGER } else { ((i / k.max(1)) % n_levels) as i32 + 1 })
+                .map(|i| if n_levels == 0 { r_core::object::NA_INTEGER } else { ((i / k.max(1)) % n_levels) as i32 + 1 })
                 .collect();
             let result = heap.alloc(RObject::Integer(codes));
             let interned: Vec<_> = labels.iter().take(n_levels).map(|s| interner.intern_string(s)).collect();
@@ -3554,12 +3554,12 @@ fn call_primitive_inner(
                     let a = &a_texts[i % a_texts.len().max(1)];
                     let b = &b_texts[i % b_texts.len().max(1)];
                     if a == "\0NA" || b == "\0NA" {
-                        return crate::value::object::NA_INTEGER;
+                        return r_core::object::NA_INTEGER;
                     }
                     let combo = format!("{}.{}", a, b);
                     match levels.iter().position(|l| l == &combo) {
                         Some(pos) => (pos + 1) as i32,
-                        None => crate::value::object::NA_INTEGER,
+                        None => r_core::object::NA_INTEGER,
                     }
                 })
                 .collect();
@@ -3576,8 +3576,8 @@ fn call_primitive_inner(
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             let prior = heap.gcinfo_state;
             if let Some(RObject::Logical(vals)) = heap.object(operands[0]) {
-                match vals.first().copied().unwrap_or(crate::value::object::NA_INTEGER) {
-                    crate::value::object::NA_INTEGER => {}
+                match vals.first().copied().unwrap_or(r_core::object::NA_INTEGER) {
+                    r_core::object::NA_INTEGER => {}
                     v => heap.gcinfo_state = v != 0,
                 }
             }
@@ -3585,14 +3585,14 @@ fn call_primitive_inner(
         }
         ENV_IS_LOCKED => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
-            let locked = super::env::is_locked(heap, operands[0]);
+            let locked = r_core::env::is_locked(heap, operands[0]);
             Ok(heap.alloc(RObject::Logical(vec![locked as i32])))
         }
         BINDING_IS_LOCKED => {
             let operands = eval_args(heap, interner, args, caller_env, 2)?;
             let name = string_vec(heap, interner, operands[0]).into_iter().next().unwrap_or_default();
             let sym = interner.intern_symbol(&name);
-            let locked = super::env::binding_is_locked(heap, operands[1], sym);
+            let locked = r_core::env::binding_is_locked(heap, operands[1], sym);
             Ok(heap.alloc(RObject::Logical(vec![locked as i32])))
         }
         LOCK_BINDING | UNLOCK_BINDING => {
@@ -3600,9 +3600,9 @@ fn call_primitive_inner(
             let name = string_vec(heap, interner, operands[0]).into_iter().next().unwrap_or_default();
             let sym = interner.intern_symbol(&name);
             let result = if id.0 == LOCK_BINDING {
-                super::env::lock_binding(heap, operands[1], sym)
+                r_core::env::lock_binding(heap, operands[1], sym)
             } else {
-                super::env::unlock_binding(heap, operands[1], sym)
+                r_core::env::unlock_binding(heap, operands[1], sym)
             };
             result.map_err(|_| RSignal::Error(EvalError::TypeError("binding operation failed")))?;
             heap.visible = false;
@@ -3635,10 +3635,10 @@ fn call_primitive_inner(
             if positional.is_empty() {
                 return Err(EvalError::TypeError("lockEnvironment requires an environment").into());
             }
-            super::env::lock_environment(heap, positional[0])
+            r_core::env::lock_environment(heap, positional[0])
                 .map_err(|_| RSignal::Error(EvalError::TypeError("not an environment")))?;
             if lock_bindings {
-                let _ = super::env::lock_all_bindings(heap, positional[0]);
+                let _ = r_core::env::lock_all_bindings(heap, positional[0]);
             }
             heap.visible = false;
             Ok(ValueId::NIL)
@@ -3650,15 +3650,15 @@ fn call_primitive_inner(
             let operands = eval_args(heap, interner, args, caller_env, 3)?;
             let name = string_vec(heap, interner, operands[0]).into_iter().next().unwrap_or_default();
             let sym = interner.intern_symbol(&name);
-            if super::env::is_locked(heap, operands[2]) {
+            if r_core::env::is_locked(heap, operands[2]) {
                 return Err(EvalError::Condition("cannot add bindings to a locked environment".into()).into());
             }
-            if super::env::binding_is_locked(heap, operands[2], sym) {
+            if r_core::env::binding_is_locked(heap, operands[2], sym) {
                 return Err(EvalError::Condition(format!("cannot change value of locked binding for '{}'", name)).into());
             }
-            super::env::define(heap, operands[2], sym, operands[1])
+            r_core::env::define(heap, operands[2], sym, operands[1])
                 .map_err(|_| RSignal::Error(EvalError::TypeError("not an environment")))?;
-            super::env::mutate_binding_public(heap, operands[2], sym, |b| b.active = true)
+            r_core::env::mutate_binding_public(heap, operands[2], sym, |b| b.active = true)
                 .map_err(|_| RSignal::Error(EvalError::TypeError("active binding install")))?;
             heap.visible = false;
             Ok(ValueId::NIL)
@@ -3667,7 +3667,7 @@ fn call_primitive_inner(
             let operands = eval_args(heap, interner, args, caller_env, 2)?;
             let name = string_vec(heap, interner, operands[0]).into_iter().next().unwrap_or_default();
             let sym = interner.intern_symbol(&name);
-            match super::env::lookup_in_frame(heap, operands[1], sym) {
+            match r_core::env::lookup_in_frame(heap, operands[1], sym) {
                 Some(binding) => Ok(heap.alloc(RObject::Logical(vec![binding.active as i32]))),
                 None => Err(EvalError::Condition(format!("no binding for '{}'", name)).into()),
             }
@@ -3722,13 +3722,13 @@ fn call_primitive_inner(
                 cursor = next;
             }
             let paths = string_vec(heap, interner, positional.first().copied().unwrap_or(ValueId::NIL));
-            let mut out: Vec<super::intern::InternedStr> = Vec::new();
+            let mut out: Vec<r_core::intern::InternedStr> = Vec::new();
             for path in &paths {
                 if path == "\0NA" {
                     out.push(interner.intern_string("\0NA"));
                     continue;
                 }
-                match crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), path)
+                match r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), path)
                     .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::PermissionDenied, "path refused"))
                     .and_then(|host| std::fs::canonicalize(&host)) {
                     Ok(resolved) => {
@@ -3995,7 +3995,7 @@ fn call_primitive_inner(
                 "as.character.default", "as.numeric.default", "unique.default", "t.default",
             ];
             let prefix = format!("{}.", generic);
-            let out: Vec<super::intern::InternedStr> = KNOWN
+            let out: Vec<r_core::intern::InternedStr> = KNOWN
                 .iter()
                 .filter(|m| m.starts_with(&prefix))
                 .map(|m| interner.intern_string(m))
@@ -4051,12 +4051,12 @@ fn call_primitive_inner(
             let widths: Vec<i32> = match heap.object(x) {
                 Some(RObject::Logical(vals)) => {
                     vec![vals.iter().map(|&v| {
-                        if v == crate::value::object::NA_INTEGER { 2 } else if v != 0 { 4 } else { 5 }
+                        if v == r_core::object::NA_INTEGER { 2 } else if v != 0 { 4 } else { 5 }
                     }).max().unwrap_or(0)]
                 }
                 Some(RObject::Integer(vals)) => {
                     vec![vals.iter().map(|&v| {
-                        if v == crate::value::object::NA_INTEGER { 2 } else { v.to_string().len() as i32 }
+                        if v == r_core::object::NA_INTEGER { 2 } else { v.to_string().len() as i32 }
                     }).max().unwrap_or(0)]
                 }
                 Some(RObject::Real(vals)) => {
@@ -4120,7 +4120,7 @@ fn call_primitive_inner(
             /// form prepends the new root and reports invisibly.
             let raw = raw_args(heap, args);
             if raw.is_empty() {
-                let out: Vec<super::intern::InternedStr> = heap.lib_paths.iter().map(|p| interner.intern_string(p)).collect();
+                let out: Vec<r_core::intern::InternedStr> = heap.lib_paths.iter().map(|p| interner.intern_string(p)).collect();
                 return Ok(heap.alloc(RObject::String(out)));
             }
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
@@ -4130,7 +4130,7 @@ fn call_primitive_inner(
                 }
             }
             heap.visible = false;
-            let out: Vec<super::intern::InternedStr> = heap.lib_paths.iter().map(|p| interner.intern_string(p)).collect();
+            let out: Vec<r_core::intern::InternedStr> = heap.lib_paths.iter().map(|p| interner.intern_string(p)).collect();
             Ok(heap.alloc(RObject::String(out)))
         }
         FIND_PACKAGE => {
@@ -4226,7 +4226,7 @@ fn call_primitive_inner(
             let root = lookup("path", 0)
                 .and_then(|v| string_operand(heap, interner, v))
                 .unwrap_or_else(|| ".".to_string());
-            let root = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &root)
+            let root = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &root)
                 .unwrap_or_else(|| "\0refused".to_string());
             let pattern = lookup("pattern", 1).and_then(|v| string_operand(heap, interner, v));
             let all_files = lookup("all.files", 2).map(|v| logical_scalar(heap, v)).unwrap_or(false);
@@ -4243,7 +4243,7 @@ fn call_primitive_inner(
                         } else {
                             (p.clone(), name.to_string())
                         };
-                        crate::value::regex::regex_search(&pat, &text).is_some()
+                        r_core::regex::regex_search(&pat, &text).is_some()
                     }
                 }
             };
@@ -4352,7 +4352,7 @@ fn call_primitive_inner(
             // distinction exactly as the oracle pins.
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             let x = operands[0];
-            let na_bits = crate::value::object::NA_REAL_BITS;
+            let na_bits = r_core::object::NA_REAL_BITS;
             let classify = |v: f64| -> (bool, bool, bool) {
                 // (finite, infinite, nan)
                 if v.is_nan() {
@@ -4380,7 +4380,7 @@ fn call_primitive_inner(
                 Some(RObject::Integer(vals)) => vals
                     .iter()
                     .map(|&v| {
-                        let missing = v == crate::value::object::NA_INTEGER;
+                        let missing = v == r_core::object::NA_INTEGER;
                         let answer = match id.0 {
                             IS_FINITE => !missing,
                             _ => false,
@@ -4391,7 +4391,7 @@ fn call_primitive_inner(
                 Some(RObject::Logical(vals)) => vals
                     .iter()
                     .map(|&v| {
-                        let missing = v == crate::value::object::NA_INTEGER;
+                        let missing = v == r_core::object::NA_INTEGER;
                         let answer = match id.0 {
                             IS_FINITE => !missing,
                             _ => false,
@@ -4467,8 +4467,8 @@ fn call_primitive_inner(
             } else {
                 let v = eval(heap, interner, raw[0], caller_env)?;
                 match heap.object(v) {
-                    Some(RObject::Logical(vals)) => match vals.first().copied().unwrap_or(crate::value::object::NA_INTEGER) {
-                        crate::value::object::NA_INTEGER => None,
+                    Some(RObject::Logical(vals)) => match vals.first().copied().unwrap_or(r_core::object::NA_INTEGER) {
+                        r_core::object::NA_INTEGER => None,
                         x => Some(x != 0),
                     },
                     _ => None,
@@ -4501,11 +4501,11 @@ fn call_primitive_inner(
             for i in 0..n {
                 let target = &targets[i % targets.len().max(1)];
                 let source = &sources[i % sources.len().max(1)];
-                let success = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), source)
+                let success = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), source)
                     .and_then(|host_source| std::fs::read(&host_source).ok())
                     .and_then(|bytes| {
                         use std::io::Write;
-                        crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), target)
+                        r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), target)
                             .and_then(|host_target| {
                                 std::fs::OpenOptions::new()
                                     .append(true)
@@ -4528,9 +4528,9 @@ fn call_primitive_inner(
             for i in 0..n {
                 let f = &from[i % from.len().max(1)];
                 let t = &to[i % to.len().max(1)];
-                let host_t = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), t);
+                let host_t = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), t);
                 let success = if id.0 == FILE_LINK {
-                    match (crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), f), host_t) {
+                    match (r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), f), host_t) {
                         (Some(host_f), Some(host_t)) => std::fs::hard_link(&host_f, &host_t).is_ok(),
                         _ => false,
                     }
@@ -4552,7 +4552,7 @@ fn call_primitive_inner(
             let interned: Vec<_> = paths
                 .iter()
                 .map(|p| {
-                    let host = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), p);
+                    let host = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), p);
                     match host {
                         None => interner.intern_string("\0NA"),
                         Some(host) if !std::path::Path::new(&host).exists() => {
@@ -4573,10 +4573,10 @@ fn call_primitive_inner(
             let out: Vec<f64> = paths
                 .iter()
                 .map(|p| {
-                    match crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), p)
+                    match r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), p)
                         .and_then(|host| std::fs::metadata(&host).ok()) {
                         Some(md) => md.len() as f64,
-                        None => f64::from_bits(crate::value::object::NA_REAL_BITS),
+                        None => f64::from_bits(r_core::object::NA_REAL_BITS),
                     }
                 })
                 .collect();
@@ -4590,13 +4590,13 @@ fn call_primitive_inner(
             let out: Vec<f64> = paths
                 .iter()
                 .map(|p| {
-                    match crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), p)
+                    match r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), p)
                         .and_then(|host| std::fs::metadata(&host).and_then(|md| md.modified()).ok()) {
                         Some(mtime) => mtime
                             .duration_since(std::time::UNIX_EPOCH)
                             .map(|d| d.as_secs_f64())
                             .unwrap_or(0.0),
-                        None => f64::from_bits(crate::value::object::NA_REAL_BITS),
+                        None => f64::from_bits(r_core::object::NA_REAL_BITS),
                     }
                 })
                 .collect();
@@ -4613,7 +4613,7 @@ fn call_primitive_inner(
             let out: Vec<i32> = paths
                 .iter()
                 .map(|p| {
-                    match crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), p) {
+                    match r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), p) {
                         Some(host) if std::path::Path::new(&host).exists() => 0,
                         _ => -1,
                     }
@@ -4648,7 +4648,7 @@ fn call_primitive_inner(
             }
             match heap.object(fun).cloned() {
                 Some(RObject::Closure { formals, body, env }) => {
-                    let applied = super::eval::apply_closure_public(heap, interner, formals, body, env, arg_node, caller_env)?;
+                    let applied = r_core::eval::apply_closure_public(heap, interner, formals, body, env, arg_node, caller_env)?;
                     force_if_promise(heap, interner, applied)
                 }
                 Some(RObject::Primitive(builtin)) => {
@@ -4762,7 +4762,7 @@ fn call_primitive_inner(
             };
             let mut used = vec![false; levels.len()];
             for &c in &codes {
-                if c != crate::value::object::NA_INTEGER && c >= 1 {
+                if c != r_core::object::NA_INTEGER && c >= 1 {
                     used[(c - 1) as usize] = true;
                 }
             }
@@ -4778,7 +4778,7 @@ fn call_primitive_inner(
             }
             let new_codes: Vec<i32> = codes
                 .iter()
-                .map(|&c| if c == crate::value::object::NA_INTEGER { c } else { remap[(c - 1) as usize] })
+                .map(|&c| if c == r_core::object::NA_INTEGER { c } else { remap[(c - 1) as usize] })
                 .collect();
             let result = heap.alloc(RObject::Integer(new_codes));
             // Attributes copy over minus levels, then the reduced levels.
@@ -4817,7 +4817,7 @@ fn call_primitive_inner(
                 match tname.as_deref() {
                     Some("fromLast") => from_last = logical_scalar(heap, v),
                     Some("incomparables") => {
-                        incomparables_na = matches!(heap.object(v), Some(RObject::Logical(l)) if l.first().copied().unwrap_or(0) == crate::value::object::NA_INTEGER)
+                        incomparables_na = matches!(heap.object(v), Some(RObject::Logical(l)) if l.first().copied().unwrap_or(0) == r_core::object::NA_INTEGER)
                             || matches!(heap.object(v), Some(RObject::Real(r)) if r.first().map(|x| x.is_nan()).unwrap_or(false));
                     }
                     _ => positional.push(v),
@@ -4886,7 +4886,7 @@ fn call_primitive_inner(
             let out: Vec<i32> = paths
                 .iter()
                 .map(|p| {
-                    let host = crate::value::path_policy::resolve_host_path(
+                    let host = r_core::path_policy::resolve_host_path(
                         heap.path_policy.as_ref(),
                         p,
                     );
@@ -4968,7 +4968,7 @@ fn call_primitive_inner(
             }
             match heap.object(fun).cloned() {
                 Some(RObject::Closure { formals, body, env }) => {
-                    let applied = super::eval::apply_closure_public(heap, interner, formals, body, env, arg_node, caller_env)?;
+                    let applied = r_core::eval::apply_closure_public(heap, interner, formals, body, env, arg_node, caller_env)?;
                     force_if_promise(heap, interner, applied)
                 }
                 Some(RObject::Primitive(builtin)) => {
@@ -5019,7 +5019,7 @@ fn call_primitive_inner(
                 if v.fract() == 0.0 && v.abs() < 1e15 {
                     format!("{}", v as i64)
                 } else {
-                    super::print::format_real(v)
+                    r_core::print::format_real(v)
                 }
             };
             let default_labels: Vec<String> = (0..nintervals)
@@ -5050,7 +5050,7 @@ fn call_primitive_inner(
                 .iter()
                 .map(|x| {
                     if x.is_nan() {
-                        return crate::value::object::NA_INTEGER;
+                        return r_core::object::NA_INTEGER;
                     }
                     let x = *x;
                     for i in 0..nintervals {
@@ -5067,7 +5067,7 @@ fn call_primitive_inner(
                             return (i + 1) as i32;
                         }
                     }
-                    crate::value::object::NA_INTEGER
+                    r_core::object::NA_INTEGER
                 })
                 .collect();
             if labels_false {
@@ -5122,7 +5122,7 @@ fn call_primitive_inner(
         BY_FN => {
             // GNU's by over atomic data IS tapply plus the "by" class — the
             /// dim/dimnames shape tapply already produces carries over.
-            let applied = call_primitive_inner(heap, interner, crate::value::object::BuiltinId(TAPPLY), args, caller_env)?;
+            let applied = call_primitive_inner(heap, interner, r_core::object::BuiltinId(TAPPLY), args, caller_env)?;
             // names surface dimnames[[1]] exactly as GNU's 1-D indexing.
             let with_names = match get_attrib(heap, interner, applied, "dimnames") {
                 Some(dn) => match heap.object(dn) {
@@ -5288,7 +5288,7 @@ fn call_primitive_inner(
             let generic = string_operand(heap, interner, operands[0]).unwrap_or_default();
             let class = string_operand(heap, interner, operands[1]).unwrap_or_default();
             let sym = interner.intern_symbol(&format!("{generic}.{class}"));
-            match super::env::lookup(heap, caller_env, sym) {
+            match r_core::env::lookup(heap, caller_env, sym) {
                 Some((_, binding)) => Ok(force_if_promise(heap, interner, binding.value)?),
                 None => Err(EvalError::Condition(format!("S3 method '{generic}.{class}' not found")).into()),
             }
@@ -5441,12 +5441,12 @@ fn call_primitive_inner(
                 cursor = next;
             }
             let mut removal = |heap: &mut Heap, sym| -> Result<(), EvalError> {
-                match super::env::remove(heap, target_env, sym) {
+                match r_core::env::remove(heap, target_env, sym) {
                     Ok(_) => Ok(()),
-                    Err(super::env::EnvError::LockedEnvironment) => {
+                    Err(r_core::env::EnvError::LockedEnvironment) => {
                         Err(EvalError::Condition("cannot remove bindings from a locked environment".to_string()))
                     }
-                    Err(super::env::EnvError::LockedBinding) => {
+                    Err(r_core::env::EnvError::LockedBinding) => {
                         Err(EvalError::Condition("cannot remove bindings from a locked environment".to_string()))
                     }
                     Err(_) => Ok(()),
@@ -5510,8 +5510,8 @@ fn call_primitive_inner(
                 Some(RObject::Integer(vals)) => Some(
                     vals.iter()
                         .map(|&v| {
-                            if v == crate::value::object::NA_INTEGER {
-                                f64::from_bits(crate::value::object::NA_REAL_BITS)
+                            if v == r_core::object::NA_INTEGER {
+                                f64::from_bits(r_core::object::NA_REAL_BITS)
                             } else {
                                 v as f64
                             }
@@ -5536,7 +5536,7 @@ fn call_primitive_inner(
                 let freq_text = if freq.fract() == 0.0 && !freq.is_nan() {
                     format!("{}", freq as i64)
                 } else {
-                    super::print::format_real(freq)
+                    r_core::print::format_real(freq)
                 };
                 return Err(EvalError::Condition(format!(
                     "invalid time series parameters specified ({freq_text})"
@@ -5558,7 +5558,7 @@ fn call_primitive_inner(
         GLOBALENV => {
             // The .GlobalEnv binding in base resolves to the user env.
             let sym = interner.intern_symbol(".GlobalEnv");
-            match super::env::lookup(heap, caller_env, sym) {
+            match r_core::env::lookup(heap, caller_env, sym) {
                 Some((_, binding)) => Ok(binding.value),
                 None => Ok(caller_env),
             }
@@ -5586,7 +5586,7 @@ fn call_primitive_inner(
             let name_owned: String;
             let name = {
                 let sym = interner.intern_symbol(".GlobalEnv");
-                let genv = super::env::lookup(heap, caller_env, sym).map(|(_, b)| b.value);
+                let genv = r_core::env::lookup(heap, caller_env, sym).map(|(_, b)| b.value);
                 let attr_name = get_attrib(heap, interner, operands[0], "name")
                     .and_then(|n| string_operand(heap, interner, n));
                 if operands[0] == ValueId::EMPTY_ENV {
@@ -5625,7 +5625,7 @@ fn call_primitive_inner(
             // R.Version() returns the shared version list exactly as the
             /// version constant — GNU's function reads the same structure.
             let sym = interner.intern_symbol("R.version");
-            match super::env::lookup(heap, caller_env, sym) {
+            match r_core::env::lookup(heap, caller_env, sym) {
                 Some((_, binding)) => Ok(binding.value),
                 None => Ok(ValueId::NIL),
             }
@@ -5645,11 +5645,11 @@ fn call_primitive_inner(
                     .map(|v| {
                         let text = interner.string_text(*v);
                         if text == "\0NA" {
-                            f64::from_bits(crate::value::object::NA_REAL_BITS)
+                            f64::from_bits(r_core::object::NA_REAL_BITS)
                         } else {
-                            match super::civil::parse_iso(text) {
+                            match r_core::civil::parse_iso(text) {
                                 Some(days) => days as f64,
-                                None => f64::from_bits(crate::value::object::NA_REAL_BITS),
+                                None => f64::from_bits(r_core::object::NA_REAL_BITS),
                             }
                         }
                     })
@@ -5658,8 +5658,8 @@ fn call_primitive_inner(
                 Some(RObject::Integer(values)) => values
                     .iter()
                     .map(|&v| {
-                        if v == crate::value::object::NA_INTEGER {
-                            f64::from_bits(crate::value::object::NA_REAL_BITS)
+                        if v == r_core::object::NA_INTEGER {
+                            f64::from_bits(r_core::object::NA_REAL_BITS)
                         } else {
                             v as f64
                         }
@@ -5704,7 +5704,7 @@ fn call_primitive_inner(
                     })
                     .collect();
             }
-            let out: Vec<super::intern::InternedStr> = days
+            let out: Vec<r_core::intern::InternedStr> = days
                 .iter()
                 .map(|&d| {
                     if d.is_nan() {
@@ -5719,14 +5719,14 @@ fn call_primitive_inner(
                         let day_count = d as i64;
                         let text = match id.0 {
                             WEEKDAYS => {
-                                super::civil::WEEKDAY_NAMES[super::civil::weekday_of(day_count) as usize].to_string()
+                                r_core::civil::WEEKDAY_NAMES[r_core::civil::weekday_of(day_count) as usize].to_string()
                             }
                             MONTHS => {
-                                let (_, m, _) = super::civil::civil_from_days(day_count);
-                                super::civil::MONTH_NAMES[(m - 1) as usize].to_string()
+                                let (_, m, _) = r_core::civil::civil_from_days(day_count);
+                                r_core::civil::MONTH_NAMES[(m - 1) as usize].to_string()
                             }
                             _ => {
-                                let (_, m, _) = super::civil::civil_from_days(day_count);
+                                let (_, m, _) = r_core::civil::civil_from_days(day_count);
                                 format!("Q{}", (m - 1) / 3 + 1)
                             }
                         };
@@ -5778,12 +5778,12 @@ fn call_primitive_inner(
             let keys: Vec<(f64, f64, bool)> = match heap.object(xval) {
                 Some(RObject::Real(vals)) => vals
                     .iter()
-                    .map(|v| (*v, 0.0, v.to_bits() == crate::value::object::NA_REAL_BITS))
+                    .map(|v| (*v, 0.0, v.to_bits() == r_core::object::NA_REAL_BITS))
                     .collect(),
                 Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals
                     .iter()
                     .map(|&v| {
-                        if v == crate::value::object::NA_INTEGER {
+                        if v == r_core::object::NA_INTEGER {
                             (0.0, 0.0, true)
                         } else {
                             (v as f64, 0.0, false)
@@ -5793,8 +5793,8 @@ fn call_primitive_inner(
                 Some(RObject::Complex(vals)) => vals
                     .iter()
                     .map(|z| {
-                        let na = z.r.to_bits() == crate::value::object::NA_REAL_BITS
-                            || z.i.to_bits() == crate::value::object::NA_REAL_BITS
+                        let na = z.r.to_bits() == r_core::object::NA_REAL_BITS
+                            || z.i.to_bits() == r_core::object::NA_REAL_BITS
                             || z.r.is_nan()
                             || z.i.is_nan();
                         (z.r, z.i, na)
@@ -5848,7 +5848,7 @@ fn call_primitive_inner(
                 }
             }
             if result == 0 && had_na && !na_rm {
-                result = crate::value::object::NA_INTEGER;
+                result = r_core::object::NA_INTEGER;
             }
             Ok(heap.alloc(RObject::Logical(vec![result])))
         }
@@ -5868,11 +5868,11 @@ fn call_primitive_inner(
             let start = heap.output.len();
             let raw = raw_args(heap, args);
             for arg in raw {
-                crate::value::eval::eval(heap, interner, arg, caller_env)?;
+                r_core::eval::eval(heap, interner, arg, caller_env)?;
             }
             let captured: String = heap.output[start..].to_string();
             heap.output.truncate(start);
-            let lines: Vec<super::intern::InternedStr> = captured
+            let lines: Vec<r_core::intern::InternedStr> = captured
                 .lines()
                 .map(|l| interner.intern_string(l))
                 .collect();
@@ -5940,7 +5940,7 @@ fn call_primitive_inner(
                         Some(RObject::Integer(codes)) => codes
                             .iter()
                             .map(|&c| {
-                                if c == crate::value::object::NA_INTEGER {
+                                if c == r_core::object::NA_INTEGER {
                                     "\0NA".to_string()
                                 } else {
                                     levels.get((c - 1) as usize).cloned().unwrap_or_default()
@@ -5976,7 +5976,7 @@ fn call_primitive_inner(
                     })
                     .collect();
                 if positions.is_empty() {
-                    result_values.push(f64::from_bits(crate::value::object::NA_REAL_BITS));
+                    result_values.push(f64::from_bits(r_core::object::NA_REAL_BITS));
                     result_int = false;
                     continue;
                 }
@@ -6003,7 +6003,7 @@ fn call_primitive_inner(
             let dn_inners: Vec<ValueId> = col_levels
                 .iter()
                 .map(|levels| {
-                    let interned: Vec<super::intern::InternedStr> = levels
+                    let interned: Vec<r_core::intern::InternedStr> = levels
                         .iter()
                         .map(|s| interner.intern_string(s))
                         .collect();
@@ -6012,7 +6012,7 @@ fn call_primitive_inner(
                 .collect();
             let dn_list = heap.alloc(RObject::List(dn_inners));
             let dn_list = if !index_names.is_empty() {
-                let nm: Vec<super::intern::InternedStr> = index_names
+                let nm: Vec<r_core::intern::InternedStr> = index_names
                     .iter()
                     .map(|s| interner.intern_string(s))
                     .collect();
@@ -6027,7 +6027,7 @@ fn call_primitive_inner(
             /// GNU arrays; carry the explicit names attribute only in the
             /// single-index case where GNU's object shows it.
             let values = if dims.len() == 1 {
-                let first: Vec<super::intern::InternedStr> = col_levels[0]
+                let first: Vec<r_core::intern::InternedStr> = col_levels[0]
                     .iter()
                     .map(|s| interner.intern_string(s))
                     .collect();
@@ -6054,7 +6054,7 @@ fn call_primitive_inner(
                 let applied = apply_fun_to(heap, interner, fun, element, caller_env)?;
                 results.push(applied);
             }
-            let first_of = |heap: &Heap, v: ValueId| -> (f64, Option<super::intern::InternedStr>) {
+            let first_of = |heap: &Heap, v: ValueId| -> (f64, Option<r_core::intern::InternedStr>) {
                 match heap.object(v) {
                     Some(RObject::Real(vals)) => (vals.first().copied().unwrap_or(0.0), None),
                     Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => {
@@ -6070,7 +6070,7 @@ fn call_primitive_inner(
             let names = get_attrib(heap, interner, x, "names");
             let combined: ValueId = match heap.object(template) {
                 Some(RObject::String(_)) => {
-                    let out: Vec<super::intern::InternedStr> = results
+                    let out: Vec<r_core::intern::InternedStr> = results
                         .iter()
                         .map(|&r| {
                             let (_, s) = first_of(heap, r);
@@ -6141,11 +6141,11 @@ fn call_primitive_inner(
                     .map(|v| {
                         let text = interner.string_text(*v);
                         if text == "\0NA" {
-                            f64::from_bits(crate::value::object::NA_REAL_BITS)
+                            f64::from_bits(r_core::object::NA_REAL_BITS)
                         } else {
-                            match super::civil::parse_iso_datetime(text) {
+                            match r_core::civil::parse_iso_datetime(text) {
                                 Some(secs) => secs as f64,
-                                None => f64::from_bits(crate::value::object::NA_REAL_BITS),
+                                None => f64::from_bits(r_core::object::NA_REAL_BITS),
                             }
                         }
                     })
@@ -6154,8 +6154,8 @@ fn call_primitive_inner(
                 Some(RObject::Integer(values)) => values
                     .iter()
                     .map(|&v| {
-                        if v == crate::value::object::NA_INTEGER {
-                            f64::from_bits(crate::value::object::NA_REAL_BITS)
+                        if v == r_core::object::NA_INTEGER {
+                            f64::from_bits(r_core::object::NA_REAL_BITS)
                         } else {
                             v as f64
                         }
@@ -6370,8 +6370,8 @@ fn call_primitive_inner(
             let bound = bind_formals(heap, interner, args, caller_env, &["object", "file", "ascii", "version", "compress", "refhook"])?;
             let object = bound[0].ok_or(EvalError::TypeError("saveRDS requires an object")).map_err(RSignal::from)?;
             let path = bound[1].and_then(|v| string_operand(heap, interner, v)).unwrap_or_default();
-            let bytes = super::rbg1::encode_rds(heap, interner, object);
-            crate::value::vfile::write_file(heap, &path, &bytes)
+            let bytes = r_core::rbg1::encode_rds(heap, interner, object);
+            r_core::vfile::write_file(heap, &path, &bytes)
                 .map_err(|e| RSignal::from(EvalError::Condition(format!("cannot write file: {e}"))))?;
             heap.visible = false;
             Ok(ValueId::NIL)
@@ -6379,9 +6379,9 @@ fn call_primitive_inner(
         READ_RDS => {
             let bound = bind_formals(heap, interner, args, caller_env, &["file", "refhook"])?;
             let path = bound[0].and_then(|v| string_operand(heap, interner, v)).unwrap_or_default();
-            let bytes = crate::value::vfile::read_file(heap, &path)
+            let bytes = r_core::vfile::read_file(heap, &path)
                 .map_err(|e| RSignal::from(EvalError::Condition(format!("cannot read file: {e}"))))?;
-            super::rbg1::decode_rds(heap, interner, &bytes, caller_env)
+            r_core::rbg1::decode_rds(heap, interner, &bytes, caller_env)
                 .ok_or(EvalError::TypeError("malformed RDS stream").into())
         }
         WRITE_TABLE | WRITE_CSV2 => write_table_primitive(heap, interner, id.0, args, caller_env),
@@ -6437,7 +6437,7 @@ fn call_primitive_inner(
         SEARCHPATHS => {
             let genv = {
                 let sym = interner.intern_symbol(".GlobalEnv");
-                match super::env::lookup(heap, caller_env, sym) {
+                match r_core::env::lookup(heap, caller_env, sym) {
                     Some((_, binding)) => binding.value,
                     None => caller_env,
                 }
@@ -6474,9 +6474,9 @@ fn call_primitive_inner(
         CONJ_C => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             let vals = as_complex_vec(heap, operands[0]).map_err(RSignal::from)?;
-            let out: Vec<crate::value::object::RComplex> = vals
+            let out: Vec<r_core::object::RComplex> = vals
                 .iter()
-                .map(|z| crate::value::object::RComplex { r: z.r, i: -z.i })
+                .map(|z| r_core::object::RComplex { r: z.r, i: -z.i })
                 .collect();
             Ok(heap.alloc(RObject::Complex(out)))
         }
@@ -6506,7 +6506,7 @@ fn call_primitive_inner(
                 Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals
                     .iter()
                     .map(|&v| {
-                        if v == crate::value::object::NA_INTEGER || v < 0 || v > 255 {
+                        if v == r_core::object::NA_INTEGER || v < 0 || v > 255 {
                             0u8
                         } else {
                             v as u8
@@ -6663,7 +6663,7 @@ fn call_primitive_inner(
                     matches!(heap.object(tag), Some(RObject::Symbol { name, .. }) if interner.symbol_name(*name) == "envir")
                 };
                 if tag_is_envir {
-                    let value = crate::value::eval::eval(heap, interner, car, caller_env)?;
+                    let value = r_core::eval::eval(heap, interner, car, caller_env)?;
                     match heap.object(value) {
                         Some(RObject::Environment { .. }) => target = Some(value),
                         _ => {
@@ -6683,11 +6683,11 @@ fn call_primitive_inner(
             }
             let target_env = match target {
                 Some(env) => env,
-                None => crate::value::env::new_environment(heap, caller_env),
+                None => r_core::env::new_environment(heap, caller_env),
             };
             let mut result = ValueId::NIL;
             for expr in body_exprs {
-                result = crate::value::eval::eval(heap, interner, expr, target_env)?;
+                result = r_core::eval::eval(heap, interner, expr, target_env)?;
             }
             Ok(result)
         }
@@ -6701,16 +6701,16 @@ fn call_primitive_inner(
                     let items = items.clone();
                     let mut last = ValueId::NIL;
                     for item in items {
-                        last = crate::value::eval::eval(heap, interner, item, caller_env)?;
+                        last = r_core::eval::eval(heap, interner, item, caller_env)?;
                     }
                     Ok(last)
                 }
-                _ => crate::value::eval::eval(heap, interner, operands[0], caller_env),
+                _ => r_core::eval::eval(heap, interner, operands[0], caller_env),
             }
         }
         DEPARSE1 => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
-            let text = crate::value::print::deparse(heap, interner, operands[0]);
+            let text = r_core::print::deparse(heap, interner, operands[0]);
             Ok(heap.alloc(RObject::String(vec![interner.intern_string(&text)])))
         }
         DPUT => {
@@ -6722,7 +6722,7 @@ fn call_primitive_inner(
             if operands.is_empty() {
                 return Err(EvalError::TypeError("dput requires an object").into());
             }
-            let text = crate::value::print::deparse(heap, interner, operands[0]);
+            let text = r_core::print::deparse(heap, interner, operands[0]);
             if operands.len() >= 2 {
                 let path = match heap.object(operands[1]) {
                     Some(RObject::String(vals)) if !vals.is_empty() => {
@@ -6731,7 +6731,7 @@ fn call_primitive_inner(
                     _ => String::new(),
                 };
                 if !path.is_empty() {
-                    crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path)
+                    r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path)
                         .map(|host| std::fs::write(&host, format!("{text}\n")))
                         .unwrap_or_else(|| Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "path refused")))
                         .map_err(|e| RSignal::from(EvalError::TypeError(Box::leak(format!("cannot open file: {e}").into_boxed_str()))))?;
@@ -6762,7 +6762,7 @@ fn call_primitive_inner(
                 _ => Vec::new(),
             };
             match items.first() {
-                Some(first) => crate::value::eval::eval(heap, interner, *first, caller_env),
+                Some(first) => r_core::eval::eval(heap, interner, *first, caller_env),
                 None => Ok(ValueId::NIL),
             }
         }
@@ -6823,7 +6823,7 @@ fn call_primitive_inner(
                     .collect(),
                 _ => Vec::new(),
             };
-            let out: Vec<super::intern::InternedStr> = texts
+            let out: Vec<r_core::intern::InternedStr> = texts
                 .iter()
                 .map(|path| {
                     let trimmed = path.trim_end_matches('/');
@@ -6877,7 +6877,7 @@ fn call_primitive_inner(
             }
             let result = heap.alloc(RObject::List(items));
             if names.iter().any(|n| !n.is_empty()) {
-                let interned: Vec<super::intern::InternedStr> = names
+                let interned: Vec<r_core::intern::InternedStr> = names
                     .iter()
                     .map(|s| interner.intern_string(s))
                     .collect();
@@ -6929,13 +6929,13 @@ fn call_primitive_inner(
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             if is_posixct_classed(heap, interner, operands[0]) {
                 let secs = numeric_vector(heap, operands[0]);
-                let out: Vec<super::intern::InternedStr> = secs
+                let out: Vec<r_core::intern::InternedStr> = secs
                     .iter()
                     .map(|&s| {
                         if s.is_nan() {
                             interner.intern_string("\0NA")
                         } else {
-                            interner.intern_string(&super::civil::format_iso_datetime(s as i64))
+                            interner.intern_string(&r_core::civil::format_iso_datetime(s as i64))
                         }
                     })
                     .collect();
@@ -6943,13 +6943,13 @@ fn call_primitive_inner(
             }
             if is_date_classed(heap, interner, operands[0]) {
                 let days = numeric_vector(heap, operands[0]);
-                let out: Vec<super::intern::InternedStr> = days
+                let out: Vec<r_core::intern::InternedStr> = days
                     .iter()
                     .map(|&d| {
                         if d.is_nan() {
                             interner.intern_string("\0NA")
                         } else {
-                            interner.intern_string(&super::civil::format_iso(d as i64))
+                            interner.intern_string(&r_core::civil::format_iso(d as i64))
                         }
                     })
                     .collect();
@@ -7046,8 +7046,8 @@ fn call_primitive_inner(
             }
             let extent = match get_attrib(heap, interner, operands[0], "dim") {
                 Some(dim) => match heap.object(dim) {
-                    Some(RObject::Integer(dims)) => dims.get(which).copied().unwrap_or(crate::value::object::NA_INTEGER),
-                    _ => crate::value::object::NA_INTEGER,
+                    Some(RObject::Integer(dims)) => dims.get(which).copied().unwrap_or(r_core::object::NA_INTEGER),
+                    _ => r_core::object::NA_INTEGER,
                 },
                 // Vector nrow is the length; ncol of a vector is NULL in GNU
                 /// but the slice reports the vector extent for nrow only.
@@ -7066,7 +7066,7 @@ fn call_primitive_inner(
         NCHAR => nchar_primitive(heap, interner, args, caller_env),
         PRINT => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
-            let text = super::print::format_value(heap, interner, operands[0]);
+            let text = r_core::print::format_value(heap, interner, operands[0]);
             heap.emit(&text);
             heap.emit("\n");
             // GNU: print returns its argument invisibly.
@@ -7106,7 +7106,7 @@ fn call_primitive_inner(
             }
             let value = heap.alloc(RObject::List(items));
             if tags.iter().any(|t| t.is_some()) {
-                let names: Vec<super::intern::InternedStr> = tags
+                let names: Vec<r_core::intern::InternedStr> = tags
                     .iter()
                     .map(|t| interner.intern_string(t.as_deref().unwrap_or("")))
                     .collect();
@@ -7219,9 +7219,9 @@ fn assign_form(
     // the frame-local and chain-walking forms. Binding locks fire first.
     {
         let found = if super_assign {
-            crate::value::env::lookup(heap, caller_env, sym)
+            r_core::env::lookup(heap, caller_env, sym)
         } else {
-            crate::value::env::lookup_in_frame(heap, caller_env, sym)
+            r_core::env::lookup_in_frame(heap, caller_env, sym)
                 .map(|b| (caller_env, b))
         };
         if let Some((_, binding)) = found {
@@ -7239,14 +7239,14 @@ fn assign_form(
         }
     }
     if super_assign {
-        match crate::value::env::assign(heap, caller_env, sym, value) {
-            Ok(crate::value::env::AssignOutcome::Assigned)
-            | Ok(crate::value::env::AssignOutcome::ReplacedActiveBinding) => {}
-            Ok(crate::value::env::AssignOutcome::NoExistingBinding) => {
+        match r_core::env::assign(heap, caller_env, sym, value) {
+            Ok(r_core::env::AssignOutcome::Assigned)
+            | Ok(r_core::env::AssignOutcome::ReplacedActiveBinding) => {}
+            Ok(r_core::env::AssignOutcome::NoExistingBinding) => {
                 // GNU: <<- with no existing binding defines in the global
                 // environment. Sentinel resolution is pending; defining in
                 // the current frame is the documented slice approximation.
-                crate::value::env::define(heap, caller_env, sym, value)
+                r_core::env::define(heap, caller_env, sym, value)
                     .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("superassign define")))?;
             }
             Err(_) => {
@@ -7254,7 +7254,7 @@ fn assign_form(
             }
         }
     } else {
-        crate::value::env::define(heap, caller_env, sym, value)
+        r_core::env::define(heap, caller_env, sym, value)
             .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("assign define")))?;
     }
     Ok(value)
@@ -7305,13 +7305,13 @@ fn arithmetic(
                 || is_date_classed(heap, interner, unary[0])
                 || is_posixct_classed(heap, interner, unary[0]);
             if let Some(RObject::Complex(vals)) = heap.object(unary[0]) {
-                let folded: Vec<crate::value::object::RComplex> = vals
+                let folded: Vec<r_core::object::RComplex> = vals
                     .iter()
                     .map(|z| {
                         if op == ADD {
                             *z
                         } else {
-                            crate::value::object::RComplex { r: -z.r, i: -z.i }
+                            r_core::object::RComplex { r: -z.r, i: -z.i }
                         }
                     })
                     .collect();
@@ -7323,7 +7323,7 @@ fn arithmetic(
                     let folded = values
                         .into_iter()
                         .map(|v| {
-                            if v == crate::value::object::NA_INTEGER || op == ADD {
+                            if v == r_core::object::NA_INTEGER || op == ADD {
                                 v
                             } else {
                                 v.wrapping_neg()
@@ -7436,10 +7436,10 @@ fn arithmetic(
                 let folded = fold_numeric(a, b, op, |x, y| {
                     // GNU integer division truncates; division by zero or
                     // the INT_MIN/-1 overflow yields NA exactly.
-                    if y == 0 || x == crate::value::object::NA_INTEGER || y == crate::value::object::NA_INTEGER {
-                        crate::value::object::NA_INTEGER
+                    if y == 0 || x == r_core::object::NA_INTEGER || y == r_core::object::NA_INTEGER {
+                        r_core::object::NA_INTEGER
                     } else {
-                        x.checked_div(y).unwrap_or(crate::value::object::NA_INTEGER)
+                        x.checked_div(y).unwrap_or(r_core::object::NA_INTEGER)
                     }
                 })
                 .map_err(RSignal::from)?;
@@ -7450,32 +7450,32 @@ fn arithmetic(
                 ADD => {
                     // GNU checks integer overflow: out-of-range results
                     // become NA with a warning rather than wrapping.
-                    if x == crate::value::object::NA_INTEGER || y == crate::value::object::NA_INTEGER {
-                        crate::value::object::NA_INTEGER
+                    if x == r_core::object::NA_INTEGER || y == r_core::object::NA_INTEGER {
+                        r_core::object::NA_INTEGER
                     } else {
-                        x.checked_add(y).unwrap_or(crate::value::object::NA_INTEGER)
+                        x.checked_add(y).unwrap_or(r_core::object::NA_INTEGER)
                     }
                 }
                 SUB => {
-                    if x == crate::value::object::NA_INTEGER || y == crate::value::object::NA_INTEGER {
-                        crate::value::object::NA_INTEGER
+                    if x == r_core::object::NA_INTEGER || y == r_core::object::NA_INTEGER {
+                        r_core::object::NA_INTEGER
                     } else {
-                        x.checked_sub(y).unwrap_or(crate::value::object::NA_INTEGER)
+                        x.checked_sub(y).unwrap_or(r_core::object::NA_INTEGER)
                     }
                 }
                 MOD => {
                     // GNU: integer modulo, division by zero yields NA.
-                    if y == 0 || x == crate::value::object::NA_INTEGER || y == crate::value::object::NA_INTEGER {
-                        crate::value::object::NA_INTEGER
+                    if y == 0 || x == r_core::object::NA_INTEGER || y == r_core::object::NA_INTEGER {
+                        r_core::object::NA_INTEGER
                     } else {
                         x % y
                     }
                 }
                 _ => {
-                    if x == crate::value::object::NA_INTEGER || y == crate::value::object::NA_INTEGER {
-                        crate::value::object::NA_INTEGER
+                    if x == r_core::object::NA_INTEGER || y == r_core::object::NA_INTEGER {
+                        r_core::object::NA_INTEGER
                     } else {
-                        x.checked_mul(y).unwrap_or(crate::value::object::NA_INTEGER)
+                        x.checked_mul(y).unwrap_or(r_core::object::NA_INTEGER)
                     }
                 }
             })
@@ -7517,10 +7517,10 @@ fn arithmetic(
                 // NaN result back to NA; genuine NaN production (Inf-Inf,
                 // 0/0) keeps the canonical quiet NaN exactly as GNU does.
                 if result.is_nan()
-                    && (x.to_bits() == crate::value::object::NA_REAL_BITS
-                        || y.to_bits() == crate::value::object::NA_REAL_BITS)
+                    && (x.to_bits() == r_core::object::NA_REAL_BITS
+                        || y.to_bits() == r_core::object::NA_REAL_BITS)
                 {
-                    f64::from_bits(crate::value::object::NA_REAL_BITS)
+                    f64::from_bits(r_core::object::NA_REAL_BITS)
                 } else {
                     result
                 }
@@ -7751,8 +7751,8 @@ fn as_reals(numeric: Numeric) -> Vec<f64> {
         Numeric::Integer(values) => values
             .into_iter()
             .map(|v| {
-                if v == crate::value::object::NA_INTEGER {
-                    f64::from_bits(crate::value::object::NA_REAL_BITS)
+                if v == r_core::object::NA_INTEGER {
+                    f64::from_bits(r_core::object::NA_REAL_BITS)
                 } else {
                     v as f64
                 }
@@ -7856,7 +7856,7 @@ fn for_form(
     let seq = force_if_promise(heap, interner, seq)?;
     let elements = sequence_elements(heap, seq)?;
     for element in elements {
-        crate::value::env::define(heap, caller_env, sym, element)
+        r_core::env::define(heap, caller_env, sym, element)
             .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("for define")))?;
         match eval(heap, interner, parts[2], caller_env) {
             Err(RSignal::Break) => break,
@@ -8004,8 +8004,8 @@ fn comparison(
             for i in 0..len {
                 let a = lefts[i % lefts.len().max(1)];
                 let b = rights[i % rights.len().max(1)];
-                if a == crate::value::object::NA_INTEGER || b == crate::value::object::NA_INTEGER {
-                    out.push(crate::value::object::NA_INTEGER);
+                if a == r_core::object::NA_INTEGER || b == r_core::object::NA_INTEGER {
+                    out.push(r_core::object::NA_INTEGER);
                     continue;
                 }
                 let result = match op {
@@ -8050,8 +8050,8 @@ fn comparison(
         for i in 0..len {
             let code = codes[i % codes.len().max(1)];
             let text = &strings[i % strings.len().max(1)];
-            if code == crate::value::object::NA_INTEGER || text == "\0NA" {
-                out.push(crate::value::object::NA_INTEGER);
+            if code == r_core::object::NA_INTEGER || text == "\0NA" {
+                out.push(r_core::object::NA_INTEGER);
                 continue;
             }
             let label = factor_levels.get((code as usize).saturating_sub(1)).cloned().unwrap_or_default();
@@ -8075,7 +8075,7 @@ fn comparison(
                             }
                         }
                         None => {
-                            out.push(crate::value::object::NA_INTEGER);
+                            out.push(r_core::object::NA_INTEGER);
                             continue;
                         }
                     }
@@ -8099,9 +8099,9 @@ fn comparison(
                 return Ok(None);
             }
             let parsed = if posix {
-                super::civil::parse_iso_datetime(text).map(|v| v as f64)
+                r_core::civil::parse_iso_datetime(text).map(|v| v as f64)
             } else {
-                super::civil::parse_iso(text).map(|v| v as f64)
+                r_core::civil::parse_iso(text).map(|v| v as f64)
             };
             match parsed {
                 Some(v) => Ok(Some(v)),
@@ -8120,7 +8120,7 @@ fn comparison(
                     Some(RObject::Real(vals)) => vals.iter().map(|v| if v.is_nan() { None } else { Some(*v) }).collect(),
                     Some(RObject::Integer(vals)) => vals
                         .iter()
-                        .map(|v| if *v == crate::value::object::NA_INTEGER { None } else { Some(*v as f64) })
+                        .map(|v| if *v == r_core::object::NA_INTEGER { None } else { Some(*v as f64) })
                         .collect(),
                     _ => Vec::new(),
                 };
@@ -8146,7 +8146,7 @@ fn comparison(
                     };
                     out.push(result as i32);
                 }
-                _ => out.push(crate::value::object::NA_INTEGER),
+                _ => out.push(r_core::object::NA_INTEGER),
             }
         }
         return Ok(heap.alloc(RObject::Logical(out)));
@@ -8171,7 +8171,7 @@ fn comparison(
             let a = &lefts[i % lefts.len()];
             let b = &rights[i % rights.len()];
             if a == "\0NA" || b == "\0NA" {
-                out.push(crate::value::object::NA_INTEGER);
+                out.push(r_core::object::NA_INTEGER);
                 continue;
             }
             let result = match op {
@@ -8194,7 +8194,7 @@ fn comparison(
         // GNU: any NaN operand (NA or NaN) poisons the comparison to NA
         /// logical — NaN comparisons are never simply false.
         if x.is_nan() || y.is_nan() {
-            return crate::value::object::NA_INTEGER as f64;
+            return r_core::object::NA_INTEGER as f64;
         }
         let result = match op {
             LT => x < y,
@@ -9084,8 +9084,8 @@ fn concat_primitive_inner(
         Logical(Vec<i32>),
         Integer(Vec<i32>),
         Real(Vec<f64>),
-        Complex(Vec<crate::value::object::RComplex>),
-        String(Vec<super::intern::InternedStr>),
+        Complex(Vec<r_core::object::RComplex>),
+        String(Vec<r_core::intern::InternedStr>),
     }
     let mut flattened = Vec::new();
     let mut operand_lengths = Vec::new();
@@ -9173,8 +9173,8 @@ fn concat_primitive_inner(
             Flat::Logical(v) | Flat::Integer(v) => v
                 .iter()
                 .map(|x| {
-                    if *x == crate::value::object::NA_INTEGER {
-                        f64::from_bits(crate::value::object::NA_REAL_BITS)
+                    if *x == r_core::object::NA_INTEGER {
+                        f64::from_bits(r_core::object::NA_REAL_BITS)
                     } else {
                         *x as f64
                     }
@@ -9185,8 +9185,8 @@ fn concat_primitive_inner(
             _ => unreachable!("lower ranks coerce upward before extraction"),
         }
     }
-    fn complexes_of(flat: &Flat) -> Vec<crate::value::object::RComplex> {
-        use crate::value::object::{NA_REAL_BITS, RComplex};
+    fn complexes_of(flat: &Flat) -> Vec<r_core::object::RComplex> {
+        use r_core::object::{NA_REAL_BITS, RComplex};
         match flat {
             Flat::Complex(v) => v.clone(),
             _ => reals_of(flat)
@@ -9259,7 +9259,7 @@ fn concat_primitive_inner(
                     Flat::String(values) => out.extend(values),
                     Flat::Logical(values) => {
                         for v in values {
-                            let text = if v == crate::value::object::NA_INTEGER {
+                            let text = if v == r_core::object::NA_INTEGER {
                                 // GNU: NA coerces to NA_character_ — the
                                 // missing sentinel, never the literal text.
                                 "\0NA".to_string()
@@ -9273,7 +9273,7 @@ fn concat_primitive_inner(
                     }
                     Flat::Integer(values) => {
                         for v in values {
-                            let text = if v == crate::value::object::NA_INTEGER {
+                            let text = if v == r_core::object::NA_INTEGER {
                                 "\0NA".to_string()
                             } else {
                                 v.to_string()
@@ -9283,7 +9283,7 @@ fn concat_primitive_inner(
                     }
                     Flat::Real(values) => {
                         for v in values {
-                            let text = if v.to_bits() == crate::value::object::NA_REAL_BITS {
+                            let text = if v.to_bits() == r_core::object::NA_REAL_BITS {
                                 "\0NA".to_string()
                             } else if v.fract() == 0.0 && v.abs() < 1e15 {
                                 format!("{}", v as i64)
@@ -9295,7 +9295,7 @@ fn concat_primitive_inner(
                     }
                     Flat::Complex(values) => {
                         for z in values {
-                            out.push(interner.intern_string(&crate::value::print::format_complex(z)));
+                            out.push(interner.intern_string(&r_core::print::format_complex(z)));
                         }
                     }
                     Flat::Raw(values) => {
@@ -9470,7 +9470,7 @@ fn data_frame_matrix_subset(
             Some(RObject::Integer(values)) => Ok(values
                 .iter()
                 .map(|v| {
-                    if *v == crate::value::object::NA_INTEGER {
+                    if *v == r_core::object::NA_INTEGER {
                         usize::MAX
                     } else if *v < 0 {
                         // Negative indexes exclude — handled by the caller's
@@ -9497,7 +9497,7 @@ fn data_frame_matrix_subset(
                 let mut positions = Vec::new();
                 for i in 0..extent {
                     let flag = values[i % values.len().max(1)];
-                    if flag == crate::value::object::NA_INTEGER {
+                    if flag == r_core::object::NA_INTEGER {
                         positions.push(usize::MAX);
                     } else if flag != 0 {
                         positions.push(i);
@@ -9549,16 +9549,16 @@ fn data_frame_matrix_subset(
     };
     // Extraction per column: gather the selected rows, NA positions as NA.
     let mut extract_column = |heap: &mut Heap, source: ValueId, rows: &[usize]| -> ValueId {
-        let na_real = f64::from_bits(crate::value::object::NA_REAL_BITS);
+        let na_real = f64::from_bits(r_core::object::NA_REAL_BITS);
         match heap.object(source).cloned() {
             Some(RObject::Real(vals)) => heap.alloc(RObject::Real(
                 rows.iter().map(|r| if *r == usize::MAX || *r >= vals.len() { na_real } else { vals[*r] }).collect(),
             )),
             Some(RObject::Integer(vals)) => heap.alloc(RObject::Integer(
-                rows.iter().map(|r| if *r == usize::MAX || *r >= vals.len() { crate::value::object::NA_INTEGER } else { vals[*r] }).collect(),
+                rows.iter().map(|r| if *r == usize::MAX || *r >= vals.len() { r_core::object::NA_INTEGER } else { vals[*r] }).collect(),
             )),
             Some(RObject::Logical(vals)) => heap.alloc(RObject::Logical(
-                rows.iter().map(|r| if *r == usize::MAX || *r >= vals.len() { crate::value::object::NA_INTEGER } else { vals[*r] }).collect(),
+                rows.iter().map(|r| if *r == usize::MAX || *r >= vals.len() { r_core::object::NA_INTEGER } else { vals[*r] }).collect(),
             )),
             Some(RObject::String(vals)) => {
                 let na_str = interner_na_string(heap, interner);
@@ -9590,7 +9590,7 @@ fn data_frame_matrix_subset(
     if let Some(source_rn) = get_attrib(heap, interner, object, "row.names") {
         let source_names = string_vec(heap, interner, source_rn);
         if !source_names.is_empty() {
-            let selected: Vec<super::intern::InternedStr> = rows
+            let selected: Vec<r_core::intern::InternedStr> = rows
                 .iter()
                 .map(|r| {
                     let text = if *r == usize::MAX {
@@ -9610,7 +9610,7 @@ fn data_frame_matrix_subset(
 
 /// The NA-string sentinel for character extraction — interned once per
 /// use exactly as the object model represents NA_character_.
-fn interner_na_string(heap: &mut Heap, interner: &mut SymbolInterner) -> super::intern::InternedStr {
+fn interner_na_string(heap: &mut Heap, interner: &mut SymbolInterner) -> r_core::intern::InternedStr {
     let _ = heap;
     // The NUL-prefixed sentinel is the codebase's NA_character_
     /// representation exactly as GNU's NA_STRING — plain "NA" would be
@@ -9649,7 +9649,7 @@ fn matrix_subset(
             Some(RObject::Integer(values)) => Ok(values
                 .iter()
                 .map(|v| {
-                    if *v == crate::value::object::NA_INTEGER {
+                    if *v == r_core::object::NA_INTEGER {
                         usize::MAX
                     } else {
                         (*v - 1) as usize
@@ -9670,7 +9670,7 @@ fn matrix_subset(
                 let mut positions = Vec::new();
                 for i in 0..extent {
                     let flag = values[i % values.len().max(1)];
-                    if flag == crate::value::object::NA_INTEGER {
+                    if flag == r_core::object::NA_INTEGER {
                         positions.push(usize::MAX);
                     } else if flag != 0 {
                         positions.push(i);
@@ -9744,7 +9744,7 @@ fn subset_impl(
                 .collect(),
             Some(RObject::Integer(values)) => values
                 .iter()
-                .filter(|v| **v >= 1 && **v != crate::value::object::NA_INTEGER)
+                .filter(|v| **v >= 1 && **v != r_core::object::NA_INTEGER)
                 .map(|v| (*v as usize) - 1)
                 .filter(|p| *p < ncol)
                 .collect(),
@@ -9766,11 +9766,11 @@ fn subset_impl(
         .map_err(RSignal::from)?;
     let selection = match heap.object(index) {
         Some(RObject::Integer(values)) => {
-            if values.iter().any(|v| *v < 0 && *v != crate::value::object::NA_INTEGER) {
+            if values.iter().any(|v| *v < 0 && *v != r_core::object::NA_INTEGER) {
                 Selection::Excluding(
                     values
                         .iter()
-                        .filter(|v| **v < 0 && **v != crate::value::object::NA_INTEGER)
+                        .filter(|v| **v < 0 && **v != r_core::object::NA_INTEGER)
                         .map(|v| (-*v - 1) as usize)
                         .collect(),
                 )
@@ -9779,7 +9779,7 @@ fn subset_impl(
                     values
                         .iter()
                         .map(|v| {
-                            if *v == crate::value::object::NA_INTEGER {
+                            if *v == r_core::object::NA_INTEGER {
                                 usize::MAX
                             } else if *v == 0 {
                                 usize::MAX - 1 // drop marker, filtered below
@@ -9798,7 +9798,7 @@ fn subset_impl(
                 .iter()
                 .map(|v| {
                     if v.is_nan() {
-                        crate::value::object::NA_INTEGER
+                        r_core::object::NA_INTEGER
                     } else {
                         *v as i32
                     }
@@ -9814,7 +9814,7 @@ fn subset_impl(
             let extent = source_length.max(values.len());
             for i in 0..extent {
                 let flag = values[i % values.len().max(1)];
-                if flag == crate::value::object::NA_INTEGER {
+                if flag == r_core::object::NA_INTEGER {
                     positions.push(usize::MAX);
                 } else if flag != 0 {
                     positions.push(i);
@@ -9870,13 +9870,13 @@ fn subset_impl(
     /// positional and named subsetting alike. Out-of-range and NA positions
     /// take the NA-string sentinel the bridge round-trips.
     if let Some(names_id) = get_attrib(heap, interner, source, "names") {
-        let source_names: Vec<super::intern::InternedStr> = match heap.object(names_id) {
+        let source_names: Vec<r_core::intern::InternedStr> = match heap.object(names_id) {
             Some(RObject::String(entries)) => entries.clone(),
             _ => Vec::new(),
         };
         if !source_names.is_empty() {
             let na_text = interner.intern_string("\0NA");
-            let selected: Vec<super::intern::InternedStr> = positions
+            let selected: Vec<r_core::intern::InternedStr> = positions
                 .iter()
                 .map(|p| {
                     if *p == usize::MAX || *p >= source_names.len() {
@@ -9954,9 +9954,9 @@ fn extract_elements(
             }
         };
     }
-    extract!(Logical, crate::value::object::NA_INTEGER);
-    extract!(Integer, crate::value::object::NA_INTEGER);
-    extract!(Real, f64::from_bits(crate::value::object::NA_REAL_BITS));
+    extract!(Logical, r_core::object::NA_INTEGER);
+    extract!(Integer, r_core::object::NA_INTEGER);
+    extract!(Real, f64::from_bits(r_core::object::NA_REAL_BITS));
     extract!(Raw, 0u8);
     match heap.object(source) {
         Some(RObject::String(values)) => {
@@ -9965,7 +9965,7 @@ fn extract_elements(
                 .iter()
                 .map(|p| {
                     if *p == usize::MAX || *p >= values.len() {
-                        na_text.unwrap_or(super::intern::InternedStr(0))
+                        na_text.unwrap_or(r_core::intern::InternedStr(0))
                     } else {
                         values[*p]
                     }
@@ -9996,7 +9996,7 @@ fn logicals_of_value(heap: &Heap, value: ValueId) -> Result<Vec<i32>, EvalError>
             .iter()
             .map(|v| {
                 if v.is_nan() {
-                    crate::value::object::NA_INTEGER
+                    r_core::object::NA_INTEGER
                 } else if *v != 0.0 {
                     1
                 } else {
@@ -10021,7 +10021,7 @@ fn logic_elementwise(
     let operands = eval_args(heap, interner, args, caller_env, 2)?;
     let a = logicals_of_value(heap, operands[0]).map_err(RSignal::from)?;
     let b = logicals_of_value(heap, operands[1]).map_err(RSignal::from)?;
-    let na = crate::value::object::NA_INTEGER;
+    let na = r_core::object::NA_INTEGER;
     let combine = |x: i32, y: i32| -> i32 {
         let xt = x != 0 && x != na;
         let yt = y != 0 && y != na;
@@ -10056,7 +10056,7 @@ fn logic_not(
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 1)?;
     let values = logicals_of_value(heap, operands[0]).map_err(RSignal::from)?;
-    let na = crate::value::object::NA_INTEGER;
+    let na = r_core::object::NA_INTEGER;
     let out = values
         .into_iter()
         .map(|v| if v == na { na } else { (v == 0) as i32 })
@@ -10078,7 +10078,7 @@ fn logic_short_circuit(
     if parts.len() != 2 {
         return Err(EvalError::UnsupportedForm("short-circuit arity").into());
     }
-    let na = crate::value::object::NA_INTEGER;
+    let na = r_core::object::NA_INTEGER;
     let first_of = |heap: &Heap, value: ValueId| -> Result<i32, EvalError> {
         let values = logicals_of_value(heap, value)?;
         Ok(values.first().copied().unwrap_or(na))
@@ -10130,8 +10130,8 @@ fn reals_of_value(heap: &Heap, value: ValueId) -> Result<Vec<f64>, EvalError> {
         Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => Ok(values
             .iter()
             .map(|v| {
-                if *v == crate::value::object::NA_INTEGER {
-                    f64::from_bits(crate::value::object::NA_REAL_BITS)
+                if *v == r_core::object::NA_INTEGER {
+                    f64::from_bits(r_core::object::NA_REAL_BITS)
                 } else {
                     *v as f64
                 }
@@ -10179,7 +10179,7 @@ fn reduction(
         if tag_name.as_deref() == Some("na.rm") {
             na_rm = matches!(
                 heap.object(value),
-                Some(RObject::Logical(v)) if !v.is_empty() && v[0] != 0 && v[0] != crate::value::object::NA_INTEGER
+                Some(RObject::Logical(v)) if !v.is_empty() && v[0] != 0 && v[0] != r_core::object::NA_INTEGER
             );
         } else {
             inputs.push(value);
@@ -10240,11 +10240,11 @@ fn reduction_fold(
         heap.object(operands[0])
     {
         let mut values = values.clone();
-        if values.iter().any(|v| *v == crate::value::object::NA_INTEGER) {
+        if values.iter().any(|v| *v == r_core::object::NA_INTEGER) {
             if !na_rm {
-                return Ok(heap.alloc(RObject::Integer(vec![crate::value::object::NA_INTEGER])));
+                return Ok(heap.alloc(RObject::Integer(vec![r_core::object::NA_INTEGER])));
             }
-            values.retain(|v| *v != crate::value::object::NA_INTEGER);
+            values.retain(|v| *v != r_core::object::NA_INTEGER);
         }
         let result: i32 = match op {
             SUM => values.iter().copied().fold(0i32, |a, b| a.wrapping_add(b)),
@@ -10258,7 +10258,7 @@ fn reduction_fold(
     if values.iter().any(|v| v.is_nan()) {
         if !na_rm {
             return Ok(heap.alloc(RObject::Real(vec![f64::from_bits(
-                crate::value::object::NA_REAL_BITS,
+                r_core::object::NA_REAL_BITS,
             )])));
         }
         values.retain(|v| !v.is_nan());
@@ -10288,7 +10288,7 @@ fn math_unary(
         .iter()
         .map(|v| {
             if v.is_nan() {
-                f64::from_bits(crate::value::object::NA_REAL_BITS)
+                f64::from_bits(r_core::object::NA_REAL_BITS)
             } else {
                 match op {
                     SQRT => v.sqrt(),
@@ -10322,7 +10322,7 @@ fn math_unary(
             .iter()
             .map(|v| {
                 if v.is_nan() {
-                    crate::value::object::NA_INTEGER
+                    r_core::object::NA_INTEGER
                 } else {
                     *v as i32
                 }
@@ -10435,7 +10435,7 @@ fn strings_of_value(
     heap: &Heap,
     interner: &mut SymbolInterner,
     value: ValueId,
-) -> Result<Vec<super::intern::InternedStr>, EvalError> {
+) -> Result<Vec<r_core::intern::InternedStr>, EvalError> {
     // Factor-classed input coerces through level labels exactly as GNU's
     /// character coercion — the codes index the levels attribute.
     if is_factor(heap, interner, value) {
@@ -10445,7 +10445,7 @@ fn strings_of_value(
                 return Ok(codes
                     .iter()
                     .map(|&code| {
-                        if code == crate::value::object::NA_INTEGER
+                        if code == r_core::object::NA_INTEGER
                             || code < 1
                             || code as usize > levels.len()
                         {
@@ -10466,7 +10466,7 @@ fn strings_of_value(
             Ok(values
                 .iter()
                 .map(|v| {
-                    let text = if *v == crate::value::object::NA_INTEGER {
+                    let text = if *v == r_core::object::NA_INTEGER {
                         "NA".to_string()
                     } else if logical {
                         if *v != 0 { "TRUE".to_string() } else { "FALSE".to_string() }.to_string()
@@ -10631,7 +10631,7 @@ fn nchar_primitive(
             // GNU: nchar of NA is NA — the sentinel text marks the missing
             /// string exactly as the bridge round-trips it.
             if text == "\0NA" {
-                crate::value::object::NA_INTEGER
+                r_core::object::NA_INTEGER
             } else {
                 text.chars().count() as i32
             }
@@ -10679,7 +10679,7 @@ fn assign_replacement(
         let value = eval(heap, interner, rhs, caller_env)?;
         let value = force_if_promise(heap, interner, value)?;
         let replaced = subset_replace(heap, object, index, value).map_err(RSignal::from)?;
-        crate::value::env::define(heap, caller_env, sym, replaced)
+        r_core::env::define(heap, caller_env, sym, replaced)
             .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("replacement define")))?;
         // Replacement assignments evaluate to the assigned value in GNU — the
         // right-hand value, not the whole modified object.
@@ -10692,7 +10692,7 @@ fn assign_replacement(
     // and injects as a self-evaluating constant.
     let replacement_name = format!("{head_name}<-");
     if primitive_id_for_name(&replacement_name).is_some()
-        || crate::value::env::lookup(heap, caller_env, interner.intern_symbol(&replacement_name)).is_some()
+        || r_core::env::lookup(heap, caller_env, interner.intern_symbol(&replacement_name)).is_some()
     {
         let value = eval(heap, interner, rhs, caller_env)?;
         let value = force_if_promise(heap, interner, value)?;
@@ -10728,7 +10728,7 @@ fn assign_replacement(
         });
         let replaced = eval(heap, interner, synthetic, caller_env)?;
         let replaced = force_if_promise(heap, interner, replaced)?;
-        crate::value::env::define(heap, caller_env, sym, replaced)
+        r_core::env::define(heap, caller_env, sym, replaced)
             .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("replacement define")))?;
         return Ok(value);
     }
@@ -10755,7 +10755,7 @@ fn assign_replacement(
             tag: ValueId::NIL,
         });
         let replaced = dollar_assign_primitive(heap, interner, object_node, caller_env)?;
-        crate::value::env::define(heap, caller_env, sym, replaced)
+        r_core::env::define(heap, caller_env, sym, replaced)
             .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("replacement define")))?;
         // Replacement assignments evaluate to the right-hand value in GNU.
         let value = eval(heap, interner, rhs, caller_env)?;
@@ -10808,7 +10808,7 @@ fn subset2_assign_primitive(
             Slot::Num(values[0] as i64)
         }
         Some(RObject::Integer(values)) if !values.is_empty() => {
-            if values[0] == crate::value::object::NA_INTEGER {
+            if values[0] == r_core::object::NA_INTEGER {
                 return Err(EvalError::TypeError("invalid subscript type").into());
             }
             Slot::Num(values[0] as i64)
@@ -10829,7 +10829,7 @@ fn subset2_assign_primitive(
             }
         };
         let sym = interner.intern_symbol(&name);
-        crate::value::env::define(heap, object, sym, value)
+        r_core::env::define(heap, object, sym, value)
             .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("env define")))?;
         return Ok(object);
     }
@@ -10897,7 +10897,7 @@ fn subset2_assign_primitive(
         let result = heap.alloc(RObject::List(new_items));
         let has_names = names.iter().any(|n| !n.is_empty());
         if has_names {
-            let interned: Vec<super::intern::InternedStr> =
+            let interned: Vec<r_core::intern::InternedStr> =
                 names.iter().map(|n| interner.intern_string(n)).collect();
             let names_vec = heap.alloc(RObject::String(interned));
             return copy_with_attrib(heap, interner, result, "names", names_vec).map_err(RSignal::from);
@@ -10953,15 +10953,15 @@ fn subset_replace(
                 let mut out = Vec::new();
                 for i in 0..length.max(values.len()) {
                     let flag = values[i % values.len().max(1)];
-                    if flag != 0 && flag != crate::value::object::NA_INTEGER {
+                    if flag != 0 && flag != r_core::object::NA_INTEGER {
                         out.push(i);
                     }
                 }
                 Positions::Replace(out)
-            } else if values.iter().any(|v| *v < 0 && *v != crate::value::object::NA_INTEGER) {
+            } else if values.iter().any(|v| *v < 0 && *v != r_core::object::NA_INTEGER) {
                 let excluded: Vec<usize> = values
                     .iter()
-                    .filter(|v| **v < 0 && **v != crate::value::object::NA_INTEGER)
+                    .filter(|v| **v < 0 && **v != r_core::object::NA_INTEGER)
                     .map(|v| (-*v - 1) as usize)
                     .collect();
                 Positions::Replace((0..length).filter(|i| !excluded.contains(i)).collect())
@@ -10980,7 +10980,7 @@ fn subset_replace(
                 .iter()
                 .map(|v| {
                     if v.is_nan() {
-                        crate::value::object::NA_INTEGER
+                        r_core::object::NA_INTEGER
                     } else {
                         *v as i32
                     }
@@ -11009,8 +11009,8 @@ fn subset_replace(
         }
     }
     fn coerce(heap: &mut Heap, value: ValueId, to: u32) -> ValueId {
-        let na_int = crate::value::object::NA_INTEGER;
-        let na_real = f64::from_bits(crate::value::object::NA_REAL_BITS);
+        let na_int = r_core::object::NA_INTEGER;
+        let na_real = f64::from_bits(r_core::object::NA_REAL_BITS);
         match (heap.object(value), to) {
             (Some(RObject::Logical(v)), 1) => {
                 let out: Vec<i32> = v.clone();
@@ -11066,9 +11066,9 @@ fn subset_replace(
             }
         };
     }
-    replace_typed!(Logical, crate::value::object::NA_INTEGER);
-    replace_typed!(Integer, crate::value::object::NA_INTEGER);
-    replace_typed!(Real, f64::from_bits(crate::value::object::NA_REAL_BITS));
+    replace_typed!(Logical, r_core::object::NA_INTEGER);
+    replace_typed!(Integer, r_core::object::NA_INTEGER);
+    replace_typed!(Real, f64::from_bits(r_core::object::NA_REAL_BITS));
     replace_typed!(Raw, 0u8);
     // Integer object with real value: GNU widens the whole vector to real.
     Err(EvalError::TypeError("replacement type mismatch"))
@@ -11111,7 +11111,7 @@ fn vector_constructor(
 /// R's copy-on-write discipline: the original object is never mutated —
 /// assignment binds the fresh copy, so aliases keep the old attributes.
 /// The attribute chain itself is rebuilt node-by-node for the same reason.
-pub(crate) fn copy_with_attrib(
+pub fn copy_with_attrib(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     obj: ValueId,
@@ -11192,7 +11192,7 @@ fn names_primitive(
     // Pairlists carry their names as node tags rather than an attribute
     /// exactly as GNU's dotted-pair shape.
     if matches!(heap.object(operands[0]), Some(RObject::Pairlist { .. })) {
-        let mut out: Vec<super::intern::InternedStr> = Vec::new();
+        let mut out: Vec<r_core::intern::InternedStr> = Vec::new();
         let mut cursor = operands[0];
         for _ in 0..100_000 {
             if cursor == ValueId::NIL { break; }
@@ -11281,9 +11281,9 @@ fn par_get(heap: &Heap, name: &str) -> Vec<f64> {
     /// cascade answers region-coupled names, everything else falls to
     /// GNU's defaults — typing is reconstructed at object construction.
     match heap.graphics.query(name) {
-        Some(crate::value::graphics::layout::ParValue::Real(values)) => values,
-        Some(crate::value::graphics::layout::ParValue::Integer(values))
-        | Some(crate::value::graphics::layout::ParValue::Logical(values)) => {
+        Some(r_core::graphics::layout::ParValue::Real(values)) => values,
+        Some(r_core::graphics::layout::ParValue::Integer(values))
+        | Some(r_core::graphics::layout::ParValue::Logical(values)) => {
             values.iter().map(|v| f64::from(*v)).collect()
         }
         _ => par_default(name),
@@ -11295,9 +11295,9 @@ fn par_get(heap: &Heap, name: &str) -> Vec<f64> {
 fn parvalue_obj(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
-    value: crate::value::graphics::layout::ParValue,
+    value: r_core::graphics::layout::ParValue,
 ) -> ValueId {
-    use crate::value::graphics::layout::ParValue;
+    use r_core::graphics::layout::ParValue;
     match value {
         ParValue::Real(values) => heap.alloc(RObject::Real(values)),
         ParValue::Integer(values) => heap.alloc(RObject::Integer(values)),
@@ -11318,8 +11318,8 @@ fn par_query_obj(heap: &mut Heap, interner: &mut SymbolInterner, name: &str) -> 
 /// Convert an evaluated argument into the cascade's value shape —
     /// GNU's elementwise coercion exactly, strings passing through for
     /// the character-valued parameters.
-fn parvalue_of(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Option<crate::value::graphics::layout::ParValue> {
-    use crate::value::graphics::layout::ParValue;
+fn parvalue_of(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Option<r_core::graphics::layout::ParValue> {
+    use r_core::graphics::layout::ParValue;
     match heap.object(value) {
         Some(RObject::Real(values)) => Some(ParValue::Real(values.clone())),
         Some(RObject::Integer(values)) => Some(ParValue::Integer(values.clone())),
@@ -11480,16 +11480,16 @@ fn layout_primitive(
     let order: Vec<i32> = cells.iter().map(|v| *v as i32).collect();
     let num_figures = max_cell as i32;
     let cexbase = match heap.graphics.query("cex") {
-        Some(crate::value::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0],
+        Some(r_core::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0],
         _ => 1.0,
     };
     heap.graphics
         .layout
         .set_layout(nr, nc, &order, num_figures.max(1), cexbase, 1.0, 1.0)
         .map_err(|message| RSignal::Error(EvalError::Condition(message)))?;
-    let cex = crate::value::graphics::layout::LayoutState::split_cex(nr, nc);
+    let cex = r_core::graphics::layout::LayoutState::split_cex(nr, nc);
     heap.graphics
-        .apply("cex", &crate::value::graphics::layout::ParValue::Real(vec![cex]))
+        .apply("cex", &r_core::graphics::layout::ParValue::Real(vec![cex]))
         .map_err(|message| RSignal::Error(EvalError::Condition(message)))?;
     // GNU's layout returns the panel count invisibly.
     heap.visible = false;
@@ -11499,10 +11499,10 @@ fn layout_primitive(
 /// Read a binding's value honoring GNU's active-binding semantics: active
 /// bindings invoke their stored closure with zero arguments and yield the
 /// result; plain bindings force through the promise layer.
-pub(crate) fn read_binding(
+pub fn read_binding(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
-    binding: crate::value::object::Binding,
+    binding: r_core::object::Binding,
     caller_env: ValueId,
 ) -> EvalResult {
     if !binding.active {
@@ -11510,7 +11510,7 @@ pub(crate) fn read_binding(
     }
     match heap.object(binding.value).cloned() {
         Some(RObject::Closure { formals, body, env }) => {
-            let applied = super::eval::apply_closure_public(
+            let applied = r_core::eval::apply_closure_public(
                 heap, interner, formals, body, env, ValueId::NIL, caller_env,
             )?;
             force_if_promise(heap, interner, applied)
@@ -11532,7 +11532,7 @@ fn invoke_active_write(
     let arg_node = heap.alloc(RObject::Pairlist { car: forced, cdr: ValueId::NIL, tag: ValueId::NIL });
     match heap.object(fun).cloned() {
         Some(RObject::Closure { formals, body, env }) => {
-            super::eval::apply_closure_public(heap, interner, formals, body, env, arg_node, caller_env)
+            r_core::eval::apply_closure_public(heap, interner, formals, body, env, arg_node, caller_env)
         }
         _ => Err(EvalError::NotCallable.into()),
     }
@@ -11558,7 +11558,7 @@ fn dollar_primitive(
     /// missing bindings are NULL rather than an error.
     if matches!(heap.object(object), Some(RObject::Environment { .. })) {
         let sym = interner.intern_symbol(&wanted);
-        return match crate::value::env::lookup_in_frame(heap, object, sym) {
+        return match r_core::env::lookup_in_frame(heap, object, sym) {
             Some(binding) => read_binding(heap, interner, binding, caller_env),
             None => Ok(ValueId::NIL),
         };
@@ -11651,7 +11651,7 @@ fn apply_family(
                 cdr: ValueId::NIL,
                 tag: ValueId::NIL,
             });
-            let applied = super::eval::apply_closure_public(
+            let applied = r_core::eval::apply_closure_public(
                 heap, interner, formals, body, closure_env, arg_node, caller_env,
             )?;
             let applied = force_if_promise(heap, interner, applied)?;
@@ -11761,8 +11761,8 @@ fn simplify_sapply(heap: &mut Heap, results: Vec<ValueId>) -> EvalResult {
                 match heap.object(result) {
                     Some(RObject::Real(v)) => out.push(v[0]),
                     Some(RObject::Integer(v)) => {
-                        if v[0] == crate::value::object::NA_INTEGER {
-                            out.push(f64::from_bits(crate::value::object::NA_REAL_BITS));
+                        if v[0] == r_core::object::NA_INTEGER {
+                            out.push(f64::from_bits(r_core::object::NA_REAL_BITS));
                         } else {
                             out.push(v[0] as f64);
                         }
@@ -11868,9 +11868,9 @@ fn unlist_primitive(
                     };
                     let (int, real, im, text) = match heap.object(*item) {
                         Some(RObject::Logical(vals)) | Some(RObject::Integer(vals)) => {
-                            let v = vals.get(k).copied().unwrap_or(crate::value::object::NA_INTEGER);
-                            let r = if v == crate::value::object::NA_INTEGER {
-                                f64::from_bits(crate::value::object::NA_REAL_BITS)
+                            let v = vals.get(k).copied().unwrap_or(r_core::object::NA_INTEGER);
+                            let r = if v == r_core::object::NA_INTEGER {
+                                f64::from_bits(r_core::object::NA_REAL_BITS)
                             } else {
                                 v as f64
                             };
@@ -11878,7 +11878,7 @@ fn unlist_primitive(
                         }
                         Some(RObject::Real(vals)) => {
                             let v = vals.get(k).copied().unwrap_or(f64::NAN);
-                            (0, v, 0.0, super::print::format_real(v))
+                            (0, v, 0.0, r_core::print::format_real(v))
                         }
                         Some(RObject::String(vals)) => {
                             let s = vals
@@ -11889,7 +11889,7 @@ fn unlist_primitive(
                         }
                         Some(RObject::Complex(vals)) => {
                             let z = vals.get(k).copied().unwrap_or_default();
-                            (0, z.r, z.i, super::print::format_complex(z))
+                            (0, z.r, z.i, r_core::print::format_complex(z))
                         }
                         Some(RObject::Raw(vals)) => {
                             let v = vals.get(k).copied().unwrap_or(0);
@@ -11940,7 +11940,7 @@ fn unlist_primitive(
         }
         let result = heap.alloc(RObject::List(items));
         if use_names && names.iter().any(|n| !n.is_empty()) {
-            let interned: Vec<super::intern::InternedStr> = names
+            let interned: Vec<r_core::intern::InternedStr> = names
                 .iter()
                 .map(|s| interner.intern_string(s))
                 .collect();
@@ -11969,7 +11969,7 @@ fn unlist_primitive(
         }
     }
     let result = if top_rank >= 5 {
-        let interned: Vec<super::intern::InternedStr> = texts
+        let interned: Vec<r_core::intern::InternedStr> = texts
             .iter()
             .map(|s| interner.intern_string(s))
             .collect();
@@ -11978,10 +11978,10 @@ fn unlist_primitive(
         // Complex promotion: real parts ride from the numeric leaves exactly
         /// as GNU's coercion — logicals and integers contribute their value,
         /// complex leaves their own real part.
-        let zs: Vec<crate::value::object::RComplex> = reals
+        let zs: Vec<r_core::object::RComplex> = reals
             .iter()
             .zip(imags.iter())
-            .map(|(&r, &i)| crate::value::object::RComplex { r, i })
+            .map(|(&r, &i)| r_core::object::RComplex { r, i })
             .collect();
         heap.alloc(RObject::Complex(zs))
     } else if top_rank >= 3 {
@@ -11990,7 +11990,7 @@ fn unlist_primitive(
         heap.alloc(RObject::Integer(ints))
     };
     if use_names && names.iter().any(|n| !n.is_empty()) {
-        let interned: Vec<super::intern::InternedStr> = names
+        let interned: Vec<r_core::intern::InternedStr> = names
             .iter()
             .map(|s| interner.intern_string(s))
             .collect();
@@ -12007,7 +12007,7 @@ fn first_real(heap: &Heap, value: ValueId) -> Result<f64, EvalError> {
     match heap.object(value) {
         Some(RObject::Real(v)) if !v.is_empty() => Ok(v[0]),
         Some(RObject::Integer(v)) if !v.is_empty() => {
-            if v[0] == crate::value::object::NA_INTEGER {
+            if v[0] == r_core::object::NA_INTEGER {
                 Err(EvalError::TypeError("NA scalar"))
             } else {
                 Ok(v[0] as f64)
@@ -12199,7 +12199,7 @@ fn seq_datetime(
         // lands on February 28/29 exactly as GNU.
         let dim = days_in_month(y, m);
         let clamped = d.min(dim);
-        let out_days = super::civil::days_from_civil(y, m, clamped);
+        let out_days = r_core::civil::days_from_civil(y, m, clamped);
         if posix {
             out_days as f64 * 86400.0 + remainder
         } else {
@@ -12304,13 +12304,13 @@ fn rep_primitive(heap: &mut Heap, source: ValueId, times: ValueId) -> EvalResult
 /// Numeric contents of a vector as doubles — the extraction the statistics
 /// share. Logicals and integers coerce up exactly as GNU's as-double.
 fn numerics_of(heap: &Heap, value: ValueId) -> Result<Vec<f64>, EvalError> {
-    let na = f64::from_bits(crate::value::object::NA_REAL_BITS);
+    let na = f64::from_bits(r_core::object::NA_REAL_BITS);
     match heap.object(value) {
         Some(RObject::Real(v)) => Ok(v.clone()),
         Some(RObject::Integer(v)) => Ok(v
             .iter()
             .map(|x| {
-                if *x == crate::value::object::NA_INTEGER {
+                if *x == r_core::object::NA_INTEGER {
                     na
                 } else {
                     *x as f64
@@ -12320,7 +12320,7 @@ fn numerics_of(heap: &Heap, value: ValueId) -> Result<Vec<f64>, EvalError> {
         Some(RObject::Logical(v)) => Ok(v
             .iter()
             .map(|x| {
-                if *x == crate::value::object::NA_INTEGER {
+                if *x == r_core::object::NA_INTEGER {
                     na
                 } else {
                     *x as f64
@@ -12374,12 +12374,12 @@ fn stat_primitive(
     {
         Some(flag) => matches!(
             heap.object(flag),
-            Some(RObject::Logical(v)) if !v.is_empty() && v[0] != 0 && v[0] != crate::value::object::NA_INTEGER
+            Some(RObject::Logical(v)) if !v.is_empty() && v[0] != 0 && v[0] != r_core::object::NA_INTEGER
         ),
         None => false,
     };
     let mut xs = numerics_of(heap, input).map_err(RSignal::from)?;
-    let na_real = f64::from_bits(crate::value::object::NA_REAL_BITS);
+    let na_real = f64::from_bits(r_core::object::NA_REAL_BITS);
     let any_na = xs.iter().any(|v| v.is_nan());
     if any_na && !na_rm {
         return Ok(heap.alloc(RObject::Real(vec![na_real])));
@@ -12417,7 +12417,7 @@ fn stat_primitive(
 
 /// `is.na(x)` — elementwise NA detection across the atomic types.
 fn is_na_primitive(heap: &mut Heap, interner: &SymbolInterner, value: ValueId) -> EvalResult {
-    let na_int = crate::value::object::NA_INTEGER;
+    let na_int = r_core::object::NA_INTEGER;
     let out: Vec<i32> = match heap.object(value) {
         Some(RObject::Logical(v)) => v.iter().map(|x| (*x == na_int) as i32).collect(),
         Some(RObject::Integer(v)) => v.iter().map(|x| (*x == na_int) as i32).collect(),
@@ -12479,7 +12479,7 @@ fn ordering_primitive(
         let truthy = |id: ValueId| -> Option<bool> {
             match heap.object(id) {
                 Some(RObject::Logical(vals)) if !vals.is_empty() => {
-                    if vals[0] == crate::value::object::NA_INTEGER {
+                    if vals[0] == r_core::object::NA_INTEGER {
                         None
                     } else {
                         Some(vals[0] != 0)
@@ -12490,7 +12490,7 @@ fn ordering_primitive(
         };
         let is_na_value = matches!(
             heap.object(v),
-            Some(RObject::Logical(vals)) if !vals.is_empty() && vals[0] == crate::value::object::NA_INTEGER
+            Some(RObject::Logical(vals)) if !vals.is_empty() && vals[0] == r_core::object::NA_INTEGER
         );
         match tag_name.as_deref() {
             Some("decreasing") => decreasing = truthy(v).unwrap_or(false),
@@ -12564,11 +12564,11 @@ fn ordering_primitive(
             }
         };
     }
-    let is_na_int = |v: i32| v == crate::value::object::NA_INTEGER;
+    let is_na_int = |v: i32| v == r_core::object::NA_INTEGER;
     let is_na_real = |v: f64| v.is_nan();
-    per_type!(Integer, is_na_int, crate::value::object::NA_INTEGER);
-    per_type!(Real, is_na_real, f64::from_bits(crate::value::object::NA_REAL_BITS));
-    per_type!(Logical, is_na_int, crate::value::object::NA_INTEGER);
+    per_type!(Integer, is_na_int, r_core::object::NA_INTEGER);
+    per_type!(Real, is_na_real, f64::from_bits(r_core::object::NA_REAL_BITS));
+    per_type!(Logical, is_na_int, r_core::object::NA_INTEGER);
     // Character vectors order lexicographically — GNU's C-locale byte order
     /// for the slice; the NA sentinel text sorts out exactly as numeric NA.
     match heap.object(value) {
@@ -12612,7 +12612,7 @@ fn ordering_primitive(
                     });
                 }
             }
-            let interned: Vec<super::intern::InternedStr> = out
+            let interned: Vec<r_core::intern::InternedStr> = out
                 .iter()
                 .map(|s| interner.intern_string(s))
                 .collect();
@@ -12631,7 +12631,7 @@ fn which_primitive(heap: &mut Heap, value: ValueId) -> EvalResult {
             let out: Vec<i32> = values
                 .iter()
                 .enumerate()
-                .filter(|(_, v)| **v != 0 && **v != crate::value::object::NA_INTEGER)
+                .filter(|(_, v)| **v != 0 && **v != r_core::object::NA_INTEGER)
                 .map(|(i, _)| (i + 1) as i32)
                 .collect();
             Ok(heap.alloc(RObject::Integer(out)))
@@ -12645,7 +12645,7 @@ fn which_primitive(heap: &mut Heap, value: ValueId) -> EvalResult {
 /// mirrors.
 fn quantifier_primitive(heap: &mut Heap, op: u32, value: ValueId) -> EvalResult {
     let values = logicals_of_value(heap, value).map_err(RSignal::from)?;
-    let na = crate::value::object::NA_INTEGER;
+    let na = r_core::object::NA_INTEGER;
     let trues = values.iter().filter(|v| **v != 0 && **v != na).count();
     let falses = values.iter().filter(|v| **v == 0).count();
     let nas = values.len() - trues - falses;
@@ -12683,7 +12683,7 @@ fn ifelse_primitive(
     if tests.is_empty() {
         return Ok(heap.alloc(RObject::Logical(vec![])));
     }
-    let na_int = crate::value::object::NA_INTEGER;
+    let na_int = r_core::object::NA_INTEGER;
     let yes_is_str = matches!(heap.object(operands[1]), Some(RObject::String(_)));
     let no_is_str = matches!(heap.object(operands[2]), Some(RObject::String(_)));
     // GNU promotes to the common type of the branches — character wins,
@@ -12693,7 +12693,7 @@ fn ifelse_primitive(
         let yes = string_vec(heap, interner, yes_id);
         let no_id = coerce_character(heap, interner, operands[2])?;
         let no = string_vec(heap, interner, no_id);
-        let mut out: Vec<super::intern::InternedStr> = Vec::with_capacity(tests.len());
+        let mut out: Vec<r_core::intern::InternedStr> = Vec::with_capacity(tests.len());
         for (i, test) in tests.iter().enumerate() {
             let chosen = if *test == na_int {
                 "\0NA".to_string()
@@ -12721,7 +12721,7 @@ fn ifelse_primitive(
     let result_rank = rank(operands[1]).max(rank(operands[2]));
     let yes = numerics_of(heap, operands[1]).map_err(RSignal::from)?;
     let no = numerics_of(heap, operands[2]).map_err(RSignal::from)?;
-    let na_real = f64::from_bits(crate::value::object::NA_REAL_BITS);
+    let na_real = f64::from_bits(r_core::object::NA_REAL_BITS);
     let mut out = Vec::with_capacity(tests.len());
     for (i, test) in tests.iter().enumerate() {
         if *test == na_int {
@@ -12737,7 +12737,7 @@ fn ifelse_primitive(
             out.iter()
                 .map(|&v| {
                     if v.is_nan() {
-                        crate::value::object::NA_INTEGER
+                        r_core::object::NA_INTEGER
                     } else {
                         v as i32
                     }
@@ -12748,7 +12748,7 @@ fn ifelse_primitive(
             out.iter()
                 .map(|&v| {
                     if v.is_nan() {
-                        crate::value::object::NA_INTEGER
+                        r_core::object::NA_INTEGER
                     } else {
                         v as i32
                     }
@@ -12815,7 +12815,7 @@ fn match_primitive(
     caller_env: ValueId,
 ) -> EvalResult {
     let mut positional: Vec<ValueId> = Vec::new();
-    let mut nomatch = crate::value::object::NA_INTEGER;
+    let mut nomatch = r_core::object::NA_INTEGER;
     let mut incomparables: Vec<String> = Vec::new();
     let mut cursor = args;
     loop {
@@ -12887,7 +12887,7 @@ fn exists_primitive(
             Some("envir") | Some("where") => env = v,
             Some("inherits") => {
                 if let Some(RObject::Logical(vals)) = heap.object(v) {
-                    inherits = vals.is_empty() || (vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER);
+                    inherits = vals.is_empty() || (vals[0] != 0 && vals[0] != r_core::object::NA_INTEGER);
                 }
             }
             Some("mode") => {
@@ -12916,9 +12916,9 @@ fn exists_primitive(
     };
     let sym = interner.intern_symbol(&name);
     let found = if inherits {
-        crate::value::env::lookup(heap, env, sym)
+        r_core::env::lookup(heap, env, sym)
     } else {
-        crate::value::env::lookup_in_frame(heap, env, sym).map(|b| (env, b))
+        r_core::env::lookup_in_frame(heap, env, sym).map(|b| (env, b))
     };
     // mode="function" filters to closure and primitive bindings exactly as
     /// GNU's mode matching.
@@ -12944,7 +12944,7 @@ fn ls_primitive(
 ) -> EvalResult {
     let mut names: Vec<String> = Vec::new();
     if let Some(RObject::Environment { frame, .. }) = heap.object(env) {
-        if let crate::value::object::EnvFrame::List(bindings) = frame {
+        if let r_core::object::EnvFrame::List(bindings) = frame {
             for (sym, _) in bindings {
                 names.push(interner.symbol_name(*sym).to_string());
             }
@@ -12956,10 +12956,10 @@ fn ls_primitive(
     }
     // GNU: pattern filters with the same regex semantics grep uses.
     if let Some(pat) = pattern {
-        names.retain(|n| crate::value::regex::regex_search(pat, n).is_some());
+        names.retain(|n| r_core::regex::regex_search(pat, n).is_some());
     }
     names.sort();
-    let interned: Vec<super::intern::InternedStr> = names
+    let interned: Vec<r_core::intern::InternedStr> = names
         .iter()
         .map(|n| interner.intern_string(n))
         .collect();
@@ -13007,7 +13007,7 @@ fn dollar_assign_primitive(
             // GNU: writes through `$<-` fire active bindings exactly as the
             // arrow operator does — the closure receives the value and the
             // binding itself is untouched. Locks fire first.
-            if let Some(existing) = crate::value::env::lookup_in_frame(heap, object, sym) {
+            if let Some(existing) = r_core::env::lookup_in_frame(heap, object, sym) {
                 if existing.locked {
                     return Err(EvalError::Condition(format!("cannot change value of locked binding for '{}'", name)).into());
                 }
@@ -13016,7 +13016,7 @@ fn dollar_assign_primitive(
                     return Ok(object);
                 }
             }
-            crate::value::env::define(heap, object, sym, value)
+            r_core::env::define(heap, object, sym, value)
                 .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("env define")))?;
             Ok(object)
         }
@@ -13052,7 +13052,7 @@ fn dollar_assign_primitive(
                 }
             }
             let mut result = heap.alloc(RObject::List(new_items));
-            let interned: Vec<super::intern::InternedStr> = new_names
+            let interned: Vec<r_core::intern::InternedStr> = new_names
                 .iter()
                 .map(|n| interner.intern_string(n))
                 .collect();
@@ -13538,7 +13538,7 @@ fn trycatch_primitive(
                 cdr: ValueId::NIL,
                 tag: ValueId::NIL,
             });
-            super::eval::apply_closure_public(
+            r_core::eval::apply_closure_public(
                 heap, interner, formals, body, closure_env, arg_node, caller_env,
             )
         }
@@ -13614,10 +13614,10 @@ fn assign_primitive(
     let sym = interner.intern_symbol(&name);
     // GNU's assign errors on a locked existing binding exactly as
     // assignment through `<-` does — redefinition is not a loophole.
-    if crate::value::env::binding_is_locked(heap, env, sym) {
+    if r_core::env::binding_is_locked(heap, env, sym) {
         return Err(EvalError::Condition(format!("cannot change value of locked binding for '{}'", name)).into());
     }
-    crate::value::env::define(heap, env, sym, operands[1])
+    r_core::env::define(heap, env, sym, operands[1])
         .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("assign define")))?;
     // GNU: assign returns the value invisibly.
     heap.visible = false;
@@ -13646,7 +13646,7 @@ fn get_primitive(
         None => caller_env,
     };
     let sym = interner.intern_symbol(&name);
-    match crate::value::env::lookup(heap, env, sym) {
+    match r_core::env::lookup(heap, env, sym) {
         Some((_, binding)) => Ok(binding.value),
         None => Err(EvalError::UnboundVariable(name).into()),
     }
@@ -13792,7 +13792,7 @@ fn string_operand(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Opt
 
 
 /// The (nrow, ncol) of a data.frame-classed list, when classed.
-pub(crate) fn data_frame_shape(
+pub fn data_frame_shape(
     heap: &Heap,
     interner: &SymbolInterner,
     value: ValueId,
@@ -13935,7 +13935,7 @@ fn writelines_primitive(
     } else {
         let path = string_operand(heap, interner, con_arg)
             .ok_or(EvalError::TypeError("writeLines connection must be a filename"))?;
-        crate::value::vfile::write_file(heap, &path, content.as_bytes())
+        r_core::vfile::write_file(heap, &path, content.as_bytes())
             .map_err(|_| RSignal::Error(EvalError::TypeError("writeLines: cannot open file")))?;
     }
     heap.visible = false;
@@ -14034,7 +14034,7 @@ fn readlines_primitive(
     } else {
         let path = string_operand(heap, interner, con_arg)
             .ok_or(EvalError::TypeError("readLines connection must be a filename"))?;
-        crate::value::vfile::read_file(heap, &path)
+        r_core::vfile::read_file(heap, &path)
             .map_err(|_| EvalError::TypeError("readLines: cannot open file"))
             .and_then(|bytes| String::from_utf8(bytes).map_err(|_| EvalError::TypeError("readLines: invalid utf8")))
             .map_err(|_| RSignal::Error(EvalError::TypeError("readLines: cannot open file")))?
@@ -14055,7 +14055,7 @@ fn readlines_primitive(
     if let Some(n) = n_limit {
         lines.truncate(n);
     }
-    let interned: Vec<super::intern::InternedStr> = lines
+    let interned: Vec<r_core::intern::InternedStr> = lines
         .iter()
         .map(|l| interner.intern_string(l))
         .collect();
@@ -14075,7 +14075,7 @@ fn file_exists_primitive(
     let out: Vec<i32> = paths
         .iter()
         .map(|p| {
-            match crate::value::path_policy::resolve_host_path(policy.as_ref(), p) {
+            match r_core::path_policy::resolve_host_path(policy.as_ref(), p) {
                 Some(host) if std::path::Path::new(&host).exists() => 1,
                 _ => 0,
             }
@@ -14104,7 +14104,7 @@ fn file_remove_primitive(
     let out: Vec<i32> = paths
         .iter()
         .map(|p| {
-            match crate::value::path_policy::resolve_host_path(policy.as_ref(), p) {
+            match r_core::path_policy::resolve_host_path(policy.as_ref(), p) {
                 Some(host) if std::fs::remove_file(&host).is_ok() => 1,
                 _ => 0,
             }
@@ -14126,8 +14126,8 @@ fn file_copy_primitive(
     let to = string_operand(heap, interner, operands[1])
         .ok_or(EvalError::TypeError("file.copy target"))?;
     let ok = match (
-        crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &from),
-        crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &to),
+        r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &from),
+        r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &to),
     ) {
         (Some(host_from), Some(host_to)) => std::fs::copy(&host_from, &host_to).is_ok(),
         _ => false,
@@ -14148,8 +14148,8 @@ fn file_rename_primitive(
     let to = string_operand(heap, interner, operands[1])
         .ok_or(EvalError::TypeError("file.rename target"))?;
     let ok = match (
-        crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &from),
-        crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &to),
+        r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &from),
+        r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &to),
     ) {
         (Some(host_from), Some(host_to)) => std::fs::rename(&host_from, &host_to).is_ok(),
         _ => false,
@@ -14171,7 +14171,7 @@ fn coerce_logical(
             .iter()
             .map(|v| {
                 if v.is_nan() {
-                    crate::value::object::NA_INTEGER
+                    r_core::object::NA_INTEGER
                 } else if *v != 0.0 {
                     1
                 } else {
@@ -14184,7 +14184,7 @@ fn coerce_logical(
             .map(|v| match interner.string_text(*v) {
                 "TRUE" | "T" | "true" => 1,
                 "FALSE" | "F" | "false" => 0,
-                _ => crate::value::object::NA_INTEGER,
+                _ => r_core::object::NA_INTEGER,
             })
             .collect(),
         Some(RObject::Raw(values)) => values.iter().map(|v| if *v == 0 { 0 } else { 1 }).collect(),
@@ -14192,7 +14192,7 @@ fn coerce_logical(
             .iter()
             .map(|z| {
                 if z.r.is_nan() || z.i.is_nan() {
-                    crate::value::object::NA_INTEGER
+                    r_core::object::NA_INTEGER
                 } else if z.r != 0.0 || z.i != 0.0 {
                     1
                 } else {
@@ -14266,7 +14266,7 @@ fn attributes_primitive(
         return Ok(ValueId::NIL);
     }
     let list = heap.alloc(RObject::List(values));
-    let interned: Vec<super::intern::InternedStr> = names
+    let interned: Vec<r_core::intern::InternedStr> = names
         .iter()
         .map(|n| interner.intern_string(n))
         .collect();
@@ -14321,22 +14321,22 @@ fn length_assign_primitive(
     let operands = eval_args(heap, interner, args, caller_env, 2)?;
     let target = match heap.object(operands[1]) {
         Some(RObject::Real(v)) if !v.is_empty() && !v[0].is_nan() && v[0] >= 0.0 => v[0] as usize,
-        Some(RObject::Integer(v)) if !v.is_empty() && v[0] != crate::value::object::NA_INTEGER && v[0] >= 0 => v[0] as usize,
+        Some(RObject::Integer(v)) if !v.is_empty() && v[0] != r_core::object::NA_INTEGER && v[0] >= 0 => v[0] as usize,
         _ => return Err(EvalError::Condition("invalid value".to_string()).into()),
     };
     let object = heap.object(operands[0]).cloned()
         .ok_or(EvalError::TypeError("length target missing"))?;
     let resized = match object {
         RObject::Real(mut v) => {
-            v.resize(target, f64::from_bits(crate::value::object::NA_REAL_BITS));
+            v.resize(target, f64::from_bits(r_core::object::NA_REAL_BITS));
             RObject::Real(v)
         }
         RObject::Integer(mut v) => {
-            v.resize(target, crate::value::object::NA_INTEGER);
+            v.resize(target, r_core::object::NA_INTEGER);
             RObject::Integer(v)
         }
         RObject::Logical(mut v) => {
-            v.resize(target, crate::value::object::NA_INTEGER);
+            v.resize(target, r_core::object::NA_INTEGER);
             RObject::Logical(v)
         }
         RObject::String(mut v) => {
@@ -14349,9 +14349,9 @@ fn length_assign_primitive(
             RObject::List(v)
         }
         RObject::Complex(mut v) => {
-            v.resize(target, crate::value::object::RComplex {
-                r: f64::from_bits(crate::value::object::NA_REAL_BITS),
-                i: f64::from_bits(crate::value::object::NA_REAL_BITS),
+            v.resize(target, r_core::object::RComplex {
+                r: f64::from_bits(r_core::object::NA_REAL_BITS),
+                i: f64::from_bits(r_core::object::NA_REAL_BITS),
             });
             RObject::Complex(v)
         }
@@ -14410,7 +14410,7 @@ fn file_path_primitive(
         cursor = cdr;
     }
     let width = columns.iter().map(Vec::len).max().unwrap_or(0);
-    let mut paths: Vec<super::intern::InternedStr> = Vec::with_capacity(width);
+    let mut paths: Vec<r_core::intern::InternedStr> = Vec::with_capacity(width);
     for i in 0..width {
         let pieces: Vec<String> = columns
             .iter()
@@ -14512,7 +14512,7 @@ fn data_frame_primitive(
 /// The shared data.frame assembly: equal-length column validation, the
 /// row.names sequence, names and class attributes — copy-on-write
 /// discipline throughout.
-pub(crate) fn build_data_frame(
+pub fn build_data_frame(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     columns: Vec<ValueId>,
@@ -14529,13 +14529,13 @@ pub(crate) fn build_data_frame(
         }
     }
     let list = heap.alloc(RObject::List(columns));
-    let interned: Vec<super::intern::InternedStr> = names
+    let interned: Vec<r_core::intern::InternedStr> = names
         .iter()
         .map(|n| interner.intern_string(n))
         .collect();
     let names_obj = heap.alloc(RObject::String(interned));
     let list = copy_with_attrib(heap, interner, list, "names", names_obj).map_err(RSignal::from)?;
-    let rownames: Vec<super::intern::InternedStr> = (1..=nrows)
+    let rownames: Vec<r_core::intern::InternedStr> = (1..=nrows)
         .map(|i| interner.intern_string(&i.to_string()))
         .collect();
     let rownames_obj = heap.alloc(RObject::String(rownames));
@@ -14631,8 +14631,8 @@ fn aggregate_primitive(
             }
             let text = match (&grouper_codes[j], &grouper_levels[j]) {
                 (Some(codes), Some(levels)) => {
-                    let code = codes.get(i).copied().unwrap_or(crate::value::object::NA_INTEGER);
-                    if code == crate::value::object::NA_INTEGER || code < 1 || code as usize > levels.len() {
+                    let code = codes.get(i).copied().unwrap_or(r_core::object::NA_INTEGER);
+                    if code == r_core::object::NA_INTEGER || code < 1 || code as usize > levels.len() {
                         "NA".to_string()
                     } else {
                         levels[(code - 1) as usize].clone()
@@ -14728,11 +14728,11 @@ fn aggregate_primitive(
                         .iter()
                         .position(|l| l == text)
                         .map(|pos| pos as i32 + 1)
-                        .unwrap_or(crate::value::object::NA_INTEGER)
+                        .unwrap_or(r_core::object::NA_INTEGER)
                 })
                 .collect();
             let mut col = heap.alloc(RObject::Integer(codes));
-            let level_interned: Vec<super::intern::InternedStr> = levels
+            let level_interned: Vec<r_core::intern::InternedStr> = levels
                 .iter()
                 .map(|s| interner.intern_string(s))
                 .collect();
@@ -14742,7 +14742,7 @@ fn aggregate_primitive(
             col = copy_with_attrib(heap, interner, col, "class", class_vec).map_err(RSignal::from)?;
             columns.push(col);
         } else {
-            let interned: Vec<super::intern::InternedStr> = parts
+            let interned: Vec<r_core::intern::InternedStr> = parts
                 .iter()
                 .map(|s| interner.intern_string(s))
                 .collect();
@@ -14776,7 +14776,7 @@ fn element_text(heap: &Heap, interner: &SymbolInterner, value: ValueId, index: u
             .unwrap_or_default(),
         Some(RObject::Real(values)) => values
             .get(index)
-            .map(|v| super::print::format_real(*v))
+            .map(|v| r_core::print::format_real(*v))
             .unwrap_or_default(),
         _ => String::new(),
     }
@@ -14835,7 +14835,7 @@ fn apply_fun_to(
     });
     match heap.object(fun).cloned() {
         Some(RObject::Closure { formals, body, env }) => {
-            let applied = super::eval::apply_closure_public(
+            let applied = r_core::eval::apply_closure_public(
                 heap, interner, formals, body, env, arg_node, caller_env,
             )?;
             force_if_promise(heap, interner, applied)
@@ -14898,14 +14898,14 @@ fn factor_primitive(
         .iter()
         .map(|s| {
             if s == "\0NA" {
-                crate::value::object::NA_INTEGER
+                r_core::object::NA_INTEGER
             } else {
-                levels.iter().position(|l| l == s).map(|p| p as i32 + 1).unwrap_or(crate::value::object::NA_INTEGER)
+                levels.iter().position(|l| l == s).map(|p| p as i32 + 1).unwrap_or(r_core::object::NA_INTEGER)
             }
         })
         .collect();
     let obj = heap.alloc(RObject::Integer(codes));
-    let interned: Vec<super::intern::InternedStr> = levels
+    let interned: Vec<r_core::intern::InternedStr> = levels
         .iter()
         .map(|l| interner.intern_string(l))
         .collect();
@@ -14988,7 +14988,7 @@ fn sprintf_primitive(
         }
         results.push(text);
     }
-    let interned: Vec<super::intern::InternedStr> = results
+    let interned: Vec<r_core::intern::InternedStr> = results
         .iter()
         .map(|s| interner.intern_string(s))
         .collect();
@@ -15195,7 +15195,7 @@ fn format_spec(
                     .get(i)
                     .map(|v| interner.string_text(*v).to_string())
                     .unwrap_or_default(),
-                Some(RObject::Real(values)) => super::print::format_real(
+                Some(RObject::Real(values)) => r_core::print::format_real(
                     values.get(i).copied().unwrap_or(0.0),
                 ),
                 Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => values
@@ -15272,15 +15272,15 @@ fn levels_assign_primitive(
         let new_codes: Vec<i32> = codes
             .iter()
             .map(|c| {
-                if *c == crate::value::object::NA_INTEGER {
-                    return crate::value::object::NA_INTEGER;
+                if *c == r_core::object::NA_INTEGER {
+                    return r_core::object::NA_INTEGER;
                 }
                 let label = old_levels.get((*c - 1) as usize).cloned().unwrap_or_default();
                 remap
                     .iter()
                     .find(|(l, _)| *l == label)
                     .map(|(_, nc)| *nc as i32)
-                    .unwrap_or(crate::value::object::NA_INTEGER)
+                    .unwrap_or(r_core::object::NA_INTEGER)
             })
             .collect();
         return rebuild_factor(heap, interner, object, new_codes, new_names);
@@ -15306,12 +15306,12 @@ fn levels_assign_primitive(
     let new_codes: Vec<i32> = codes
         .iter()
         .map(|c| {
-            if *c == crate::value::object::NA_INTEGER {
-                return crate::value::object::NA_INTEGER;
+            if *c == r_core::object::NA_INTEGER {
+                return r_core::object::NA_INTEGER;
             }
             match position_map.get((*c - 1) as usize) {
                 Some(Some(new_pos)) => *new_pos as i32 + 1,
-                _ => crate::value::object::NA_INTEGER,
+                _ => r_core::object::NA_INTEGER,
             }
         })
         .collect();
@@ -15327,7 +15327,7 @@ fn rebuild_factor(
     new_codes: Vec<i32>,
     new_levels: Vec<String>,
 ) -> EvalResult {
-    let interned: Vec<super::intern::InternedStr> = new_levels
+    let interned: Vec<r_core::intern::InternedStr> = new_levels
         .iter()
         .map(|l| interner.intern_string(l))
         .collect();
@@ -15375,22 +15375,22 @@ fn grep_primitive(
         match tag_name.as_deref() {
             Some("value") => {
                 if let Some(RObject::Logical(vals)) = heap.object(v) {
-                    value_mode = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
+                    value_mode = !vals.is_empty() && vals[0] != 0 && vals[0] != r_core::object::NA_INTEGER;
                 }
             }
             Some("invert") => {
                 if let Some(RObject::Logical(vals)) = heap.object(v) {
-                    invert = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
+                    invert = !vals.is_empty() && vals[0] != 0 && vals[0] != r_core::object::NA_INTEGER;
                 }
             }
             Some("fixed") => {
                 if let Some(RObject::Logical(vals)) = heap.object(v) {
-                    fixed = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
+                    fixed = !vals.is_empty() && vals[0] != 0 && vals[0] != r_core::object::NA_INTEGER;
                 }
             }
             Some("ignore.case") => {
                 if let Some(RObject::Logical(vals)) = heap.object(v) {
-                    ignore_case = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
+                    ignore_case = !vals.is_empty() && vals[0] != 0 && vals[0] != r_core::object::NA_INTEGER;
                 }
             }
             _ => {
@@ -15423,7 +15423,7 @@ fn grep_primitive(
                 let found = if fixed {
                     haystack.contains(&pattern)
                 } else {
-                    super::regex::regex_search(&pattern, &haystack).is_some()
+                    r_core::regex::regex_search(&pattern, &haystack).is_some()
                 };
                 found != invert
             }
@@ -15434,7 +15434,7 @@ fn grep_primitive(
         return Ok(heap.alloc(RObject::Logical(out)));
     }
     if value_mode {
-        let out: Vec<super::intern::InternedStr> = texts
+        let out: Vec<r_core::intern::InternedStr> = texts
             .iter()
             .enumerate()
             .filter(|(i, _)| matches[*i])
@@ -15467,7 +15467,7 @@ fn regexpr_primitive(
     let mut positions: Vec<i32> = Vec::new();
     let mut lengths: Vec<i32> = Vec::new();
     for text in &texts {
-        match super::regex::regex_search(&pattern, text) {
+        match r_core::regex::regex_search(&pattern, text) {
             Some((start, end)) => {
                 positions.push(start as i32 + 1);
                 lengths.push((end - start) as i32);
@@ -15523,13 +15523,13 @@ fn unique_primitive(
             match tag_name.as_deref() {
                 Some("fromLast") => {
                     if let Some(RObject::Logical(vals)) = heap.object(v) {
-                        from_last = !vals.is_empty() && vals[0] != 0 && vals[0] != crate::value::object::NA_INTEGER;
+                        from_last = !vals.is_empty() && vals[0] != 0 && vals[0] != r_core::object::NA_INTEGER;
                     }
                 }
                 Some("incomparables") => {
                     // NA in incomparables means NA values never compare.
                     incomparables_na = match heap.object(v) {
-                        Some(RObject::Logical(vals)) => vals.iter().any(|x| *x == crate::value::object::NA_INTEGER),
+                        Some(RObject::Logical(vals)) => vals.iter().any(|x| *x == r_core::object::NA_INTEGER),
                         Some(RObject::Real(vals)) => vals.iter().any(|x| x.is_nan()),
                         Some(RObject::String(vals)) => {
                             vals.iter().any(|x| interner.string_text(*x) == "\0NA")
@@ -15603,17 +15603,17 @@ fn unique_primitive(
             );
         }
         Some(RObject::Integer(values)) => {
-            dedup!(Integer, values, |v: &i32| *v == crate::value::object::NA_INTEGER, |a: &i32, b: &i32| a == b);
+            dedup!(Integer, values, |v: &i32| *v == r_core::object::NA_INTEGER, |a: &i32, b: &i32| a == b);
         }
         Some(RObject::Logical(values)) => {
-            dedup!(Logical, values, |v: &i32| *v == crate::value::object::NA_INTEGER, |a: &i32, b: &i32| a == b);
+            dedup!(Logical, values, |v: &i32| *v == r_core::object::NA_INTEGER, |a: &i32, b: &i32| a == b);
         }
         Some(RObject::String(values)) => {
             dedup!(
                 String,
                 values,
-                |v: &super::intern::InternedStr| interner.string_text(*v) == "\0NA",
-                |a: &super::intern::InternedStr, b: &super::intern::InternedStr| a == b
+                |v: &r_core::intern::InternedStr| interner.string_text(*v) == "\0NA",
+                |a: &r_core::intern::InternedStr, b: &r_core::intern::InternedStr| a == b
             );
         }
         _ => Err(EvalError::TypeError("unique requires an atomic vector").into()),
@@ -15710,12 +15710,12 @@ fn save_primitive(
     let mut bindings: Vec<(String, ValueId)> = Vec::new();
     for name in &names {
         let sym = interner.intern_symbol(name);
-        let (_, binding) = super::env::lookup(heap, envir, sym)
+        let (_, binding) = r_core::env::lookup(heap, envir, sym)
             .ok_or(EvalError::UnboundVariable(name.clone()))?;
         bindings.push((name.clone(), binding.value));
     }
-    let bytes = super::rbg1::encode_save(heap, interner, &bindings);
-    let host = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path)
+    let bytes = r_core::rbg1::encode_save(heap, interner, &bindings);
+    let host = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path)
         .ok_or(EvalError::TypeError("save write failed"))?;
     std::fs::write(&host, bytes).map_err(|e| EvalError::TypeError("save write failed"))?;
     Ok(ValueId::NIL)
@@ -15762,16 +15762,16 @@ fn load_primitive(
         cursor = cdr;
     }
     let path = file_path.ok_or(EvalError::TypeError("load requires file"))?;
-    let host = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path)
+    let host = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path)
         .ok_or(EvalError::TypeError("load read failed"))?;
     let bytes = std::fs::read(&host).map_err(|e| EvalError::TypeError("load read failed"))?;
-    let bindings = super::rbg1::decode_save(heap, interner, &bytes, envir)
+    let bindings = r_core::rbg1::decode_save(heap, interner, &bytes, envir)
         .ok_or(EvalError::TypeError("bad save file"))?;
-    let mut names: Vec<super::intern::InternedStr> = Vec::new();
+    let mut names: Vec<r_core::intern::InternedStr> = Vec::new();
     for (name, value) in bindings {
         let sym = interner.intern_symbol(&name);
         names.push(interner.intern_string(&name));
-        super::env::define(heap, envir, sym, value)
+        r_core::env::define(heap, envir, sym, value)
             .map_err(|_| RSignal::Error(EvalError::TypeError("cannot add binding")))?;
     }
     Ok(heap.alloc(RObject::String(names)))
@@ -15826,12 +15826,12 @@ fn data_primitive(
         }
         cursor = cdr;
     }
-    let mut loaded: Vec<super::intern::InternedStr> = Vec::new();
+    let mut loaded: Vec<r_core::intern::InternedStr> = Vec::new();
     for name in &names {
-        let value = super::datasets::load_dataset(heap, interner, name, caller_env)
+        let value = crate::datasets::load_dataset(heap, interner, name, caller_env)
             .ok_or_else(|| RSignal::Error(EvalError::TypeError("dataset not found")))?;
         let sym = interner.intern_symbol(name);
-        super::env::define(heap, envir, sym, value)
+        r_core::env::define(heap, envir, sym, value)
             .map_err(|_| RSignal::Error(EvalError::TypeError("cannot add binding")))?;
         loaded.push(interner.intern_string(name));
     }
@@ -15900,7 +15900,7 @@ fn plot_window_primitive(
     /// the exact limits. The style reads through the par cascade.
     let style = |name: &str| -> String {
         match heap.graphics.query(name) {
-            Some(crate::value::graphics::layout::ParValue::String(text)) => text,
+            Some(r_core::graphics::layout::ParValue::String(text)) => text,
             _ => "r".to_string(),
         }
     };
@@ -15915,7 +15915,7 @@ fn plot_window_primitive(
     let (x0, x1) = extend(xlim[0], xlim[1], &style("xaxs"));
     let (y0, y1) = extend(ylim[0], ylim[1], &style("yaxs"));
     heap.graphics
-        .apply("usr", &crate::value::graphics::layout::ParValue::Real(vec![x0, x1, y0, y1]))
+        .apply("usr", &r_core::graphics::layout::ParValue::Real(vec![x0, x1, y0, y1]))
         .map_err(|message| RSignal::Error(EvalError::Condition(message)))?;
     Ok(ValueId::NIL)
 }
@@ -16051,14 +16051,14 @@ fn par_stroke(heap: &Heap, color: r_graphics_engine::Color) -> r_graphics_engine
     use r_graphics_engine::{Color, DashPattern, Stroke};
     const TRANSPARENT: Color = Color { r: 0, g: 0, b: 0, a: 0 };
     let lwd = match heap.graphics.query("lwd") {
-        Some(crate::value::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0] as f32,
-        Some(crate::value::graphics::layout::ParValue::Integer(v)) if v.len() == 1 => v[0] as f32,
+        Some(r_core::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0] as f32,
+        Some(r_core::graphics::layout::ParValue::Integer(v)) if v.len() == 1 => v[0] as f32,
         _ => 1.0,
     };
     let width = lwd.max(0.0);
     let lty_name = match heap.graphics.query("lty") {
-        Some(crate::value::graphics::layout::ParValue::String(text)) => text,
-        Some(crate::value::graphics::layout::ParValue::Integer(v)) if !v.is_empty() => {
+        Some(r_core::graphics::layout::ParValue::String(text)) => text,
+        Some(r_core::graphics::layout::ParValue::Integer(v)) if !v.is_empty() => {
             match v[0] {
                 0 => "blank".to_string(),
                 2 => "dashed".to_string(),
@@ -16260,13 +16260,13 @@ fn points_primitive(
         .and_then(|v| reals_of_value(heap, v).ok())
         .and_then(|v| v.first().copied())
         .unwrap_or_else(|| match heap.graphics.query("cex") {
-            Some(crate::value::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0],
+            Some(r_core::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0],
             _ => 1.0,
         });
     // GNU sizes symbols at half the character width scaled by cex —
     /// the raster character cell is the cra cascade answer.
     let cra = match heap.graphics.query("cra") {
-        Some(crate::value::graphics::layout::ParValue::Real(v)) if v.len() == 2 => v,
+        Some(r_core::graphics::layout::ParValue::Real(v)) if v.len() == 2 => v,
         _ => vec![10.8, 14.4],
     };
     let radius = (0.5 * cex * cra[0]) as f32;
@@ -16355,7 +16355,7 @@ fn text_primitive(
         .and_then(|v| reals_of_value(heap, v).ok())
         .and_then(|v| v.first().copied())
         .unwrap_or_else(|| match heap.graphics.query("cex") {
-            Some(crate::value::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0],
+            Some(r_core::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0],
             _ => 1.0,
         });
     // The 12pt base at 72dpi raster units exactly as the portable
@@ -16418,7 +16418,7 @@ fn pretty_primitive(
     let lo = xs.iter().copied().fold(f64::INFINITY, f64::min);
     let up = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     // GNU pretty.default's fixed constants exactly.
-    let result = crate::value::graphics::pretty::r_pretty(
+    let result = r_core::graphics::pretty::r_pretty(
         lo,
         up,
         n,
@@ -16496,7 +16496,7 @@ fn grconvert_primitive(
             // user → device exactly as the primitive conversion; the
             /// inverse divides back through the same linear map.
             let usr = match heap.graphics.query("usr") {
-                Some(crate::value::graphics::layout::ParValue::Real(u)) if u.len() == 4 => u,
+                Some(r_core::graphics::layout::ParValue::Real(u)) if u.len() == 4 => u,
                 _ => vec![0.0, 1.0, 0.0, 1.0],
             };
             let plot = heap.graphics.layout.regions().plot;
@@ -16538,7 +16538,7 @@ fn axis_label(value: f64) -> String {
         // GNU labels ticks with the printer's significant-digit logic —
         // fp noise in computed positions collapses exactly as 2.5 does,
         // never shortest-roundtrip noise.
-        crate::value::print::format_real(value)
+        r_core::print::format_real(value)
     }
 }
 
@@ -16568,7 +16568,7 @@ fn axis_primitive(
     // Tick positions: explicit at= or pretty over the usr range exactly
     /// as axp computation feeds GAxis.
     let usr = match heap.graphics.query("usr") {
-        Some(crate::value::graphics::layout::ParValue::Real(u)) if u.len() == 4 => u,
+        Some(r_core::graphics::layout::ParValue::Real(u)) if u.len() == 4 => u,
         _ => vec![0.0, 1.0, 0.0, 1.0],
     };
     let at: Vec<f64> = match slots[1].and_then(|v| reals_of_value(heap, v).ok()) {
@@ -16579,7 +16579,7 @@ fn axis_primitive(
             } else {
                 (usr[2], usr[3])
             };
-            let result = crate::value::graphics::pretty::r_pretty(
+            let result = r_core::graphics::pretty::r_pretty(
                 lo,
                 hi,
                 5,
@@ -16678,7 +16678,7 @@ fn axis_primitive(
         ..Default::default()
     }));
     let cex = match heap.graphics.query("cex") {
-        Some(crate::value::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0],
+        Some(r_core::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0],
         _ => 1.0,
     };
     for (x, y, anchor, value) in label_positions {
@@ -16751,7 +16751,7 @@ fn title_primitive(
     let center_y = (plot[1] + plot[3]) as f32 / 2.0;
     let line = 14.4f32;
     let cex = match heap.graphics.query("cex") {
-        Some(crate::value::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0],
+        Some(r_core::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0],
         _ => 1.0,
     };
     let font = (12.0 * cex) as f32;
@@ -16819,7 +16819,7 @@ fn mtext_primitive(
     let line = slots[2].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(0.0) as f32;
     let cex = slots[6].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(1.0);
     let base_cex = match heap.graphics.query("cex") {
-        Some(crate::value::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0],
+        Some(r_core::graphics::layout::ParValue::Real(v)) if v.len() == 1 => v[0],
         _ => 1.0,
     };
     let font = (12.0 * base_cex * cex) as f32;
@@ -16907,7 +16907,7 @@ fn hsv_primitive(
     if n == 0 {
         return Ok(heap.alloc(RObject::String(Vec::new())));
     }
-    let out: Vec<super::intern::InternedStr> = (0..n).map(|i| {
+    let out: Vec<r_core::intern::InternedStr> = (0..n).map(|i| {
         let (r, g, b) = gnu_hsv2rgb(hs[i % hs.len()], ss[i % ss.len()], vs[i % vs.len()]);
         interner.intern_string(&hex_rgb(r, g, b))
     }).collect();
@@ -16926,7 +16926,7 @@ fn gray_primitive(
         Some(v) => reals_of_value(heap, v).map_err(RSignal::from)?,
         None => Vec::new(),
     };
-    let out: Vec<super::intern::InternedStr> = levels.iter().map(|&lv| {
+    let out: Vec<r_core::intern::InternedStr> = levels.iter().map(|&lv| {
         let scaled = (255.0 * lv + 0.5) as u32;
         interner.intern_string(&hex_rgb(scaled, scaled, scaled))
     }).collect();
@@ -16947,7 +16947,7 @@ fn color_ramp_primitive(
     if n == 0 {
         return Ok(heap.alloc(RObject::String(Vec::new())));
     }
-    let emit = |heap: &mut Heap, interner: &mut SymbolInterner, triples: &[(f64, f64, f64)]| -> Vec<super::intern::InternedStr> {
+    let emit = |heap: &mut Heap, interner: &mut SymbolInterner, triples: &[(f64, f64, f64)]| -> Vec<r_core::intern::InternedStr> {
         triples.iter().map(|&(h, s, v)| {
             let (r, g, b) = gnu_hsv2rgb(h, s, v);
             interner.intern_string(&hex_rgb(r, g, b))
@@ -17054,7 +17054,7 @@ fn color_ramp_primitive(
 /// 657-entry database, #RRGGBB/#RRGGBBAA hex literally, exactly as
 /// colors.c's col2name.
 fn resolve_named_color(name: &str) -> Option<(u32, u32, u32, u32)> {
-    use crate::value::support::colors::COLOR_DATA;
+    use r_core::support::colors::COLOR_DATA;
     if let Some(hex) = name.strip_prefix('#') {
         let digits = hex.len();
         if digits == 6 || digits == 8 {
@@ -17087,8 +17087,8 @@ fn colors_primitive(
     _args: ValueId,
     _caller_env: ValueId,
 ) -> EvalResult {
-    use crate::value::support::colors::COLOR_DATA;
-    let out: Vec<super::intern::InternedStr> = COLOR_DATA.iter().map(|entry| {
+    use r_core::support::colors::COLOR_DATA;
+    let out: Vec<r_core::intern::InternedStr> = COLOR_DATA.iter().map(|entry| {
         let name = std::str::from_utf8(entry.name).unwrap_or("").trim_end_matches('\0');
         interner.intern_string(name)
     }).collect();
@@ -17138,7 +17138,7 @@ fn col2rgb_primitive(
     } else {
         vec!["red", "green", "blue"]
     };
-    let row_ids: Vec<super::intern::InternedStr> = row_label_names.iter().map(|n| interner.intern_string(n)).collect();
+    let row_ids: Vec<r_core::intern::InternedStr> = row_label_names.iter().map(|n| interner.intern_string(n)).collect();
     let row_names_obj = heap.alloc(RObject::String(row_ids));
     let dimnames_list = heap.alloc(RObject::List(vec![row_names_obj, ValueId::NIL]));
     result = copy_with_attrib(heap, interner, result, "dimnames", dimnames_list).map_err(RSignal::from)?;
@@ -17162,7 +17162,7 @@ fn palette_primitive(
         heap.palette.clone()
     };
     let render = |heap: &mut Heap, interner: &mut SymbolInterner, names: &[String]| -> ValueId {
-        let ids: Vec<super::intern::InternedStr> = names.iter().map(|n| interner.intern_string(n)).collect();
+        let ids: Vec<r_core::intern::InternedStr> = names.iter().map(|n| interner.intern_string(n)).collect();
         heap.alloc(RObject::String(ids))
     };
     match slots[0] {
@@ -17239,7 +17239,7 @@ fn hcl_primitive(
         let scaled = (255.0 * x + 0.5) as i64;
         scaled.clamp(0, 255) as u32
     };
-    let out: Vec<super::intern::InternedStr> = (0..n).map(|i| {
+    let out: Vec<r_core::intern::InternedStr> = (0..n).map(|i| {
         let (r, g, b) = gnu_hcl2rgb(hs[i % hs.len()], cs[i % cs.len()], ls[i % ls.len()]);
         interner.intern_string(&hex_rgb(scale(r), scale(g), scale(b)))
     }).collect();
@@ -17273,7 +17273,7 @@ fn adjustcolor_primitive(
     let offset_at = |i: usize| -> f64 { offsets.get(i).copied().unwrap_or(0.0) };
     let clamp01 = |x: f64| -> f64 { x.clamp(0.0, 1.0) };
     let quant = |x: f64| -> u32 { (255.0 * x + 0.5) as u32 };
-    let out: Vec<super::intern::InternedStr> = names.iter().map(|name| {
+    let out: Vec<r_core::intern::InternedStr> = names.iter().map(|name| {
         match resolve_named_color(name) {
             Some((r, g, b, a)) => {
                 let rn = clamp01(r as f64 / 255.0 * red_f + offset_at(0));
@@ -17387,7 +17387,7 @@ fn rgb2hsv_primitive(
     let matrix = heap.alloc(RObject::Real(cells));
     let dim = heap.alloc(RObject::Integer(vec![3, triples.len() as i32]));
     let mut result = copy_with_attrib(heap, interner, matrix, "dim", dim).map_err(RSignal::from)?;
-    let row_ids: Vec<super::intern::InternedStr> = ["h", "s", "v"].iter().map(|n| interner.intern_string(n)).collect();
+    let row_ids: Vec<r_core::intern::InternedStr> = ["h", "s", "v"].iter().map(|n| interner.intern_string(n)).collect();
     let row_names_obj = heap.alloc(RObject::String(row_ids));
     let dimnames_list = heap.alloc(RObject::List(vec![row_names_obj, ValueId::NIL]));
     result = copy_with_attrib(heap, interner, result, "dimnames", dimnames_list).map_err(RSignal::from)?;
@@ -17487,7 +17487,7 @@ fn hist_primitive(
         &["x", "breaks", "freq", "probability", "include.lowest", "right", "fuzz", "density",
           "angle", "col", "border", "main", "xlim", "ylim", "xlab", "ylab", "axes", "plot", "labels", "nclass"])?;
     let xname = if raw_first != ValueId::NIL {
-        super::print::deparse(heap, interner, raw_first)
+        r_core::print::deparse(heap, interner, raw_first)
     } else {
         "x".to_string()
     };
@@ -17516,7 +17516,7 @@ fn hist_primitive(
                 sorted
             } else if spec.len() == 1 {
                 let count = spec[0] as i32;
-                let result = crate::value::graphics::pretty::r_pretty(
+                let result = r_core::graphics::pretty::r_pretty(
                     xlo, xhi, count, 1, 0.75, 1.5, 0.5 + 1.5 * 1.5, 2f64.powi(-20), 0,
                 );
                 let ndiv = result.ndiv;
@@ -17533,7 +17533,7 @@ fn hist_primitive(
     if breaks.is_empty() {
         // Sturges exactly as nclass.Sturges — ceiling(log2(n) + 1).
         let sturges = ((n as f64).log2() + 1.0).ceil() as i32;
-        let result = crate::value::graphics::pretty::r_pretty(
+        let result = r_core::graphics::pretty::r_pretty(
             xlo, xhi, sturges, 1, 0.75, 1.5, 0.5 + 1.5 * 1.5, 2f64.powi(-20), 0,
         );
         let ndiv = result.ndiv;
@@ -17695,7 +17695,7 @@ fn hist_primitive(
     let xname_obj = heap.alloc(RObject::String(vec![interner.intern_string(&xname)]));
     let equidist_obj = heap.alloc(RObject::Logical(vec![if equidist { 1 } else { 0 }]));
     let list = heap.alloc(RObject::List(vec![breaks_obj, counts_obj, density_obj, mids_obj, xname_obj, equidist_obj]));
-    let names_vec: Vec<super::intern::InternedStr> = ["breaks", "counts", "density", "mids", "xname", "equidist"]
+    let names_vec: Vec<r_core::intern::InternedStr> = ["breaks", "counts", "density", "mids", "xname", "equidist"]
         .iter().map(|n| interner.intern_string(n)).collect();
     let names_obj = heap.alloc(RObject::String(names_vec));
     let mut result = copy_with_attrib(heap, interner, list, "names", names_obj).map_err(RSignal::from)?;
@@ -17864,7 +17864,7 @@ fn boxplot_primitive(
     let out_obj = heap.alloc(RObject::Real(all_out));
     let group_obj = heap.alloc(RObject::Real(all_group));
     let list = heap.alloc(RObject::List(vec![stats_matrix, n_obj, conf_obj, out_obj, group_obj]));
-    let names_vec: Vec<super::intern::InternedStr> = ["stats", "n", "conf", "out", "group"]
+    let names_vec: Vec<r_core::intern::InternedStr> = ["stats", "n", "conf", "out", "group"]
         .iter()
         .map(|s| interner.intern_string(s))
         .collect();
@@ -17953,10 +17953,10 @@ fn curve_primitive(
     };
     // Data environment binding xname to the whole vector — vectorized
     /// evaluation exactly as GNU's eval(expr, envir = ll).
-    let data_env = super::env::new_environment(heap, caller_env);
+    let data_env = r_core::env::new_environment(heap, caller_env);
     let x_obj = heap.alloc(RObject::Real(xs.clone()));
     let sym = interner.intern_symbol(&xname);
-    let _ = super::env::define(heap, data_env, sym, x_obj);
+    let _ = r_core::env::define(heap, data_env, sym, x_obj);
     let y_value = eval(heap, interner, raw_expr, data_env)?;
     let y_value = force_if_promise(heap, interner, y_value)?;
     let ys = reals_of_value(heap, y_value).map_err(RSignal::from)?;
@@ -17997,7 +17997,7 @@ fn curve_primitive(
     let x_out = heap.alloc(RObject::Real(xs));
     let y_out = heap.alloc(RObject::Real(ys));
     let list = heap.alloc(RObject::List(vec![x_out, y_out]));
-    let names_vec: Vec<super::intern::InternedStr> = ["x", "y"]
+    let names_vec: Vec<r_core::intern::InternedStr> = ["x", "y"]
         .iter()
         .map(|s| interner.intern_string(s))
         .collect();
@@ -18168,7 +18168,7 @@ fn svg_primitive(
     let height_in = slots[2].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(7.0);
     heap.graphics.set_device_size(width_in * 72.0, height_in * 72.0);
     heap.graphics.device_file = Some(filename);
-    heap.graphics.device_kind = crate::value::graphics::state::DeviceKind::Svg;
+    heap.graphics.device_kind = r_core::graphics::state::DeviceKind::Svg;
     heap.visible = false;
     Ok(ValueId::NIL)
 }
@@ -18190,7 +18190,7 @@ fn png_primitive(
     let height = slots[2].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(480.0);
     heap.graphics.set_device_size(width, height);
     heap.graphics.device_file = Some(filename);
-    heap.graphics.device_kind = crate::value::graphics::state::DeviceKind::Png;
+    heap.graphics.device_kind = r_core::graphics::state::DeviceKind::Png;
     heap.visible = false;
     Ok(ValueId::NIL)
 }
@@ -18205,16 +18205,16 @@ fn dev_off_primitive(
 ) -> EvalResult {
     if let Some(filename) = heap.graphics.device_file.take() {
         match heap.graphics.device_kind {
-            crate::value::graphics::state::DeviceKind::Svg => {
+            r_core::graphics::state::DeviceKind::Svg => {
                 let svg = scene_to_svg(heap.graphics.scene());
-                if crate::value::vfile::write_file(heap, &filename, svg.as_bytes()).is_err() {
+                if r_core::vfile::write_file(heap, &filename, svg.as_bytes()).is_err() {
                     return Err(EvalError::TypeError("cannot open device file").into());
                 }
             }
-            crate::value::graphics::state::DeviceKind::Png => {
+            r_core::graphics::state::DeviceKind::Png => {
                 let png_bytes = render_scene_png(heap.graphics.scene())
                     .ok_or(EvalError::TypeError("png rasterization failed"))?;
-                if crate::value::vfile::write_file(heap, &filename, &png_bytes).is_err() {
+                if r_core::vfile::write_file(heap, &filename, &png_bytes).is_err() {
                     return Err(EvalError::TypeError("cannot open device file").into());
                 }
             }
@@ -18482,10 +18482,10 @@ fn prettynum_primitive(
         Some(RObject::String(vals)) => vals.iter().map(|s| interner.string_text(*s).to_string()).collect(),
         _ => {
             let xs = reals_of_value(heap, input).map_err(RSignal::from)?;
-            xs.iter().map(|x| crate::value::print::format_real(*x)).collect()
+            xs.iter().map(|x| r_core::print::format_real(*x)).collect()
         }
     };
-    let mut out: Vec<super::intern::InternedStr> = Vec::new();
+    let mut out: Vec<r_core::intern::InternedStr> = Vec::new();
     for text in &raw {
         let trimmed = text.trim();
         // Split at the decimal point exactly as GNU's integer/fraction
@@ -18553,7 +18553,7 @@ fn system_time_primitive(
     let _ = eval(heap, interner, raw_expr, caller_env)?;
     let elapsed = start.elapsed().as_secs_f64();
     let vals = heap.alloc(RObject::Real(vec![elapsed, 0.0, elapsed, 0.0, 0.0]));
-    let names_vec: Vec<super::intern::InternedStr> = ["user.self", "sys.self", "elapsed", "user.child", "sys.child"]
+    let names_vec: Vec<r_core::intern::InternedStr> = ["user.self", "sys.self", "elapsed", "user.child", "sys.child"]
         .iter()
         .map(|s| interner.intern_string(s))
         .collect();
@@ -18708,7 +18708,7 @@ fn density_primitive(
     let bw_obj = heap.alloc(RObject::Real(vec![bw]));
     let n_obj = heap.alloc(RObject::Real(vec![nx as f64]));
     let list = heap.alloc(RObject::List(vec![x_obj, y_obj, bw_obj, n_obj]));
-    let names_vec: Vec<super::intern::InternedStr> = ["x", "y", "bw", "n"]
+    let names_vec: Vec<r_core::intern::InternedStr> = ["x", "y", "bw", "n"]
         .iter()
         .map(|s| interner.intern_string(s))
         .collect();
@@ -18730,7 +18730,7 @@ fn grid_primitive(
     // Tick positions recomputed over the usr window exactly as the
     /// axis cascade does — the lightgray dotted reference lines.
     let usr = match heap.graphics.query("usr") {
-        Some(crate::value::graphics::layout::ParValue::Real(u)) if u.len() == 4 => u,
+        Some(r_core::graphics::layout::ParValue::Real(u)) if u.len() == 4 => u,
         _ => vec![0.0, 1.0, 0.0, 1.0],
     };
     // GNU's grid reuses the axis-recorded xaxp/yaxp coverage exactly —
@@ -18738,7 +18738,7 @@ fn grid_primitive(
     // seq(first, last, length.out = n + 1).
     let axp_ticks = |name: &str, fallback_lo: f64, fallback_hi: f64| -> Vec<f64> {
         let axp = match heap.graphics.query(name) {
-            Some(crate::value::graphics::layout::ParValue::Real(v)) if v.len() == 3 => v,
+            Some(r_core::graphics::layout::ParValue::Real(v)) if v.len() == 3 => v,
             _ => vec![fallback_lo, fallback_hi, 5.0],
         };
         let n = (axp[2].max(0.0) as usize) + 1;
@@ -18772,7 +18772,7 @@ fn grid_primitive(
     let atx_obj = heap.alloc(RObject::Real(xat));
     let aty_obj = heap.alloc(RObject::Real(yat));
     let list = heap.alloc(RObject::List(vec![atx_obj, aty_obj]));
-    let names_vec: Vec<super::intern::InternedStr> = ["atx", "aty"]
+    let names_vec: Vec<r_core::intern::InternedStr> = ["atx", "aty"]
         .iter()
         .map(|s| interner.intern_string(s))
         .collect();
@@ -18797,7 +18797,7 @@ fn rug_primitive(
         .filter(|x| x.is_finite())
         .collect();
     let usr = match heap.graphics.query("usr") {
-        Some(crate::value::graphics::layout::ParValue::Real(u)) if u.len() == 4 => u,
+        Some(r_core::graphics::layout::ParValue::Real(u)) if u.len() == 4 => u,
         _ => vec![0.0, 1.0, 0.0, 1.0],
     };
     // Tick size in user units exactly as GNU's fraction of the axis
@@ -18918,7 +18918,7 @@ fn boxplot_stats_primitive(
     let conf_obj = heap.alloc(RObject::Real(vec![conf_lo, conf_hi]));
     let out_obj = heap.alloc(RObject::Real(out));
     let list = heap.alloc(RObject::List(vec![stats_obj, n_obj, conf_obj, out_obj]));
-    let names_vec: Vec<super::intern::InternedStr> = ["stats", "n", "conf", "out"]
+    let names_vec: Vec<r_core::intern::InternedStr> = ["stats", "n", "conf", "out"]
         .iter()
         .map(|s| interner.intern_string(s))
         .collect();
@@ -19291,7 +19291,7 @@ fn abline_primitive(
     use r_graphics_engine::{Color, DrawOperation, Path, PathCommand, Stroke};
     let slots = eval_matched_args(heap, interner, args, caller_env, &["a", "b", "h", "v", "col"])?;
     let usr = match heap.graphics.query("usr") {
-        Some(crate::value::graphics::layout::ParValue::Real(u)) if u.len() == 4 => u,
+        Some(r_core::graphics::layout::ParValue::Real(u)) if u.len() == 4 => u,
         _ => vec![0.0, 1.0, 0.0, 1.0],
     };
     let mut spans: Vec<(f64, f64, f64, f64)> = Vec::new();
@@ -19509,10 +19509,10 @@ fn coerce_character(
         .unwrap_or(false)
     {
         if let Some(RObject::Integer(vals)) = heap.object(value) {
-            let out: Vec<super::intern::InternedStr> = vals
+            let out: Vec<r_core::intern::InternedStr> = vals
                 .iter()
                 .map(|&v| {
-                    if v == crate::value::object::NA_INTEGER {
+                    if v == r_core::object::NA_INTEGER {
                         interner.intern_string("\0NA")
                     } else {
                         interner.intern_string(&format!("{:o}", v))
@@ -19529,10 +19529,10 @@ fn coerce_character(
         if let Some(levels_id) = get_attrib(heap, interner, value, "levels") {
             let levels = string_vec(heap, interner, levels_id);
             if let Some(RObject::Integer(codes)) = heap.object(value) {
-                let out: Vec<super::intern::InternedStr> = codes
+                let out: Vec<r_core::intern::InternedStr> = codes
                     .iter()
                     .map(|&code| {
-                        if code == crate::value::object::NA_INTEGER
+                        if code == r_core::object::NA_INTEGER
                             || code < 1
                             || code as usize > levels.len()
                         {
@@ -19556,13 +19556,13 @@ fn coerce_character(
     /// as.character.POSIXct — no timezone suffix.
     if is_posixct_classed(heap, interner, value) {
         let secs = numeric_vector(heap, value);
-        let out: Vec<super::intern::InternedStr> = secs
+        let out: Vec<r_core::intern::InternedStr> = secs
             .iter()
             .map(|&s| {
                 if s.is_nan() {
                     interner.intern_string("\0NA")
                 } else {
-                    interner.intern_string(&super::civil::format_iso_datetime(s as i64))
+                    interner.intern_string(&r_core::civil::format_iso_datetime(s as i64))
                 }
             })
             .collect();
@@ -19571,13 +19571,13 @@ fn coerce_character(
     // Date-classed input renders ISO exactly as as.character.Date.
     if is_date_classed(heap, interner, value) {
         let days = numeric_vector(heap, value);
-        let out: Vec<super::intern::InternedStr> = days
+        let out: Vec<r_core::intern::InternedStr> = days
             .iter()
             .map(|&d| {
                 if d.is_nan() {
                     interner.intern_string("\0NA")
                 } else {
-                    interner.intern_string(&super::civil::format_iso(d as i64))
+                    interner.intern_string(&r_core::civil::format_iso(d as i64))
                 }
             })
             .collect();
@@ -19599,10 +19599,10 @@ fn coerce_character(
                     _ => None,
                 })
                 .unwrap_or_default();
-            let out: Vec<super::intern::InternedStr> = codes
+            let out: Vec<r_core::intern::InternedStr> = codes
                 .iter()
                 .map(|&code| {
-                    if code == crate::value::object::NA_INTEGER {
+                    if code == r_core::object::NA_INTEGER {
                         interner.intern_string("\0NA")
                     } else {
                         levels
@@ -19618,18 +19618,18 @@ fn coerce_character(
     // Complex input renders elementwise exactly as as.character of a
     /// complex vector — the same formatting print uses.
     if let Some(RObject::Complex(values)) = heap.object(value) {
-        let out: Vec<super::intern::InternedStr> = values
+        let out: Vec<r_core::intern::InternedStr> = values
             .iter()
-            .map(|&z| interner.intern_string(&super::print::format_complex(z)))
+            .map(|&z| interner.intern_string(&r_core::print::format_complex(z)))
             .collect();
         return Ok(heap.alloc(RObject::String(out)));
     }
-    let out: Vec<super::intern::InternedStr> = match heap.object(value) {
+    let out: Vec<r_core::intern::InternedStr> = match heap.object(value) {
         Some(RObject::String(values)) => values.clone(),
         Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => values
             .iter()
             .map(|&v| {
-                if v == crate::value::object::NA_INTEGER {
+                if v == r_core::object::NA_INTEGER {
                     interner.intern_string("\0NA")
                 } else {
                     interner.intern_string(&v.to_string())
@@ -19639,10 +19639,10 @@ fn coerce_character(
         Some(RObject::Real(values)) => values
             .iter()
             .map(|&v| {
-                if v.to_bits() == crate::value::object::NA_REAL_BITS {
+                if v.to_bits() == r_core::object::NA_REAL_BITS {
                     interner.intern_string("\0NA")
                 } else {
-                    interner.intern_string(&super::print::format_real(v))
+                    interner.intern_string(&r_core::print::format_real(v))
                 }
             })
             .collect(),
@@ -19763,7 +19763,7 @@ fn structural_identical(
 
 /// Copy an object dropping one attribute — attribute removal exactly as
 /// GNU's attr(x, "name") <- NULL semantics.
-pub(crate) fn remove_attrib(
+pub fn remove_attrib(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     value: ValueId,
@@ -19810,7 +19810,7 @@ fn array_primitive(
     let raw = raw_args(heap, args);
     if raw.is_empty() {
         // array() with no arguments is one logical NA of dimension 1.
-        let value = heap.alloc(RObject::Logical(vec![crate::value::object::NA_INTEGER]));
+        let value = heap.alloc(RObject::Logical(vec![r_core::object::NA_INTEGER]));
         let dim_obj = heap.alloc(RObject::Integer(vec![1]));
         return copy_with_attrib(heap, interner, value, "dim", dim_obj).map_err(RSignal::from);
     }
@@ -19858,21 +19858,21 @@ fn array_primitive(
         Some(RObject::Integer(vals)) => {
             let mut out = Vec::with_capacity(total);
             for i in 0..total {
-                out.push(if vals.is_empty() { crate::value::object::NA_INTEGER } else { vals[i % vals.len()] });
+                out.push(if vals.is_empty() { r_core::object::NA_INTEGER } else { vals[i % vals.len()] });
             }
             heap.alloc(RObject::Integer(out))
         }
         Some(RObject::Real(vals)) => {
             let mut out = Vec::with_capacity(total);
             for i in 0..total {
-                out.push(if vals.is_empty() { f64::from_bits(crate::value::object::NA_REAL_BITS) } else { vals[i % vals.len()] });
+                out.push(if vals.is_empty() { f64::from_bits(r_core::object::NA_REAL_BITS) } else { vals[i % vals.len()] });
             }
             heap.alloc(RObject::Real(out))
         }
         Some(RObject::Logical(vals)) => {
             let mut out = Vec::with_capacity(total);
             for i in 0..total {
-                out.push(if vals.is_empty() { crate::value::object::NA_INTEGER } else { vals[i % vals.len()] });
+                out.push(if vals.is_empty() { r_core::object::NA_INTEGER } else { vals[i % vals.len()] });
             }
             heap.alloc(RObject::Logical(out))
         }
@@ -19883,7 +19883,7 @@ fn array_primitive(
             }
             heap.alloc(RObject::String(out))
         }
-        _ => heap.alloc(RObject::Logical(vec![crate::value::object::NA_INTEGER])),
+        _ => heap.alloc(RObject::Logical(vec![r_core::object::NA_INTEGER])),
     };
     let dim_obj = heap.alloc(RObject::Integer(dims));
     let mut result = copy_with_attrib(heap, interner, value, "dim", dim_obj).map_err(RSignal::from)?;
@@ -19903,8 +19903,8 @@ fn numeric_vector(heap: &Heap, value: ValueId) -> Vec<f64> {
         Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals
             .iter()
             .map(|&v| {
-                if v == crate::value::object::NA_INTEGER {
-                    f64::from_bits(crate::value::object::NA_REAL_BITS)
+                if v == r_core::object::NA_INTEGER {
+                    f64::from_bits(r_core::object::NA_REAL_BITS)
                 } else {
                     v as f64
                 }
@@ -19918,7 +19918,7 @@ fn numeric_vector(heap: &Heap, value: ValueId) -> Vec<f64> {
 
 
 /// Whether the object carries the difftime class.
-pub(crate) fn is_difftime_classed(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
+pub fn is_difftime_classed(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
     get_attrib(heap, interner, value, "class")
         .and_then(|id| match heap.object(id) {
             Some(RObject::String(vals)) => Some(vals.iter().any(|v| interner.string_text(*v) == "difftime")),
@@ -19929,7 +19929,7 @@ pub(crate) fn is_difftime_classed(heap: &Heap, interner: &SymbolInterner, value:
 
 /// The difftime units attribute — seconds per unit in the lattice exactly
 /// as GNU: secs 1, mins 60, hours 3600, days 86400, weeks 604800.
-pub(crate) fn difftime_units(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String {
+pub fn difftime_units(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String {
     get_attrib(heap, interner, value, "units")
         .and_then(|id| match heap.object(id) {
             Some(RObject::String(vals)) if !vals.is_empty() => Some(interner.string_text(vals[0]).to_string()),
@@ -19939,7 +19939,7 @@ pub(crate) fn difftime_units(heap: &Heap, interner: &SymbolInterner, value: Valu
 }
 
 /// Seconds per difftime unit exactly as GNU's conversion lattice.
-pub(crate) fn unit_seconds(units: &str) -> f64 {
+pub fn unit_seconds(units: &str) -> f64 {
     match units {
         "mins" => 60.0,
         "hours" => 3600.0,
@@ -20107,11 +20107,11 @@ fn xtabs_primitive(
                 .map(|v| interner.string_text(*v).to_string())
                 .collect(),
             Some(RObject::Integer(vals)) => vals.iter().map(|v| v.to_string()).collect(),
-            Some(RObject::Real(vals)) => vals.iter().map(|v| crate::value::print::format_real(*v)).collect(),
+            Some(RObject::Real(vals)) => vals.iter().map(|v| r_core::print::format_real(*v)).collect(),
             Some(RObject::Logical(vals)) => vals
                 .iter()
                 .map(|&v| {
-                    if v == crate::value::object::NA_INTEGER {
+                    if v == r_core::object::NA_INTEGER {
                         "NA".to_string()
                     } else if v != 0 {
                         "TRUE".to_string()
@@ -20123,7 +20123,7 @@ fn xtabs_primitive(
             _ => return Err(EvalError::TypeError("xtabs terms must be vectors").into()),
         };
         columns.push(texts);
-        term_names.push(crate::value::print::deparse(heap, interner, *term));
+        term_names.push(r_core::print::deparse(heap, interner, *term));
     }
     if columns.is_empty() {
         return Err(EvalError::TypeError("xtabs requires terms").into());
@@ -20170,7 +20170,7 @@ fn xtabs_primitive(
     let dn_inners: Vec<ValueId> = levels
         .iter()
         .map(|lv| {
-            let interned: Vec<super::intern::InternedStr> = lv
+            let interned: Vec<r_core::intern::InternedStr> = lv
                 .iter()
                 .map(|s| interner.intern_string(s))
                 .collect();
@@ -20178,7 +20178,7 @@ fn xtabs_primitive(
         })
         .collect();
     let dn_list = heap.alloc(RObject::List(dn_inners));
-    let term_interned: Vec<super::intern::InternedStr> = term_names
+    let term_interned: Vec<r_core::intern::InternedStr> = term_names
         .iter()
         .map(|s| interner.intern_string(s))
         .collect();
@@ -20207,8 +20207,8 @@ fn xtabs_primitive(
 /// Promote any arithmetic input to its complex vector form exactly as
 /// GNU's type lattice — integer/logical/real gain a zero imaginary part,
 /// NA propagating into both parts as GNU's complex NA does.
-fn as_complex_vec(heap: &Heap, value: ValueId) -> Result<Vec<crate::value::object::RComplex>, EvalError> {
-    use crate::value::object::{NA_INTEGER, NA_REAL_BITS, RComplex};
+fn as_complex_vec(heap: &Heap, value: ValueId) -> Result<Vec<r_core::object::RComplex>, EvalError> {
+    use r_core::object::{NA_INTEGER, NA_REAL_BITS, RComplex};
     match heap.object(value) {
         Some(RObject::Complex(vals)) => Ok(vals.clone()),
         Some(RObject::Real(vals)) => Ok(vals
@@ -20237,9 +20237,9 @@ fn as_complex_vec(heap: &Heap, value: ValueId) -> Result<Vec<crate::value::objec
 }
 
 /// Is this complex element NA — either part carrying GNU's NA payload.
-fn complex_na(z: crate::value::object::RComplex) -> bool {
-    z.r.to_bits() == crate::value::object::NA_REAL_BITS
-        || z.i.to_bits() == crate::value::object::NA_REAL_BITS
+fn complex_na(z: r_core::object::RComplex) -> bool {
+    z.r.to_bits() == r_core::object::NA_REAL_BITS
+        || z.i.to_bits() == r_core::object::NA_REAL_BITS
 }
 
 /// Binary complex arithmetic with GNU recycling and NA propagation — an
@@ -20252,7 +20252,7 @@ fn complex_arithmetic(
     a_id: ValueId,
     b_id: ValueId,
 ) -> EvalResult {
-    use crate::value::object::{NA_REAL_BITS, RComplex};
+    use r_core::object::{NA_REAL_BITS, RComplex};
     if op == MOD {
         return Err(EvalError::TypeError("unimplemented complex operation").into());
     }
@@ -20412,51 +20412,51 @@ fn dpq_primitive(
         .map(|&x| {
             let x = if x.is_nan() { f64::NAN } else { x };
             match which {
-                DNORM => crate::nmath::dist::normal::dnorm4_inner(x, param1, param2, log_flag),
-                PNORM => crate::nmath::dist::normal::pnorm5_inner(x, param1, param2, lower_flag, log_flag),
-                QNORM => crate::nmath::dist::normal::qnorm5_inner(x, param1, param2, lower_flag, log_flag),
-                DPOIS => crate::nmath::dist::poisson::dpois_inner(x, param1, log_flag),
-                PPOIS => crate::nmath::dist::poisson::ppois_inner(x, param1, lower_flag, log_flag),
-                DBINOM => crate::nmath::dist::binomial::dbinom_inner(x, param1, param2, log_flag),
-                PBINOM => crate::nmath::dist::binomial::pbinom_inner(x, param1, param2, lower_flag, log_flag),
-                DBETA => crate::nmath::dist::beta::dbeta_inner(x, param1, param2, log_flag),
-                PBETA => crate::nmath::dist::beta::pbeta_inner(x, param1, param2, lower_flag, log_flag),
-                QBETA => crate::nmath::dist::beta::qbeta_inner(x, param1, param2, lower_flag, log_flag),
-                DT => crate::nmath::dist::t_dist::dt_inner(x, param1, log_flag),
-                PT => crate::nmath::dist::t_dist::pt_inner(x, param1, lower_flag, log_flag),
-                QT => crate::nmath::dist::t_dist::qt_inner(x, param1, lower_flag, log_flag),
-                DF => crate::nmath::dist::f_dist::df_inner(x, param1, param2, log_flag),
-                PF => crate::nmath::dist::f_dist::pf_inner(x, param1, param2, lower_flag, log_flag),
-                QF => crate::nmath::dist::f_dist::qf_inner(x, param1, param2, lower_flag, log_flag),
-                DCAUCHY => crate::nmath::dist::cauchy::dcauchy_inner(x, param1, param2, log_flag),
-                PCAUCHY => crate::nmath::dist::cauchy::pcauchy_inner(x, param1, param2, lower_flag, log_flag),
-                QCAUCHY => crate::nmath::dist::cauchy::qcauchy_inner(x, param1, param2, lower_flag, log_flag),
-                DCHISQ => crate::nmath::dist::chisq::dchisq_inner(x, param1, log_flag),
-                PCHISQ => crate::nmath::dist::chisq::pchisq_inner(x, param1, lower_flag, log_flag),
-                QCHISQ => crate::nmath::dist::chisq::qchisq_inner(x, param1, lower_flag, log_flag),
-                DEXP => crate::nmath::dist::exponential::dexp_inner(x, 1.0 / param1, log_flag),
+                DNORM => rmath_nmath::dist::normal::dnorm4_inner(x, param1, param2, log_flag),
+                PNORM => rmath_nmath::dist::normal::pnorm5_inner(x, param1, param2, lower_flag, log_flag),
+                QNORM => rmath_nmath::dist::normal::qnorm5_inner(x, param1, param2, lower_flag, log_flag),
+                DPOIS => rmath_nmath::dist::poisson::dpois_inner(x, param1, log_flag),
+                PPOIS => rmath_nmath::dist::poisson::ppois_inner(x, param1, lower_flag, log_flag),
+                DBINOM => rmath_nmath::dist::binomial::dbinom_inner(x, param1, param2, log_flag),
+                PBINOM => rmath_nmath::dist::binomial::pbinom_inner(x, param1, param2, lower_flag, log_flag),
+                DBETA => rmath_nmath::dist::beta::dbeta_inner(x, param1, param2, log_flag),
+                PBETA => rmath_nmath::dist::beta::pbeta_inner(x, param1, param2, lower_flag, log_flag),
+                QBETA => rmath_nmath::dist::beta::qbeta_inner(x, param1, param2, lower_flag, log_flag),
+                DT => rmath_nmath::dist::t_dist::dt_inner(x, param1, log_flag),
+                PT => rmath_nmath::dist::t_dist::pt_inner(x, param1, lower_flag, log_flag),
+                QT => rmath_nmath::dist::t_dist::qt_inner(x, param1, lower_flag, log_flag),
+                DF => rmath_nmath::dist::f_dist::df_inner(x, param1, param2, log_flag),
+                PF => rmath_nmath::dist::f_dist::pf_inner(x, param1, param2, lower_flag, log_flag),
+                QF => rmath_nmath::dist::f_dist::qf_inner(x, param1, param2, lower_flag, log_flag),
+                DCAUCHY => rmath_nmath::dist::cauchy::dcauchy_inner(x, param1, param2, log_flag),
+                PCAUCHY => rmath_nmath::dist::cauchy::pcauchy_inner(x, param1, param2, lower_flag, log_flag),
+                QCAUCHY => rmath_nmath::dist::cauchy::qcauchy_inner(x, param1, param2, lower_flag, log_flag),
+                DCHISQ => rmath_nmath::dist::chisq::dchisq_inner(x, param1, log_flag),
+                PCHISQ => rmath_nmath::dist::chisq::pchisq_inner(x, param1, lower_flag, log_flag),
+                QCHISQ => rmath_nmath::dist::chisq::qchisq_inner(x, param1, lower_flag, log_flag),
+                DEXP => rmath_nmath::dist::exponential::dexp_inner(x, 1.0 / param1, log_flag),
                 // rate inverts to the core's scale exactly as the d-variant.
-                PEXP => crate::nmath::dist::exponential::pexp_inner(x, 1.0 / param1, lower_flag, log_flag),
-                QEXP => crate::nmath::dist::exponential::qexp_inner(x, 1.0 / param1, lower_flag, log_flag),
+                PEXP => rmath_nmath::dist::exponential::pexp_inner(x, 1.0 / param1, lower_flag, log_flag),
+                QEXP => rmath_nmath::dist::exponential::qexp_inner(x, 1.0 / param1, lower_flag, log_flag),
                 // GNU's gamma exposes rate with scale = 1/rate exactly as
                 /// the exponential inversion — the core wants scale.
-                DGAMMA => crate::nmath::dist::gamma::dgamma_inner(x, param1, 1.0 / param2, log_flag),
-                PGAMMA => crate::nmath::dist::gamma::pgamma_inner(x, param1, 1.0 / param2, lower_flag, log_flag),
-                QGAMMA => crate::nmath::dist::gamma::qgamma_inner(x, param1, 1.0 / param2, lower_flag, log_flag),
-                DGEOM => crate::nmath::dist::geometric::dgeom_inner(x, param1, log_flag),
-                PGEOM => crate::nmath::dist::geometric::pgeom_inner(x, param1, lower_flag, log_flag),
-                QGEOM => crate::nmath::dist::geometric::qgeom_inner(x, param1, lower_flag, log_flag),
-                DNBINOM => crate::nmath::dist::nbinom::dnbinom_inner(x, param1, param2, log_flag),
-                PNBINOM => crate::nmath::dist::nbinom::pnbinom_inner(x, param1, param2, lower_flag, log_flag),
-                QNBINOM => crate::nmath::dist::nbinom::qnbinom_inner(x, param1, param2, lower_flag, log_flag),
-                DWEIBULL => crate::nmath::dist::weibull::dweibull_inner(x, param1, param2, log_flag),
-                PWEIBULL => crate::nmath::dist::weibull::pweibull_inner(x, param1, param2, lower_flag, log_flag),
-                QWEIBULL => crate::nmath::dist::weibull::qweibull_inner(x, param1, param2, lower_flag, log_flag),
-                QPOIS => crate::nmath::dist::poisson::qpois_inner(x, param1, lower_flag, log_flag),
-                QBINOM => crate::nmath::dist::binomial::qbinom_inner(x, param1, param2, lower_flag, log_flag),
-                DUNIF => crate::nmath::dist::uniform::dunif_inner(x, param1, param2, log_flag),
-                PUNIF => crate::nmath::dist::uniform::punif_inner(x, param1, param2, lower_flag, log_flag),
-                QUNIF => crate::nmath::dist::uniform::qunif_inner(x, param1, param2, lower_flag, log_flag),
+                DGAMMA => rmath_nmath::dist::gamma::dgamma_inner(x, param1, 1.0 / param2, log_flag),
+                PGAMMA => rmath_nmath::dist::gamma::pgamma_inner(x, param1, 1.0 / param2, lower_flag, log_flag),
+                QGAMMA => rmath_nmath::dist::gamma::qgamma_inner(x, param1, 1.0 / param2, lower_flag, log_flag),
+                DGEOM => rmath_nmath::dist::geometric::dgeom_inner(x, param1, log_flag),
+                PGEOM => rmath_nmath::dist::geometric::pgeom_inner(x, param1, lower_flag, log_flag),
+                QGEOM => rmath_nmath::dist::geometric::qgeom_inner(x, param1, lower_flag, log_flag),
+                DNBINOM => rmath_nmath::dist::nbinom::dnbinom_inner(x, param1, param2, log_flag),
+                PNBINOM => rmath_nmath::dist::nbinom::pnbinom_inner(x, param1, param2, lower_flag, log_flag),
+                QNBINOM => rmath_nmath::dist::nbinom::qnbinom_inner(x, param1, param2, lower_flag, log_flag),
+                DWEIBULL => rmath_nmath::dist::weibull::dweibull_inner(x, param1, param2, log_flag),
+                PWEIBULL => rmath_nmath::dist::weibull::pweibull_inner(x, param1, param2, lower_flag, log_flag),
+                QWEIBULL => rmath_nmath::dist::weibull::qweibull_inner(x, param1, param2, lower_flag, log_flag),
+                QPOIS => rmath_nmath::dist::poisson::qpois_inner(x, param1, lower_flag, log_flag),
+                QBINOM => rmath_nmath::dist::binomial::qbinom_inner(x, param1, param2, lower_flag, log_flag),
+                DUNIF => rmath_nmath::dist::uniform::dunif_inner(x, param1, param2, log_flag),
+                PUNIF => rmath_nmath::dist::uniform::punif_inner(x, param1, param2, lower_flag, log_flag),
+                QUNIF => rmath_nmath::dist::uniform::qunif_inner(x, param1, param2, lower_flag, log_flag),
                 _ => unreachable!(),
             }
         })
@@ -20621,7 +20621,7 @@ fn apply_closure_value(
     match heap.object(fun).cloned() {
         Some(RObject::Closure { formals, body, env }) => {
             let arg_node = promise_args(heap, values, caller_env);
-            super::eval::apply_closure_public(heap, interner, formals, body, env, arg_node, caller_env)
+            r_core::eval::apply_closure_public(heap, interner, formals, body, env, arg_node, caller_env)
         }
         _ => Err(EvalError::NotCallable.into()),
     }
@@ -20670,12 +20670,12 @@ fn with_restarts_primitive(
         let object = build_restart_object(heap, interner, name, handler);
         let id = heap.next_restart_id.max(1);
         heap.next_restart_id = id + 1;
-        heap.restart_stack.push(crate::value::heap::RestartEntry { id, handler, object });
+        heap.restart_stack.push(r_core::heap::RestartEntry { id, handler, object });
         registered_ids.push(id);
     }
     let result = eval(heap, interner, expr, caller_env);
     // The frame pops however the evaluation completes.
-    let entries_owned: Vec<crate::value::heap::RestartEntry> = heap.restart_stack.split_off(depth_before);
+    let entries_owned: Vec<r_core::heap::RestartEntry> = heap.restart_stack.split_off(depth_before);
     match result {
         Ok(value) => force_if_promise(heap, interner, value),
         Err(RSignal::RestartInvoke { id, args }) if registered_ids.contains(&id) => {
@@ -20780,7 +20780,7 @@ fn with_calling_handlers_primitive(
         let Some(class) = tag else { continue };
         let handler_evaluated = eval(heap, interner, *car, caller_env)?;
         let handler = force_if_promise(heap, interner, handler_evaluated)?;
-        heap.calling_handlers.push(crate::value::heap::CallingHandlerEntry {
+        heap.calling_handlers.push(r_core::heap::CallingHandlerEntry {
             class_name: interner.intern_string(class),
             handler,
         });
@@ -20796,7 +20796,7 @@ fn with_calling_handlers_primitive(
 /// Fire the calling handlers registered for a condition class — the
 /// condition object carries the message and the class chain exactly as
 /// GNU's simpleWarning/simpleMessage records.
-pub(crate) fn fire_calling_handlers(
+pub fn fire_calling_handlers(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     class: &str,
@@ -20873,7 +20873,7 @@ fn ns_get_primitive(
         .into());
     };
     let sym = interner.intern_symbol(&member);
-    match super::env::lookup_in_frame(heap, namespace, sym) {
+    match r_core::env::lookup_in_frame(heap, namespace, sym) {
         Some(binding) => force_if_promise(heap, interner, binding.value),
         None => Err(EvalError::Condition(format!(
             "'{member}' is not an exported object from 'namespace:{pkg_name}'"
@@ -20919,11 +20919,11 @@ fn load_source_package(
         return None;
     }
     sources.sort();
-    let namespace = super::env::new_environment(heap, base);
+    let namespace = r_core::env::new_environment(heap, base);
     for file in sources {
         let source = std::fs::read_to_string(&file).ok()?;
         let expressions =
-            crate::value::parser::parse_native_expressions(&source, heap, interner).ok()?;
+            r_core::parser::parse_native_expressions(&source, heap, interner).ok()?;
         for expression in expressions {
             eval(heap, interner, expression, namespace).ok()?;
         }
@@ -20968,7 +20968,7 @@ fn library_primitive(
     /// is idempotent when the namespace already heads the chain position.
     let genv = {
         let sym = interner.intern_symbol(".GlobalEnv");
-        match super::env::lookup(heap, caller_env, sym) {
+        match r_core::env::lookup(heap, caller_env, sym) {
             Some((_, binding)) => binding.value,
             None => caller_env,
         }
@@ -21032,7 +21032,7 @@ fn write_table_primitive(
                             else { format!("{}", vals[row]) }
                         }
                         Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => {
-                            if vals[row] == crate::value::object::NA_INTEGER { "NA".to_string() } else { vals[row].to_string() }
+                            if vals[row] == r_core::object::NA_INTEGER { "NA".to_string() } else { vals[row].to_string() }
                         }
                         Some(RObject::String(vals)) => {
                             let s = interner.string_text(vals[row]);
@@ -21108,7 +21108,7 @@ fn read_fwf_primitive(
     let mut column_objects: Vec<ValueId> = Vec::new();
     for (i, col) in columns.iter().enumerate() {
         if zero_width_flags[i] {
-            let nas = vec![crate::value::object::NA_INTEGER; col.len()];
+            let nas = vec![r_core::object::NA_INTEGER; col.len()];
             column_objects.push(heap.alloc(RObject::Logical(nas)));
             continue;
         }
@@ -21116,14 +21116,14 @@ fn read_fwf_primitive(
         if all_numeric && !col.is_empty() {
             let vals: Vec<f64> = col
                 .iter()
-                .map(|f| if f.is_empty() { f64::from_bits(crate::value::object::NA_REAL_BITS) } else { f.parse().unwrap() })
+                .map(|f| if f.is_empty() { f64::from_bits(r_core::object::NA_REAL_BITS) } else { f.parse().unwrap() })
                 .collect();
             // Integer fidelity for whole-valued columns exactly as the
             /// golden's integer printing shows.
             if vals.iter().all(|v| v.is_nan() || v.fract() == 0.0) {
                 let ints: Vec<i32> = vals
                     .iter()
-                    .map(|v| if v.is_nan() { crate::value::object::NA_INTEGER } else { *v as i32 })
+                    .map(|v| if v.is_nan() { r_core::object::NA_INTEGER } else { *v as i32 })
                     .collect();
                 column_objects.push(heap.alloc(RObject::Integer(ints)));
             } else {
@@ -21159,12 +21159,12 @@ fn transform_strings(
     heap: &Heap,
     interner: &mut SymbolInterner,
     value: ValueId,
-) -> Result<Vec<super::intern::InternedStr>, EvalError> {
+) -> Result<Vec<r_core::intern::InternedStr>, EvalError> {
     match heap.object(value) {
         Some(RObject::Logical(vals)) => Ok(vals
             .iter()
             .map(|v| {
-                if *v == crate::value::object::NA_INTEGER {
+                if *v == r_core::object::NA_INTEGER {
                     interner.intern_string(" NA")
                 } else if *v != 0 {
                     interner.intern_string("TRUE")
@@ -21176,7 +21176,7 @@ fn transform_strings(
         Some(RObject::Integer(vals)) => Ok(vals
             .iter()
             .map(|v| {
-                if *v == crate::value::object::NA_INTEGER {
+                if *v == r_core::object::NA_INTEGER {
                     interner.intern_string(" NA")
                 } else {
                     interner.intern_string(&v.to_string())
@@ -21381,7 +21381,7 @@ fn with_primitive(
     let data = force_if_promise(heap, interner, data_evaluated)?;
     // Build the data environment: columns bind by name with the caller
     /// environment enclosing exactly as GNU.
-    let data_env = super::env::new_environment(heap, caller_env);
+    let data_env = r_core::env::new_environment(heap, caller_env);
     if let Some(RObject::List(items)) = heap.object(data).cloned() {
         let names = get_attrib(heap, interner, data, "names")
             .and_then(|n| match heap.object(n) {
@@ -21393,7 +21393,7 @@ fn with_primitive(
             if i < names.len() {
                 let col_name = interner.string_text(names[i]).to_string();
                 let sym = interner.intern_symbol(&col_name);
-                let _ = super::env::define(heap, data_env, sym, *item);
+                let _ = r_core::env::define(heap, data_env, sym, *item);
             }
         }
     }
@@ -21657,7 +21657,7 @@ fn strwrap_primitive(
     let x = bound[0].ok_or(EvalError::TypeError("strwrap requires x")).map_err(RSignal::from)?;
     let width = bound[1].and_then(|v| first_real(heap, v).ok()).unwrap_or(80.0) as usize;
     let vals = strings_of_value(heap, interner, x).map_err(RSignal::from)?;
-    let mut out: Vec<super::intern::InternedStr> = Vec::new();
+    let mut out: Vec<r_core::intern::InternedStr> = Vec::new();
     for v in &vals {
         let text = interner.string_text(*v).to_string();
         if text == "\0NA" {
@@ -21808,12 +21808,12 @@ fn sort_list_primitive(
         }
         Some(RObject::Integer(vals)) => {
             for v in vals.iter() {
-                keys.push(if *v == crate::value::object::NA_INTEGER { None } else { Some(Key::Real(*v as f64)) });
+                keys.push(if *v == r_core::object::NA_INTEGER { None } else { Some(Key::Real(*v as f64)) });
             }
         }
         Some(RObject::Logical(vals)) => {
             for v in vals.iter() {
-                keys.push(if *v == crate::value::object::NA_INTEGER { None } else { Some(Key::Logical(*v)) });
+                keys.push(if *v == r_core::object::NA_INTEGER { None } else { Some(Key::Logical(*v)) });
             }
         }
         Some(RObject::String(vals)) => {
@@ -21905,7 +21905,7 @@ fn source_primitive(
     } else {
         caller_env
     };
-    let expressions = crate::value::parser::parse_native_expressions(&content, heap, interner)
+    let expressions = r_core::parser::parse_native_expressions(&content, heap, interner)
         .map_err(|error| RSignal::from(EvalError::Condition(Box::leak(error.0.into_boxed_str()).to_string())))?;
     let mut last = ValueId::NIL;
     for expr in expressions {
@@ -21932,7 +21932,7 @@ fn sign_primitive(
         .iter()
         .map(|&v| {
             if v.is_nan() {
-                f64::from_bits(crate::value::object::NA_REAL_BITS)
+                f64::from_bits(r_core::object::NA_REAL_BITS)
             } else if v > 0.0 {
                 1.0
             } else if v < 0.0 {
@@ -22031,9 +22031,9 @@ fn scan_primitive(
         .iter()
         .map(|tok| {
             if *tok == "NA" {
-                f64::from_bits(crate::value::object::NA_REAL_BITS)
+                f64::from_bits(r_core::object::NA_REAL_BITS)
             } else {
-                tok.parse::<f64>().unwrap_or(f64::from_bits(crate::value::object::NA_REAL_BITS))
+                tok.parse::<f64>().unwrap_or(f64::from_bits(r_core::object::NA_REAL_BITS))
             }
         })
         .collect();
@@ -22065,7 +22065,7 @@ fn collect_variadic_inputs(
         if tag_name.as_deref() == Some("na.rm") {
             na_rm = matches!(
                 heap.object(value),
-                Some(RObject::Logical(v)) if !v.is_empty() && v[0] != 0 && v[0] != crate::value::object::NA_INTEGER
+                Some(RObject::Logical(v)) if !v.is_empty() && v[0] != 0 && v[0] != r_core::object::NA_INTEGER
             );
         } else {
             inputs.push(value);
@@ -22093,14 +22093,14 @@ fn range_primitive(
     let combined = concat_vectors(heap, &inputs).map_err(RSignal::from)?;
     if let Some(RObject::Integer(values)) | Some(RObject::Logical(values)) = heap.object(combined) {
         let mut values = values.clone();
-        if values.iter().any(|v| *v == crate::value::object::NA_INTEGER) {
+        if values.iter().any(|v| *v == r_core::object::NA_INTEGER) {
             if !na_rm {
                 return Ok(heap.alloc(RObject::Integer(vec![
-                    crate::value::object::NA_INTEGER,
-                    crate::value::object::NA_INTEGER,
+                    r_core::object::NA_INTEGER,
+                    r_core::object::NA_INTEGER,
                 ])));
             }
-            values.retain(|v| *v != crate::value::object::NA_INTEGER);
+            values.retain(|v| *v != r_core::object::NA_INTEGER);
         }
         let lo = values.iter().copied().fold(i32::MAX, i32::min);
         let hi = values.iter().copied().fold(i32::MIN, i32::max);
@@ -22109,7 +22109,7 @@ fn range_primitive(
     let mut values = reals_of_value(heap, combined).map_err(RSignal::from)?;
     if values.iter().any(|v| v.is_nan()) {
         if !na_rm {
-            let na = f64::from_bits(crate::value::object::NA_REAL_BITS);
+            let na = f64::from_bits(r_core::object::NA_REAL_BITS);
             return Ok(heap.alloc(RObject::Real(vec![na, na])));
         }
         values.retain(|v| !v.is_nan());
@@ -22162,7 +22162,7 @@ fn pminmax_primitive(
             let mut saw_na = false;
             for col in &int_columns {
                 let v = col[i % col.len().max(1)];
-                if v == crate::value::object::NA_INTEGER {
+                if v == r_core::object::NA_INTEGER {
                     if !na_rm {
                         saw_na = true;
                         break;
@@ -22176,7 +22176,7 @@ fn pminmax_primitive(
                 });
             }
             out.push(if saw_na || acc.is_none() {
-                crate::value::object::NA_INTEGER
+                r_core::object::NA_INTEGER
             } else {
                 acc.unwrap()
             });
@@ -22203,7 +22203,7 @@ fn pminmax_primitive(
             });
         }
         out.push(if saw_na || acc.is_none() {
-            f64::from_bits(crate::value::object::NA_REAL_BITS)
+            f64::from_bits(r_core::object::NA_REAL_BITS)
         } else {
             acc.unwrap()
         });
@@ -22240,7 +22240,7 @@ fn pmatch_primitive(
     let nomatch: i32 = nomatch_slot
         .and_then(|v| first_real(heap, v).ok())
         .map(|v| v as i32)
-        .unwrap_or(crate::value::object::NA_INTEGER);
+        .unwrap_or(r_core::object::NA_INTEGER);
     let duplicates_ok = dup_slot
         .and_then(|v| logical_or_na(heap, v))
         .unwrap_or(false);
@@ -22447,8 +22447,8 @@ fn relevel_primitive(
     let new_codes: Vec<i32> = codes
         .iter()
         .map(|&c| {
-            if c == crate::value::object::NA_INTEGER || c < 1 {
-                crate::value::object::NA_INTEGER
+            if c == r_core::object::NA_INTEGER || c < 1 {
+                r_core::object::NA_INTEGER
             } else {
                 recode[c as usize]
             }
@@ -22546,7 +22546,7 @@ fn qhyper_primitive(
     let logp = positional.get(5).and_then(|v| logical_or_na(heap, *v)).unwrap_or(false);
     let out: Vec<f64> = xs
         .iter()
-        .map(|&v| crate::nmath::dist::hypergeometric::qhyper_inner(v, m, n, k, lower, logp))
+        .map(|&v| rmath_nmath::dist::hypergeometric::qhyper_inner(v, m, n, k, lower, logp))
         .collect();
     Ok(heap.alloc(RObject::Real(out)))
 }
@@ -22570,7 +22570,7 @@ fn ptukey_primitive(
     let logp = positional.get(5).and_then(|v| logical_or_na(heap, *v)).unwrap_or(false);
     let out: Vec<f64> = xs
         .iter()
-        .map(|&v| crate::nmath::dist::tukey::ptukey_inner(v, nranges, nmeans, df, lower, logp))
+        .map(|&v| rmath_nmath::dist::tukey::ptukey_inner(v, nranges, nmeans, df, lower, logp))
         .collect();
     Ok(heap.alloc(RObject::Real(out)))
 }
@@ -22606,7 +22606,7 @@ fn find_primitive(
             break;
         }
         position += 1;
-        if let Some(binding) = super::env::lookup_in_frame(heap, cursor, sym) {
+        if let Some(binding) = r_core::env::lookup_in_frame(heap, cursor, sym) {
             // The .GlobalEnv self-reference inside base is not a user
             // binding — GNU reports it at its true home exactly like any
             // other base binding.
@@ -22641,7 +22641,7 @@ fn find_primitive(
     }
     let genv = {
         let sym = interner.intern_symbol(".GlobalEnv");
-        match super::env::lookup(heap, caller_env, sym) {
+        match r_core::env::lookup(heap, caller_env, sym) {
             Some((_, binding)) => binding.value,
             None => caller_env,
         }
@@ -22691,7 +22691,7 @@ fn s3_apply(
     });
     match heap.object(method).cloned() {
         Some(RObject::Closure { formals, body, env }) => {
-            let applied = super::eval::apply_closure_public(heap, interner, formals, body, env, arg_node, caller_env)?;
+            let applied = r_core::eval::apply_closure_public(heap, interner, formals, body, env, arg_node, caller_env)?;
             force_if_promise(heap, interner, applied)
         }
         Some(RObject::Primitive(builtin)) => call_primitive(heap, interner, builtin, arg_node, caller_env),
@@ -22703,7 +22703,7 @@ fn s3_apply(
 /// exactly as GNU's first-formal rule for single-argument generics.
 fn first_frame_value(heap: &Heap, env: ValueId) -> Option<ValueId> {
     match heap.object(env) {
-        Some(RObject::Environment { frame: crate::value::object::EnvFrame::List(entries), .. }) => {
+        Some(RObject::Environment { frame: r_core::object::EnvFrame::List(entries), .. }) => {
             entries.first().map(|(_, binding)| binding.value)
         }
         _ => None,
@@ -22744,7 +22744,7 @@ fn usemethod_primitive(
     candidates.push("default".to_string());
     for (index, class) in candidates.iter().enumerate() {
         let sym = interner.intern_symbol(&format!("{generic}.{class}"));
-        if let Some((_, binding)) = super::env::lookup(heap, caller_env, sym) {
+        if let Some((_, binding)) = r_core::env::lookup(heap, caller_env, sym) {
             let method = force_if_promise(heap, interner, binding.value)?;
             let remaining: Vec<String> = if index < classes.len() {
                 classes[index + 1..].to_vec()
@@ -22778,7 +22778,7 @@ fn nextmethod_primitive(
     candidates.push("default".to_string());
     for (index, class) in candidates.iter().enumerate() {
         let sym = interner.intern_symbol(&format!("{generic}.{class}"));
-        if let Some((_, binding)) = super::env::lookup(heap, caller_env, sym) {
+        if let Some((_, binding)) = r_core::env::lookup(heap, caller_env, sym) {
             let method = force_if_promise(heap, interner, binding.value)?;
             let next_remaining: Vec<String> = if index < remaining.len() {
                 remaining[index + 1..].to_vec()
@@ -22809,7 +22809,7 @@ fn coerce_integer(
             .iter()
             .map(|v| {
                 if v.is_nan() || v.is_infinite() || *v > i32::MAX as f64 || *v < i32::MIN as f64 {
-                    crate::value::object::NA_INTEGER
+                    r_core::object::NA_INTEGER
                 } else {
                     v.trunc() as i32
                 }
@@ -22820,9 +22820,9 @@ fn coerce_integer(
             .map(|v| {
                 let text = interner.string_text(*v);
                 if text == "\0NA" {
-                    crate::value::object::NA_INTEGER
+                    r_core::object::NA_INTEGER
                 } else {
-                    text.trim().parse::<i32>().unwrap_or(crate::value::object::NA_INTEGER)
+                    text.trim().parse::<i32>().unwrap_or(r_core::object::NA_INTEGER)
                 }
             })
             .collect(),
@@ -22832,7 +22832,7 @@ fn coerce_integer(
             .iter()
             .map(|z| {
                 if z.r.is_nan() || z.r.is_infinite() || z.r > i32::MAX as f64 || z.r < i32::MIN as f64 {
-                    crate::value::object::NA_INTEGER
+                    r_core::object::NA_INTEGER
                 } else {
                     z.r.trunc() as i32
                 }
@@ -22854,7 +22854,7 @@ fn coerce_real(
         Some(RObject::Real(values)) => values.clone(),
         Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => values
             .iter()
-            .map(|v| if *v == crate::value::object::NA_INTEGER { f64::NAN } else { *v as f64 })
+            .map(|v| if *v == r_core::object::NA_INTEGER { f64::NAN } else { *v as f64 })
             .collect(),
         Some(RObject::String(values)) => values
             .iter()
@@ -22998,7 +22998,7 @@ fn rep_len_primitive(
             if vals.len() != 1 {
                 return Err(EvalError::Condition("invalid 'length.out' value".to_string()).into());
             }
-            if vals[0] == crate::value::object::NA_INTEGER {
+            if vals[0] == r_core::object::NA_INTEGER {
                 return Err(EvalError::Condition("invalid 'length.out' value".to_string()).into());
             }
             f64::from(vals[0])
@@ -23044,14 +23044,14 @@ fn rep_len_primitive(
     match heap.object(value).cloned() {
         Some(RObject::Integer(vals)) => {
             if vals.is_empty() {
-                return Ok(heap.alloc(RObject::Integer(vec![crate::value::object::NA_INTEGER; target])));
+                return Ok(heap.alloc(RObject::Integer(vec![r_core::object::NA_INTEGER; target])));
             }
             let out: Vec<i32> = (0..target).map(|i| vals[i % vals.len()]).collect();
             Ok(heap.alloc(RObject::Integer(out)))
         }
         Some(RObject::Logical(vals)) => {
             if vals.is_empty() {
-                return Ok(heap.alloc(RObject::Logical(vec![crate::value::object::NA_INTEGER; target])));
+                return Ok(heap.alloc(RObject::Logical(vec![r_core::object::NA_INTEGER; target])));
             }
             let out: Vec<i32> = (0..target).map(|i| vals[i % vals.len()]).collect();
             Ok(heap.alloc(RObject::Logical(out)))
@@ -23068,7 +23068,7 @@ fn rep_len_primitive(
             if vals.is_empty() {
                 return Ok(heap.alloc(RObject::String(vec![na_str; target])));
             }
-            let out: Vec<super::intern::InternedStr> = (0..target).map(|i| vals[i % vals.len()]).collect();
+            let out: Vec<r_core::intern::InternedStr> = (0..target).map(|i| vals[i % vals.len()]).collect();
             Ok(heap.alloc(RObject::String(out)))
         }
         Some(RObject::Raw(vals)) => {
@@ -23079,14 +23079,14 @@ fn rep_len_primitive(
             Ok(heap.alloc(RObject::Raw(out)))
         }
         Some(RObject::Complex(vals)) => {
-            let na = crate::value::object::RComplex {
-                r: f64::from_bits(crate::value::object::NA_REAL_BITS),
-                i: f64::from_bits(crate::value::object::NA_REAL_BITS),
+            let na = r_core::object::RComplex {
+                r: f64::from_bits(r_core::object::NA_REAL_BITS),
+                i: f64::from_bits(r_core::object::NA_REAL_BITS),
             };
             if vals.is_empty() {
                 return Ok(heap.alloc(RObject::Complex(vec![na; target])));
             }
-            let out: Vec<crate::value::object::RComplex> = (0..target).map(|i| vals[i % vals.len()]).collect();
+            let out: Vec<r_core::object::RComplex> = (0..target).map(|i| vals[i % vals.len()]).collect();
             Ok(heap.alloc(RObject::Complex(out)))
         }
         Some(RObject::List(vals)) => {
@@ -23161,7 +23161,7 @@ fn repeat_elements(
 /// Build the column-binding environment for a data frame exactly as
 /// with() does — columns bind by name with the caller enclosing.
 fn data_frame_env(heap: &mut Heap, interner: &mut SymbolInterner, data: ValueId, caller_env: ValueId) -> ValueId {
-    let data_env = super::env::new_environment(heap, caller_env);
+    let data_env = r_core::env::new_environment(heap, caller_env);
     if let Some(RObject::List(items)) = heap.object(data).cloned() {
         let names = get_attrib(heap, interner, data, "names")
             .and_then(|n| match heap.object(n) {
@@ -23173,7 +23173,7 @@ fn data_frame_env(heap: &mut Heap, interner: &mut SymbolInterner, data: ValueId,
             if i < names.len() {
                 let col_name = interner.string_text(names[i]).to_string();
                 let sym = interner.intern_symbol(&col_name);
-                let _ = super::env::define(heap, data_env, sym, *item);
+                let _ = r_core::env::define(heap, data_env, sym, *item);
             }
         }
     }
@@ -23223,7 +23223,7 @@ fn subset_df_primitive(
             let mut out = Vec::new();
             for i in 0..nrow {
                 let flag = values[i % values.len().max(1)];
-                if flag != 0 && flag != crate::value::object::NA_INTEGER {
+                if flag != 0 && flag != r_core::object::NA_INTEGER {
                     out.push((i + 1) as i32);
                 }
             }
@@ -23343,7 +23343,7 @@ fn within_primitive(
     /// frame enumeration carries them.
     let mut columns: Vec<ValueId> = Vec::new();
     let mut names: Vec<String> = Vec::new();
-    let frame_syms = super::env::frame_symbols(heap, data_env);
+    let frame_syms = r_core::env::frame_symbols(heap, data_env);
     let mut ordered: Vec<String> = Vec::new();
     for original in &original_names {
         ordered.push(original.clone());
@@ -23356,7 +23356,7 @@ fn within_primitive(
     }
     for name in &ordered {
         let sym = interner.intern_symbol(name);
-        if let Some(binding) = super::env::lookup_in_frame(heap, data_env, sym) {
+        if let Some(binding) = r_core::env::lookup_in_frame(heap, data_env, sym) {
             let value = force_if_promise(heap, interner, binding.value)?;
             // NULL assignments drop the column exactly as GNU's within.
             if value == ValueId::NIL {
@@ -23435,7 +23435,7 @@ fn as_data_frame_primitive(
     let len = vector_length(heap, x).unwrap_or(0);
     if len > 0 {
         let mut column_name = if raw != ValueId::NIL {
-            super::print::deparse(heap, interner, raw)
+            r_core::print::deparse(heap, interner, raw)
         } else {
             "x".to_string()
         };
@@ -23453,15 +23453,15 @@ fn merge_key_encode(heap: &Heap, interner: &SymbolInterner, column: ValueId, row
     match heap.object(column) {
         Some(RObject::Real(values)) => {
             let v = values[row];
-            if v.is_nan() { "N".to_string() } else { format!("R{}", crate::value::print::format_real(v)) }
+            if v.is_nan() { "N".to_string() } else { format!("R{}", r_core::print::format_real(v)) }
         }
         Some(RObject::Integer(values)) => {
             let v = values[row];
-            if v == crate::value::object::NA_INTEGER { "N".to_string() } else { format!("R{}", crate::value::print::format_real(v as f64)) }
+            if v == r_core::object::NA_INTEGER { "N".to_string() } else { format!("R{}", r_core::print::format_real(v as f64)) }
         }
         Some(RObject::Logical(values)) => {
             let v = values[row];
-            if v == crate::value::object::NA_INTEGER { "N".to_string() } else { format!("R{}", v as f64) }
+            if v == r_core::object::NA_INTEGER { "N".to_string() } else { format!("R{}", v as f64) }
         }
         Some(RObject::String(values)) => {
             let text = interner.string_text(values[row]);
@@ -23507,7 +23507,7 @@ fn merge_primitive(
     }
     let truth_of = |heap: &Heap, value: Option<ValueId>| -> Option<bool> {
         value.and_then(|v| match heap.object(v) {
-            Some(RObject::Logical(vals)) => vals.first().map(|&x| x != 0 && x != crate::value::object::NA_INTEGER),
+            Some(RObject::Logical(vals)) => vals.first().map(|&x| x != 0 && x != r_core::object::NA_INTEGER),
             _ => None,
         })
     };
@@ -23658,14 +23658,14 @@ fn merge_primitive(
 /// Build a length-n column of NA exactly like the template's type.
 fn na_column_like(heap: &mut Heap, interner: &mut SymbolInterner, template: ValueId, n: usize) -> ValueId {
     match heap.object(template) {
-        Some(RObject::Real(_)) => heap.alloc(RObject::Real(vec![f64::from_bits(crate::value::object::NA_REAL_BITS); n])),
-        Some(RObject::Integer(_)) => heap.alloc(RObject::Integer(vec![crate::value::object::NA_INTEGER; n])),
-        Some(RObject::Logical(_)) => heap.alloc(RObject::Logical(vec![crate::value::object::NA_INTEGER; n])),
+        Some(RObject::Real(_)) => heap.alloc(RObject::Real(vec![f64::from_bits(r_core::object::NA_REAL_BITS); n])),
+        Some(RObject::Integer(_)) => heap.alloc(RObject::Integer(vec![r_core::object::NA_INTEGER; n])),
+        Some(RObject::Logical(_)) => heap.alloc(RObject::Logical(vec![r_core::object::NA_INTEGER; n])),
         Some(RObject::String(_)) => {
             let na = interner_na_string(heap, interner);
             heap.alloc(RObject::String(vec![na; n]))
         }
-        _ => heap.alloc(RObject::Logical(vec![crate::value::object::NA_INTEGER; n])),
+        _ => heap.alloc(RObject::Logical(vec![r_core::object::NA_INTEGER; n])),
     }
 }
 
@@ -23680,20 +23680,20 @@ fn coerce_column_piece(heap: &mut Heap, interner: &mut SymbolInterner, template:
     match (heap.object(template).cloned(), heap.object(piece).cloned()) {
         (Some(RObject::Real(_)), Some(RObject::Integer(values))) => {
             let converted: Vec<f64> = values.iter()
-                .map(|&v| if v == crate::value::object::NA_INTEGER { f64::from_bits(crate::value::object::NA_REAL_BITS) } else { v as f64 })
+                .map(|&v| if v == r_core::object::NA_INTEGER { f64::from_bits(r_core::object::NA_REAL_BITS) } else { v as f64 })
                 .collect();
             heap.alloc(RObject::Real(converted))
         }
         (Some(RObject::Integer(_)), Some(RObject::Real(values))) => {
             let converted: Vec<i32> = values.iter()
-                .map(|&v| if v.to_bits() == crate::value::object::NA_REAL_BITS || v.is_nan() { crate::value::object::NA_INTEGER } else { v as i32 })
+                .map(|&v| if v.to_bits() == r_core::object::NA_REAL_BITS || v.is_nan() { r_core::object::NA_INTEGER } else { v as i32 })
                 .collect();
             heap.alloc(RObject::Integer(converted))
         }
         (Some(RObject::String(_)), Some(other)) => {
             // Character key columns stringify exactly as GNU's coercion.
             let text = match other {
-                RObject::Real(values) => values.iter().map(|&v| crate::value::print::format_real(v)).collect::<Vec<_>>().join(""),
+                RObject::Real(values) => values.iter().map(|&v| r_core::print::format_real(v)).collect::<Vec<_>>().join(""),
                 RObject::Integer(values) => values.iter().map(|&v| v.to_string()).collect::<Vec<_>>().join(""),
                 _ => String::new(),
             };
@@ -23714,7 +23714,7 @@ fn concat_columns(heap: &mut Heap, interner: &mut SymbolInterner, template: Valu
             for piece in pieces {
                 if let Some(RObject::Real(values)) = heap.object(*piece) { out.extend(values.iter()); }
                 else if let Some(RObject::Integer(values)) = heap.object(*piece) {
-                    out.extend(values.iter().map(|&v| if v == crate::value::object::NA_INTEGER { f64::NAN } else { v as f64 }));
+                    out.extend(values.iter().map(|&v| if v == r_core::object::NA_INTEGER { f64::NAN } else { v as f64 }));
                 }
             }
             heap.alloc(RObject::Real(out))
@@ -23724,7 +23724,7 @@ fn concat_columns(heap: &mut Heap, interner: &mut SymbolInterner, template: Valu
             for piece in pieces {
                 match heap.object(*piece) {
                     Some(RObject::Integer(values)) => out.extend(values.iter()),
-                    Some(RObject::Real(values)) => out.extend(values.iter().map(|&v| if v.is_nan() { crate::value::object::NA_INTEGER } else { v as i32 })),
+                    Some(RObject::Real(values)) => out.extend(values.iter().map(|&v| if v.is_nan() { r_core::object::NA_INTEGER } else { v as i32 })),
                     _ => {}
                 }
             }
@@ -23765,7 +23765,7 @@ fn abbreviate_primitive(
         .map(|v| reals_of_value(heap, v).map(|r| r.first().copied().unwrap_or(4.0) as usize).unwrap_or(4))
         .unwrap_or(4);
     let names = string_vec(heap, interner, input);
-    let out: Vec<super::intern::InternedStr> = names.iter().map(|name| {
+    let out: Vec<r_core::intern::InternedStr> = names.iter().map(|name| {
         let mut chars: Vec<char> = name.chars().collect();
         if chars.len() <= minlength {
             return interner.intern_string(name);
@@ -23825,7 +23825,7 @@ fn formatc_primitive(
     let flag = positional.get(4).copied().flatten()
         .map(|v| string_vec(heap, interner, v).first().cloned().unwrap_or_default())
         .unwrap_or_default();
-    let out: Vec<super::intern::InternedStr> = reals.iter().map(|&v| {
+    let out: Vec<r_core::intern::InternedStr> = reals.iter().map(|&v| {
         let body = if v.is_nan() {
             "NA".to_string()
         } else if v.is_infinite() {
@@ -23936,7 +23936,7 @@ fn rgb_primitive(
         let scaled = (v / max_value * 255.0).round();
         scaled.clamp(0.0, 255.0) as u32
     };
-    let out: Vec<super::intern::InternedStr> = (0..n).map(|i| {
+    let out: Vec<r_core::intern::InternedStr> = (0..n).map(|i| {
         let r = quant(reds[i % reds.len().max(1)]);
         let g = quant(greens[i % greens.len().max(1)]);
         let b = quant(blues[i % blues.len().max(1)]);
@@ -23988,7 +23988,7 @@ fn weighted_sample_indices_pure(
             // ProbSampleReplace exactly: descending heapsort with the
             /// permutation carried, cumulative in place, linear scan.
             let mut perm: Vec<i32> = (1..=n as i32).collect();
-            crate::value::support::sort::revsort_with_perm(&mut p, &mut perm, n);
+            r_core::support::sort::revsort_with_perm(&mut p, &mut perm, n);
             for i in 1..n {
                 p[i] += p[i - 1];
             }
@@ -24011,7 +24011,7 @@ fn weighted_sample_indices_pure(
         // ProbSampleNoReplace exactly: descending heapsort, totalmass
         /// depletion with the p/perm shift-down compaction.
         let mut perm: Vec<i32> = (1..=n as i32).collect();
-        crate::value::support::sort::revsort_with_perm(&mut p, &mut perm, n);
+        r_core::support::sort::revsort_with_perm(&mut p, &mut perm, n);
         let mut totalmass = 1.0_f64;
         let mut out = Vec::with_capacity(size);
         for i in 0..size {
@@ -24573,7 +24573,7 @@ fn rngkind_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    use super::eval::eval;
+    use r_core::eval::eval;
     let prior_kind = "Mersenne-Twister";
     let prior_normal = "Inversion";
     let prior_sample = if heap.sample_kind_rounding { "Rounding" } else { "Rejection" };
@@ -24921,7 +24921,7 @@ fn regexec_primitive(
     let texts = string_vec(heap, interner, operands[1]);
     let mut entries: Vec<ValueId> = Vec::new();
     for text in &texts {
-        let (pos, len) = match super::regex::regex_search(&pattern, text) {
+        let (pos, len) = match r_core::regex::regex_search(&pattern, text) {
             Some((start, end)) => (start as i32 + 1, (end - start) as i32),
             None => (-1, -1),
         };
@@ -25018,15 +25018,15 @@ fn open_file_connection(heap: &mut Heap, interner: &mut SymbolInterner, path: St
         ]));
         return copy_with_attrib(heap, interner, conn, "class", class).map_err(RSignal::from);
     }
-    let path = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path)
+    let path = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path)
         .ok_or_else(|| RSignal::from(EvalError::Condition(format!("cannot open the connection to '{path}'"))))?;
     let read_buf = if readable {
-        crate::value::vfile::read_file(heap, &path).unwrap_or_default()
+        r_core::vfile::read_file(heap, &path).unwrap_or_default()
     } else {
         // Append modes preserve existing content exactly as GNU — only
         /// pure write modes truncate at open.
         if !mode.starts_with('a') {
-            let _ = crate::value::vfile::write_file(heap, &path, b"");
+            let _ = r_core::vfile::write_file(heap, &path, b"");
         }
         Vec::new()
     };
@@ -25100,7 +25100,7 @@ fn connection_write(heap: &mut Heap, interner: &SymbolInterner, con: ValueId, by
     /// the path directly, truncating exactly as a freshly opened write
     /// connection would.
     if let Some(path) = string_operand(heap, interner, con) {
-        return crate::value::vfile::write_file(heap, &path, bytes)
+        return r_core::vfile::write_file(heap, &path, bytes)
             .map_err(|_| EvalError::TypeError("invalid connection"));
     }
     // The write-through target leaves the borrow of the connection cell
@@ -25297,7 +25297,7 @@ fn setop_primitive(
     let stringly = matches!(heap.object(operands[0]), Some(RObject::String(_)))
         || matches!(heap.object(operands[1]), Some(RObject::String(_)));
     if stringly {
-        let out: Vec<super::intern::InternedStr> = result_keys
+        let out: Vec<r_core::intern::InternedStr> = result_keys
             .iter()
             .map(|k| interner.intern_string(k.strip_prefix("s:").unwrap_or(k)))
             .collect();
@@ -25312,8 +25312,8 @@ fn setop_primitive(
                     bits.parse::<u64>().ok().map(f64::from_bits)
                 } else if let Some(iv) = k.strip_prefix("i:") {
                     iv.parse::<i32>().ok().map(|v| {
-                        if v == crate::value::object::NA_INTEGER {
-                            f64::from_bits(crate::value::object::NA_REAL_BITS)
+                        if v == r_core::object::NA_INTEGER {
+                            f64::from_bits(r_core::object::NA_REAL_BITS)
                         } else {
                             v as f64
                         }
@@ -25334,7 +25334,7 @@ fn setop_primitive(
                 .iter()
                 .map(|v| {
                     if v.is_nan() {
-                        crate::value::object::NA_INTEGER
+                        r_core::object::NA_INTEGER
                     } else {
                         *v as i32
                     }
@@ -25396,7 +25396,7 @@ fn table_primitive(
             Some(RObject::Integer(codes)) => codes
                 .iter()
                 .map(|c| {
-                    if *c == crate::value::object::NA_INTEGER || *c < 1 {
+                    if *c == r_core::object::NA_INTEGER || *c < 1 {
                         "\0NA".to_string()
                     } else {
                         levels.get((*c as usize).saturating_sub(1)).cloned().unwrap_or_default()
@@ -25679,7 +25679,7 @@ fn slotnames_primitive(
         }
     };
     let slots = s4_all_slots(heap, &class_name);
-    let out: Vec<super::intern::InternedStr> = slots
+    let out: Vec<r_core::intern::InternedStr> = slots
         .iter()
         .map(|(n, _)| interner.intern_string(n))
         .collect();
@@ -26038,7 +26038,7 @@ fn order_keys(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<Ord
             .collect(),
         Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals
             .iter()
-            .map(|v| if *v == crate::value::object::NA_INTEGER { OrderKey::Na } else { OrderKey::Real(*v as f64) })
+            .map(|v| if *v == r_core::object::NA_INTEGER { OrderKey::Na } else { OrderKey::Real(*v as f64) })
             .collect(),
         Some(RObject::String(vals)) => vals
             .iter()
@@ -26113,8 +26113,8 @@ fn flag_lookup(
 fn logical_or_na(heap: &Heap, value: ValueId) -> Option<bool> {
     match heap.object(value) {
         Some(RObject::Logical(vals)) => {
-            let first = vals.first().copied().unwrap_or(crate::value::object::NA_INTEGER);
-            if first == crate::value::object::NA_INTEGER {
+            let first = vals.first().copied().unwrap_or(r_core::object::NA_INTEGER);
+            if first == r_core::object::NA_INTEGER {
                 None
             } else {
                 Some(first != 0)
@@ -26292,8 +26292,8 @@ fn na_action_primitive(
     let is_na = |item: &Item| -> bool {
         match item {
             Item::Real(v) => v.is_nan(),
-            Item::Int(v) => *v == crate::value::object::NA_INTEGER,
-            Item::Logical(v) => *v == crate::value::object::NA_INTEGER,
+            Item::Int(v) => *v == r_core::object::NA_INTEGER,
+            Item::Logical(v) => *v == r_core::object::NA_INTEGER,
             Item::Text(s) => s == "\0NA",
         }
     };
@@ -26343,7 +26343,7 @@ fn na_action_primitive(
                 .collect(),
         )),
         3 => {
-            let interned: Vec<super::intern::InternedStr> = kept_indices
+            let interned: Vec<r_core::intern::InternedStr> = kept_indices
                 .iter()
                 .filter_map(|&i| match &items[i] {
                     Item::Text(s) => Some(interner.intern_string(s)),
@@ -26357,7 +26357,7 @@ fn na_action_primitive(
 
     // Kept names survive on the result exactly as GNU preserves them.
     if !names.is_empty() {
-        let kept_names: Vec<super::intern::InternedStr> = kept_indices
+        let kept_names: Vec<r_core::intern::InternedStr> = kept_indices
             .iter()
             .map(|&i| interner.intern_string(names.get(i).map(|s| s.as_str()).unwrap_or("")))
             .collect();
@@ -26368,7 +26368,7 @@ fn na_action_primitive(
     if !dropped.is_empty() {
         let mut action = heap.alloc(RObject::Integer(dropped.iter().map(|i| *i as i32 + 1).collect()));
         if !names.is_empty() {
-            let dropped_names: Vec<super::intern::InternedStr> = dropped
+            let dropped_names: Vec<r_core::intern::InternedStr> = dropped
                 .iter()
                 .map(|&i| interner.intern_string(names.get(i).map(|s| s.as_str()).unwrap_or("")))
                 .collect();
@@ -26390,7 +26390,7 @@ fn trig_unary(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    use crate::value::object::{NA_REAL_BITS, RComplex};
+    use r_core::object::{NA_REAL_BITS, RComplex};
     let operands = eval_args(heap, interner, args, caller_env, 1)?;
     if let Some(RObject::Complex(vals)) = heap.object(operands[0]) {
         let na = f64::from_bits(NA_REAL_BITS);
@@ -26446,7 +26446,7 @@ fn trig_unary(
         .iter()
         .map(|v| {
             if v.is_nan() {
-                f64::from_bits(crate::value::object::NA_REAL_BITS)
+                f64::from_bits(r_core::object::NA_REAL_BITS)
             } else {
                 match op {
                     SIN => v.sin(),
@@ -26460,14 +26460,14 @@ fn trig_unary(
                     ASIN => v.asin(),
                     ACOS => v.acos(),
                     ATAN => v.atan(),
-                    GAMMAFN => crate::nmath::special::gamma::gammafn(*v),
-                    LGAMMAFN => crate::nmath::special::gamma::lgammafn(*v),
-                    DIGAMMA => crate::nmath::special::polygamma::digamma(*v),
-                    TRIGAMMA => crate::nmath::special::polygamma::trigamma(*v),
+                    GAMMAFN => rmath_nmath::special::gamma::gammafn(*v),
+                    LGAMMAFN => rmath_nmath::special::gamma::lgammafn(*v),
+                    DIGAMMA => rmath_nmath::special::polygamma::digamma(*v),
+                    TRIGAMMA => rmath_nmath::special::polygamma::trigamma(*v),
                     // factorial and lfactorial are gamma(x+1) exactly as
                     /// GNU's math1.c.
-                    FACTORIAL => crate::nmath::special::gamma::gammafn(*v + 1.0),
-                    LFACTORIAL => crate::nmath::special::gamma::lgammafn(*v + 1.0),
+                    FACTORIAL => rmath_nmath::special::gamma::gammafn(*v + 1.0),
+                    LFACTORIAL => rmath_nmath::special::gamma::lgammafn(*v + 1.0),
                     _ => v.tanh(),
                 }
             }
@@ -26518,15 +26518,15 @@ fn math2_primitive(
             let x = xs[i % xs.len()];
             let y = ys[i % ys.len()];
             if x.is_nan() || y.is_nan() {
-                f64::from_bits(crate::value::object::NA_REAL_BITS)
+                f64::from_bits(r_core::object::NA_REAL_BITS)
             } else {
                 match op {
                     ATAN2 => x.atan2(y),
-                    BETA => crate::nmath::special::beta_util::beta(x, y),
-                    LBETA => crate::nmath::special::lbeta::lbeta(x, y),
-                    CHOOSE => crate::nmath::special::choose::choose(x, y),
-                    LCHOOSE => crate::nmath::special::choose::lchoose(x, y),
-                    PSIGAMMA => crate::nmath::special::polygamma::psigamma(x, y),
+                    BETA => rmath_nmath::special::beta_util::beta(x, y),
+                    LBETA => rmath_nmath::special::lbeta::lbeta(x, y),
+                    CHOOSE => rmath_nmath::special::choose::choose(x, y),
+                    LCHOOSE => rmath_nmath::special::choose::lchoose(x, y),
+                    PSIGAMMA => rmath_nmath::special::polygamma::psigamma(x, y),
                     _ => f64::NAN,
                 }
             }
@@ -26593,7 +26593,7 @@ fn strsplit_primitive(
                     break;
                 }
                 let rest: String = all_chars[pos..].iter().collect();
-                match crate::value::regex::regex_search(split, &rest) {
+                match r_core::regex::regex_search(split, &rest) {
                     Some((start, end)) if end > start => {
                         let match_start = pos + start;
                         let match_end = pos + end;
@@ -26684,7 +26684,7 @@ fn transpose_primitive(
 
 /// The shape helper transpose and as.matrix share: (len, nrow, ncol)
 /// with vectors reading as single-column exactly as as.matrix.
-fn matrix_shape(heap: &mut Heap, interner: &mut SymbolInterner, x: crate::value::id::ValueId) -> (usize, usize, usize) {
+fn matrix_shape(heap: &mut Heap, interner: &mut SymbolInterner, x: r_core::id::ValueId) -> (usize, usize, usize) {
     let len = vector_length(heap, x).unwrap_or(0);
     match get_attrib(heap, interner, x, "dim") {
         Some(dim_id) => {
@@ -26858,7 +26858,7 @@ fn apply_fun_multi(
                 tag: ValueId::NIL,
             });
         }
-        let applied = super::eval::apply_closure_public(
+        let applied = r_core::eval::apply_closure_public(
             heap, interner, formals, body, closure_env, arg_node, caller_env,
         )?;
         return force_if_promise(heap, interner, applied);
@@ -27505,7 +27505,7 @@ fn alloc_homogeneous(heap: &mut Heap, interner: &mut SymbolInterner, cells: Vec<
     let _ = interner;
     let mut reals: Vec<f64> = Vec::new();
     let mut ints: Vec<i32> = Vec::new();
-    let mut strings: Vec<super::intern::InternedStr> = Vec::new();
+    let mut strings: Vec<r_core::intern::InternedStr> = Vec::new();
     let mut logicals: Vec<i32> = Vec::new();
     let mut mode = 0u8;
     for (index, cell) in cells.iter().enumerate() {
@@ -27560,7 +27560,7 @@ fn find_interval_primitive(
         .iter()
         .map(|x| {
             if x.is_nan() {
-                return super::object::NA_INTEGER;
+                return r_core::object::NA_INTEGER;
             }
             // GNU: count of breaks <= x, upper-bound semantics exactly.
             let mut count = 0i32;
@@ -27591,7 +27591,7 @@ fn make_names_primitive(
         Some(RObject::String(values)) => values.clone(),
         _ => Vec::new(),
     };
-    let out: Vec<super::intern::InternedStr> = inputs
+    let out: Vec<r_core::intern::InternedStr> = inputs
         .iter()
         .map(|v| {
             let text = interner.string_text(*v).to_string();
@@ -27650,7 +27650,7 @@ fn make_unique_primitive(
     };
     let texts: Vec<String> = inputs.iter().map(|v| interner.string_text(*v).to_string()).collect();
     let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-    let out: Vec<super::intern::InternedStr> = texts
+    let out: Vec<r_core::intern::InternedStr> = texts
         .iter()
         .map(|text| {
             let count = seen.entry(text.clone()).or_insert(0);
@@ -27678,7 +27678,7 @@ fn r_zoo(
     caller_env: ValueId,
     param_names: &[&str],
     defaults: &[f64],
-    draw: impl Fn(&mut dyn FnMut() -> f64, &mut crate::nmath::state::MathState, &[f64]) -> f64,
+    draw: impl Fn(&mut dyn FnMut() -> f64, &mut rmath_nmath::state::MathState, &[f64]) -> f64,
 ) -> EvalResult {
     let mut names: Vec<&str> = vec!["n"];
     names.extend_from_slice(param_names);
@@ -27721,18 +27721,18 @@ macro_rules! zoo_primitive {
     };
 }
 
-zoo_primitive!(rbinom_primitive, ["size", "prob"], [1.0, 0.5], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::binomial::rbinom(rng, ms, ps[0], ps[1]));
-zoo_primitive!(rpois_primitive, ["lambda"], [1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::poisson::rpois(rng, ms, ps[0]));
-zoo_primitive!(rbeta_primitive, ["shape1", "shape2"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::beta::rbeta(rng, ms, ps[0], ps[1]));
-zoo_primitive!(rchisq_primitive, ["df"], [1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::chisq::rchisq(rng, ms, ps[0]));
-zoo_primitive!(rt_primitive, ["df"], [1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::t_dist::rt(rng, ms, ps[0]));
-zoo_primitive!(rf_primitive, ["df1", "df2"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::f_dist::rf(rng, ms, ps[0], ps[1]));
-zoo_primitive!(rlnorm_primitive, ["meanlog", "sdlog"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::lnorm::rlnorm(rng, ps[0], ps[1]));
-zoo_primitive!(rlogis_primitive, ["location", "scale"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::logistic::rlogis(rng, ps[0], ps[1]));
-zoo_primitive!(rcauchy_primitive, ["location", "scale"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::cauchy::rcauchy(rng, ps[0], ps[1]));
-zoo_primitive!(rgeom_primitive, ["prob"], [0.5], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::geometric::rgeom(rng, ms, ps[0]));
-zoo_primitive!(rweibull_primitive, ["shape", "scale"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::weibull::rweibull(rng, ps[0], ps[1]));
-zoo_primitive!(rnbinom_primitive, ["size", "prob"], [1.0, 0.5], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::nbinom::rnbinom(rng, ms, ps[0], ps[1]));
+zoo_primitive!(rbinom_primitive, ["size", "prob"], [1.0, 0.5], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::binomial::rbinom(rng, ms, ps[0], ps[1]));
+zoo_primitive!(rpois_primitive, ["lambda"], [1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::poisson::rpois(rng, ms, ps[0]));
+zoo_primitive!(rbeta_primitive, ["shape1", "shape2"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::beta::rbeta(rng, ms, ps[0], ps[1]));
+zoo_primitive!(rchisq_primitive, ["df"], [1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::chisq::rchisq(rng, ms, ps[0]));
+zoo_primitive!(rt_primitive, ["df"], [1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::t_dist::rt(rng, ms, ps[0]));
+zoo_primitive!(rf_primitive, ["df1", "df2"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::f_dist::rf(rng, ms, ps[0], ps[1]));
+zoo_primitive!(rlnorm_primitive, ["meanlog", "sdlog"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::lnorm::rlnorm(rng, ps[0], ps[1]));
+zoo_primitive!(rlogis_primitive, ["location", "scale"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::logistic::rlogis(rng, ps[0], ps[1]));
+zoo_primitive!(rcauchy_primitive, ["location", "scale"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::cauchy::rcauchy(rng, ps[0], ps[1]));
+zoo_primitive!(rgeom_primitive, ["prob"], [0.5], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::geometric::rgeom(rng, ms, ps[0]));
+zoo_primitive!(rweibull_primitive, ["shape", "scale"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::weibull::rweibull(rng, ps[0], ps[1]));
+zoo_primitive!(rnbinom_primitive, ["size", "prob"], [1.0, 0.5], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::nbinom::rnbinom(rng, ms, ps[0], ps[1]));
 
 /// rgamma(n, shape, rate, scale) — GNU's parameterization exactly: scale
 /// defaults to 1/rate and an explicit scale overrides rate.
@@ -27767,7 +27767,7 @@ fn rgamma_primitive(
                 Some(values) => values[i % values.len()],
                 None => 1.0 / rates[i % rates.len()],
             };
-            out.push(crate::nmath::dist::gamma::rgamma(&mut unif, &mut heap.math, shape, scale));
+            out.push(rmath_nmath::dist::gamma::rgamma(&mut unif, &mut heap.math, shape, scale));
         }
     }
     Ok(heap.alloc(RObject::Real(out)))
@@ -27781,8 +27781,8 @@ fn rexp_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    r_zoo(heap, interner, args, caller_env, &["rate"], &[1.0], |rng: &mut dyn FnMut() -> f64, _ms: &mut crate::nmath::state::MathState, ps: &[f64]| {
-        crate::nmath::dist::exponential::rexp(rng, 1.0 / ps[0])
+    r_zoo(heap, interner, args, caller_env, &["rate"], &[1.0], |rng: &mut dyn FnMut() -> f64, _ms: &mut rmath_nmath::state::MathState, ps: &[f64]| {
+        rmath_nmath::dist::exponential::rexp(rng, 1.0 / ps[0])
     })
 }
 
@@ -27808,7 +27808,7 @@ fn rhyper_primitive(
         let rng = &mut heap.rng;
         let mut unif = move || rng.unif();
         for i in 0..nn.min(10_000_000) {
-            out.push(crate::nmath::dist::hypergeometric::rhyper(
+            out.push(rmath_nmath::dist::hypergeometric::rhyper(
                 &mut unif,
                 &mut heap.math,
                 ms[i % ms.len()],
@@ -27828,7 +27828,7 @@ fn complex_ctor(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    use crate::value::object::RComplex;
+    use r_core::object::RComplex;
     let mut length_out = 0usize;
     let mut real_vals: Vec<f64> = Vec::new();
     let mut imag_vals: Vec<f64> = Vec::new();
@@ -27956,7 +27956,7 @@ fn parse_source(heap: &mut Heap, interner: &mut SymbolInterner, source: &str) ->
     if source.trim().is_empty() {
         return Ok(heap.alloc(RObject::Expression(Vec::new())));
     }
-    let expressions = crate::value::parser::parse_native_expressions(source, heap, interner)
+    let expressions = r_core::parser::parse_native_expressions(source, heap, interner)
         .map_err(|error| RSignal::from(EvalError::Condition(Box::leak(error.0.into_boxed_str()).to_string())))?;
     Ok(heap.alloc(RObject::Expression(expressions)))
 }
@@ -28012,7 +28012,7 @@ fn gregexpr_primitive(
             let found = if fixed {
                 hay.find(&pattern).map(|pos| (pos, pos + pattern.len()))
             } else {
-                crate::value::regex::regex_search(&pattern, hay)
+                r_core::regex::regex_search(&pattern, hay)
             };
             match found {
                 Some((start, end)) => {
@@ -28068,7 +28068,7 @@ fn gsub_primitive(
             .collect(),
         _ => Vec::new(),
     };
-    let out: Vec<super::intern::InternedStr> = texts
+    let out: Vec<r_core::intern::InternedStr> = texts
         .iter()
         .map(|text| {
             let mut result = String::new();
@@ -28082,7 +28082,7 @@ fn gsub_primitive(
                 let found = if fixed {
                     hay.find(&pattern).map(|pos| (pos, pos + pattern.len()))
                 } else {
-                    crate::value::regex::regex_search(&pattern, hay)
+                    r_core::regex::regex_search(&pattern, hay)
                 };
                 match found {
                     Some((start, end)) => {
@@ -28227,7 +28227,7 @@ fn options_primitive(
     }
     let result_set = if !queried.is_empty() { queried } else { previous };
     let items: Vec<ValueId> = result_set.iter().map(|(_, v)| *v).collect();
-    let names: Vec<super::intern::InternedStr> = result_set
+    let names: Vec<r_core::intern::InternedStr> = result_set
         .iter()
         .map(|(n, _)| interner.intern_string(n))
         .collect();
@@ -28311,22 +28311,22 @@ fn bind_primitive(
             // Zero-extent matrices never touch their elements — the total
             /// element count is zero — so this path is unreachable in exact
             /// GNU shape; the guard documents the invariant.
-            return (crate::value::object::NA_INTEGER, f64::from_bits(crate::value::object::NA_REAL_BITS), "NA".to_string());
+            return (r_core::object::NA_INTEGER, f64::from_bits(r_core::object::NA_REAL_BITS), "NA".to_string());
         }
         let idx = row % len;
         match heap.object(operand) {
             Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => {
-                let v = vals.get(idx).copied().unwrap_or(crate::value::object::NA_INTEGER);
-                let r = if v == crate::value::object::NA_INTEGER {
-                    f64::from_bits(crate::value::object::NA_REAL_BITS)
+                let v = vals.get(idx).copied().unwrap_or(r_core::object::NA_INTEGER);
+                let r = if v == r_core::object::NA_INTEGER {
+                    f64::from_bits(r_core::object::NA_REAL_BITS)
                 } else {
                     v as f64
                 };
-                (v, r, if v == crate::value::object::NA_INTEGER { "NA".to_string() } else { v.to_string() })
+                (v, r, if v == r_core::object::NA_INTEGER { "NA".to_string() } else { v.to_string() })
             }
             Some(RObject::Real(vals)) => {
                 let v = vals.get(idx).copied().unwrap_or(f64::NAN);
-                (0, v, crate::value::print::format_real(v))
+                (0, v, r_core::print::format_real(v))
             }
             Some(RObject::String(vals)) => {
                 let s = vals
@@ -28358,7 +28358,7 @@ fn bind_primitive(
         texts.push(tv);
     }
     let matrix = if rank >= 5 {
-        let interned: Vec<super::intern::InternedStr> = texts
+        let interned: Vec<r_core::intern::InternedStr> = texts
             .iter()
             .map(|s| interner.intern_string(s))
             .collect();
@@ -28373,7 +28373,7 @@ fn bind_primitive(
     // Dimension names: tags fill the binding orientation exactly as GNU;
     /// the other orientation carries empty names.
     if tags.iter().any(|t| t.is_some()) {
-        let tag_texts: Vec<super::intern::InternedStr> = tags
+        let tag_texts: Vec<r_core::intern::InternedStr> = tags
             .iter()
             .map(|t| interner.intern_string(t.as_deref().unwrap_or("")))
             .collect();
@@ -28495,7 +28495,7 @@ fn substitute_primitive(
         if used[ai] {
             continue;
         }
-        let rendered = crate::value::print::deparse(heap, interner, actual.car);
+        let rendered = r_core::print::deparse(heap, interner, actual.car);
         let detail = match &actual.tag {
             Some(tag) => format!("{tag} = {rendered}"),
             None => rendered,
@@ -28540,7 +28540,7 @@ fn substitute_in_tree(
         // plain bindings and misses leave the symbol standing.
         if matches!(heap.object(env), Some(RObject::Environment { .. })) {
             let sym = interner.intern_symbol(&text);
-            if let Some(binding) = super::env::lookup_in_frame(heap, env, sym) {
+            if let Some(binding) = r_core::env::lookup_in_frame(heap, env, sym) {
                 if let Some(RObject::Promise { expr: promise_expr, .. }) = heap.object(binding.value) {
                     if *promise_expr != ValueId::MISSING {
                         return *promise_expr;
@@ -28601,7 +28601,7 @@ fn summary_primitive(
         let mut counts = vec![0i32; levels.len()];
         let mut na_count = 0i32;
         for code in &codes {
-            if *code == crate::value::object::NA_INTEGER {
+            if *code == r_core::object::NA_INTEGER {
                 na_count += 1;
             } else if *code >= 1 && (*code as usize) <= levels.len() {
                 counts[(*code - 1) as usize] += 1;
@@ -28623,8 +28623,8 @@ fn summary_primitive(
                 Some(RObject::Integer(v)) => v
                     .iter()
                     .map(|&x| {
-                        if x == crate::value::object::NA_INTEGER {
-                            f64::from_bits(crate::value::object::NA_REAL_BITS)
+                        if x == r_core::object::NA_INTEGER {
+                            f64::from_bits(r_core::object::NA_REAL_BITS)
                         } else {
                             x as f64
                         }
@@ -28639,7 +28639,7 @@ fn summary_primitive(
             let quantile7 = |sorted: &[f64], prob: f64| -> f64 {
                 let n = sorted.len();
                 if n == 0 {
-                    return f64::from_bits(crate::value::object::NA_REAL_BITS);
+                    return f64::from_bits(r_core::object::NA_REAL_BITS);
                 }
                 if n == 1 {
                     return sorted[0];
@@ -28654,7 +28654,7 @@ fn summary_primitive(
             };
             let (min, q1, median, mean, q3, max);
             if finite.is_empty() {
-                let na = f64::from_bits(crate::value::object::NA_REAL_BITS);
+                let na = f64::from_bits(r_core::object::NA_REAL_BITS);
                 min = na;
                 q1 = na;
                 median = na;
@@ -28685,7 +28685,7 @@ fn summary_primitive(
             let mut true_count = 0i32;
             let mut na_count = 0i32;
             for v in &vals {
-                if *v == crate::value::object::NA_INTEGER {
+                if *v == r_core::object::NA_INTEGER {
                     na_count += 1;
                 } else if *v != 0 {
                     true_count += 1;
@@ -28727,12 +28727,12 @@ fn summary_primitive(
                 }
             }
             let min_nchar = if non_na.is_empty() {
-                crate::value::object::NA_INTEGER
+                r_core::object::NA_INTEGER
             } else {
                 non_na.iter().map(|s| s.chars().count() as i32).min().unwrap_or(0)
             };
             let max_nchar = if non_na.is_empty() {
-                crate::value::object::NA_INTEGER
+                r_core::object::NA_INTEGER
             } else {
                 non_na.iter().map(|s| s.chars().count() as i32).max().unwrap_or(0)
             };
@@ -28780,8 +28780,8 @@ fn matrix_ops_primitive(
             Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals
                 .iter()
                 .map(|&x| {
-                    if x == crate::value::object::NA_INTEGER {
-                        f64::from_bits(crate::value::object::NA_REAL_BITS)
+                    if x == r_core::object::NA_INTEGER {
+                        f64::from_bits(r_core::object::NA_REAL_BITS)
                     } else {
                         x as f64
                     }
@@ -28817,7 +28817,7 @@ fn matrix_ops_primitive(
                     best = Some((v, col));
                 }
             }
-            out.push(best.map(|(_, c)| (c + 1) as i32).unwrap_or(crate::value::object::NA_INTEGER));
+            out.push(best.map(|(_, c)| (c + 1) as i32).unwrap_or(r_core::object::NA_INTEGER));
         }
         return Ok(heap.alloc(RObject::Integer(out)));
     }
@@ -29068,8 +29068,8 @@ fn tanpi_exact(x: f64) -> f64 {
 /// NA-real and NaN doubles, logical NA, the string sentinel.
 fn any_na_in_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
     match heap.object(value) {
-        Some(RObject::Integer(v)) => v.iter().any(|x| *x == crate::value::object::NA_INTEGER),
-        Some(RObject::Logical(v)) => v.iter().any(|x| *x == crate::value::object::NA_INTEGER),
+        Some(RObject::Integer(v)) => v.iter().any(|x| *x == r_core::object::NA_INTEGER),
+        Some(RObject::Logical(v)) => v.iter().any(|x| *x == r_core::object::NA_INTEGER),
         Some(RObject::Real(v)) => v.iter().any(|x| x.is_nan()),
         Some(RObject::String(v)) => v.iter().any(|s| {
             interner.string_text(*s).starts_with('\0')
@@ -29166,11 +29166,11 @@ fn extract_matrix_margin(
             Ok(heap.alloc(RObject::Logical(out)))
         }
         Some(RObject::String(v)) => {
-            let out = slice_of!(v, super::intern::InternedStr);
+            let out = slice_of!(v, r_core::intern::InternedStr);
             Ok(heap.alloc(RObject::String(out)))
         }
         Some(RObject::Complex(v)) => {
-            let out = slice_of!(v, crate::value::object::RComplex);
+            let out = slice_of!(v, r_core::object::RComplex);
             Ok(heap.alloc(RObject::Complex(out)))
         }
         _ => Err(EvalError::TypeError("apply requires a vector").into()),
@@ -29191,7 +29191,7 @@ fn refactor_dropping_unused(heap: &mut Heap, interner: &mut SymbolInterner, fact
     let used: Vec<bool> = {
         let mut u = vec![false; levels.len()];
         for code in &codes {
-            if *code != crate::value::object::NA_INTEGER && *code >= 1 && (*code as usize) <= levels.len() {
+            if *code != r_core::object::NA_INTEGER && *code >= 1 && (*code as usize) <= levels.len() {
                 u[(*code as usize) - 1] = true;
             }
         }
@@ -29209,7 +29209,7 @@ fn refactor_dropping_unused(heap: &mut Heap, interner: &mut SymbolInterner, fact
     let new_codes: Vec<i32> = codes
         .iter()
         .map(|c| {
-            if *c == crate::value::object::NA_INTEGER {
+            if *c == r_core::object::NA_INTEGER {
                 *c
             } else {
                 remap[*c as usize]
@@ -29440,7 +29440,7 @@ fn element_is_na(heap: &Heap, interner: &SymbolInterner, value: ValueId, index: 
                 Some(RObject::Logical(lv)) => lv,
                 _ => return false,
             };
-            v.get(index).map(|x| *x == crate::value::object::NA_INTEGER).unwrap_or(false)
+            v.get(index).map(|x| *x == r_core::object::NA_INTEGER).unwrap_or(false)
         }
         Some(RObject::Real(v)) => v.get(index).map(|x| x.is_nan()).unwrap_or(false),
         Some(RObject::String(v)) => v
@@ -29529,7 +29529,7 @@ fn margin_summary_impl(
     }
     for (pos, poison) in poisoned.iter().enumerate() {
         if *poison {
-            out[pos] = f64::from_bits(crate::value::object::NA_REAL_BITS);
+            out[pos] = f64::from_bits(r_core::object::NA_REAL_BITS);
         }
     }
     let result = heap.alloc(RObject::Real(out));
@@ -29570,7 +29570,7 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 
 /// lgamma(x + 1) — log-factorial exactly as GNU's multinomial needs.
 fn lgamma1p(x: f64) -> f64 {
-    crate::nmath::special::gamma::lgammafn1p(x)
+    rmath_nmath::special::gamma::lgammafn1p(x)
 }
 
 /// Build a named list from (name, value) entries — GNU's list shape with
