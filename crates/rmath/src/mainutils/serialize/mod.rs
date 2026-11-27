@@ -254,7 +254,6 @@ pub(crate) mod lazyload;
 mod owned_input;
 mod owned_output;
 mod raw_codecs;
-mod stream_values;
 mod workspace;
 
 pub(crate) use owned_output::compress_container;
