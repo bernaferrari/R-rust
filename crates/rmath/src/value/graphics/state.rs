@@ -5,6 +5,7 @@
 
 use super::layout::{LayoutResult, LayoutState, ParValue, Regions};
 use std::collections::BTreeMap;
+use r_graphics_engine::{Color, DrawOperation, Scene};
 
 /// GNU's default logical values — the small set the fixtures read.
 fn default_logical(name: &str) -> Option<bool> {
@@ -30,6 +31,13 @@ pub(crate) struct GraphicsParState {
     /// The device's raster geometry at 72dpi — owner-installed.
     device_width: f64,
     device_height: f64,
+    /// The frame's owned display list — the pure world's rendering
+    /// output exactly as GNU's device bitmap, backend-neutral so
+    /// embedders replay onto any target.
+    scene: Scene,
+    /// Pages begun on this device — the clear events the reset display
+    /// list itself can no longer distinguish.
+    page_count: u32,
 }
 
 /// The validated figure transition exactly as the old world's
@@ -54,7 +62,34 @@ impl GraphicsParState {
             frame_started: false,
             device_width: 504.0,
             device_height: 504.0,
+            scene: Scene::new(504, 504),
+            page_count: 0,
         }
+    }
+
+    /// Read the frame's display list — embedders replay or diff it.
+    pub(crate) fn scene(&self) -> &Scene {
+        &self.scene
+    }
+
+    /// Mutable scene access for primitive emission exactly as GNU's
+    /// device holds the frame under construction.
+    pub(crate) fn scene_mut(&mut self) -> &mut Scene {
+        &mut self.scene
+    }
+
+    /// Begin a fresh page exactly as GNU's device clear: the display
+    /// list resets with the background clear as its first operation.
+    pub(crate) fn clear_scene(&mut self) {
+        self.scene.reset();
+        self.scene.push(DrawOperation::Clear(Color::WHITE));
+        self.page_count += 1;
+    }
+
+    /// How many pages this device has begun — embedders diffing the
+    /// scene across evals use the counter to detect page turns.
+    pub(crate) fn page_count(&self) -> u32 {
+        self.page_count
     }
 
     /// Install the device raster geometry and refresh the cascade
@@ -64,6 +99,7 @@ impl GraphicsParState {
         self.device_height = height;
         self.layout.set_device_size(width, height);
         self.layout.refresh(self.cexbase(), self.mex(), 1.0);
+        self.scene = Scene::new(width.round().max(1.0) as u32, height.round().max(1.0) as u32);
     }
 
     pub(crate) fn frame_started(&self) -> bool {

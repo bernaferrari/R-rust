@@ -991,6 +991,34 @@ cat("after|", paste(par("mfg"), collapse=","), "|",
     }
 
     #[test]
+    fn graphics_scene_clear_follows_gnu_page_semantics() {
+        use r_graphics_engine::{Color, DrawOperation};
+        let mut session = PureSession::new();
+        let clear_count = |session: &PureSession| session.session.heap.graphics.page_count() as usize;
+        // First plot.new on a fresh device clears exactly once, white.
+        session.eval("plot.new()");
+        let ops = session.session.heap.graphics.scene().operations();
+        assert_eq!(ops.len(), 1, "fresh scene holds exactly the clear");
+        assert_eq!(ops[0], DrawOperation::Clear(Color::WHITE));
+        assert_eq!(clear_count(&session), 1);
+        // Setting mfrow resets the grid — the next plot begins a fresh
+        // page exactly as GNU (grid geometry cannot change mid-page).
+        session.eval("par(mfrow=c(2,2)); plot.new()");
+        assert_eq!(clear_count(&session), 2, "fresh grid starts a new page");
+        // Mid-grid advancing does not clear again — cell 2 of 4.
+        session.eval("plot.new()");
+        assert_eq!(clear_count(&session), 2, "mid-grid step keeps the page");
+        // The reuse path — par(new=TRUE) — never clears or advances.
+        session.eval("par(new=TRUE); plot.new()");
+        assert_eq!(clear_count(&session), 2, "new=TRUE reuses the frame");
+        // Cells 3 and 4 fill quietly; the wrap to cell 1 clears again.
+        session.eval("par(new=FALSE); plot.new(); plot.new()");
+        assert_eq!(clear_count(&session), 2, "filling cells keeps the page");
+        session.eval("plot.new()");
+        assert_eq!(clear_count(&session), 3, "wrapping to cell 1 begins a new page");
+    }
+
+    #[test]
     fn data_loads_datasets_into_the_calling_environment() {
         let mut session = PureSession::new();
         let result = session.eval("data(iris)");

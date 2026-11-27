@@ -14842,7 +14842,7 @@ fn plot_new_primitive(
     _args: ValueId,
     _caller_env: ValueId,
 ) -> EvalResult {
-    let (regions, _clear, transition) = heap.graphics.prepare_plot_figure();
+    let (regions, clear, transition) = heap.graphics.prepare_plot_figure();
     // GNU's figure-margins validation — a nonpositive plot region in
     /// either dimension rejects the frame exactly as
     /// "figure margins too large"; nothing commits on failure.
@@ -14854,6 +14854,12 @@ fn plot_new_primitive(
         )));
     }
     heap.graphics.commit_plot_figure(transition);
+    // The layout's own decision exactly as GNU's GNewPlot — reuse
+    /// paths and mid-grid steps keep the page, first figures and
+    /// post-wrap frames clear.
+    if clear {
+        heap.graphics.clear_scene();
+    }
     Ok(ValueId::NIL)
 }
 
