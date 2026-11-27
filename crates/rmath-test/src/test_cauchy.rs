@@ -1,7 +1,7 @@
 use crate::comparisons::*;
 
 use rmath::nmath::dist::cauchy::*;
-use rmath::rng::*;
+use rmath::nmath::rng::*;
 
 pub fn run_tests() -> Result<(), String> {
     // dcauchy tests

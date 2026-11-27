@@ -56,12 +56,12 @@ pub fn run_tests() -> Result<(), String> {
     );
 
     // rsignrank tests
-    rmath::rng::set_seed(42, 24);
+    rmath::nmath::rng::set_seed(42, 24);
     let r1 = rsignrank_inner(5.0);
     if r1 < 0.0 {
         return Err(format!("rsignrank(5) = {}, expected >= 0", r1));
     }
-    rmath::rng::set_seed(42, 24);
+    rmath::nmath::rng::set_seed(42, 24);
     let r2 = rsignrank_inner(5.0);
     assert_equiv(r1, r2, "rsignrank reproducible");
     assert_nan(rsignrank_inner(f64::NAN), "rsignrank(NaN)");

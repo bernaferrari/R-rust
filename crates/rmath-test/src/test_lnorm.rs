@@ -1,6 +1,6 @@
 use crate::comparisons::*;
 use rmath::nmath::dist::lnorm::*;
-use rmath::rng::*;
+use rmath::nmath::rng::*;
 
 pub fn run_tests() -> Result<(), String> {
     // dlnorm tests

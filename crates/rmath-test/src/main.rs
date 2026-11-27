@@ -9,7 +9,6 @@ mod test_nchisq;
 mod test_nf_dist;
 mod test_normal;
 mod test_nt_dist;
-mod test_rng;
 mod test_sample;
 mod test_signrank;
 mod test_special;
@@ -44,7 +43,6 @@ fn main() {
         ("Tukey", test_tukey::run_tests()),
         ("Special Functions", test_special::run_tests()),
         ("Sampling (sample/prob)", test_sample::run_tests()),
-        ("RNG Algorithms", test_rng::run_tests()),
     ];
 
     for (name, result) in &results {

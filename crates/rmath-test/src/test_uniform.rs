@@ -1,7 +1,7 @@
 use crate::comparisons::*;
 
 use rmath::nmath::dist::uniform::*;
-use rmath::rng::*;
+use rmath::nmath::rng::*;
 
 pub fn run_tests() -> Result<(), String> {
     // dunif tests

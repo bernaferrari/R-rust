@@ -29,12 +29,11 @@ fn run_rscript(script: &str) -> Result<String, String> {
 }
 
 fn run_rport(script: &str) -> Result<String, String> {
-    let mut session = r_embed::RSession::new().map_err(|err| err.to_string())?;
+    let mut session = r_embed::PureSession::new();
     session.enable_host_process_capabilities();
     session
-        .eval_script(script)
-        .map(|result| normalize_output(&result.output))
-        .map_err(|err| err.to_string())
+        .eval_output(script)
+        .map(|output| normalize_output(&output))
 }
 
 fn case_files(dir: &Path) -> Vec<PathBuf> {

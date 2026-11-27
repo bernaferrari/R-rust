@@ -96,12 +96,12 @@ pub fn run_tests() -> Result<(), String> {
     }
 
     // rnbinom tests
-    rmath::rng::set_seed(42, 24);
+    rmath::nmath::rng::set_seed(42, 24);
     let r1 = rnbinom_inner(3.0, 0.5);
     if r1 < 0.0 {
         return Err(format!("rnbinom(3,0.5) = {}, expected >= 0", r1));
     }
-    rmath::rng::set_seed(42, 24);
+    rmath::nmath::rng::set_seed(42, 24);
     let r2 = rnbinom_inner(3.0, 0.5);
     assert_equiv(r1, r2, "rnbinom reproducible");
     assert_nan(rnbinom_inner(f64::NAN, 0.5), "rnbinom(NaN,0.5)");

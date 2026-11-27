@@ -57,12 +57,12 @@ pub fn run_tests() -> Result<(), String> {
     }
 
     // rnchisq tests
-    rmath::rng::set_seed(42, 24);
+    rmath::nmath::rng::set_seed(42, 24);
     let r1 = rnchisq_inner(3.0, 2.0);
     if r1 < 0.0 {
         return Err(format!("rnchisq(3,2) = {}, expected >= 0", r1));
     }
-    rmath::rng::set_seed(42, 24);
+    rmath::nmath::rng::set_seed(42, 24);
     let r2 = rnchisq_inner(3.0, 2.0);
     assert_equiv(r1, r2, "rnchisq reproducible");
     assert_nan(rnchisq_inner(f64::NAN, 2.0), "rnchisq(NaN,2)");

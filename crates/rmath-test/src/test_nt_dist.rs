@@ -38,12 +38,12 @@ pub fn run_tests() -> Result<(), String> {
     }
 
     // rnt tests
-    rmath::rng::set_seed(42, 24);
+    rmath::nmath::rng::set_seed(42, 24);
     let r1 = rnt_inner(3.0, 2.0);
     if !(r1.is_finite()) {
         return Err(format!("rnt(3,2) = {}, expected finite", r1));
     }
-    rmath::rng::set_seed(42, 24);
+    rmath::nmath::rng::set_seed(42, 24);
     let r2 = rnt_inner(3.0, 2.0);
     assert_equiv(r1, r2, "rnt reproducible");
     assert_nan(rnt_inner(f64::NAN, 2.0), "rnt(NaN,2)");

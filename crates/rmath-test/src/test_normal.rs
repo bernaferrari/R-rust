@@ -80,12 +80,12 @@ pub fn run_tests() -> Result<(), String> {
     );
 
     // rnorm tests
-    rmath::rng::set_seed(42, 24);
+    rmath::nmath::rng::set_seed(42, 24);
     let r1 = rnorm_inner(0.0, 1.0);
     if !(r1.is_finite()) {
         return Err("rnorm(0,1) is finite".into());
     }
-    rmath::rng::set_seed(42, 24);
+    rmath::nmath::rng::set_seed(42, 24);
     let r2 = rnorm_inner(0.0, 1.0);
     assert_equiv(r1, r2, "rnorm reproducible");
     assert_nan(rnorm_inner(f64::NAN, 1.0), "rnorm(NaN,1)");

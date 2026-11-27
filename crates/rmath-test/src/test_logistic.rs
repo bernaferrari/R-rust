@@ -1,6 +1,6 @@
 use crate::comparisons::*;
 use rmath::nmath::dist::logistic::*;
-use rmath::rng::*;
+use rmath::nmath::rng::*;
 
 pub fn run_tests() -> Result<(), String> {
     // dlogis tests
