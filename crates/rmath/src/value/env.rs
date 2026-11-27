@@ -236,7 +236,7 @@ fn frame_of(heap: &Heap, env: ValueId) -> Option<&EnvFrame> {
     }
 }
 
-fn enclosure_of(heap: &Heap, env: ValueId) -> Option<ValueId> {
+pub(crate) fn enclosure_of(heap: &Heap, env: ValueId) -> Option<ValueId> {
     match heap.object(env) {
         Some(RObject::Environment { enclos, .. }) => Some(*enclos),
         _ => None,
@@ -293,7 +293,7 @@ fn mutate_binding(
 /// The depth cap here is a defensive ceiling, not a semantic limit — real
 /// chains are a handful deep, and base-plus-packages nesting stays under a
 /// few hundred even with deep module systems.
-const MAX_CHAIN_DEPTH: usize = 100_000;
+pub(crate) const MAX_CHAIN_DEPTH: usize = 100_000;
 
 #[cfg(test)]
 mod tests {

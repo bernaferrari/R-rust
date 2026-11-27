@@ -59,6 +59,9 @@ pub enum RSignal {
     Next,
     /// An evaluation error condition.
     Error(EvalError),
+    /// `invokeRestart` unwinding to the owning withRestarts frame — the
+    /// restart identity and the already-evaluated argument values.
+    RestartInvoke { id: u64, args: Vec<crate::value::id::ValueId> },
 }
 
 /// The single evaluation result type.
@@ -143,7 +146,22 @@ pub fn eval(
         RObject::Promise { .. } => force_if_promise(heap, interner, expr),
         RObject::Language { car, cdr, .. } => {
             let (car, cdr) = (*car, *cdr);
-            let callee = eval(heap, interner, car, env_id)?;
+            // GNU's findFun: a symbolic call head resolves through function
+            /// lookup, which skips non-callable bindings — a variable named
+            /// `names` never shadows the primitive in function position.
+            let callee = match heap.object(car) {
+                Some(RObject::Symbol { name, .. }) => {
+                    let sym = *name;
+                    match lookup_callable(heap, interner, env_id, sym)? {
+                        Some(value) => value,
+                        None => {
+                            let label = interner.symbol_name(sym).to_string();
+                            return Err(RSignal::from(EvalError::UnboundVariable(label)));
+                        }
+                    }
+                }
+                _ => eval(heap, interner, car, env_id)?,
+            };
             call(heap, interner, callee, cdr, env_id, expr)
         }
         RObject::List(_) | RObject::Expression(_) => Ok(expr),
@@ -201,6 +219,47 @@ pub fn new_promise(heap: &mut Heap, expr: ValueId, env: ValueId) -> ValueId {
         env,
         value: ValueId::UNBOUND,
     })
+}
+
+/// GNU's `findFun`: walk the enclosure chain for a callable binding,
+/// skipping frames whose binding for the symbol is not a function. A
+/// promise binding is forced before inspection exactly as GNU; active
+/// bindings are skipped — GNU never fires them in function position.
+fn lookup_callable(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    env: ValueId,
+    sym: SymId,
+) -> Result<Option<ValueId>, RSignal> {
+    let mut cursor = env;
+    for _ in 0..env::MAX_CHAIN_DEPTH {
+        if cursor == ValueId::EMPTY_ENV || cursor.is_sentinel() {
+            return Ok(None);
+        }
+        if let Some(binding) = env::lookup_in_frame(heap, cursor, sym) {
+            if !binding.active {
+                let candidate = match heap.object(binding.value) {
+                    Some(RObject::Closure { .. }) | Some(RObject::Primitive(_)) => Some(binding.value),
+                    Some(RObject::Promise { .. }) => {
+                        let forced = force_if_promise(heap, interner, binding.value)?;
+                        match heap.object(forced) {
+                            Some(RObject::Closure { .. }) | Some(RObject::Primitive(_)) => Some(forced),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                };
+                if let Some(value) = candidate {
+                    return Ok(Some(value));
+                }
+            }
+        }
+        match env::enclosure_of(heap, cursor) {
+            Some(parent) => cursor = parent,
+            None => return Ok(None),
+        }
+    }
+    Ok(None)
 }
 
 /// Call a resolved callee with an argument pairlist in the caller's

@@ -14,6 +14,22 @@ pub(crate) enum SlotState {
     Free { generation: u32, next_free: Option<u32> },
 }
 
+/// One withRestarts frame entry — the handler closure and its public
+/// restart object exactly as GNU's restart record.
+#[derive(Debug, Clone, Copy)]
+pub struct RestartEntry {
+    pub id: u64,
+    pub handler: crate::value::id::ValueId,
+    pub object: crate::value::id::ValueId,
+}
+
+/// One withCallingHandlers entry — a condition-class name and its closure.
+#[derive(Debug, Clone, Copy)]
+pub struct CallingHandlerEntry {
+    pub class_name: crate::value::intern::InternedStr,
+    pub handler: crate::value::id::ValueId,
+}
+
 /// The object heap: a flat slot vector with a free list. All access goes
 /// through generation-checked `ValueId` handles — O(1) array indexing with
 /// no reverse lookups, pinning, or unsafe projection.
@@ -92,6 +108,14 @@ pub struct Heap {
     pub sink_file: Option<std::fs::File>,
     /// Sink depth counter backing sink.number().
     pub sink_depth: i32,
+    /// The dynamic restart registry — withRestarts frames push entries,
+    /// invokeRestart unwinds to them. Innermost last exactly as GNU.
+    pub restart_stack: Vec<RestartEntry>,
+    /// The calling-handler chain — withCallingHandlers frames consult at
+    /// signal time without unwinding exactly as GNU.
+    pub calling_handlers: Vec<CallingHandlerEntry>,
+    /// Fresh restart identity source.
+    pub next_restart_id: u64,
     /// Message suppression depth — suppressMessages increments while its
     /// expression evaluates; message() is silent above zero exactly as GNU.
     pub message_suppressed: i32,
