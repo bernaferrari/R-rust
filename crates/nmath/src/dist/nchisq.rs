@@ -554,11 +554,11 @@ mod tests {
 
     #[test]
     fn seeded_standalone_sample_completes_and_is_reproducible() {
-        crate::rng::set_seed(42, 24);
-        let first = rnchisq_inner(rng, 3.0, 2.0);
+        let mut rng_state = crate::rng::RngState(42, 24);
+        let first = rnchisq_inner(&mut || rng_state.unif(), 3.0, 2.0);
 
-        crate::rng::set_seed(42, 24);
-        let second = rnchisq_inner(rng, 3.0, 2.0);
+        let mut rng_state = crate::rng::RngState(42, 24);
+        let second = rnchisq_inner(&mut || rng_state.unif(), 3.0, 2.0);
 
         assert!(first.is_finite());
         assert!(first >= 0.0);

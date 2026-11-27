@@ -278,6 +278,7 @@ pub struct RhyperState {
 
 impl Default for RhyperState {
     fn default() -> Self {
+        let mut rng_state = crate::rng::RngState::default();
         Self::new()
     }
 }
@@ -612,11 +613,12 @@ mod tests {
 
     #[test]
     fn rhyper_state_is_session_local_on_same_thread() {
+        let mut rng_state = crate::rng::RngState::default();
         let mut left = TestSession::new();
         let mut right = TestSession::new();
 
         left.with_protected(|| {
-            let _ = rhyper_inner(rng, 30.0, 40.0, 12.0);
+            let _ = rhyper_inner(&mut || rng_state.unif(), 30.0, 40.0, 12.0);
             with_rhyper_state(|state| {
                 assert_eq!(state.n1s, 30);
                 assert_eq!(state.n2s, 40);
@@ -640,15 +642,15 @@ mod tests {
     fn rhyper_matches_trunk_multicarry_stream() {
         let mut session = TestSession::new();
         session.with_protected(|| {
-            crate::rng::set_seed(1234, 5678);
+            let mut rng_state = crate::rng::RngState(1234, 5678);
             let got: Vec<i32> = (0..8)
-                .map(|_| rhyper_inner(rng, 30.0, 40.0, 12.0) as i32)
+                .map(|_| rhyper_inner(&mut || rng_state.unif(), 30.0, 40.0, 12.0) as i32)
                 .collect();
             assert_eq!(got, [3, 7, 5, 4, 10, 3, 5, 9]);
 
-            crate::rng::set_seed(1234, 5678);
+            let mut rng_state = crate::rng::RngState(1234, 5678);
             let got: Vec<i32> = (0..8)
-                .map(|_| rhyper_inner(rng, 100.0, 200.0, 50.0) as i32)
+                .map(|_| rhyper_inner(&mut || rng_state.unif(), 100.0, 200.0, 50.0) as i32)
                 .collect();
             assert_eq!(got, [16, 17, 17, 20, 16, 18, 16, 21]);
         });
@@ -660,14 +662,14 @@ mod tests {
     /// uniform and returns qhyper(u, nn1, nn2, kk, false, false) -- 56 on
     /// this stream, where the old int algorithm drew 49.
     #[test]
-    fn rhyper_large_total_uses_qhyper_inversion(rng: &mut dyn FnMut() -> f64) {
+    fn rhyper_large_total_uses_qhyper_inversion() {
         let mut session = TestSession::new();
         session.with_protected(|| {
-            crate::rng::set_seed(1234, 5678);
-            let got = rhyper_inner(rng, 2.0e9, 2.0e9, 100.0);
+            let mut rng_state = crate::rng::RngState(1234, 5678);
+            let got = rhyper_inner(&mut || rng_state.unif(), 2.0e9, 2.0e9, 100.0);
 
-            crate::rng::set_seed(1234, 5678);
-            let u = crate::rng::multicarry_rng();
+            let mut rng_state = crate::rng::RngState(1234, 5678);
+            let u = rng_state.unif();
             assert_eq!(got, qhyper_inner(u, 2.0e9, 2.0e9, 100.0, false, false));
             assert_eq!(got, 56.0);
         });
@@ -677,13 +679,13 @@ mod tests {
     /// "> INT_MAX", so trunk keeps the (degenerate) int path and draws no
     /// uniform; the old code evaded to qhyper and burned one.
     #[test]
-    fn rhyper_intmax_boundary_uses_int_path_without_uniforms(rng: &mut dyn FnMut() -> f64) {
+    fn rhyper_intmax_boundary_uses_int_path_without_uniforms() {
         let mut session = TestSession::new();
         session.with_protected(|| {
-            crate::rng::set_seed(1234, 5678);
-            assert_eq!(rhyper_inner(rng, 2147483647.0, 0.0, 5.0), 5.0);
+            let mut rng_state = crate::rng::RngState(1234, 5678);
+            assert_eq!(rhyper_inner(&mut || rng_state.unif(), 2147483647.0, 0.0, 5.0), 5.0);
             // no uniform consumed: the next draw is still the stream head
-            assert_eq!(crate::rng::multicarry_rng(), 0.102_089_069_807_457_04);
+            assert_eq!(rng_state.unif(), 0.102_089_069_807_457_04);
         });
     }
 }

@@ -152,24 +152,24 @@ pub fn run_tests() -> Result<(), String> {
     );
 
     // rcauchy tests
-    set_seed(42, 24);
-    let r1 = rcauchy_inner(0.0, 1.0);
+    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let r1 = rcauchy_inner(&mut || rng_state.unif(), 0.0, 1.0);
     assert!(r1.is_finite(), "rcauchy(0,1) is finite");
     // Reproducibility
-    set_seed(42, 24);
-    let r2 = rcauchy_inner(0.0, 1.0);
+    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let r2 = rcauchy_inner(&mut || rng_state.unif(), 0.0, 1.0);
     assert_equiv(r1, r2, "rcauchy reproducible");
     // rcauchy with location/scale
-    set_seed(42, 24);
-    let r3 = rcauchy_inner(5.0, 2.0);
-    set_seed(42, 24);
-    let r4 = rcauchy_inner(0.0, 1.0);
+    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let r3 = rcauchy_inner(&mut || rng_state.unif(), 5.0, 2.0);
+    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let r4 = rcauchy_inner(&mut || rng_state.unif(), 0.0, 1.0);
     assert_equiv(r3, 5.0 + 2.0 * r4, "rcauchy(5,2) scaling");
     // Edge cases
-    assert_nan(rcauchy_inner(f64::NAN, 1.0), "rcauchy(NaN,1)");
-    assert_nan(rcauchy_inner(0.0, -1.0), "rcauchy(0,-1)");
-    assert_nan(rcauchy_inner(0.0, f64::INFINITY), "rcauchy(0,Inf)");
-    assert_equiv(rcauchy_inner(5.0, 0.0), 5.0, "rcauchy(5,0)");
+    assert_nan(rcauchy_inner(&mut || rng_state.unif(), f64::NAN, 1.0), "rcauchy(NaN,1)");
+    assert_nan(rcauchy_inner(&mut || rng_state.unif(), 0.0, -1.0), "rcauchy(0,-1)");
+    assert_nan(rcauchy_inner(&mut || rng_state.unif(), 0.0, f64::INFINITY), "rcauchy(0,Inf)");
+    assert_equiv(rcauchy_inner(&mut || rng_state.unif(), 5.0, 0.0), 5.0, "rcauchy(5,0)");
 
     Ok(())
 }

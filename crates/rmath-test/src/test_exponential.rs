@@ -70,26 +70,26 @@ pub fn run_tests() -> Result<(), String> {
     assert_nan(qexp_inner(0.5, -1.0, true, false), "qexp(0.5,-1,...)");
 
     // rexp tests
-    set_seed(42, 24);
-    let r1 = rexp_inner(1.0);
+    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let r1 = rexp_inner(&mut || rng_state.unif(), 1.0);
     assert!(r1 > 0.0, "rexp(1) > 0");
 
     // Reproducibility
-    set_seed(42, 24);
-    let r2 = rexp_inner(1.0);
+    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let r2 = rexp_inner(&mut || rng_state.unif(), 1.0);
     assert_equiv(r1, r2, "rexp reproducible");
 
     // rexp with scale != 1
-    set_seed(42, 24);
-    let r3 = rexp_inner(2.0);
-    set_seed(42, 24);
-    let er1 = exp_rand();
-    assert_equiv(r3, 2.0 * er1, "rexp(2) = 2*exp_rand()");
+    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let r3 = rexp_inner(&mut || rng_state.unif(), 2.0);
+    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let er1 = exp_rand(&mut || rng_state.unif(), );
+    assert_equiv(r3, 2.0 * er1, "rexp(2) = 2*exp_rand(&mut || rng_state.unif(), )");
 
     // Edge cases
-    assert_equiv(rexp_inner(0.0), 0.0, "rexp(0)");
-    assert_nan(rexp_inner(-1.0), "rexp(-1)");
-    assert_nan(rexp_inner(f64::NAN), "rexp(NaN)");
+    assert_equiv(rexp_inner(&mut || rng_state.unif(), 0.0), 0.0, "rexp(0)");
+    assert_nan(rexp_inner(&mut || rng_state.unif(), -1.0), "rexp(-1)");
+    assert_nan(rexp_inner(&mut || rng_state.unif(), f64::NAN), "rexp(NaN)");
 
     Ok(())
 }

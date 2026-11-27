@@ -40,16 +40,16 @@ pub fn run_tests() -> Result<(), String> {
     assert_nan(qlogis_inner(-1.0, 0.0, 1.0, true, false), "qlogis(-1)");
 
     // rlogis tests
-    set_seed(42, 24);
-    let r1 = rlogis_inner(0.0, 1.0);
+    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let r1 = rlogis_inner(&mut || rng_state.unif(), 0.0, 1.0);
     if !(r1.is_finite()) {
         return Err("rlogis(0,1) is finite".into());
     }
-    set_seed(42, 24);
-    let r2 = rlogis_inner(0.0, 1.0);
+    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let r2 = rlogis_inner(&mut || rng_state.unif(), 0.0, 1.0);
     assert_equiv(r1, r2, "rlogis reproducible");
-    assert_nan(rlogis_inner(f64::NAN, 1.0), "rlogis(NaN,1)");
-    assert_equiv(rlogis_inner(0.0, 0.0), 0.0, "rlogis(0,0)");
+    assert_nan(rlogis_inner(&mut || rng_state.unif(), f64::NAN, 1.0), "rlogis(NaN,1)");
+    assert_equiv(rlogis_inner(&mut || rng_state.unif(), 0.0, 0.0), 0.0, "rlogis(0,0)");
 
     Ok(())
 }

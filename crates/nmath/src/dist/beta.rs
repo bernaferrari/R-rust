@@ -943,6 +943,7 @@ pub struct BetaState {
 
 impl Default for BetaState {
     fn default() -> Self {
+        let mut rng_state = crate::rng::RngState::default();
         BetaState {
             olda: -1.0,
             oldb: -1.0,
@@ -1122,18 +1123,17 @@ mod tests {
     use super::*;
     /// (name, aa, bb, scripted uniforms, consumed count, expected draw bits)
     type ConsumptionCase = (&'static str, f64, f64, &'static [f64], usize, u64);
-    use crate::rng::set_unif_hook;
     use crate::test_session::TestSession;
-    use std::cell::{Cell, RefCell};
     use std::collections::VecDeque;
 
     #[test]
     fn rbeta_state_is_session_local_on_same_thread() {
+        let mut rng_state = crate::rng::RngState::default();
         let mut left = TestSession::new();
         let mut right = TestSession::new();
 
         left.with_protected(|| {
-            let _ = rbeta_inner(rng, 2.0, 5.0);
+            let _ = rbeta_inner(&mut || rng_state.unif(), 2.0, 5.0);
             with_beta_state(|state| {
                 assert_eq!(state.olda, 2.0);
                 assert_eq!(state.oldb, 5.0);
@@ -1167,6 +1167,7 @@ mod tests {
     #[test]
     fn rbeta_matches_stock_multicarry_stream() {
         fn assert_close(got: &[f64], want: &[f64]) {
+        let mut rng_state = crate::rng::RngState::default();
             assert_eq!(got.len(), want.len());
             for (i, (g, w)) in got.iter().zip(want).enumerate() {
                 assert!(
@@ -1178,12 +1179,12 @@ mod tests {
 
         let mut session = TestSession::new();
         session.with_protected(|| {
-            let draws = |n, a, b| -> Vec<f64> { (0..n).map(|_| rbeta_inner(rng, a, b)).collect() };
+            let draws = |st: &mut crate::rng::RngState, n, a, b| -> Vec<f64> { (0..n).map(|_| rbeta_inner(&mut || st.unif(), a, b)).collect() };
 
             // --- Algorithm BC (a <= 1) ---
-            crate::rng::set_seed(1234, 5678);
+            let mut rng_state = crate::rng::RngState(1234, 5678);
             assert_close(
-                &draws(10, 0.5, 0.8),
+                &draws(&mut rng_state, 10, 0.5, 0.8),
                 &[
                     0.64631808969296334,
                     8.8350185132821101e-07,
@@ -1198,9 +1199,9 @@ mod tests {
                 ],
             );
 
-            crate::rng::set_seed(1234, 5678);
+            let mut rng_state = crate::rng::RngState(1234, 5678);
             assert_close(
-                &draws(10, 0.3, 4.0),
+                &draws(&mut rng_state, 10, 0.3, 4.0),
                 &[
                     0.30957547638272714,
                     1.335388546829043e-11,
@@ -1216,9 +1217,9 @@ mod tests {
             );
 
             // aa != a: swapped return orientation
-            crate::rng::set_seed(1234, 5678);
+            let mut rng_state = crate::rng::RngState(1234, 5678);
             assert_close(
-                &draws(10, 2.0, 0.5),
+                &draws(&mut rng_state, 10, 2.0, 0.5),
                 &[
                     0.57771418887069192,
                     0.99999964659907215,
@@ -1234,9 +1235,9 @@ mod tests {
             );
 
             // long squeeze / k2 / full-reject chains
-            crate::rng::set_seed(99, 424_242);
+            let mut rng_state = crate::rng::RngState(99, 424_242);
             assert_close(
-                &draws(12, 0.2, 0.7),
+                &draws(&mut rng_state, 12, 0.2, 0.7),
                 &[
                     5.6833061096527566e-05,
                     0.00094560177296646895,
@@ -1253,9 +1254,9 @@ mod tests {
                 ],
             );
 
-            crate::rng::set_seed(777, 333);
+            let mut rng_state = crate::rng::RngState(777, 333);
             assert_close(
-                &draws(12, 0.75, 1.0),
+                &draws(&mut rng_state, 12, 0.75, 1.0),
                 &[
                     0.68899338644560904,
                     0.65683652938523518,
@@ -1273,9 +1274,9 @@ mod tests {
             );
 
             // extreme small shapes
-            crate::rng::set_seed(5, 5);
+            let mut rng_state = crate::rng::RngState(5, 5);
             assert_close(
-                &draws(8, 0.01, 0.01),
+                &draws(&mut rng_state, 8, 0.01, 0.01),
                 &[
                     1.0,
                     1.3544983664016456e-126,
@@ -1289,9 +1290,9 @@ mod tests {
             );
 
             // --- Algorithm BB (a > 1) ---
-            crate::rng::set_seed(1234, 5678);
+            let mut rng_state = crate::rng::RngState(1234, 5678);
             assert_close(
-                &draws(10, 2.0, 5.0),
+                &draws(&mut rng_state, 10, 2.0, 5.0),
                 &[
                     0.094090019232039065,
                     0.22287638999845477,
@@ -1306,9 +1307,9 @@ mod tests {
                 ],
             );
 
-            crate::rng::set_seed(1234, 5678);
+            let mut rng_state = crate::rng::RngState(1234, 5678);
             assert_close(
-                &draws(10, 1.5, 3.7),
+                &draws(&mut rng_state, 10, 1.5, 3.7),
                 &[
                     0.075571467517154087,
                     0.21451181811913961,
@@ -1323,9 +1324,9 @@ mod tests {
                 ],
             );
 
-            crate::rng::set_seed(99, 424_242);
+            let mut rng_state = crate::rng::RngState(99, 424_242);
             assert_close(
-                &draws(12, 10.0, 10.0),
+                &draws(&mut rng_state, 12, 10.0, 10.0),
                 &[
                     0.63158320880509089,
                     0.43231241590366881,
@@ -1342,9 +1343,9 @@ mod tests {
                 ],
             );
 
-            crate::rng::set_seed(777, 333);
+            let mut rng_state = crate::rng::RngState(777, 333);
             assert_close(
-                &draws(12, 1.2, 1.3),
+                &draws(&mut rng_state, 12, 1.2, 1.3),
                 &[
                     0.30799027502945509,
                     0.32936235574929068,
@@ -1363,9 +1364,9 @@ mod tests {
 
             // shapes ~ 1+eps: init denominator 2ab - alpha cancels
             // catastrophically, so the mul_add contraction above matters.
-            crate::rng::set_seed(1234, 5678);
+            let mut rng_state = crate::rng::RngState(1234, 5678);
             assert_close(
-                &draws(10, 1.0000001, 1.0000001),
+                &draws(&mut rng_state, 10, 1.0000001, 1.0000001),
                 &[
                     0.10208907977268006,
                     0.36901409043763672,
@@ -1382,14 +1383,14 @@ mod tests {
 
             // point mass 1/2 at each of {0, 1}: one uniform per draw,
             // exact integers.
-            crate::rng::set_seed(1234, 5678);
-            let got: Vec<f64> = (0..10).map(|_| rbeta_inner(rng, 0.0, 0.0)).collect();
+            let mut rng_state = crate::rng::RngState(1234, 5678);
+            let got: Vec<f64> = (0..10).map(|_| rbeta_inner(&mut || rng_state.unif(), 0.0, 0.0)).collect();
             assert_eq!(got, [0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0]);
 
             // alternating parameters on one stream: re-init (qsame) each call
-            crate::rng::set_seed(1234, 5678);
+            let mut rng_state = crate::rng::RngState(1234, 5678);
             let alt: Vec<f64> = (0..10)
-                .flat_map(|_| [rbeta_inner(rng, 0.4, 6.0), rbeta_inner(rng, 2.5, 2.5)])
+                .flat_map(|_| [rbeta_inner(&mut || rng_state.unif(), 0.4, 6.0), rbeta_inner(&mut || rng_state.unif(), 2.5, 2.5)])
                 .collect();
             assert_close(
                 &alt,
@@ -1431,24 +1432,19 @@ mod tests {
     /// libm, IEEE ops and mul_add are platform-stable).
     #[test]
     fn rbeta_consumption_order_matches_c_reference() {
-        thread_local! {
-            static SCRIPT: RefCell<VecDeque<f64>> = RefCell::new(VecDeque::new());
-            static DRAWN: Cell<usize> = const { Cell::new(0) };
-        }
-
-        fn scripted_unif() -> f64 {
-            DRAWN.with(|c| c.set(c.get() + 1));
-            SCRIPT.with(|q| q.borrow_mut().pop_front().expect("script exhausted"))
-        }
-
         fn rbeta_scripted(aa: f64, bb: f64, script: &[f64]) -> (f64, usize) {
             with_beta_state(|state| *state = BetaState::default());
-            SCRIPT.with(|q| *q.borrow_mut() = script.iter().copied().collect());
-            DRAWN.with(|c| c.set(0));
-            set_unif_hook(Some(scripted_unif));
-            let x = rbeta_inner(rng, aa, bb);
-            set_unif_hook(None);
-            (x, DRAWN.with(Cell::get))
+            let mut queue: VecDeque<f64> = script.iter().copied().collect();
+            let mut drawn = 0usize;
+            let x = rbeta_inner(
+                &mut || {
+                    drawn += 1;
+                    queue.pop_front().expect("script exhausted")
+                },
+                aa,
+                bb,
+            );
+            (x, drawn)
         }
 
         // (name, aa, bb, script, uniforms consumed, expected bits)

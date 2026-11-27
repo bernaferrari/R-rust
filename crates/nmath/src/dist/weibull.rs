@@ -211,13 +211,13 @@ mod tests {
     #[test]
     fn weibull_shape_zero_random_is_degenerate() {
         let _session = crate::test_session::TestSession::new();
-        crate::rng::set_seed(1234, 5678);
-        let got: Vec<f64> = (0..12).map(|_| rweibull_inner(rng, 0.0, 1.0)).collect();
+        let mut rng_state = crate::rng::RngState(1234, 5678);
+        let got: Vec<f64> = (0..12).map(|_| rweibull_inner(&mut || rng_state.unif(), 0.0, 1.0)).collect();
         let inf = f64::INFINITY;
         let want = [inf, 0.0, 0.0, inf, 0.0, inf, 0.0, 0.0, 0.0, 0.0, 0.0, inf];
-        assert_eq!(got, want.to_vec(), "rweibull(rng, shape=0) stream changed");
+        assert_eq!(got, want.to_vec(), "rweibull(&mut || rng_state.unif(), shape=0) stream changed");
         // scale == 0 short-circuits to 0 for any shape.
-        assert_eq!(rweibull_inner(rng, 2.0, 0.0), 0.0);
+        assert_eq!(rweibull_inner(&mut || rng_state.unif(), 2.0, 0.0), 0.0);
     }
 
     /// Negative shape still warns and returns NaN (guard retained).

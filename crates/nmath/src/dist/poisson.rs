@@ -304,6 +304,7 @@ pub struct RpoisState {
 
 impl Default for RpoisState {
     fn default() -> Self {
+        let mut rng_state = crate::rng::RngState::default();
         Self::new()
     }
 }
@@ -556,11 +557,12 @@ mod tests {
 
     #[test]
     fn rpois_state_is_session_local_on_same_thread() {
+        let mut rng_state = crate::rng::RngState::default();
         let mut left = TestSession::new();
         let mut right = TestSession::new();
 
         left.with_protected(|| {
-            let _ = rpois_inner(rng, 12.0);
+            let _ = rpois_inner(&mut || rng_state.unif(), 12.0);
             with_rpois_state(|state| {
                 assert_eq!(state.muprev, 12.0);
                 assert!(state.s > 0.0);

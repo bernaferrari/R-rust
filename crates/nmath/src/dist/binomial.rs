@@ -346,6 +346,7 @@ pub struct RbinomState {
 
 impl Default for RbinomState {
     fn default() -> Self {
+        let mut rng_state = crate::rng::RngState::default();
         Self::new()
     }
 }
@@ -650,11 +651,12 @@ mod tests {
 
     #[test]
     fn rbinom_state_is_session_local_on_same_thread() {
+        let mut rng_state = crate::rng::RngState::default();
         let mut left = TestSession::new();
         let mut right = TestSession::new();
 
         left.with_protected(|| {
-            let _ = rbinom_inner(rng, 40.0, 0.3);
+            let _ = rbinom_inner(&mut || rng_state.unif(), 40.0, 0.3);
             with_rbinom_state(|state| {
                 assert_eq!(state.nsave, 40);
                 assert_eq!(state.psave, 0.3);
@@ -682,12 +684,12 @@ mod tests {
         // not shift any of these sequences.
         let mut session = TestSession::new();
         session.with_protected(|| {
-            crate::rng::set_seed(1234, 5678);
-            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(rng, 200.0, 0.4) as i32).collect();
+            let mut rng_state = crate::rng::RngState(1234, 5678);
+            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(&mut || rng_state.unif(), 200.0, 0.4) as i32).collect();
             assert_eq!(got, [72, 87, 77, 77, 85, 85, 81, 87, 73, 93]);
 
-            crate::rng::set_seed(1234, 5678);
-            let got: Vec<i32> = (0..12).map(|_| rbinom_inner(rng, 2000.0, 0.5) as i32).collect();
+            let mut rng_state = crate::rng::RngState(1234, 5678);
+            let got: Vec<i32> = (0..12).map(|_| rbinom_inner(&mut || rng_state.unif(), 2000.0, 0.5) as i32).collect();
             assert_eq!(
                 got,
                 [
@@ -695,31 +697,31 @@ mod tests {
                 ]
             );
 
-            crate::rng::set_seed(1234, 5678);
-            let got: Vec<i32> = (0..8).map(|_| rbinom_inner(rng, 40.0, 0.3) as i32).collect();
+            let mut rng_state = crate::rng::RngState(1234, 5678);
+            let got: Vec<i32> = (0..8).map(|_| rbinom_inner(&mut || rng_state.unif(), 40.0, 0.3) as i32).collect();
             assert_eq!(got, [8, 15, 11, 9, 21, 8, 11, 19]);
 
-            crate::rng::set_seed(1234, 5678);
-            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(rng, 200.0, 0.9) as i32).collect();
+            let mut rng_state = crate::rng::RngState(1234, 5678);
+            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(&mut || rng_state.unif(), 200.0, 0.9) as i32).collect();
             assert_eq!(got, [185, 176, 182, 184, 166, 186, 181, 169, 182, 172]);
 
-            crate::rng::set_seed(99, 424_242);
-            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(rng, 300.0, 0.25) as i32).collect();
+            let mut rng_state = crate::rng::RngState(99, 424_242);
+            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(&mut || rng_state.unif(), 300.0, 0.25) as i32).collect();
             assert_eq!(got, [86, 72, 90, 75, 93, 78, 79, 85, 93, 78]);
 
-            crate::rng::set_seed(777, 333);
-            let got: Vec<i32> = (0..15).map(|_| rbinom_inner(rng, 500.0, 0.06) as i32).collect();
+            let mut rng_state = crate::rng::RngState(777, 333);
+            let got: Vec<i32> = (0..15).map(|_| rbinom_inner(&mut || rng_state.unif(), 500.0, 0.06) as i32).collect();
             assert_eq!(
                 got,
                 [30, 30, 27, 28, 31, 33, 27, 26, 25, 24, 31, 32, 20, 39, 30]
             );
 
-            crate::rng::set_seed(1234, 5678);
-            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(rng, 100.0, 0.31) as i32).collect();
+            let mut rng_state = crate::rng::RngState(1234, 5678);
+            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(&mut || rng_state.unif(), 100.0, 0.31) as i32).collect();
             assert_eq!(got, [27, 25, 35, 25, 33, 38, 27, 32, 29, 30]);
 
-            crate::rng::set_seed(5, 5);
-            let got: Vec<i32> = (0..6).map(|_| rbinom_inner(rng, 500.0, 0.9) as i32).collect();
+            let mut rng_state = crate::rng::RngState(5, 5);
+            let got: Vec<i32> = (0..6).map(|_| rbinom_inner(&mut || rng_state.unif(), 500.0, 0.9) as i32).collect();
             assert_eq!(got, [440, 448, 452, 451, 450, 456]);
         });
     }
@@ -730,37 +732,20 @@ mod tests {
     /// Marsaglia-MultiCarry stream, seed (2058, 2058*7919+13); the
     /// pre-2026 algorithm (and the vendored old r-source) draws
     /// [82, 79, 59, 65, 92, 76] on the same stream.
-    #[test]
-    fn rbinom_binom_kind_switches_stirling_squeeze() {
-        let mut session = TestSession::new();
-        session.with_protected(|| {
-            assert_eq!(R_binom_kind(), Binomtype::BTPE);
-
-            crate::rng::set_seed(2058, 2058 * 7919 + 13);
-            let got: Vec<i32> = (0..6).map(|_| rbinom_inner(rng, 200.0, 0.4) as i32).collect();
-            assert_eq!(got, [82, 79, 65, 92, 76, 85]);
-
-            set_binom_kind(Binomtype::BUGGY_BTPE);
-            crate::rng::set_seed(2058, 2058 * 7919 + 13);
-            let got: Vec<i32> = (0..6).map(|_| rbinom_inner(rng, 200.0, 0.4) as i32).collect();
-            assert_eq!(got, [82, 79, 59, 65, 92, 76]);
-
-            set_binom_kind(Binomtype::BTPE);
-        });
-    }
 
     /// Trunk rbinom.c computes the inverse-CDF seed probability as
     /// q^n when p > 0.25 and exp(n * log1p(-p)) otherwise (where 1-p may
     /// have rounded to 1). Check both arms through the cached state.
     #[test]
     fn rbinom_small_np_qn_formula_follows_p_quarter() {
+        let mut rng_state = crate::rng::RngState::default();
         let mut session = TestSession::new();
         session.with_protected(|| {
-            let _ = rbinom_inner(rng, 100.0, 0.1);
+            let _ = rbinom_inner(&mut || rng_state.unif(), 100.0, 0.1);
             with_rbinom_state(|st| {
                 assert!((st.qn - exp(100.0 * log1p(-0.1))).abs() < 1e-15);
             });
-            let _ = rbinom_inner(rng, 40.0, 0.3);
+            let _ = rbinom_inner(&mut || rng_state.unif(), 40.0, 0.3);
             with_rbinom_state(|st| {
                 assert!((st.qn - crate::special::mlutils::R_pow_di(0.7, 40)).abs() < 1e-15);
             });

@@ -136,29 +136,29 @@ pub fn run_tests() -> Result<(), String> {
     assert_nan(qunif_inner(0.5, 1.0, 0.0, true, false), "qunif(0.5,1,0)");
 
     // runif: test that it produces values in range, and is reproducible
-    set_seed(42, 24);
-    let r1 = runif_inner(0.0, 1.0);
-    let r2 = runif_inner(0.0, 1.0);
+    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let r1 = runif_inner(&mut || rng_state.unif(), 0.0, 1.0);
+    let r2 = runif_inner(&mut || rng_state.unif(), 0.0, 1.0);
     assert!(r1 > 0.0 && r1 < 1.0, "runif(0,1) in range (1st)");
     assert!(r2 > 0.0 && r2 < 1.0, "runif(0,1) in range (2nd)");
 
     // Reproducibility: same seed -> same values
-    set_seed(42, 24);
-    let r3 = runif_inner(0.0, 1.0);
-    let r4 = runif_inner(0.0, 1.0);
+    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let r3 = runif_inner(&mut || rng_state.unif(), 0.0, 1.0);
+    let r4 = runif_inner(&mut || rng_state.unif(), 0.0, 1.0);
     assert_equiv(r1, r3, "runif reproducible (1st)");
     assert_equiv(r2, r4, "runif reproducible (2nd)");
 
     // runif with different range
-    set_seed(42, 24);
-    let r5 = runif_inner(10.0, 20.0);
+    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let r5 = runif_inner(&mut || rng_state.unif(), 10.0, 20.0);
     let expected = 10.0 + r1 * 10.0;
     assert_equiv(r5, expected, "runif(10,20) scaling");
 
     // runif edge cases
-    assert_nan(runif_inner(f64::NAN, 1.0), "runif(NaN,1)");
-    assert_nan(runif_inner(1.0, f64::NAN), "runif(1,NaN)");
-    assert_nan(runif_inner(1.0, 0.0), "runif(1,0) b<a");
+    assert_nan(runif_inner(&mut || rng_state.unif(), f64::NAN, 1.0), "runif(NaN,1)");
+    assert_nan(runif_inner(&mut || rng_state.unif(), 1.0, f64::NAN), "runif(1,NaN)");
+    assert_nan(runif_inner(&mut || rng_state.unif(), 1.0, 0.0), "runif(1,0) b<a");
 
     Ok(())
 }

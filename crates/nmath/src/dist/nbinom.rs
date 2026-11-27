@@ -392,6 +392,7 @@ fn do_search_nbinom_mu(
     lower_tail: bool,
     log_p: bool,
 ) -> f64 {
+        let mut rng_state = crate::rng::RngState::default();
     let left = if lower_tail { *z >= p } else { *z < p };
     if left {
         loop {

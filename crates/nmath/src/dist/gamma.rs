@@ -835,6 +835,7 @@ pub struct GammaState {
 
 impl Default for GammaState {
     fn default() -> Self {
+        let mut rng_state = crate::rng::RngState::default();
         GammaState {
             aa: 0.0,
             aaa: 0.0,
@@ -1067,11 +1068,12 @@ mod tests {
 
     #[test]
     fn rgamma_state_is_session_local_on_same_thread() {
+        let mut rng_state = crate::rng::RngState::default();
         let mut left = TestSession::new();
         let mut right = TestSession::new();
 
         left.with_protected(|| {
-            let _ = rgamma_inner(rng, 2.5, 1.0);
+            let _ = rgamma_inner(&mut || rng_state.unif(), 2.5, 1.0);
             with_gamma_state(|state| {
                 assert_eq!(state.aa, 2.5);
             });

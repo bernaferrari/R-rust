@@ -56,15 +56,15 @@ pub fn run_tests() -> Result<(), String> {
     );
 
     // rwilcox tests
-    rmath::nmath::rng::set_seed(42, 24);
-    let r1 = rwilcox_inner(5.0, 5.0);
+    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let r1 = rwilcox_inner(&mut || rng_state.unif(), 5.0, 5.0);
     if r1 < 0.0 {
         return Err(format!("rwilcox(5,5) = {}, expected >= 0", r1));
     }
-    rmath::nmath::rng::set_seed(42, 24);
-    let r2 = rwilcox_inner(5.0, 5.0);
+    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let r2 = rwilcox_inner(&mut || rng_state.unif(), 5.0, 5.0);
     assert_equiv(r1, r2, "rwilcox reproducible");
-    assert_nan(rwilcox_inner(f64::NAN, 5.0), "rwilcox(NaN,5)");
+    assert_nan(rwilcox_inner(&mut || rng_state.unif(), f64::NAN, 5.0), "rwilcox(NaN,5)");
 
     Ok(())
 }

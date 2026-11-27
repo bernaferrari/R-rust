@@ -53,13 +53,13 @@ pub fn run_tests() -> Result<(), String> {
     );
 
     // rnf tests
-    rmath::nmath::rng::set_seed(42, 24);
-    let r1 = rnf_inner(3.0, 5.0, 2.0);
+    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let r1 = rnf_inner(&mut || rng_state.unif(), 3.0, 5.0, 2.0);
     if r1 < 0.0 {
         return Err(format!("rnf(3,5,2) = {}, expected >= 0", r1));
     }
-    rmath::nmath::rng::set_seed(42, 24);
-    let r2 = rnf_inner(3.0, 5.0, 2.0);
+    let mut rng_state = rmath::nmath::rng::RngState(42, 24);
+    let r2 = rnf_inner(&mut || rng_state.unif(), 3.0, 5.0, 2.0);
     assert_equiv(r1, r2, "rnf reproducible");
 
     Ok(())
