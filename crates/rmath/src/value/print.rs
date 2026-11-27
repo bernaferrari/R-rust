@@ -637,10 +637,23 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         }
         None => {
             out.push_str("[1]");
-            for element in &elements {
-                out.push(' ');
-                out.push_str(&" ".repeat(width.saturating_sub(element.len())));
-                out.push_str(element);
+            if matches!(object, RObject::String(_)) {
+                // GNU character vectors column-align LEFT-justified to the
+                /// uniform width — the padding trails each element, the
+                /// line itself keeping the final blank exactly as
+                /// printvector.c emits it.
+                let uniform = elements.iter().map(|e| e.len()).max().unwrap_or(0);
+                for element in &elements {
+                    out.push(' ');
+                    out.push_str(element);
+                    out.push_str(&" ".repeat(uniform.saturating_sub(element.len())));
+                }
+            } else {
+                for element in &elements {
+                    out.push(' ');
+                    out.push_str(&" ".repeat(width.saturating_sub(element.len())));
+                    out.push_str(element);
+                }
             }
         }
     }
