@@ -234,7 +234,7 @@ fn dbeta_is_the_derivative_of_pbeta() {
 // optim BFGS (vmmin): convergence code, decrease, gradient norm, optimum
 // ===========================================================================
 
-unsafe extern "C-unwind" fn rosenbrock(
+unsafe fn rosenbrock(
     n: std::os::raw::c_int,
     point: *mut f64,
     _ex: *mut std::ffi::c_void,
@@ -244,7 +244,7 @@ unsafe extern "C-unwind" fn rosenbrock(
     100.0 * (y - x * x).powi(2) + (1.0 - x).powi(2)
 }
 
-unsafe extern "C-unwind" fn rosenbrock_gr(
+unsafe fn rosenbrock_gr(
     _n: std::os::raw::c_int,
     point: *mut f64,
     g: *mut f64,
@@ -257,7 +257,7 @@ unsafe extern "C-unwind" fn rosenbrock_gr(
     }
 }
 
-unsafe extern "C-unwind" fn quadratic(
+unsafe fn quadratic(
     n: std::os::raw::c_int,
     point: *mut f64,
     _ex: *mut std::ffi::c_void,
@@ -267,7 +267,7 @@ unsafe extern "C-unwind" fn quadratic(
     (x - 3.0).powi(2) + 10.0 * (y + 2.0).powi(2)
 }
 
-unsafe extern "C-unwind" fn quadratic_gr(
+unsafe fn quadratic_gr(
     _n: std::os::raw::c_int,
     point: *mut f64,
     g: *mut f64,
