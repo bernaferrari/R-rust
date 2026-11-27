@@ -1,6 +1,29 @@
 # R-level base definitions, evaluated into the base environment at bootstrap
 # exactly as GNU's base package R sources install alongside the primitives.
 
+
+# GNU's machine constants exactly as platform.c builds them for IEEE doubles.
+.Machine <- list(
+    double.eps = 2^-52,
+    double.neg.eps = 2^-53,
+    double.xmin = 2^-1022,
+    double.xmax = 1.7976931348623157e+308,
+    double.base = 2,
+    double.digits = 53,
+    double.rounding = 5,
+    double.guard = 0,
+    double.ulp.digits = -52,
+    double.neg.ulp.digits = -53,
+    double.exponent = 11,
+    double.min.exp = -1022,
+    double.max.exp = 1024,
+    integer.max = 2147483647L,
+    sizeof.long = 8L,
+    sizeof.longlong = 8L,
+    sizeof.longdouble = 16L,
+    sizeof.pointer = 8L
+)
+
 print.function <- function (x, useSource = TRUE, ...)
     print.default(x, useSource = useSource, ...)
 
@@ -41,4 +64,44 @@ summary.default <- function (object, ..., digits, quantile.type = 7)
     else c(Length = length(object), Class = class(object)[1L], Mode = mode(object))
     class(value) <- c("summaryDefault", "table")
     value
+}
+
+all.equal <- function (target, current, tolerance = sqrt(.Machine$double.eps), ...)
+{
+    if (missing(tolerance))
+        tolerance <- 1.49011611938477e-08
+    if (is.numeric(target) && is.numeric(current)) {
+        lt <- length(target)
+        lc <- length(current)
+        if (lt != lc)
+            return(paste0("Numeric: lengths (", lt, ", ", lc, ") differ"))
+        if (lt == 0)
+            return(TRUE)
+        target <- as.numeric(target)
+        current <- as.numeric(current)
+        if (any(is.na(target) != is.na(current)))
+            return("'is.NA' value mismatch")
+        keep <- !is.na(target)
+        target <- target[keep]
+        current <- current[keep]
+        if (length(target) == 0)
+            return(TRUE)
+        diff <- abs(target - current)
+        if (all(diff <= tolerance))
+            return(TRUE)
+        scale <- mean(abs(target))
+        if (is.finite(scale) && scale > tolerance) {
+            rel <- mean(diff) / scale
+            if (rel <= tolerance)
+                return(TRUE)
+            return(paste("Mean relative difference:", format(rel)))
+        }
+        absdiff <- mean(diff)
+        if (absdiff <= tolerance)
+            return(TRUE)
+        return(paste("Mean absolute difference:", format(absdiff)))
+    }
+    if (identical(target, current))
+        return(TRUE)
+    paste0("target is ", mode(target), ", current is ", mode(current))
 }
