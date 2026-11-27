@@ -613,25 +613,26 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     let mut out = String::new();
     match names_vec {
         Some(names) => {
-            let col_widths: Vec<usize> = elements
+            // GNU's printNamedVector: one uniform width across every name
+            /// and value, each cell right-justified and followed by a
+            /// trailing space — line ends keep the final blank exactly as
+            /// printvector.c emits it.
+            let uniform = elements
                 .iter()
-                .zip(names.iter())
-                .map(|(e, n)| e.len().max(n.len()))
-                .collect();
-            for (i, name) in names.iter().enumerate() {
-                if i > 0 {
-                    out.push(' ');
-                }
-                out.push_str(&" ".repeat(col_widths[i] - name.len()));
+                .chain(names.iter())
+                .map(|s| s.len())
+                .max()
+                .unwrap_or(0);
+            for name in names.iter() {
+                out.push_str(&" ".repeat(uniform - name.len()));
                 out.push_str(name);
+                out.push(' ');
             }
             out.push('\n');
-            for (i, element) in elements.iter().enumerate() {
-                if i > 0 {
-                    out.push(' ');
-                }
-                out.push_str(&" ".repeat(col_widths[i] - element.len()));
+            for element in elements.iter() {
+                out.push_str(&" ".repeat(uniform - element.len()));
                 out.push_str(element);
+                out.push(' ');
             }
         }
         None => {
