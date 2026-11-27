@@ -10,7 +10,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 arbitrary = { version = "1", features = ["derive"] }
-r-embed = { path = "../crates/r-embed" }
+r-runtime = { path = "../crates/r-runtime", features = ["renderplot-device"] }
 
 [[bin]]
 name = "eval_boundary"

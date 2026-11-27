@@ -4,7 +4,6 @@ members = [
   "crates/android-global-audit",
   "crates/r-device-android-headless",
   "crates/r-device-vello-gpu",
-  "crates/r-embed",
   "crates/r-graphics-engine",
   "crates/r-host-cli",
   "crates/r-wasm",

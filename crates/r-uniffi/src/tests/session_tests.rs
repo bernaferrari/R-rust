@@ -146,12 +146,12 @@ fn eval_result_returns_owned_value() {
 
 #[test]
 fn eval_result_preserves_value_metadata() {
-    let value = RValue::from(r_embed::RValue::Attributed {
-        value: Box::new(r_embed::RValue::IntegerVector(vec![Some(1), Some(2)])),
-        metadata: r_embed::RMetadata {
+    let value = RValue::from(r_runtime::embed::RValue::Attributed {
+        value: Box::new(r_runtime::embed::RValue::IntegerVector(vec![Some(1), Some(2)])),
+        metadata: r_runtime::embed::RMetadata {
             names: Some(vec![Some("a".to_string()), Some("b".to_string())]),
             class: Some(vec![Some("foo".to_string())]),
-            ..r_embed::RMetadata::default()
+            ..r_runtime::embed::RMetadata::default()
         },
     });
 
@@ -174,8 +174,8 @@ fn eval_result_preserves_raw_and_complex_values() {
     assert_eq!(raw.value.kind, RValueKind::RawVector);
     assert_eq!(raw.value.raw_values, vec![0x41, 0x5a]);
 
-    let complex = RValue::from(r_embed::RValue::ComplexVector(vec![
-        Some(r_embed::RComplexValue {
+    let complex = RValue::from(r_runtime::embed::RValue::ComplexVector(vec![
+        Some(r_runtime::embed::RComplexValue {
             real: 1.0,
             imaginary: -2.0,
         }),
@@ -196,7 +196,7 @@ fn eval_result_preserves_raw_and_complex_values() {
 
 #[test]
 fn unsupported_values_carry_type_name_only() {
-    let value = RValue::from(r_embed::RValue::Unsupported {
+    let value = RValue::from(r_runtime::embed::RValue::Unsupported {
         type_name: "closure".to_string(),
     });
 

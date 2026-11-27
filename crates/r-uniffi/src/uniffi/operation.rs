@@ -22,7 +22,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use r_embed::CancellationToken;
+use r_runtime::embed::CancellationToken;
 
 use super::conversion::EvalResult;
 use super::plot::PlotResult;

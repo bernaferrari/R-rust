@@ -1677,21 +1677,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
-name = "r-embed"
-version = "0.1.0"
-dependencies = [
- "flate2",
- "png",
- "pollster",
- "r-device-android-headless",
- "r-device-vello-gpu",
- "r-graphics-engine",
- "r-runtime",
- "tempfile",
- "thiserror 2.0.20",
-]
-
-[[package]]
 name = "r-graphics"
 version = "0.1.0"
 dependencies = [
@@ -1716,7 +1701,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "libc",
- "r-embed",
+ "r-runtime",
 ]
 
 [[package]]
@@ -1767,7 +1752,7 @@ dependencies = [
 name = "r-uniffi"
 version = "0.1.0"
 dependencies = [
- "r-embed",
+ "r-runtime",
  "thiserror 2.0.20",
  "uniffi",
 ]
@@ -1778,8 +1763,8 @@ version = "0.1.0"
 dependencies = [
  "js-sys",
  "r-device-vello-gpu",
- "r-embed",
  "r-graphics-engine",
+ "r-runtime",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -1889,7 +1874,7 @@ dependencies = [
 name = "rport-script-diff"
 version = "0.1.0"
 dependencies = [
- "r-embed",
+ "r-runtime",
 ]
 
 [[package]]

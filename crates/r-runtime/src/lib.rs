@@ -169,6 +169,7 @@
 #![warn(unused_unsafe)]
 #![allow(unknown_lints)]
 
+pub mod embed;
 pub mod host;
 
 pub use r_math as nmath;

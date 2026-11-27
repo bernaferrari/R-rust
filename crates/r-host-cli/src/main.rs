@@ -6,7 +6,7 @@
 //! evaluation).
 
 use anyhow::Result;
-use r_embed::CancellationToken;
+use r_runtime::embed::CancellationToken;
 
 /// The evaluation backend the REPL runs on — the pure-Rust
 /// generational-heap world by default, the migration's first consumer
@@ -14,11 +14,11 @@ use r_embed::CancellationToken;
 /// Command-line session over the pure world. The legacy engine opt-in was
 /// retired with the consumer migrations: PureSession is the only world.
 struct CliSession {
-    session: r_embed::PureSession,
+    session: r_runtime::embed::PureSession,
 }
 impl CliSession {
     fn new() -> std::result::Result<CliSession, String> {
-        let mut session = r_embed::PureSession::new();
+        let mut session = r_runtime::embed::PureSession::new();
         session.enable_host_process_capabilities();
         Ok(CliSession { session })
     }
@@ -35,7 +35,7 @@ impl CliSession {
         &mut self,
         code: &str,
         token: &CancellationToken,
-    ) -> std::result::Result<r_embed::EvalOutput, String> {
+    ) -> std::result::Result<r_runtime::embed::EvalOutput, String> {
         self.session
             .eval_result_cancellable(code, token)
             .map_err(|e| format!("{e}"))

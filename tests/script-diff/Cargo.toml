@@ -9,4 +9,4 @@ name = "rport-script-diff"
 path = "src/main.rs"
 
 [dependencies]
-r-embed = { path = "../../crates/r-embed" }
+r-runtime = { path = "../../crates/r-runtime", features = ["renderplot-device"] }

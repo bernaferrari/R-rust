@@ -35,7 +35,7 @@ fn constructor_fails_when_init_exceeds_handshake_deadline() {
     let result = RSession::initialize(
         Box::new(|| {
             std::thread::sleep(Duration::from_millis(250));
-            Ok(r_embed::PureSession::new())
+            Ok(r_runtime::embed::PureSession::new())
         }),
         Duration::from_millis(80),
     );

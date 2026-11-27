@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use r_embed::CancellationToken;
+use r_runtime::embed::CancellationToken;
 
 use super::cancellation::map_eval_error;
 use super::conversion::{
@@ -261,10 +261,10 @@ pub(crate) enum SessionCommand {
 // ---------------------------------------------------------------------------
 
 /// Factory for the worker's interpreter session; injectable for tests.
-pub(crate) type WorkerInit = Box<dyn FnOnce() -> Result<r_embed::PureSession, String> + Send>;
+pub(crate) type WorkerInit = Box<dyn FnOnce() -> Result<r_runtime::embed::PureSession, String> + Send>;
 
 pub(crate) fn default_init() -> WorkerInit {
-    Box::new(|| Ok(r_embed::PureSession::new()))
+    Box::new(|| Ok(r_runtime::embed::PureSession::new()))
 }
 
 pub(crate) struct WorkerConfig {
@@ -344,7 +344,7 @@ pub(crate) fn spawn_worker(
 /// panic guard, record the terminal outcome, deliver callbacks through the
 /// dispatcher, and reply to a synchronous caller.
 fn execute_operation(
-    session: &mut r_embed::PureSession,
+    session: &mut r_runtime::embed::PureSession,
     op: OpHandle,
     kind: OpKind,
     table: &Arc<Mutex<OperationTable>>,
@@ -355,7 +355,7 @@ fn execute_operation(
     match kind {
         OpKind::ConfigurePaths { paths, reply } => {
             let result = run_guarded(|| {
-                let embed_paths = r_embed::AndroidRuntimePaths::new(
+                let embed_paths = r_runtime::embed::AndroidRuntimePaths::new(
                     paths.app_files_dir,
                     paths.cache_dir,
                     paths.bundled_library_dir,
@@ -599,22 +599,22 @@ fn quote_r_string(value: &str) -> String {
     )
 }
 
-fn map_table_eval_error(error: r_embed::RSessionError) -> RError {
+fn map_table_eval_error(error: r_runtime::embed::RSessionError) -> RError {
     match map_eval_error(error) {
         RError::Cancelled => RError::Cancelled,
         _ => RError::InvalidInput("object is not a rectangular table".to_string()),
     }
 }
 
-fn nonnegative_integer(value: &r_embed::RValue) -> Option<u64> {
+fn nonnegative_integer(value: &r_runtime::embed::RValue) -> Option<u64> {
     match value {
-        r_embed::RValue::Integer(Some(value)) if *value >= 0 => Some(*value as u64),
-        r_embed::RValue::Real(Some(value))
+        r_runtime::embed::RValue::Integer(Some(value)) if *value >= 0 => Some(*value as u64),
+        r_runtime::embed::RValue::Real(Some(value))
             if value.is_finite() && *value >= 0.0 && value.fract() == 0.0 =>
         {
             Some(*value as u64)
         }
-        r_embed::RValue::Attributed { value, .. } => nonnegative_integer(value),
+        r_runtime::embed::RValue::Attributed { value, .. } => nonnegative_integer(value),
         _ => None,
     }
 }

@@ -12,5 +12,5 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 uniffi = { version = "0.32.0" }
-r-embed = { path = "../r-embed" }
+r-runtime = { path = "../r-runtime", features = ["renderplot-device"] }
 thiserror = { workspace = true }

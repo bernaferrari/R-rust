@@ -29,7 +29,7 @@ fn run_rscript(script: &str) -> Result<String, String> {
 }
 
 fn run_rport(script: &str) -> Result<String, String> {
-    let mut session = r_embed::PureSession::new();
+    let mut session = r_runtime::embed::PureSession::new();
     session.enable_host_process_capabilities();
     session
         .eval_output(script)

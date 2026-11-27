@@ -21,13 +21,13 @@
 //! cancellation only when the token is already cancelled before the render
 //! starts (the worker checks at dequeue).
 
-use r_embed::RSessionError;
+use r_runtime::embed::RSessionError;
 
 use super::error::RError;
 
 /// Create a fresh cancellation token for one operation.
-pub(crate) fn new_token() -> r_embed::CancellationToken {
-    r_embed::CancellationToken::new()
+pub(crate) fn new_token() -> r_runtime::embed::CancellationToken {
+    r_runtime::embed::CancellationToken::new()
 }
 
 /// r-embed reports cooperative cancellation as an evaluation error whose

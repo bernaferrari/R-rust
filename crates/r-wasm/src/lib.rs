@@ -1,4 +1,4 @@
-//! `wasm-bindgen` session boundary over [`r_embed::RSession`] (M2).
+//! `wasm-bindgen` session boundary over [`r_runtime::embed::RSession`] (M2).
 //!
 //! This crate is the browser/Node entry point to the R interpreter:
 //! [`WasmRSession`] exposes `eval` (display output), `is_input_complete`
@@ -47,14 +47,14 @@ use native_shim::JsError;
 
 /// A wasm-boundary R session.
 ///
-/// Thin wrapper around [`r_embed::RSession`]; one instance owns one isolated
+/// Thin wrapper around [`r_runtime::embed::RSession`]; one instance owns one isolated
 /// interpreter (arena, environments, RNG, output capture). Create it on the
 /// JS side with `new WasmRSession()`.
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct WasmRSession {
     // Every access is exclusive: JavaScript's run-to-completion model means
     // one request finishes before another can enter.
-    inner: Option<r_embed::PureSession>,
+    inner: Option<r_runtime::embed::PureSession>,
 }
 
 /// Owned result from one interactive evaluation.
@@ -107,13 +107,13 @@ impl WasmRSession {
     ) -> Result<(), JsError> {
         self.with_session(|session| {
             let length = bytes.length();
-            let limit = r_embed::MAX_BROWSER_FILE_BYTES;
+            let limit = r_runtime::embed::MAX_BROWSER_FILE_BYTES;
             if length as usize > limit {
                 return Err(JsError::new(&format!(
                     "browser file exceeds {limit} byte limit"
                 )));
             }
-            if path.length() as usize > r_embed::MAX_BROWSER_FILE_PATH_BYTES {
+            if path.length() as usize > r_runtime::embed::MAX_BROWSER_FILE_PATH_BYTES {
                 return Err(JsError::new(
                     "browser file paths must be non-empty relative paths",
                 ));
@@ -165,11 +165,11 @@ impl WasmRSession {
         // on every target before applying the browser's resource budget.
         // Temporary files belong to the bounded virtual file store, whose
         // keys are relative paths on every browser-facade target.
-        let mut inner = r_embed::PureSession::new_with_path_policy(Vec::new(), "tmp");
+        let mut inner = r_runtime::embed::PureSession::new_with_path_policy(Vec::new(), "tmp");
         inner.enable_browser_files();
         inner.set_output_limit(Some(WASM_OUTPUT_LIMIT_BYTES));
         inner.set_result_limit(Some(WASM_OUTPUT_LIMIT_BYTES));
-        inner.set_resource_limits(r_embed::RResourceLimits {
+        inner.set_resource_limits(r_runtime::embed::RResourceLimits {
             max_eval_depth: 1000,
             max_execution_time_ms: 15_000,
             max_alloc_bytes: 64 * 1024 * 1024,
@@ -189,7 +189,7 @@ impl WasmRSession {
         self.with_session(|session| {
             let result = session.eval(code);
             Ok(match result.typed {
-                r_embed::RValue::Error(message) => format!("Error: {message}"),
+                r_runtime::embed::RValue::Error(message) => format!("Error: {message}"),
                 _ => result.output,
             })
         })
@@ -201,7 +201,7 @@ impl WasmRSession {
         self.with_session(|session| {
             let result = session.eval(code);
             match result.typed {
-                r_embed::RValue::Error(message) => Err(JsError::new(&format!("Error: {message}"))),
+                r_runtime::embed::RValue::Error(message) => Err(JsError::new(&format!("Error: {message}"))),
                 _ => Ok(result.output),
             }
         })
@@ -215,7 +215,7 @@ impl WasmRSession {
                 .map_err(|e| JsError::new(&e.to_string()))
         })?;
         match result.value {
-            r_embed::RValue::StringVector(mut values) if values.len() == 1 => values
+            r_runtime::embed::RValue::StringVector(mut values) if values.len() == 1 => values
                 .pop()
                 .flatten()
                 .ok_or_else(|| JsError::new("Expected a non-NA character scalar")),
@@ -247,7 +247,7 @@ impl WasmRSession {
                     png: result.png,
                     error: None,
                 }),
-                Err(r_embed::RSessionError::EvalErrorWithOutput {
+                Err(r_runtime::embed::RSessionError::EvalErrorWithOutput {
                     message,
                     output,
                     png,
@@ -314,7 +314,7 @@ impl WasmRSession {
 impl WasmRSession {
     fn with_session<T>(
         &mut self,
-        f: impl FnOnce(&mut r_embed::PureSession) -> Result<T, JsError>,
+        f: impl FnOnce(&mut r_runtime::embed::PureSession) -> Result<T, JsError>,
     ) -> Result<T, JsError> {
         let session = self
             .inner

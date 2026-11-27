@@ -1,2 +1,0 @@
-export(reorder, xtabs, diff.ts, fixture_marker)
-S3method(diff, ts)

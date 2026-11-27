@@ -2,7 +2,7 @@
 //! the `r_embed` facade types. Every type here is plain owned data: no raw
 //! interpreter pointers ever cross this layer.
 
-use r_embed::AndroidRuntimePaths as EmbedAndroidRuntimePaths;
+use r_runtime::embed::AndroidRuntimePaths as EmbedAndroidRuntimePaths;
 
 use super::error::RError;
 
@@ -39,8 +39,8 @@ pub struct RComplexValue {
     pub imaginary: f64,
 }
 
-impl From<r_embed::RComplexValue> for RComplexValue {
-    fn from(value: r_embed::RComplexValue) -> Self {
+impl From<r_runtime::embed::RComplexValue> for RComplexValue {
+    fn from(value: r_runtime::embed::RComplexValue) -> Self {
         RComplexValue {
             real: value.real,
             imaginary: value.imaginary,
@@ -111,8 +111,8 @@ pub struct ResourceLimits {
     pub max_arena_nodes: u64,
 }
 
-impl From<r_embed::RResourceLimits> for ResourceLimits {
-    fn from(limits: r_embed::RResourceLimits) -> Self {
+impl From<r_runtime::embed::RResourceLimits> for ResourceLimits {
+    fn from(limits: r_runtime::embed::RResourceLimits) -> Self {
         ResourceLimits {
             max_eval_depth: limits.max_eval_depth,
             max_execution_time_ms: limits.max_execution_time_ms,
@@ -122,9 +122,9 @@ impl From<r_embed::RResourceLimits> for ResourceLimits {
     }
 }
 
-impl From<ResourceLimits> for r_embed::RResourceLimits {
+impl From<ResourceLimits> for r_runtime::embed::RResourceLimits {
     fn from(limits: ResourceLimits) -> Self {
-        r_embed::RResourceLimits {
+        r_runtime::embed::RResourceLimits {
             max_eval_depth: limits.max_eval_depth,
             max_execution_time_ms: limits.max_execution_time_ms,
             max_alloc_bytes: limits.max_alloc_bytes,
@@ -171,8 +171,8 @@ pub struct PackageInfo {
     pub library_path: String,
 }
 
-impl From<r_embed::RPackageInfo> for PackageInfo {
-    fn from(info: r_embed::RPackageInfo) -> Self {
+impl From<r_runtime::embed::RPackageInfo> for PackageInfo {
+    fn from(info: r_runtime::embed::RPackageInfo) -> Self {
         PackageInfo {
             name: info.name,
             version: info.version,
@@ -221,63 +221,63 @@ pub(crate) fn null_eval_result(output: &str) -> EvalResult {
     }
 }
 
-impl From<r_embed::RValue> for RValue {
-    fn from(value: r_embed::RValue) -> Self {
+impl From<r_runtime::embed::RValue> for RValue {
+    fn from(value: r_runtime::embed::RValue) -> Self {
         match value {
-            r_embed::RValue::Null => empty_value(RValueKind::Null),
-            r_embed::RValue::Logical(value) => RValue {
+            r_runtime::embed::RValue::Null => empty_value(RValueKind::Null),
+            r_runtime::embed::RValue::Logical(value) => RValue {
                 logical_scalar: value,
                 ..empty_value(RValueKind::Logical)
             },
-            r_embed::RValue::Integer(value) => RValue {
+            r_runtime::embed::RValue::Integer(value) => RValue {
                 integer_scalar: value,
                 ..empty_value(RValueKind::Integer)
             },
-            r_embed::RValue::Real(value) => RValue {
+            r_runtime::embed::RValue::Real(value) => RValue {
                 real_scalar: value,
                 ..empty_value(RValueKind::Real)
             },
-            r_embed::RValue::LogicalVector(values) => RValue {
+            r_runtime::embed::RValue::LogicalVector(values) => RValue {
                 logical_values: values,
                 ..empty_value(RValueKind::LogicalVector)
             },
-            r_embed::RValue::IntegerVector(values) => RValue {
+            r_runtime::embed::RValue::IntegerVector(values) => RValue {
                 integer_values: values,
                 ..empty_value(RValueKind::IntegerVector)
             },
-            r_embed::RValue::RealVector(values) => RValue {
+            r_runtime::embed::RValue::RealVector(values) => RValue {
                 real_values: values,
                 ..empty_value(RValueKind::RealVector)
             },
-            r_embed::RValue::StringVector(values) => RValue {
+            r_runtime::embed::RValue::StringVector(values) => RValue {
                 string_values: values,
                 ..empty_value(RValueKind::StringVector)
             },
-            r_embed::RValue::RawVector(values) => RValue {
+            r_runtime::embed::RValue::RawVector(values) => RValue {
                 raw_values: values,
                 ..empty_value(RValueKind::RawVector)
             },
-            r_embed::RValue::ComplexVector(values) => RValue {
+            r_runtime::embed::RValue::ComplexVector(values) => RValue {
                 complex_values: values
                     .into_iter()
                     .map(|value| value.map(RComplexValue::from))
                     .collect(),
                 ..empty_value(RValueKind::ComplexVector)
             },
-            r_embed::RValue::List(values) => RValue {
+            r_runtime::embed::RValue::List(values) => RValue {
                 list_values: values.into_iter().map(RValue::from).collect(),
                 ..empty_value(RValueKind::List)
             },
-            r_embed::RValue::Attributed { value, metadata } => {
+            r_runtime::embed::RValue::Attributed { value, metadata } => {
                 let mut value = RValue::from(*value);
                 value.metadata = RMetadata::from(metadata);
                 value
             }
-            r_embed::RValue::Unsupported { type_name } => RValue {
+            r_runtime::embed::RValue::Unsupported { type_name } => RValue {
                 type_name,
                 ..empty_value(RValueKind::Unsupported)
             },
-            r_embed::RValue::Error(message) => RValue {
+            r_runtime::embed::RValue::Error(message) => RValue {
                 error: message,
                 ..empty_value(RValueKind::Error)
             },
@@ -285,8 +285,8 @@ impl From<r_embed::RValue> for RValue {
     }
 }
 
-impl From<r_embed::RAttribute> for RAttribute {
-    fn from(attribute: r_embed::RAttribute) -> Self {
+impl From<r_runtime::embed::RAttribute> for RAttribute {
+    fn from(attribute: r_runtime::embed::RAttribute) -> Self {
         RAttribute {
             name: attribute.name,
             value: RValue::from(attribute.value),
@@ -294,8 +294,8 @@ impl From<r_embed::RAttribute> for RAttribute {
     }
 }
 
-impl From<r_embed::RMetadata> for RMetadata {
-    fn from(metadata: r_embed::RMetadata) -> Self {
+impl From<r_runtime::embed::RMetadata> for RMetadata {
+    fn from(metadata: r_runtime::embed::RMetadata) -> Self {
         RMetadata {
             names: metadata.names,
             dim: metadata.dim,
@@ -322,7 +322,7 @@ pub fn android_runtime_paths(
     cache_dir: String,
     bundled_library_dir: Option<String>,
 ) -> AndroidRuntimePaths {
-    r_embed::AndroidRuntimePaths::new(app_files_dir, cache_dir, bundled_library_dir).into()
+    r_runtime::embed::AndroidRuntimePaths::new(app_files_dir, cache_dir, bundled_library_dir).into()
 }
 
 /// Reject package names that cannot denote an installed package.
