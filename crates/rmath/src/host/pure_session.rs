@@ -381,6 +381,52 @@ impl PureSession {
         Ok(super::facade::InteractiveOutput { output, png })
     }
 
+    /// Render ordinary R evaluation into owned PNG bytes — the facade's
+    /// `render_with_dimensions` contract: an error when evaluation drew
+    /// nothing, exactly as a plot-less render request must fail rather
+    /// than hand the embedder a blank canvas it cannot distinguish.
+    #[cfg(feature = "renderplot-device")]
+    pub fn render_with_dimensions(
+        &mut self,
+        code: &str,
+        width: u32,
+        height: u32,
+    ) -> Result<Vec<u8>, String> {
+        let result = self.eval_interactive(code, width, height)?;
+        result.png.ok_or(result.output)
+    }
+
+    /// Capture an owned graphics scene after evaluation — the facade's
+    /// `record_scene` contract. The scene is plain data (`Scene` is
+    /// `Clone`), so the snapshot carries no interpreter borrow and the
+    /// embedder may close the session before a GPU renders it.
+    pub fn record_scene(
+        &mut self,
+        code: &str,
+        width: u32,
+        height: u32,
+    ) -> Result<r_graphics_engine::Scene, String> {
+        if width < 32 || height < 32 {
+            return Err("plot width and height must be at least 32 pixels".to_string());
+        }
+        if u64::from(width) * u64::from(height) > 16_777_216 {
+            return Err("plot exceeds 16M-pixel limit".to_string());
+        }
+        self.session
+            .heap
+            .graphics
+            .set_device_size(f64::from(width), f64::from(height));
+        self.session.heap.graphics.clear_scene();
+        let before = self.session.heap.graphics.scene().operations().len();
+        self.eval_output(code).map_err(|e| e)?;
+        let scene = self.session.heap.graphics.scene();
+        if scene.operations().len() > before {
+            Ok(scene.clone())
+        } else {
+            Err("evaluation drew no plot".to_string())
+        }
+    }
+
     /// How many pages the device has begun — embedders detect page
     /// turns across evals since the resetting display list cannot.
     pub fn page_count(&self) -> u64 {
@@ -1888,6 +1934,41 @@ cat(grconvertX(0:1, "user", "device"), grconvertY(0:1, "user", "device"), "\n")
         let png = drawn.png.expect("drawing should render");
         assert_eq!(&png[1..4], b"PNG", "not a png stream");
         assert!(png.len() > 400, "suspiciously small render: {}", png.len());
+    }
+
+    #[test]
+    fn record_scene_captures_owned_operations_and_rejects_blank_evals() {
+        let mut session = PureSession::new();
+        let scene = session
+            .record_scene("plot(c(1,2,3), c(1,4,9))", 200, 150)
+            .expect("plot records a scene");
+        assert!(
+            !scene.operations().is_empty(),
+            "a scatterplot must record drawing operations"
+        );
+        assert_eq!(scene.dimensions(), (200, 150));
+        // Arithmetic draws nothing — the embedder learns that as an error
+        // rather than receiving an empty scene it cannot distinguish.
+        let err = session
+            .record_scene("1 + 1", 200, 150)
+            .expect_err("plot-less evaluation must not record");
+        assert!(err.contains("drew no plot"), "{err}");
+    }
+
+    #[test]
+    #[cfg(feature = "renderplot-device")]
+    fn render_with_dimensions_yields_png_only_for_drawing() {
+        let mut session = PureSession::new();
+        let png = session
+            .render_with_dimensions("plot(c(1,2,3), c(1,4,9))", 200, 150)
+            .expect("drawing renders");
+        assert_eq!(&png[1..4], b"PNG", "not a png stream");
+        // A plot-less render fails with the evaluation output as the
+        // error — the embedder sees what R printed instead of a canvas.
+        assert!(
+            session.render_with_dimensions("1 + 1", 200, 150).is_err(),
+            "arithmetic must not render a blank canvas"
+        );
     }
 
     #[test]
