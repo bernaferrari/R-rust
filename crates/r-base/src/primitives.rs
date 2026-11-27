@@ -21906,14 +21906,14 @@ pub fn trig_unary(
                     ASIN => v.asin(),
                     ACOS => v.acos(),
                     ATAN => v.atan(),
-                    GAMMAFN => rmath_nmath::special::gamma::gammafn(*v),
-                    LGAMMAFN => rmath_nmath::special::gamma::lgammafn(*v),
-                    DIGAMMA => rmath_nmath::special::polygamma::digamma(*v),
-                    TRIGAMMA => rmath_nmath::special::polygamma::trigamma(*v),
+                    GAMMAFN => r_math::special::gamma::gammafn(*v),
+                    LGAMMAFN => r_math::special::gamma::lgammafn(*v),
+                    DIGAMMA => r_math::special::polygamma::digamma(*v),
+                    TRIGAMMA => r_math::special::polygamma::trigamma(*v),
                     // factorial and lfactorial are gamma(x+1) exactly as
                     /// GNU's math1.c.
-                    FACTORIAL => rmath_nmath::special::gamma::gammafn(*v + 1.0),
-                    LFACTORIAL => rmath_nmath::special::gamma::lgammafn(*v + 1.0),
+                    FACTORIAL => r_math::special::gamma::gammafn(*v + 1.0),
+                    LFACTORIAL => r_math::special::gamma::lgammafn(*v + 1.0),
                     _ => v.tanh(),
                 }
             }
@@ -21968,11 +21968,11 @@ pub fn math2_primitive(
             } else {
                 match op {
                     ATAN2 => x.atan2(y),
-                    BETA => rmath_nmath::special::beta_util::beta(x, y),
-                    LBETA => rmath_nmath::special::lbeta::lbeta(x, y),
-                    CHOOSE => rmath_nmath::special::choose::choose(x, y),
-                    LCHOOSE => rmath_nmath::special::choose::lchoose(x, y),
-                    PSIGAMMA => rmath_nmath::special::polygamma::psigamma(x, y),
+                    BETA => r_math::special::beta_util::beta(x, y),
+                    LBETA => r_math::special::lbeta::lbeta(x, y),
+                    CHOOSE => r_math::special::choose::choose(x, y),
+                    LCHOOSE => r_math::special::choose::lchoose(x, y),
+                    PSIGAMMA => r_math::special::polygamma::psigamma(x, y),
                     _ => f64::NAN,
                 }
             }
@@ -24611,7 +24611,7 @@ pub fn civil_from_days(z: i64) -> (i64, u32, u32) {
 
 /// lgamma(x + 1) — log-factorial exactly as GNU's multinomial needs.
 pub fn lgamma1p(x: f64) -> f64 {
-    rmath_nmath::special::gamma::lgammafn1p(x)
+    r_math::special::gamma::lgammafn1p(x)
 }
 
 /// Build a named list from (name, value) entries — GNU's list shape with

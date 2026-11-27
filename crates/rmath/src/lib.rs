@@ -4,7 +4,7 @@
 //! SEXP arena and object model, base/stats library slices, and the
 //! Android/embedding facade. The faithful translations of the nmath
 //! statistical routines (`dist`, `dpq`, `special`, `nmath`) live in the
-//! dedicated `rmath-nmath` crate and are re-exported here as `rmath::nmath`.
+//! dedicated `r-math` crate and are re-exported here as `rmath::nmath`.
 //! See `docs/rust-r-port-architecture.md` for the layering and ownership
 //! model.
 
@@ -170,7 +170,7 @@
 
 pub mod host;
 
-pub use rmath_nmath as nmath;
+pub use r_math as nmath;
 pub use value::support::{MAX_BROWSER_FILE_BYTES, MAX_BROWSER_FILE_PATH_BYTES};
 
 pub mod value;

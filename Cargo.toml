@@ -9,7 +9,7 @@ members = [
   "crates/r-host-cli",
   "crates/r-wasm",
   "crates/r-uniffi",
-  "crates/nmath",
+  "crates/r-math",
   "crates/r-core",
   "crates/r-base",
   "crates/rmath",

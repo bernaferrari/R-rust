@@ -122,51 +122,51 @@ pub fn dpq_primitive(
         .map(|&x| {
             let x = if x.is_nan() { f64::NAN } else { x };
             match which {
-                DNORM => rmath_nmath::dist::normal::dnorm4_inner(x, param1, param2, log_flag),
-                PNORM => rmath_nmath::dist::normal::pnorm5_inner(x, param1, param2, lower_flag, log_flag),
-                QNORM => rmath_nmath::dist::normal::qnorm5_inner(x, param1, param2, lower_flag, log_flag),
-                DPOIS => rmath_nmath::dist::poisson::dpois_inner(x, param1, log_flag),
-                PPOIS => rmath_nmath::dist::poisson::ppois_inner(x, param1, lower_flag, log_flag),
-                DBINOM => rmath_nmath::dist::binomial::dbinom_inner(x, param1, param2, log_flag),
-                PBINOM => rmath_nmath::dist::binomial::pbinom_inner(x, param1, param2, lower_flag, log_flag),
-                DBETA => rmath_nmath::dist::beta::dbeta_inner(x, param1, param2, log_flag),
-                PBETA => rmath_nmath::dist::beta::pbeta_inner(x, param1, param2, lower_flag, log_flag),
-                QBETA => rmath_nmath::dist::beta::qbeta_inner(x, param1, param2, lower_flag, log_flag),
-                DT => rmath_nmath::dist::t_dist::dt_inner(x, param1, log_flag),
-                PT => rmath_nmath::dist::t_dist::pt_inner(x, param1, lower_flag, log_flag),
-                QT => rmath_nmath::dist::t_dist::qt_inner(x, param1, lower_flag, log_flag),
-                DF => rmath_nmath::dist::f_dist::df_inner(x, param1, param2, log_flag),
-                PF => rmath_nmath::dist::f_dist::pf_inner(x, param1, param2, lower_flag, log_flag),
-                QF => rmath_nmath::dist::f_dist::qf_inner(x, param1, param2, lower_flag, log_flag),
-                DCAUCHY => rmath_nmath::dist::cauchy::dcauchy_inner(x, param1, param2, log_flag),
-                PCAUCHY => rmath_nmath::dist::cauchy::pcauchy_inner(x, param1, param2, lower_flag, log_flag),
-                QCAUCHY => rmath_nmath::dist::cauchy::qcauchy_inner(x, param1, param2, lower_flag, log_flag),
-                DCHISQ => rmath_nmath::dist::chisq::dchisq_inner(x, param1, log_flag),
-                PCHISQ => rmath_nmath::dist::chisq::pchisq_inner(x, param1, lower_flag, log_flag),
-                QCHISQ => rmath_nmath::dist::chisq::qchisq_inner(x, param1, lower_flag, log_flag),
-                DEXP => rmath_nmath::dist::exponential::dexp_inner(x, 1.0 / param1, log_flag),
+                DNORM => r_math::dist::normal::dnorm4_inner(x, param1, param2, log_flag),
+                PNORM => r_math::dist::normal::pnorm5_inner(x, param1, param2, lower_flag, log_flag),
+                QNORM => r_math::dist::normal::qnorm5_inner(x, param1, param2, lower_flag, log_flag),
+                DPOIS => r_math::dist::poisson::dpois_inner(x, param1, log_flag),
+                PPOIS => r_math::dist::poisson::ppois_inner(x, param1, lower_flag, log_flag),
+                DBINOM => r_math::dist::binomial::dbinom_inner(x, param1, param2, log_flag),
+                PBINOM => r_math::dist::binomial::pbinom_inner(x, param1, param2, lower_flag, log_flag),
+                DBETA => r_math::dist::beta::dbeta_inner(x, param1, param2, log_flag),
+                PBETA => r_math::dist::beta::pbeta_inner(x, param1, param2, lower_flag, log_flag),
+                QBETA => r_math::dist::beta::qbeta_inner(x, param1, param2, lower_flag, log_flag),
+                DT => r_math::dist::t_dist::dt_inner(x, param1, log_flag),
+                PT => r_math::dist::t_dist::pt_inner(x, param1, lower_flag, log_flag),
+                QT => r_math::dist::t_dist::qt_inner(x, param1, lower_flag, log_flag),
+                DF => r_math::dist::f_dist::df_inner(x, param1, param2, log_flag),
+                PF => r_math::dist::f_dist::pf_inner(x, param1, param2, lower_flag, log_flag),
+                QF => r_math::dist::f_dist::qf_inner(x, param1, param2, lower_flag, log_flag),
+                DCAUCHY => r_math::dist::cauchy::dcauchy_inner(x, param1, param2, log_flag),
+                PCAUCHY => r_math::dist::cauchy::pcauchy_inner(x, param1, param2, lower_flag, log_flag),
+                QCAUCHY => r_math::dist::cauchy::qcauchy_inner(x, param1, param2, lower_flag, log_flag),
+                DCHISQ => r_math::dist::chisq::dchisq_inner(x, param1, log_flag),
+                PCHISQ => r_math::dist::chisq::pchisq_inner(x, param1, lower_flag, log_flag),
+                QCHISQ => r_math::dist::chisq::qchisq_inner(x, param1, lower_flag, log_flag),
+                DEXP => r_math::dist::exponential::dexp_inner(x, 1.0 / param1, log_flag),
                 // rate inverts to the core's scale exactly as the d-variant.
-                PEXP => rmath_nmath::dist::exponential::pexp_inner(x, 1.0 / param1, lower_flag, log_flag),
-                QEXP => rmath_nmath::dist::exponential::qexp_inner(x, 1.0 / param1, lower_flag, log_flag),
+                PEXP => r_math::dist::exponential::pexp_inner(x, 1.0 / param1, lower_flag, log_flag),
+                QEXP => r_math::dist::exponential::qexp_inner(x, 1.0 / param1, lower_flag, log_flag),
                 // GNU's gamma exposes rate with scale = 1/rate exactly as
                 /// the exponential inversion — the core wants scale.
-                DGAMMA => rmath_nmath::dist::gamma::dgamma_inner(x, param1, 1.0 / param2, log_flag),
-                PGAMMA => rmath_nmath::dist::gamma::pgamma_inner(x, param1, 1.0 / param2, lower_flag, log_flag),
-                QGAMMA => rmath_nmath::dist::gamma::qgamma_inner(x, param1, 1.0 / param2, lower_flag, log_flag),
-                DGEOM => rmath_nmath::dist::geometric::dgeom_inner(x, param1, log_flag),
-                PGEOM => rmath_nmath::dist::geometric::pgeom_inner(x, param1, lower_flag, log_flag),
-                QGEOM => rmath_nmath::dist::geometric::qgeom_inner(x, param1, lower_flag, log_flag),
-                DNBINOM => rmath_nmath::dist::nbinom::dnbinom_inner(x, param1, param2, log_flag),
-                PNBINOM => rmath_nmath::dist::nbinom::pnbinom_inner(x, param1, param2, lower_flag, log_flag),
-                QNBINOM => rmath_nmath::dist::nbinom::qnbinom_inner(x, param1, param2, lower_flag, log_flag),
-                DWEIBULL => rmath_nmath::dist::weibull::dweibull_inner(x, param1, param2, log_flag),
-                PWEIBULL => rmath_nmath::dist::weibull::pweibull_inner(x, param1, param2, lower_flag, log_flag),
-                QWEIBULL => rmath_nmath::dist::weibull::qweibull_inner(x, param1, param2, lower_flag, log_flag),
-                QPOIS => rmath_nmath::dist::poisson::qpois_inner(x, param1, lower_flag, log_flag),
-                QBINOM => rmath_nmath::dist::binomial::qbinom_inner(x, param1, param2, lower_flag, log_flag),
-                DUNIF => rmath_nmath::dist::uniform::dunif_inner(x, param1, param2, log_flag),
-                PUNIF => rmath_nmath::dist::uniform::punif_inner(x, param1, param2, lower_flag, log_flag),
-                QUNIF => rmath_nmath::dist::uniform::qunif_inner(x, param1, param2, lower_flag, log_flag),
+                DGAMMA => r_math::dist::gamma::dgamma_inner(x, param1, 1.0 / param2, log_flag),
+                PGAMMA => r_math::dist::gamma::pgamma_inner(x, param1, 1.0 / param2, lower_flag, log_flag),
+                QGAMMA => r_math::dist::gamma::qgamma_inner(x, param1, 1.0 / param2, lower_flag, log_flag),
+                DGEOM => r_math::dist::geometric::dgeom_inner(x, param1, log_flag),
+                PGEOM => r_math::dist::geometric::pgeom_inner(x, param1, lower_flag, log_flag),
+                QGEOM => r_math::dist::geometric::qgeom_inner(x, param1, lower_flag, log_flag),
+                DNBINOM => r_math::dist::nbinom::dnbinom_inner(x, param1, param2, log_flag),
+                PNBINOM => r_math::dist::nbinom::pnbinom_inner(x, param1, param2, lower_flag, log_flag),
+                QNBINOM => r_math::dist::nbinom::qnbinom_inner(x, param1, param2, lower_flag, log_flag),
+                DWEIBULL => r_math::dist::weibull::dweibull_inner(x, param1, param2, log_flag),
+                PWEIBULL => r_math::dist::weibull::pweibull_inner(x, param1, param2, lower_flag, log_flag),
+                QWEIBULL => r_math::dist::weibull::qweibull_inner(x, param1, param2, lower_flag, log_flag),
+                QPOIS => r_math::dist::poisson::qpois_inner(x, param1, lower_flag, log_flag),
+                QBINOM => r_math::dist::binomial::qbinom_inner(x, param1, param2, lower_flag, log_flag),
+                DUNIF => r_math::dist::uniform::dunif_inner(x, param1, param2, log_flag),
+                PUNIF => r_math::dist::uniform::punif_inner(x, param1, param2, lower_flag, log_flag),
+                QUNIF => r_math::dist::uniform::qunif_inner(x, param1, param2, lower_flag, log_flag),
                 _ => unreachable!(),
             }
         })
@@ -193,7 +193,7 @@ pub fn qhyper_primitive(
     let logp = positional.get(5).and_then(|v| logical_or_na(heap, *v)).unwrap_or(false);
     let out: Vec<f64> = xs
         .iter()
-        .map(|&v| rmath_nmath::dist::hypergeometric::qhyper_inner(v, m, n, k, lower, logp))
+        .map(|&v| r_math::dist::hypergeometric::qhyper_inner(v, m, n, k, lower, logp))
         .collect();
     Ok(heap.alloc(RObject::Real(out)))
 }
@@ -217,7 +217,7 @@ pub fn ptukey_primitive(
     let logp = positional.get(5).and_then(|v| logical_or_na(heap, *v)).unwrap_or(false);
     let out: Vec<f64> = xs
         .iter()
-        .map(|&v| rmath_nmath::dist::tukey::ptukey_inner(v, nranges, nmeans, df, lower, logp))
+        .map(|&v| r_math::dist::tukey::ptukey_inner(v, nranges, nmeans, df, lower, logp))
         .collect();
     Ok(heap.alloc(RObject::Real(out)))
 }
@@ -1199,7 +1199,7 @@ pub fn r_zoo(
     caller_env: ValueId,
     param_names: &[&str],
     defaults: &[f64],
-    draw: impl Fn(&mut dyn FnMut() -> f64, &mut rmath_nmath::state::MathState, &[f64]) -> f64,
+    draw: impl Fn(&mut dyn FnMut() -> f64, &mut r_math::state::MathState, &[f64]) -> f64,
 ) -> EvalResult {
     let mut names: Vec<&str> = vec!["n"];
     names.extend_from_slice(param_names);
@@ -1242,18 +1242,18 @@ macro_rules! zoo_primitive {
     };
 }
 
-zoo_primitive!(rbinom_primitive, ["size", "prob"], [1.0, 0.5], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::binomial::rbinom(rng, ms, ps[0], ps[1]));
-zoo_primitive!(rpois_primitive, ["lambda"], [1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::poisson::rpois(rng, ms, ps[0]));
-zoo_primitive!(rbeta_primitive, ["shape1", "shape2"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::beta::rbeta(rng, ms, ps[0], ps[1]));
-zoo_primitive!(rchisq_primitive, ["df"], [1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::chisq::rchisq(rng, ms, ps[0]));
-zoo_primitive!(rt_primitive, ["df"], [1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::t_dist::rt(rng, ms, ps[0]));
-zoo_primitive!(rf_primitive, ["df1", "df2"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::f_dist::rf(rng, ms, ps[0], ps[1]));
-zoo_primitive!(rlnorm_primitive, ["meanlog", "sdlog"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::lnorm::rlnorm(rng, ps[0], ps[1]));
-zoo_primitive!(rlogis_primitive, ["location", "scale"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::logistic::rlogis(rng, ps[0], ps[1]));
-zoo_primitive!(rcauchy_primitive, ["location", "scale"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::cauchy::rcauchy(rng, ps[0], ps[1]));
-zoo_primitive!(rgeom_primitive, ["prob"], [0.5], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::geometric::rgeom(rng, ms, ps[0]));
-zoo_primitive!(rweibull_primitive, ["shape", "scale"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::weibull::rweibull(rng, ps[0], ps[1]));
-zoo_primitive!(rnbinom_primitive, ["size", "prob"], [1.0, 0.5], |rng: &mut dyn FnMut() -> f64, ms: &mut rmath_nmath::state::MathState, ps: &[f64]| rmath_nmath::dist::nbinom::rnbinom(rng, ms, ps[0], ps[1]));
+zoo_primitive!(rbinom_primitive, ["size", "prob"], [1.0, 0.5], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::binomial::rbinom(rng, ms, ps[0], ps[1]));
+zoo_primitive!(rpois_primitive, ["lambda"], [1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::poisson::rpois(rng, ms, ps[0]));
+zoo_primitive!(rbeta_primitive, ["shape1", "shape2"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::beta::rbeta(rng, ms, ps[0], ps[1]));
+zoo_primitive!(rchisq_primitive, ["df"], [1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::chisq::rchisq(rng, ms, ps[0]));
+zoo_primitive!(rt_primitive, ["df"], [1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::t_dist::rt(rng, ms, ps[0]));
+zoo_primitive!(rf_primitive, ["df1", "df2"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::f_dist::rf(rng, ms, ps[0], ps[1]));
+zoo_primitive!(rlnorm_primitive, ["meanlog", "sdlog"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::lnorm::rlnorm(rng, ps[0], ps[1]));
+zoo_primitive!(rlogis_primitive, ["location", "scale"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::logistic::rlogis(rng, ps[0], ps[1]));
+zoo_primitive!(rcauchy_primitive, ["location", "scale"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::cauchy::rcauchy(rng, ps[0], ps[1]));
+zoo_primitive!(rgeom_primitive, ["prob"], [0.5], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::geometric::rgeom(rng, ms, ps[0]));
+zoo_primitive!(rweibull_primitive, ["shape", "scale"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::weibull::rweibull(rng, ps[0], ps[1]));
+zoo_primitive!(rnbinom_primitive, ["size", "prob"], [1.0, 0.5], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::nbinom::rnbinom(rng, ms, ps[0], ps[1]));
 
 /// rgamma(n, shape, rate, scale) — GNU's parameterization exactly: scale
 /// defaults to 1/rate and an explicit scale overrides rate.
@@ -1288,7 +1288,7 @@ pub fn rgamma_primitive(
                 Some(values) => values[i % values.len()],
                 None => 1.0 / rates[i % rates.len()],
             };
-            out.push(rmath_nmath::dist::gamma::rgamma(&mut unif, &mut heap.math, shape, scale));
+            out.push(r_math::dist::gamma::rgamma(&mut unif, &mut heap.math, shape, scale));
         }
     }
     Ok(heap.alloc(RObject::Real(out)))
@@ -1302,8 +1302,8 @@ pub fn rexp_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    r_zoo(heap, interner, args, caller_env, &["rate"], &[1.0], |rng: &mut dyn FnMut() -> f64, _ms: &mut rmath_nmath::state::MathState, ps: &[f64]| {
-        rmath_nmath::dist::exponential::rexp(rng, 1.0 / ps[0])
+    r_zoo(heap, interner, args, caller_env, &["rate"], &[1.0], |rng: &mut dyn FnMut() -> f64, _ms: &mut r_math::state::MathState, ps: &[f64]| {
+        r_math::dist::exponential::rexp(rng, 1.0 / ps[0])
     })
 }
 
@@ -1329,7 +1329,7 @@ pub fn rhyper_primitive(
         let rng = &mut heap.rng;
         let mut unif = move || rng.unif();
         for i in 0..nn.min(10_000_000) {
-            out.push(rmath_nmath::dist::hypergeometric::rhyper(
+            out.push(r_math::dist::hypergeometric::rhyper(
                 &mut unif,
                 &mut heap.math,
                 ms[i % ms.len()],
