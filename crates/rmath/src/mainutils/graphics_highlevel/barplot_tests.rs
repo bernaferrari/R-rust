@@ -70,9 +70,9 @@ fn render(code: &str) -> Result<(RSession, Sexp<'static>, r_graphics_engine::Sce
     // The scene and original session outlive the scoped backend guard. We only
     // inspect the owned recording after evaluation and guard cleanup finish.
     let result =
-        session.eval_script_with_output_capture_then_renderplot(code, backend, |result, _, _| {
+        unsafe { session.eval_script_with_output_capture_then_renderplot(code, backend, |result, _, _| {
             result.map(|value| value.into_owned().unwrap())
-        });
+        }) };
     result
         .map(|value| (session, value, scene))
         .map_err(|error| error.message)
@@ -186,25 +186,25 @@ fn owning_barplot_wrong_name_count_errors_and_renderer_recovers() {
     let mut session = RSession::new_without_default_packages();
     let mut scene = r_graphics_engine::Scene::new(320, 240);
     let backend: *mut dyn r_graphics_engine::DrawTarget = &mut scene;
-    let error = session.eval_script_with_output_capture_then_renderplot(
+    let error = unsafe { session.eval_script_with_output_capture_then_renderplot(
         "barplot(c(2,4,3),names.arg=c('A','B'))",
         backend,
         |result, _, _| result.unwrap_err(),
-    );
+    ) };
     assert!(
         error.message.contains("incorrect number of names"),
         "{}",
         error.message
     );
     let backend: *mut dyn r_graphics_engine::DrawTarget = &mut scene;
-    session.eval_script_with_output_capture_then_renderplot(
+    unsafe { session.eval_script_with_output_capture_then_renderplot(
         "barplot(c(A=2,B=4,C=3),axes=FALSE,ann=FALSE)",
         backend,
         |result, _, _| {
             let value = result.expect("same session renderer recovers after name error");
             assert_midpoints(&value, &[0.7, 1.9, 3.1]);
         },
-    );
+    ) };
     assert!(text_labels(&scene).contains(&"C"));
     scene.validate().unwrap();
 }

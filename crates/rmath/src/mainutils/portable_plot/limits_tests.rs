@@ -7,9 +7,9 @@ const CONTRACT: &str = include_str!("limits-contract.tsv");
 fn render(session: &mut RSession, code: &str) -> Result<Scene, String> {
     let mut scene = Scene::new(320, 240);
     let target: *mut dyn r_graphics_engine::DrawTarget = &mut scene;
-    session.eval_script_with_output_capture_then_renderplot(code, target, |result, _, _| {
+    unsafe { session.eval_script_with_output_capture_then_renderplot(code, target, |result, _, _| {
         result.map(|_| ()).map_err(|error| error.message)
-    })?;
+    }) }?;
     scene.validate().map_err(|error| error.to_string())?;
     Ok(scene)
 }

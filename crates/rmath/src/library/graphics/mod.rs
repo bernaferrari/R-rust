@@ -1118,11 +1118,11 @@ mod clip_and_convert_tests {
     fn clip_installs_the_manual_device_clip_for_subsequent_drawing() {
         let mut session = RSession::new();
         let mut scene = r_graphics_engine::Scene::new(504, 504);
-        let ok = session.eval_script_with_output_capture_then_renderplot(
+        let ok = unsafe { session.eval_script_with_output_capture_then_renderplot(
             &format!("{WINDOW}; clip(0.25, 0.75, 0.25, 0.75); points(0.5, 0.5)"),
             &mut scene,
             |value, _, _| value.is_ok(),
-        );
+        ) };
         assert!(ok, "clip probe should evaluate without error");
         // user (0.25, 0.25)..(0.75, 0.75) maps to the plot-rectangle quarter.
         let expected = [162.72, 151.92, 370.08, 337.68];
@@ -1140,11 +1140,11 @@ mod clip_and_convert_tests {
     fn clip_rectangle_is_clamped_to_the_device_region() {
         let mut session = RSession::new();
         let mut scene = r_graphics_engine::Scene::new(504, 504);
-        let ok = session.eval_script_with_output_capture_then_renderplot(
+        let ok = unsafe { session.eval_script_with_output_capture_then_renderplot(
             &format!("{WINDOW}; clip(-10, 100, -10, 100)"),
             &mut scene,
             |value, _, _| value.is_ok(),
-        );
+        ) };
         assert!(ok, "wide clip should evaluate without error");
         // GESetClip clamps each edge to the device region.
         let expected = [0., 0., 504., 504.];
@@ -1157,11 +1157,11 @@ mod clip_and_convert_tests {
     fn clip_does_not_survive_a_new_plot() {
         let mut session = RSession::new();
         let mut scene = r_graphics_engine::Scene::new(504, 504);
-        let ok = session.eval_script_with_output_capture_then_renderplot(
+        let ok = unsafe { session.eval_script_with_output_capture_then_renderplot(
             &format!("{WINDOW}; clip(0.25, 0.75, 0.25, 0.75); plot.new(); points(0.5, 0.5)"),
             &mut scene,
             |value, _, _| value.is_ok(),
-        );
+        ) };
         assert!(ok, "clip reset probe should evaluate without error");
         // plot.new starts a fresh frame (the scene is cleared) and GNewPlot's
         // GForceClip discards the manual rectangle: points() clips to the
@@ -1175,13 +1175,13 @@ mod clip_and_convert_tests {
     fn a_changed_xpd_region_restores_the_derived_clip() {
         let mut session = RSession::new();
         let mut scene = r_graphics_engine::Scene::new(504, 504);
-        let ok = session.eval_script_with_output_capture_then_renderplot(
+        let ok = unsafe { session.eval_script_with_output_capture_then_renderplot(
             &format!(
                 "{WINDOW}; clip(0.25, 0.75, 0.25, 0.75); segments(0.4, 0.4, 0.6, 0.6, xpd=TRUE)"
             ),
             &mut scene,
             |value, _, _| value.is_ok(),
-        );
+        ) };
         assert!(ok, "xpd probe should evaluate without error");
         // GClip sees a region change and reverts to the figure clip.
         let clips = clip_rects(&scene);
@@ -1194,14 +1194,14 @@ mod clip_and_convert_tests {
     fn clip_rejects_nonfinite_coordinates_like_gnu() {
         let mut session = RSession::new();
         let mut scene = r_graphics_engine::Scene::new(504, 504);
-        let message = session.eval_script_with_output_capture_then_renderplot(
+        let message = unsafe { session.eval_script_with_output_capture_then_renderplot(
             &format!("{WINDOW}; clip(NaN, 2, 1, 2)"),
             &mut scene,
             |value, _, _| match value {
                 Ok(_) => panic!("clip(NaN) should error"),
                 Err(error) => error.to_string(),
             },
-        );
+        ) };
         assert!(message.contains("invalid 'x1' argument"), "{message}");
     }
 
@@ -1209,7 +1209,7 @@ mod clip_and_convert_tests {
     fn grconvert_follows_usr_plt_and_ndc_math() {
         let mut session = RSession::new();
         let mut scene = r_graphics_engine::Scene::new(504, 504);
-        let values = session.eval_script_with_output_capture_then_renderplot(
+        let values = unsafe { session.eval_script_with_output_capture_then_renderplot(
             &format!(
                 "{WINDOW}; c(grconvertX(0.5,'user','ndc'), \
                  grconvertX(0.5,'user','inches'), \
@@ -1226,7 +1226,7 @@ mod clip_and_convert_tests {
                     .map(|index| value.real_elt(index).unwrap())
                     .collect::<Vec<f64>>()
             },
-        );
+        ) };
         let expected = [
             266.4 / 504.,
             266.4 / 72.,

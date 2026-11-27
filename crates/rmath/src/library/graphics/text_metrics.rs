@@ -503,7 +503,7 @@ mod tests {
     fn measure(code: &str) -> Vec<f64> {
         let mut session = RSession::new_without_default_packages();
         let mut scene = r_graphics_engine::Scene::new(640, 480);
-        session.eval_script_with_output_capture_then_renderplot(
+        unsafe { session.eval_script_with_output_capture_then_renderplot(
             &format!("plot.new();{code}"),
             &mut scene,
             |value, _, _| unsafe {
@@ -513,7 +513,7 @@ mod tests {
                     .map(|index| value.real_elt(index).unwrap())
                     .collect()
             },
-        )
+        ) }
     }
 
     #[test]
@@ -560,11 +560,11 @@ mod tests {
         let mut scene = r_graphics_engine::Scene::new(640, 480);
         for parameter in ["ps", "cex", "font", "lheight"] {
             for value in ["numeric(0)", "'bad'", "NA_real_", "0", "-1", "c(1,2)"] {
-                let error = session.eval_script_with_output_capture_then_renderplot(
+                let error = unsafe { session.eval_script_with_output_capture_then_renderplot(
                     &format!("par(ps=12,cex=1,font=1,lheight=1);plot.new();par({parameter}={value});strwidth('x',units='inches')"),
                     &mut scene,
                     |value, _, _| value.unwrap_err().message,
-                );
+                ) };
                 assert!(
                     error.contains(&format!("invalid '{parameter}' graphics parameter")),
                     "{parameter}={value}: {error}"
@@ -591,14 +591,14 @@ mod tests {
     fn graphics_string_metrics_agree_with_drawn_font_parameters() {
         let mut session = RSession::new_without_default_packages();
         let mut scene = r_graphics_engine::Scene::new(640, 480);
-        let width = session.eval_script_with_output_capture_then_renderplot(
+        let width = unsafe { session.eval_script_with_output_capture_then_renderplot(
             "plot.new();par(ps=18,cex=2,font=2);text(.5,.5,'WWW',cex=1.5);strwidth('WWW',units='inches',cex=1.5)",
             &mut scene,
             |value, _, _| unsafe {
                 // SAFETY: the callback's result is live and no R reentry occurs.
                 value.unwrap().real_elt(0).unwrap()
             },
-        );
+        ) };
         let params = scene
             .operations()
             .iter()
@@ -619,11 +619,11 @@ mod tests {
     fn graphics_string_metrics_drawing_recycles_label_fonts_and_scales() {
         let mut session = RSession::new_without_default_packages();
         let mut scene = r_graphics_engine::Scene::new(640, 480);
-        session.eval_script_with_output_capture_then_renderplot(
+        unsafe { session.eval_script_with_output_capture_then_renderplot(
             "plot.new();par(ps=18,cex=2);text(c(.2,.4,.6,.8),rep(.5,4),c('one','two','three','four'),cex=c(1,2,0),font=1:2)",
             &mut scene,
             |value, _, _| { value.unwrap(); },
-        );
+        ) };
         let parameters: Vec<_> = scene
             .operations()
             .iter()
@@ -661,11 +661,11 @@ mod tests {
     fn graphics_string_metrics_drawing_reads_only_used_compact_values() {
         let mut session = RSession::new_without_default_packages();
         let mut scene = r_graphics_engine::Scene::new(640, 480);
-        session.eval_script_with_output_capture_then_renderplot(
+        unsafe { session.eval_script_with_output_capture_then_renderplot(
             "plot.new();text(c(.2,.4,.6,.8),rep(.5,4),c('one','two','three','four'),cex=1:1000000000,font=1:1000000000)",
             &mut scene,
             |value, _, _| { value.unwrap(); },
-        );
+        ) };
         let parameters: Vec<_> = scene
             .operations()
             .iter()
@@ -688,13 +688,13 @@ mod tests {
         let mut session = RSession::new_without_default_packages();
         let mut scene = r_graphics_engine::Scene::new(640, 480);
         for cex in ["0", "-1", "NA_real_", "numeric(0)", "character(0)", "NULL"] {
-            session.eval_script_with_output_capture_then_renderplot(
+            unsafe { session.eval_script_with_output_capture_then_renderplot(
                 &format!("plot.new();par(cex=2);text(.5,.5,'fallback',cex={cex})"),
                 &mut scene,
                 |value, _, _| {
                     value.unwrap();
                 },
-            );
+            ) };
             let params = scene
                 .operations()
                 .iter()
@@ -710,11 +710,11 @@ mod tests {
                 .expect("text must be drawn");
             assert_eq!(params.font_size, 24., "cex={cex}");
         }
-        let error = session.eval_script_with_output_capture_then_renderplot(
+        let error = unsafe { session.eval_script_with_output_capture_then_renderplot(
             "plot.new();text(.5,.5,'bad',cex='2')",
             &mut scene,
             |value, _, _| value.unwrap_err().message,
-        );
+        ) };
         assert!(error.contains("invalid 'cex' argument"), "{error}");
     }
 
@@ -767,11 +767,11 @@ mod tests {
             "strwidth('x',family=NULL)",
             "strwidth('x',vfont=c('serif','plain'))",
         ] {
-            let error = session.eval_script_with_output_capture_then_renderplot(
+            let error = unsafe { session.eval_script_with_output_capture_then_renderplot(
                 &format!("plot.new();{code}"),
                 &mut scene,
                 |value, _, _| value.is_err(),
-            );
+            ) };
             assert!(error, "{code}");
         }
         let (value, _, _) = session.eval_code_with_output_capture("1L+1L");

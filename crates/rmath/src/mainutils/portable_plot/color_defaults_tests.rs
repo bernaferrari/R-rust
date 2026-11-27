@@ -6,9 +6,9 @@ fn render(session: &mut RSession, body: &str) -> Scene {
     let mut scene = Scene::new(320, 240);
     let target: *mut dyn r_graphics_engine::DrawTarget = &mut scene;
     let code = format!("par(fg='red');plot.new();plot.window(c(0,1),c(0,1));{body}");
-    session.eval_script_with_output_capture_then_renderplot(&code, target, |result, _, _| {
+    unsafe { session.eval_script_with_output_capture_then_renderplot(&code, target, |result, _, _| {
         result.unwrap_or_else(|error| panic!("{body}: {}", error.message));
-    });
+    }) };
     scene.validate().unwrap();
     scene
 }
@@ -75,11 +75,11 @@ fn owning_rect_invalid_color_recovers_to_empty_defaults() {
     let mut session = RSession::new_without_default_packages();
     let mut scene = Scene::new(320, 240);
     let target: *mut dyn r_graphics_engine::DrawTarget = &mut scene;
-    let error = session.eval_script_with_output_capture_then_renderplot(
+    let error = unsafe { session.eval_script_with_output_capture_then_renderplot(
         "plot.new();plot.window(c(0,1),c(0,1));rect(.2,.2,.8,.8,col='not_an_actual_color')",
         target,
         |result, _, _| result.unwrap_err(),
-    );
+    ) };
     assert!(
         error.message.contains("invalid color name"),
         "{}",

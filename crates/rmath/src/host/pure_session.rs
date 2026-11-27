@@ -346,6 +346,41 @@ impl PureSession {
             .unwrap_or_default()
     }
 
+    /// Evaluate once, returning captured console output and a PNG only
+    /// when the evaluation issued at least one drawing operation — the
+    /// facade's interactive contract exactly. The canvas resize matches
+    /// the embedder's surface exactly as a device replacement does;
+    /// rasterization replays the recorded scene through the Vello CPU
+    /// renderer, no GPU anywhere in the chain.
+    pub fn eval_interactive(
+        &mut self,
+        code: &str,
+        width: u32,
+        height: u32,
+    ) -> Result<super::facade::InteractiveOutput, String> {
+        if width < 32 || height < 32 {
+            return Err("plot width and height must be at least 32 pixels".to_string());
+        }
+        if u64::from(width) * u64::from(height) > 16_777_216 {
+            return Err("plot exceeds 16M-pixel limit".to_string());
+        }
+        self.session
+            .heap
+            .graphics
+            .set_device_size(f64::from(width), f64::from(height));
+        self.session.heap.graphics.clear_scene();
+        let before = self.session.heap.graphics.scene().operations().len();
+        let output = self.eval_output(code).unwrap_or_else(|e| e);
+        let scene = self.session.heap.graphics.scene();
+        let drew = scene.operations().len() > before;
+        let png = if drew {
+            render_scene_to_png(scene)
+        } else {
+            None
+        };
+        Ok(super::facade::InteractiveOutput { output, png })
+    }
+
     /// How many pages the device has begun — embedders detect page
     /// turns across evals since the resetting display list cannot.
     pub fn page_count(&self) -> u64 {
@@ -711,6 +746,24 @@ fn baked_package_inventory() -> Vec<super::packages::RPackageInfo> {
         .iter()
         .filter_map(|(name, _)| baked_package_info(name))
         .collect()
+}
+
+/// Rasterize one recorded scene through the Vello CPU renderer exactly
+/// as the device file path does — the host-facing and file-facing
+/// pipelines share every operation.
+#[cfg(feature = "renderplot-device")]
+fn render_scene_to_png(scene: &r_graphics_engine::Scene) -> Option<Vec<u8>> {
+    let (w, h) = scene.dimensions();
+    let mut renderer = r_device_android_headless::VelloRenderer::try_new(w, h).ok()?;
+    scene.replay(&mut renderer);
+    renderer.try_finish().ok()
+}
+
+/// Slim builds report the unavailable rasterizer honestly exactly as
+/// the png device does.
+#[cfg(not(feature = "renderplot-device"))]
+fn render_scene_to_png(_scene: &r_graphics_engine::Scene) -> Option<Vec<u8>> {
+    None
 }
 
 #[cfg(test)]
@@ -1817,6 +1870,24 @@ cat(grconvertX(0:1, "user", "device"), grconvertY(0:1, "user", "device"), "\n")
         assert!(session.remove_file("/data/x.bin"));
         assert!(!session.remove_file("/data/x.bin"));
         assert_eq!(session.list_files(), vec!["/data/y.bin"]);
+    }
+
+    #[test]
+    #[cfg(feature = "renderplot-device")]
+    fn eval_interactive_renders_drawing_and_skips_arithmetic() {
+        let mut session = PureSession::new();
+        // Arithmetic produces output without pixels exactly as the
+        // facade's no-drawing contract.
+        let plain = session.eval_interactive("1 + 1", 200, 150).expect("interactive");
+        assert!(plain.output.contains('2'), "output missing: {}", plain.output);
+        assert!(plain.png.is_none(), "arithmetic should not render");
+        // A plot produces a real PNG — magic bytes and nonzero content.
+        let drawn = session
+            .eval_interactive("plot(c(1,2,3), c(1,4,9))", 200, 150)
+            .expect("interactive plot");
+        let png = drawn.png.expect("drawing should render");
+        assert_eq!(&png[1..4], b"PNG", "not a png stream");
+        assert!(png.len() > 400, "suspiciously small render: {}", png.len());
     }
 
     #[test]

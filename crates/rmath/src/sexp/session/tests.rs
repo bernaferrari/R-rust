@@ -361,7 +361,7 @@ fn owned_renderplot_statements_survive_reentrant_gc_and_restore_backend_after_er
         crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
     }
 
-    let value = session.eval_script_with_output_capture_then_renderplot(
+    let value = unsafe { session.eval_script_with_output_capture_then_renderplot(
         "7L + 1L; 11L + 2L; 19L + 3L",
         backend,
         |result, _, _| {
@@ -376,7 +376,7 @@ fn owned_renderplot_statements_survive_reentrant_gc_and_restore_backend_after_er
             assert_eq!(value.try_integer_elt(0).unwrap(), 22);
             value
         },
-    );
+    ) };
     unsafe {
         assert!(std::ptr::eq(
             (*instance).current_renderplot_backend.unwrap(),
@@ -388,11 +388,11 @@ fn owned_renderplot_statements_survive_reentrant_gc_and_restore_backend_after_er
     assert!(notifications.get() >= 3);
     drop(value);
 
-    let error = session.eval_script_with_output_capture_then_renderplot(
+    let error = unsafe { session.eval_script_with_output_capture_then_renderplot(
         "31L + 1L; undefined_renderplot_gc_symbol; 37L + 1L",
         backend,
         |result, _, _| result.expect_err("undefined symbol must propagate"),
-    );
+    ) };
     assert!(error.message.contains("undefined_renderplot_gc_symbol"));
     unsafe {
         assert!(std::ptr::eq(
@@ -401,7 +401,7 @@ fn owned_renderplot_statements_survive_reentrant_gc_and_restore_backend_after_er
         ));
     }
 
-    session.eval_script_with_output_capture_then_renderplot(
+    unsafe { session.eval_script_with_output_capture_then_renderplot(
         "41L + 1L; 43L + 1L; 47L + 1L",
         backend,
         |result, _, _| {
@@ -409,7 +409,7 @@ fn owned_renderplot_statements_survive_reentrant_gc_and_restore_backend_after_er
             unsafe { super::super::gengc::full_gc_in(instance) };
             assert_eq!(value.try_integer_elt(0).unwrap(), 48);
         },
-    );
+    ) };
     unsafe {
         assert!(std::ptr::eq(
             (*instance).current_renderplot_backend.unwrap(),

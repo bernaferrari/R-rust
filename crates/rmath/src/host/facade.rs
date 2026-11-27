@@ -59,8 +59,9 @@ pub struct EvalOutput {
     pub value: RValue,
 }
 
-/// The combined result of one interactive evaluation.
-#[cfg(feature = "renderplot-device")]
+/// The combined result of one interactive evaluation — pure data with
+/// no feature-dependent content, so embedders pattern-match one shape
+/// regardless of whether the slim build rasterizes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InteractiveOutput {
     pub output: String,
