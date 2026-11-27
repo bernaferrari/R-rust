@@ -87,6 +87,7 @@ pub struct PureSession {
     session: Session,
     result_limit: Option<usize>,
     session_id: u64,
+    runtime_paths: super::facade::RuntimePaths,
 }
 
 /// Opaque, copyable identity for a privately retained pure-world value.
@@ -123,6 +124,11 @@ impl PureSession {
             session: Session::new(),
             result_limit: None,
             session_id: NEXT_PURE_SESSION_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            runtime_paths: super::facade::RuntimePaths::new(
+                std::env::temp_dir().to_string_lossy().into_owned(),
+                std::env::temp_dir().to_string_lossy().into_owned(),
+                None::<String>,
+            ),
         }
     }
 
@@ -502,6 +508,43 @@ impl PureSession {
 
     /// Close the session — the pure world's heap is plain owned memory,
     /// so closing is a no-op beyond dropping.
+    /// Configure the host runtime paths exactly as the facade's embedded
+    /// contexts do — the user library and temp locations derive from the
+    /// application directories.
+    pub fn configure_runtime_paths(&mut self, paths: super::facade::RuntimePaths) {
+        self.runtime_paths = paths;
+    }
+
+    /// The user-writable package library location exactly as the facade
+    /// computes it.
+    pub fn user_library_dir(&self) -> String {
+        self.runtime_paths.user_library_dir()
+    }
+
+    /// The session temp directory exactly as the facade computes it.
+    pub fn temp_dir(&self) -> String {
+        self.runtime_paths.temp_dir()
+    }
+
+    /// Library search paths exactly as the facade orders them — user
+    /// library first, bundled library last when present.
+    pub fn library_paths(&self) -> Vec<String> {
+        self.runtime_paths.library_paths()
+    }
+
+    /// Metadata for one baked package exactly as the facade's filesystem
+    /// scan answers it — the pure world's inventory is the pinned
+    /// registry, with fields read from the baked DESCRIPTION assets.
+    pub fn package_info(&self, package: &str) -> Option<super::packages::RPackageInfo> {
+        baked_package_info(package)
+    }
+
+    /// Every baked package exactly as the facade's installed-package
+    /// enumeration — the pure world carries the base set pinned.
+    pub fn installed_packages(&self) -> Vec<super::packages::RPackageInfo> {
+        baked_package_inventory()
+    }
+
     pub fn close(&mut self) {}
 
     /// Evaluate `expr` and retain the result under a private host root,
@@ -589,6 +632,64 @@ impl PureSession {
         self.session.heap.retained_roots.release(token);
         Ok(())
     }
+}
+
+/// The baked package set exactly as the pinned assets carry it — the
+/// base-package inventory GNU R installs, minus the internal compiler
+/// assets that never surface as a user package.
+const BAKED_PACKAGES: &[(&str, &str)] = &[
+    ("datasets", include_str!("../library/datasets/assets/DESCRIPTION")),
+    ("methods", include_str!("../library/methods/portable/assets/DESCRIPTION")),
+    ("stats", include_str!("../library/portable_package/assets/stats/DESCRIPTION")),
+    ("utils", include_str!("../library/portable_package/assets/utils/DESCRIPTION")),
+    ("graphics", include_str!("../library/portable_package/assets/graphics/DESCRIPTION")),
+    ("grDevices", include_str!("../library/portable_package/assets/grDevices/DESCRIPTION")),
+    ("stats4", include_str!("../library/portable_package/assets/stats4/DESCRIPTION")),
+    ("tools", include_str!("../library/portable_package/assets/tools/DESCRIPTION")),
+];
+
+/// Read one field of a Debian-control-format DESCRIPTION exactly as the
+/// facade's filesystem parser does — continuation lines join with spaces.
+fn description_field(description: &str, field: &str) -> String {
+    let prefix = format!("{field}:");
+    let mut value = String::new();
+    let mut in_field = false;
+    for line in description.lines() {
+        if let Some(rest) = line.strip_prefix(&prefix) {
+            value = rest.trim().to_string();
+            in_field = true;
+        } else if in_field && line.starts_with(' ') {
+            value.push(' ');
+            value.push_str(line.trim());
+        } else if in_field {
+            break;
+        }
+    }
+    value
+}
+
+fn baked_package_info(package: &str) -> Option<super::packages::RPackageInfo> {
+    let (name, description) = BAKED_PACKAGES.iter().find(|(n, _)| *n == package)?;
+    Some(super::packages::RPackageInfo {
+        name: name.to_string(),
+        version: description_field(description, "Version"),
+        title: description_field(description, "Title"),
+        description: description_field(description, "Description"),
+        license: description_field(description, "License"),
+        depends: description_field(description, "Depends"),
+        imports: description_field(description, "Imports"),
+        suggests: description_field(description, "Suggests"),
+        needs_compilation: description_field(description, "NeedsCompilation") == "yes",
+        path: format!("<baked:{name}>"),
+        library_path: "<baked>".to_string(),
+    })
+}
+
+fn baked_package_inventory() -> Vec<super::packages::RPackageInfo> {
+    BAKED_PACKAGES
+        .iter()
+        .filter_map(|(name, _)| baked_package_info(name))
+        .collect()
 }
 
 #[cfg(test)]
@@ -1747,6 +1848,31 @@ cat(grconvertX(0:1, "user", "device"), grconvertY(0:1, "user", "device"), "\n")
             format!("{:?}", session.read_handle(&handle).expect("read after pressure")),
             format!("{expected:?}")
         );
+    }
+
+    #[test]
+    fn baked_package_inventory_reports_base_set() {
+        let session = PureSession::new();
+        let installed = session.installed_packages();
+        let names: Vec<&str> = installed.iter().map(|p| p.name.as_str()).collect();
+        for expected in ["datasets", "methods", "stats", "utils", "graphics", "grDevices", "stats4", "tools"] {
+            assert!(names.contains(&expected), "missing baked package {expected}");
+        }
+        let stats = session.package_info("stats").expect("stats info");
+        assert_eq!(stats.version, "4.7.0");
+        assert_eq!(stats.title, "The R Stats Package");
+        assert!(session.package_info("nonexistent").is_none());
+    }
+
+    #[test]
+    fn runtime_paths_configure_and_compute() {
+        let mut session = PureSession::new();
+        session.configure_runtime_paths(crate::host::facade::RuntimePaths::new(
+            "/data/app", "/data/cache", None::<String>,
+        ));
+        assert_eq!(session.user_library_dir(), "/data/app/R/library");
+        assert_eq!(session.temp_dir(), "/data/cache/Rtmp");
+        assert_eq!(session.library_paths(), vec!["/data/app/R/library".to_string()]);
     }
 
     #[test]
