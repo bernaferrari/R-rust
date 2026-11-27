@@ -8,13 +8,13 @@
 use anyhow::Result;
 use r_embed::CancellationToken;
 
-/// The evaluation backend the REPL runs on — the legacy SEXP world by
-/// default, the pure-Rust generational-heap world with RPORT_PURE_WORLD
-/// set. The migration's first consumer cutover: the same six-method
-/// session surface over either engine, so the REPL is indifferent to
-/// which world answers it. Ctrl-C cancellation of a running evaluation
-/// still belongs to the legacy world alone; the pure world's cooperative
-/// cancellation is the follow-up slice.
+/// The evaluation backend the REPL runs on — the pure-Rust
+/// generational-heap world by default, the migration's first consumer
+/// cutover. The legacy SEXP world remains available behind
+/// RPORT_LEGACY_WORLD while the deletion phases complete; the same
+/// six-method session surface over either engine leaves the REPL
+/// indifferent to which world answers it. RPORT_PURE_WORLD is accepted
+/// as a legacy opt-in synonym so existing scripts keep their meaning.
 enum CliSession {
     Legacy(r_embed::RSession),
     Pure(r_embed::PureSession),
@@ -22,7 +22,9 @@ enum CliSession {
 
 impl CliSession {
     fn new() -> std::result::Result<CliSession, String> {
-        if std::env::var_os("RPORT_PURE_WORLD").is_some() {
+        let legacy_requested = std::env::var_os("RPORT_LEGACY_WORLD").is_some()
+            && std::env::var_os("RPORT_PURE_WORLD").is_none();
+        if !legacy_requested {
             let mut session = r_embed::PureSession::new();
             session.enable_host_process_capabilities();
             eprintln!("[rport] pure-Rust world");
