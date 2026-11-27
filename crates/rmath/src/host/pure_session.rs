@@ -1019,6 +1019,48 @@ cat("after|", paste(par("mfg"), collapse=","), "|",
     }
 
     #[test]
+    fn graphics_lines_emit_scene_paths() {
+        use r_graphics_engine::{DrawOperation, PathCommand};
+        let mut session = PureSession::new();
+        session.eval("plot.new(); plot.window(c(0,1), c(0,1)); lines(c(0,1), c(0,1))");
+        let ops = session.session.heap.graphics.scene().operations();
+        let paths: Vec<_> = ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOperation::Path(path) => Some(path),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(paths.len(), 1, "one polyline emitted");
+        let commands = &paths[0].commands;
+        assert_eq!(commands.len(), 2, "two endpoints");
+        assert!(matches!(commands[0], PathCommand::MoveTo(_, _)));
+        assert!(matches!(commands[1], PathCommand::LineTo(_, _)));
+        // The diagonal runs bottom-left to top-right in user space —
+        /// y flips into the y-down raster exactly once.
+        if let (PathCommand::MoveTo(x0, y0), PathCommand::LineTo(x1, y1)) =
+            (commands[0].clone(), commands[1].clone())
+        {
+            assert!(x0 < x1, "user x increases left to right");
+            assert!(y0 > y1, "user y increases bottom to top — raster flips");
+        }
+        // NA breaks the line exactly as GNU's segment splitting.
+        let mut session = PureSession::new();
+        session.eval("plot.new(); plot.window(c(0,1), c(0,1)); lines(c(0,.5,NA,1), c(0,.5,NA,1))");
+        let ops = session.session.heap.graphics.scene().operations();
+        let moves = ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOperation::Path(path) => Some(path),
+                _ => None,
+            })
+            .flat_map(|path| path.commands.iter())
+            .filter(|cmd| matches!(cmd, PathCommand::MoveTo(_, _)))
+            .count();
+        assert_eq!(moves, 2, "the NA split yields two subpaths");
+    }
+
+    #[test]
     fn data_loads_datasets_into_the_calling_environment() {
         let mut session = PureSession::new();
         let result = session.eval("data(iris)");

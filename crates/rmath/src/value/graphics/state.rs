@@ -92,6 +92,24 @@ impl GraphicsParState {
         self.page_count
     }
 
+    /// Map user coordinates onto device raster units exactly as GNU's
+    /// GConvert for the plot region: linear in usr across the plot
+    /// rectangle, y flipping bottom-up into the y-down raster.
+    /// Non-finite or zero-span usr yields the degenerate edge exactly
+    /// as far as the caller cares — primitives clip regardless.
+    pub(crate) fn user_to_device(&self, x: f64, y: f64) -> (f32, f32) {
+        let usr = match self.layout.query("usr") {
+            Some(ParValue::Real(values)) if values.len() == 4 => values,
+            _ => vec![0.0, 1.0, 0.0, 1.0],
+        };
+        let plot = self.layout.regions().plot;
+        let x_frac = (x - usr[0]) / (usr[1] - usr[0]);
+        let y_frac = (y - usr[2]) / (usr[3] - usr[2]);
+        let x_dev = plot[0] + x_frac * (plot[2] - plot[0]);
+        let y_dev = plot[3] - y_frac * (plot[3] - plot[1]);
+        (x_dev as f32, y_dev as f32)
+    }
+
     /// Install the device raster geometry and refresh the cascade
     /// exactly as a device replacement does.
     pub(crate) fn set_device_size(&mut self, width: f64, height: f64) {
