@@ -5,13 +5,13 @@ impl<'h, 'i> Parser<'h, 'i> {
     // Expression hierarchy (precedence climbing)
     // -----------------------------------------------------------------------
 
-    pub(crate) fn parse_expr(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_expr(&mut self) -> Result<ValueId, ParseError> {
         self.parse_help()
     }
 
     /// Help operator, gram.y's lowest-precedence `%left '?'` tier:
     /// `?topic` (unary) and `topic ? help` (binary, left-associative).
-    pub(crate) fn parse_help(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_help(&mut self) -> Result<ValueId, ParseError> {
         let mut left = if self.peek() == &Token::Question {
             self.advance();
             self.skip_newlines();
@@ -38,7 +38,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// Prefix operand: a chain of leading `?`s (`??x` is `?`(`?`(x))),
     /// otherwise an assignment-level expression. A following binary `?`
     /// binds looser, per the reduce in gram.y.
-    pub(crate) fn parse_help_operand(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_help_operand(&mut self) -> Result<ValueId, ParseError> {
         if self.peek() == &Token::Question {
             self.advance();
             self.skip_newlines();
@@ -53,7 +53,7 @@ impl<'h, 'i> Parser<'h, 'i> {
 
     /// Binary `?` right-hand side: assignment level, optionally prefixed
     /// by unary `?`s (`a ? ?b` is `` ?`(a, `?`(b)) ``).
-    pub(crate) fn parse_help_rhs(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_help_rhs(&mut self) -> Result<ValueId, ParseError> {
         if self.peek() == &Token::Question {
             return self.parse_help_operand();
         }
@@ -61,7 +61,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     }
 
     /// assignment: tilde (('=' | '<-' | '->' | '<<-') assignment)?
-    pub(crate) fn parse_assignment(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_assignment(&mut self) -> Result<ValueId, ParseError> {
         let left = self.parse_tilde()?;
 
         match self.peek() {
@@ -99,7 +99,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     }
 
     /// tilde: or ('~' or)*
-    pub(crate) fn parse_tilde(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_tilde(&mut self) -> Result<ValueId, ParseError> {
         if self.peek() == &Token::Tilde {
             self.advance();
             self.skip_newlines();
@@ -136,7 +136,7 @@ impl<'h, 'i> Parser<'h, 'i> {
         Ok(left)
     }
 
-    pub(crate) fn parse_or(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_or(&mut self) -> Result<ValueId, ParseError> {
         let mut left = self.parse_and()?;
         loop {
             // EatLines (gram.y): a newline before a binary operator
@@ -172,7 +172,7 @@ impl<'h, 'i> Parser<'h, 'i> {
         }
     }
 
-    pub(crate) fn parse_and(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_and(&mut self) -> Result<ValueId, ParseError> {
         let mut left = self.parse_not()?;
         loop {
             // EatLines (gram.y): a newline before a binary operator
@@ -208,7 +208,7 @@ impl<'h, 'i> Parser<'h, 'i> {
         }
     }
 
-    pub(crate) fn parse_not(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_not(&mut self) -> Result<ValueId, ParseError> {
         if self.peek() == &Token::Not {
             self.advance();
             let operand = self.parse_comparison()?;
@@ -224,7 +224,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// Comparison operators. gram.y declares these %nonassoc, so after one
     /// comparison a second operator at this level is a syntax error:
     /// `1 < 2 < 3` fails to parse while `(1 < 2) < 3` is fine.
-    pub(crate) fn parse_comparison(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_comparison(&mut self) -> Result<ValueId, ParseError> {
         let mut left = self.parse_addition()?;
         let op_name = match self.peek() {
             Token::Lt => "<",
@@ -251,7 +251,7 @@ impl<'h, 'i> Parser<'h, 'i> {
         Ok(left)
     }
 
-    pub(crate) fn parse_addition(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_addition(&mut self) -> Result<ValueId, ParseError> {
         if self.peek() == &Token::Tilde {
             self.advance();
             self.skip_newlines();
@@ -283,7 +283,7 @@ impl<'h, 'i> Parser<'h, 'i> {
         }
     }
 
-    pub(crate) fn parse_multiplication(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_multiplication(&mut self) -> Result<ValueId, ParseError> {
         let mut left = self.parse_special()?;
         loop {
             // EatLines (gram.y): a newline before a binary operator
@@ -313,7 +313,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// and `+` / `-`, looser than `:` — so `2 |> f() * 10` parses as
     /// `(2 |> f()) * 10` and `x |> f() |> g()` as `g(f(x))`, while
     /// `1:3 %% 2` still groups the colon first.
-    pub(crate) fn parse_special(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_special(&mut self) -> Result<ValueId, ParseError> {
         let mut left = self.parse_pipebind()?;
         loop {
             // EatLines (gram.y): a newline before a binary operator
@@ -351,7 +351,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// `x |> y => log(y)` groups as `x |> (y => log(y))`, and looser than
     /// `+`, so the bind's RHS stops at the first additive operator.
     /// Left-associative: `a => b => c` nests leftward.
-    pub(crate) fn parse_pipebind(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_pipebind(&mut self) -> Result<ValueId, ParseError> {
         let mut left = self.parse_colon()?;
         while self.peek() == &Token::PipeBind {
             let op_index = self.pos;
@@ -368,7 +368,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// `_R_USE_PIPEBIND_` envvar. Only the `|>` rewrite in `build_pipe`
     /// ever consumes such a call; anything left over fails the post-parse
     /// "invalid use of pipe bind symbol" scan.
-    pub(crate) fn build_pipebind(
+    pub fn build_pipebind(
         &mut self,
         lhs: ValueId,
         rhs: ValueId,
@@ -399,7 +399,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// A pipe-bind RHS (`x |> y => expr`) rewrites instead into
     /// `(function(y) expr)(x)`; `rhs_start` is the token index where the
     /// pipe's RHS began, for the "RHS variable must be a symbol" location.
-    pub(crate) fn build_pipe(
+    pub fn build_pipe(
         &mut self,
         lhs: ValueId,
         rhs: ValueId,
@@ -510,7 +510,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// an extractor chain (`[`, `[[`, `$`, `@`), mirroring gram.y's
     /// `findExtractorChainPHCell()`. Returns the cell to overwrite with
     /// the pipe LHS.
-    pub(crate) fn find_extractor_placeholder_cell(&self, expr: ValueId) -> Option<ValueId> {
+    pub fn find_extractor_placeholder_cell(&self, expr: ValueId) -> Option<ValueId> {
         {
             let fun = self.car(expr);
             if !self.sym_is(fun, "[") && !self.sym_is(fun, "[[") && !self.sym_is(fun, "$") && !self.sym_is(fun, "@") {
@@ -530,7 +530,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// Power operator: tightest binary operator, right-associative, and
     /// tighter than unary sign, so `2^3^2 == 2^(3^2)` and the exponent may
     /// carry a unary sign (`2^-1`).
-    pub(crate) fn parse_power(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_power(&mut self) -> Result<ValueId, ParseError> {
         let base = self.parse_postfix()?;
         if self.peek() == &Token::Caret {
             self.advance();
@@ -548,7 +548,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// Colon operator: x:y (used for sequences like 1:10). Looser than unary
     /// sign but tighter than `*` / `/`, so `-2:3 == (-2):3` while
     /// `2*1:3 == 2*(1:3)`.
-    pub(crate) fn parse_colon(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_colon(&mut self) -> Result<ValueId, ParseError> {
         let mut left = self.parse_unary()?;
         loop {
             // EatLines: a newline before a binary operator continues the
@@ -576,7 +576,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// Parse a sign chain without changing power precedence.  A second sign
     /// is another unary expression (`--2`), while a normal operand goes
     /// through power first (`-x^2`).
-    pub(crate) fn parse_unary_operand(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_unary_operand(&mut self) -> Result<ValueId, ParseError> {
         if matches!(self.peek(), Token::Minus | Token::Plus | Token::Not) {
             self.parse_unary()
         } else {
@@ -584,7 +584,7 @@ impl<'h, 'i> Parser<'h, 'i> {
         }
     }
 
-    pub(crate) fn parse_unary(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_unary(&mut self) -> Result<ValueId, ParseError> {
         match self.peek() {
             Token::Minus => {
                 self.advance();

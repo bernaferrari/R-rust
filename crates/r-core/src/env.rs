@@ -7,10 +7,10 @@
 //! concrete environment objects — sentinel resolution (globalenv, baseenv)
 //! is the caller's responsibility.
 
-use super::heap::Heap;
-use super::id::ValueId;
-use super::intern::SymId;
-use super::object::{Binding, EnvFrame, RObject};
+use crate::heap::Heap;
+use crate::id::ValueId;
+use crate::intern::SymId;
+use crate::object::{Binding, EnvFrame, RObject};
 
 /// Environment operation failures, mirroring the GNU error surface.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,15 +67,15 @@ pub fn frame_symbols(heap: &Heap, env: ValueId) -> Vec<SymId> {
     };
     if let RObject::Environment { frame, .. } = &slot.body {
         match frame {
-            crate::value::object::EnvFrame::Empty => {}
-            crate::value::object::EnvFrame::List(entries) => {
+            crate::object::EnvFrame::Empty => {}
+            crate::object::EnvFrame::List(entries) => {
                 for (sym, binding) in entries {
                     if binding.value != ValueId::UNBOUND {
                         out.push(*sym);
                     }
                 }
             }
-            crate::value::object::EnvFrame::Hash(map) => {
+            crate::object::EnvFrame::Hash(map) => {
                 let mut pairs: Vec<(SymId, bool)> = map
                     .iter()
                     .map(|(sym, binding)| (*sym, binding.value != ValueId::UNBOUND))
@@ -271,7 +271,7 @@ fn frame_of(heap: &Heap, env: ValueId) -> Option<&EnvFrame> {
     }
 }
 
-pub(crate) fn enclosure_of(heap: &Heap, env: ValueId) -> Option<ValueId> {
+pub fn enclosure_of(heap: &Heap, env: ValueId) -> Option<ValueId> {
     match heap.object(env) {
         Some(RObject::Environment { enclos, .. }) => Some(*enclos),
         _ => None,
@@ -328,12 +328,12 @@ fn mutate_binding(
 /// The depth cap here is a defensive ceiling, not a semantic limit — real
 /// chains are a handful deep, and base-plus-packages nesting stays under a
 /// few hundred even with deep module systems.
-pub(crate) const MAX_CHAIN_DEPTH: usize = 100_000;
+pub const MAX_CHAIN_DEPTH: usize = 100_000;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::intern::SymbolInterner;
+    use crate::intern::SymbolInterner;
 
     fn fixture() -> (Heap, SymbolInterner) {
         (Heap::new(), SymbolInterner::new())

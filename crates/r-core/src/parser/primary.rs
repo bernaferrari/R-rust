@@ -5,7 +5,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     // Primary expressions (atoms and control structures)
     // -----------------------------------------------------------------------
 
-    pub(crate) fn parse_primary(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_primary(&mut self) -> Result<ValueId, ParseError> {
         match self.peek().clone() {
             // Keywords
             Token::KwIf => self.parse_if(),

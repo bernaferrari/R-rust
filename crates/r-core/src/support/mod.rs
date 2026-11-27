@@ -3,10 +3,10 @@
 //! parsing, Unicode identifier classes, and GNU's permutation heapsort.
 //! The old world re-exports these until its deletion.
 
-pub(crate) mod colors;
-pub(crate) mod identifier;
-pub(crate) mod number_parse;
-pub(crate) mod sort;
+pub mod colors;
+pub mod identifier;
+pub mod number_parse;
+pub mod sort;
 
 /// Browser-mode virtual file store limits — the contract wasm consumers
 /// validate against before writes reach the interpreter.

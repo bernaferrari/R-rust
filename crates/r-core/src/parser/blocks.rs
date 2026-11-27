@@ -6,7 +6,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     // -----------------------------------------------------------------------
 
     /// { expr; expr; ... }
-    pub(crate) fn parse_block(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_block(&mut self) -> Result<ValueId, ParseError> {
         let lbrace_span = self.spans.get(self.pos).copied().unwrap_or((0, 0));
         self.advance(); // consume '{'
         self.skip_terminators();
@@ -63,7 +63,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     // Atoms
     // -----------------------------------------------------------------------
 
-    pub(crate) fn parse_atom(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_atom(&mut self) -> Result<ValueId, ParseError> {
         // An operand position never terminates on a newline (gram.l's
         // EatLines): `1 +\n2` continues on the next line and `1 +\n` runs
         // out of input, exactly like upstream.
@@ -108,13 +108,13 @@ impl<'h, 'i> Parser<'h, 'i> {
                     "FALSE" => self.scalar_logical(0),
 
                     "NULL" => Ok(ValueId::NIL),
-                    "NA" => self.scalar_logical(crate::value::object::NA_INTEGER),
+                    "NA" => self.scalar_logical(crate::object::NA_INTEGER),
                     "Inf" => self.scalar_real(f64::INFINITY),
                     "NaN" => self.scalar_real(f64::NAN),
-                    "NA_real_" => self.scalar_real(f64::from_bits(crate::value::object::NA_REAL_BITS)),
-                    "NA_integer_" => self.scalar_integer(crate::value::object::NA_INTEGER),
+                    "NA_real_" => self.scalar_real(f64::from_bits(crate::object::NA_REAL_BITS)),
+                    "NA_integer_" => self.scalar_integer(crate::object::NA_INTEGER),
                     "NA_complex_" => self
-                        .scalar_complex_parts(f64::from_bits(crate::value::object::NA_REAL_BITS), f64::from_bits(crate::value::object::NA_REAL_BITS)),
+                        .scalar_complex_parts(f64::from_bits(crate::object::NA_REAL_BITS), f64::from_bits(crate::object::NA_REAL_BITS)),
                     "NA_character_" => self.scalar_na_string(),
                     _ => Ok(self.install_symbol(&name)),
                 }
@@ -124,7 +124,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     }
     // -----------------------------------------------------------------------
 
-    pub(crate) fn parse_arglist(&mut self) -> Result<Vec<(Option<String>, ValueId)>, ParseError> {
+    pub fn parse_arglist(&mut self) -> Result<Vec<(Option<String>, ValueId)>, ParseError> {
         let mut args = Vec::new();
         self.skip_newlines();
         if self.peek() == &Token::RParen {
@@ -162,7 +162,7 @@ impl<'h, 'i> Parser<'h, 'i> {
         Ok(args)
     }
 
-    pub(crate) fn parse_arg(&mut self) -> Result<(Option<String>, ValueId), ParseError> {
+    pub fn parse_arg(&mut self) -> Result<(Option<String>, ValueId), ParseError> {
         match self.peek().clone() {
             Token::Ident(name) | Token::Str(name) => {
                 let saved = self.pos;

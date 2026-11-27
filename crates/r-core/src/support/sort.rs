@@ -9,7 +9,7 @@ use core::ffi::c_int;
 /// `p` with `perm` carried along. The heapsort (not a stable sort) is
 /// load-bearing: ProbSampleReplace/ProbSampleNoReplace stream parity
 /// depends on its exact permutation for tied probabilities.
-pub(crate) fn revsort_with_perm(p: &mut [f64], perm: &mut [c_int], n: usize) {
+pub fn revsort_with_perm(p: &mut [f64], perm: &mut [c_int], n: usize) {
     if n <= 1 {
         return;
     }

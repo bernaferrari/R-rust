@@ -1,8 +1,8 @@
 use super::*;
 
-pub(crate) const PARSE_CONTEXT_WINDOW: usize = 256;
+pub const PARSE_CONTEXT_WINDOW: usize = 256;
 
-pub(crate) fn token_display(tok: &Token) -> String {
+pub fn token_display(tok: &Token) -> String {
     match tok {
         Token::Number(_) | Token::Complex(_) | Token::Int(_) => "numeric constant".to_string(),
         Token::Str(_) | Token::StrBytes(_) => "string constant".to_string(),
@@ -65,13 +65,13 @@ pub(crate) fn token_display(tok: &Token) -> String {
 }
 
 /// Upstream's `StringTrue`: the accepted spellings of a true envvar value.
-pub(crate) fn string_true(value: &str) -> bool {
+pub fn string_true(value: &str) -> bool {
     matches!(value, "T" | "True" | "TRUE" | "true")
 }
 
 /// gram.y `xxpipebind`'s feature gate: `_R_USE_PIPEBIND_` must hold a true
 /// value for `=>` to parse.
-pub(crate) fn pipebind_enabled() -> bool {
+pub fn pipebind_enabled() -> bool {
     use std::sync::atomic::{AtomicI32, Ordering};
     static USE_PIPEBIND: AtomicI32 = AtomicI32::new(0);
     if USE_PIPEBIND.load(Ordering::Relaxed) == 1 {
@@ -91,7 +91,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// the expression tree (recursing through language object CARs only).
     /// Symbols compare by interned name here — the new world allocates
     /// per-node symbol objects rather than singletons.
-    pub(crate) fn expr_contains_pipebind(&self, expr: ValueId) -> bool {
+    pub fn expr_contains_pipebind(&self, expr: ValueId) -> bool {
         let mut stack = vec![expr];
         let mut steps = 0usize;
         while let Some(node) = stack.pop() {
@@ -130,7 +130,7 @@ impl<'h, 'i> Parser<'h, 'i> {
 
 /// Functions upstream marks IS_SPECIAL_SYMBOL (names.c `Spec_name`); gram.y's
 /// `check_rhs()` screens these out of pipe RHS calls.
-pub(crate) fn is_special_rhs_function(name: &str) -> bool {
+pub fn is_special_rhs_function(name: &str) -> bool {
     matches!(
         name,
         "if" | "while"

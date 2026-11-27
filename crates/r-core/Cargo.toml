@@ -14,3 +14,4 @@ name = "r_core"
 r-graphics-engine = { path = "../r-graphics-engine" }
 rmath-nmath = { path = "../nmath" }
 web-time = "1"
+libm = { version = "0.2.16", default-features = false, features = ["force-soft-floats"] }

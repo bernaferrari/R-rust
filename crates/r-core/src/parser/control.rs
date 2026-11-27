@@ -14,7 +14,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// opener depth at the body's last token is deeper than (or the opener
     /// differs from) the opener at `body_end`. Closes strictly inside the
     /// body (a call's `)` before the body's final token) do not pop it.
-    pub(crate) fn if_closed_before(&self, body_end: usize) -> bool {
+    pub fn if_closed_before(&self, body_end: usize) -> bool {
         if body_end == 0 || body_end > self.tokens.len() {
             return false;
         }
@@ -28,7 +28,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     }
 
     /// if (cond) expr [else expr]
-    pub(crate) fn parse_if(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_if(&mut self) -> Result<ValueId, ParseError> {
         // Token index of this `if`: the EatLines gate below probes the
         // group depth HERE (gram.y pushes 'i' at IF-time when inside a
         // group; a bare `[[` later in the body must not change the answer).
@@ -85,7 +85,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     }
 
     /// for (var in seq) body
-    pub(crate) fn parse_for(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_for(&mut self) -> Result<ValueId, ParseError> {
         self.advance(); // consume 'for'
         self.skip_newlines();
         self.expect(&Token::LParen)?;
@@ -115,7 +115,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     }
 
     /// while (cond) body
-    pub(crate) fn parse_while(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_while(&mut self) -> Result<ValueId, ParseError> {
         self.advance(); // consume 'while'
         self.skip_newlines();
         self.expect(&Token::LParen)?;
@@ -132,7 +132,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     }
 
     /// repeat body
-    pub(crate) fn parse_repeat(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_repeat(&mut self) -> Result<ValueId, ParseError> {
         self.advance(); // consume 'repeat'
         self.skip_newlines();
         let body = self.parse_expr()?;
@@ -144,7 +144,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     }
 
     /// function(args) body — also handles R 4.1+ `\(...)` lambda syntax.
-    pub(crate) fn parse_function(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_function(&mut self) -> Result<ValueId, ParseError> {
         let tok_start = self.spans.get(self.pos).map(|&(a, _)| a).unwrap_or(0);
         match self.peek() {
             Token::KwFunction | Token::KwLambda => {
@@ -184,7 +184,7 @@ impl<'h, 'i> Parser<'h, 'i> {
 
     /// Parse formal arguments: name [= default], name [= default], ...
     /// Returns a pairlist of (name default) pairs.
-    pub(crate) fn parse_formals(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_formals(&mut self) -> Result<ValueId, ParseError> {
         let nil = ValueId::NIL;
         let mut pairs: Vec<(String, ValueId)> = Vec::new();
 

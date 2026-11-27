@@ -11,7 +11,7 @@ const NA_INTEGER: i32 = i32::MIN;
 const NA_REAL: f64 = f64::from_bits(0x7FF00000000007A2);
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ParsedNumber {
+pub struct ParsedNumber {
     pub value: f64,
     /// Offset into the supplied bytes, including leading C whitespace.
     pub consumed: usize,
@@ -92,7 +92,7 @@ fn power_factor(mut exponent: u64, base: f64, reciprocal: bool) -> f64 {
 /// the native adapter's C string does. A failed token consumes zero bytes.
 /// `exact=0` permits loss; `NA_INTEGER` warns; other nonzero values reject it.
 /// No warning, allocation of R objects, native FFI or callback occurs here.
-pub(crate) fn parse_number(input: &[u8], decimal: u8, allow_na: bool, exact: i32) -> ParsedNumber {
+pub fn parse_number(input: &[u8], decimal: u8, allow_na: bool, exact: i32) -> ParsedNumber {
     let input = input.split(|byte| *byte == 0).next().unwrap_or_default();
     let mut cursor = 0;
     while input.get(cursor).is_some_and(|byte| whitespace(*byte)) {
@@ -333,7 +333,7 @@ mod tests {
 
 /// Parse a complete GNU numeric string — the trimmed input must consume
 /// exactly, or the parse fails. Canonical home for the pure world's lexer.
-pub(crate) fn parse_double_str(s: &str) -> Option<f64> {
+pub fn parse_double_str(s: &str) -> Option<f64> {
     let trimmed =
         s.trim_matches(|c: char| matches!(c, ' ' | '\t' | '\n' | '\u{0b}' | '\u{0c}' | '\r'));
     if trimmed.is_empty() || trimmed.as_bytes().contains(&0) {

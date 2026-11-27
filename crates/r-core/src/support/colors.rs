@@ -11,15 +11,15 @@ type rcolor = u32;
 // Color name database
 // ---------------------------------------------------------------------------
 
-pub(crate) struct ColorDataBaseEntry {
-    pub(crate) name: &'static [u8],
-    pub(crate) code: rcolor,
+pub struct ColorDataBaseEntry {
+    pub name: &'static [u8],
+    pub code: rcolor,
 }
 
-pub(crate) static COLOR_DATA_BASE: &[ColorDataBaseEntry] = &COLOR_DATA;
+pub static COLOR_DATA_BASE: &[ColorDataBaseEntry] = &COLOR_DATA;
 
 // The actual database is defined as a const array below
-pub(crate) const COLOR_DATA: [ColorDataBaseEntry; 657] = [
+pub const COLOR_DATA: [ColorDataBaseEntry; 657] = [
     ColorDataBaseEntry {
         name: b"white\0",
         code: 0xffffffff,

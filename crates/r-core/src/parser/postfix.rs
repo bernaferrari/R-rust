@@ -7,7 +7,7 @@ impl<'h, 'i> Parser<'h, 'i> {
 
     /// Parse postfix operations: function calls, subscript, member access.
     /// These are all left-associative and chain together.
-    pub(crate) fn parse_postfix(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_postfix(&mut self) -> Result<ValueId, ParseError> {
         let mut expr = self.parse_primary()?;
 
         loop {
@@ -122,7 +122,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     }
 
     /// Parse a member name after $ or @ — can be identifier or backtick name.
-    pub(crate) fn parse_member_name(&mut self) -> Result<ValueId, ParseError> {
+    pub fn parse_member_name(&mut self) -> Result<ValueId, ParseError> {
         match self.peek().clone() {
             Token::Ident(name) => {
                 let name = name.clone();
@@ -144,7 +144,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// nothing before the closing bracket) become R_MissingArg, mirroring
     /// gram.y's xxsub0. A `name = value` slot is tagged like a call argument
     /// (subset.rs ExtractDropArg relies on tags for `drop=` / `exact=`).
-    pub(crate) fn parse_subscript_slots(
+    pub fn parse_subscript_slots(
         &mut self,
         close: &Token,
     ) -> Result<Vec<(Option<String>, ValueId)>, ParseError> {

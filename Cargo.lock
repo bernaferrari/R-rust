@@ -1618,6 +1618,7 @@ dependencies = [
 name = "r-core"
 version = "0.1.0"
 dependencies = [
+ "libm",
  "r-graphics-engine",
  "rmath-nmath",
  "web-time",

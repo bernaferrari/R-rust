@@ -15,13 +15,13 @@ mod postfix;
 mod primary;
 mod support;
 
-pub(crate) use lexer::{Lexer, Token};
-pub(crate) use support::{is_special_rhs_function, pipebind_enabled, token_display, PARSE_CONTEXT_WINDOW};
+pub use lexer::{Lexer, Token};
+pub use support::{is_special_rhs_function, pipebind_enabled, token_display, PARSE_CONTEXT_WINDOW};
 
-use crate::value::heap::Heap;
-use crate::value::id::ValueId;
-use crate::value::intern::SymbolInterner;
-use crate::value::object::RObject;
+use crate::heap::Heap;
+use crate::id::ValueId;
+use crate::intern::SymbolInterner;
+use crate::object::RObject;
 
 /// A parse failure rendered in upstream's exact shape.
 #[derive(Debug, Clone)]
@@ -37,7 +37,7 @@ impl std::fmt::Display for ParseError {
 // Parser
 // ---------------------------------------------------------------------------
 
-pub(crate) struct Parser<'h, 'i> {
+pub struct Parser<'h, 'i> {
     tokens: Vec<Token>,
     /// Half-open char span `[start, end)` of each token in `source`,
     /// parallel to `tokens`. Used to render upstream-style parse errors
@@ -72,7 +72,7 @@ pub(crate) struct Parser<'h, 'i> {
 
 /// Parse R source into top-level expressions as new-world heap objects —
 /// the entry point the runtime surface uses once the SEXP parser retires.
-pub(crate) fn parse_native_expressions(
+pub fn parse_native_expressions(
     input: &str,
     heap: &mut Heap,
     interner: &mut SymbolInterner,

@@ -10,7 +10,7 @@
 // src/main/rlocale_data.h: SHA256 f775844fa3a145ab4e4d934b2a39c601e785dd2a8166b22f3cf0155c388a488b
 #![forbid(unsafe_code)]
 
-pub(crate) const R_ALPHA: &[(u32, u32)] = &[
+pub const R_ALPHA: &[(u32, u32)] = &[
     (0x41, 0x5a),
     (0x61, 0x7a),
     (0xaa, 0xaa),
@@ -682,7 +682,7 @@ pub(crate) const R_ALPHA: &[(u32, u32)] = &[
 
 /// GNU R's portable wide-character alphabetic class. Its table includes
 /// non-ASCII decimal digits, as R's UTF-8 identifier rules require.
-pub(crate) fn identifier_alpha(ch: char) -> bool {
+pub fn identifier_alpha(ch: char) -> bool {
     if ch.is_ascii() {
         return ch.is_ascii_alphabetic();
     }
@@ -692,6 +692,6 @@ pub(crate) fn identifier_alpha(ch: char) -> bool {
     ranges.get(index).is_some_and(|&(first, _)| first <= value)
 }
 
-pub(crate) fn identifier_alnum(ch: char) -> bool {
+pub fn identifier_alnum(ch: char) -> bool {
     ch.is_ascii_digit() || identifier_alpha(ch)
 }

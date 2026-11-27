@@ -5,7 +5,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum Token {
+pub enum Token {
     Number(f64),
     Complex(f64),
     Int(i32),
@@ -87,22 +87,22 @@ pub(crate) enum Token {
 // Lexer
 // ---------------------------------------------------------------------------
 
-pub(crate) struct Lexer {
+pub struct Lexer {
     chars: Vec<char>,
-    pub(crate) pos: usize,
+    pub pos: usize,
     /// Numeric-literal warnings queued during lexing — upstream routes
     /// these through a global; the lexer owns them here and the parser
     /// drains them per token exactly as the legacy port did.
-    pub(crate) pending_literal_warnings: Vec<String>,
+    pub pending_literal_warnings: Vec<String>,
     /// Position where the most recently returned token starts, i.e. after
     /// leading whitespace and comments — gram.y captures yylloc in
     /// token() right after SkipSpace, so this (not the pre-skip position)
     /// is what upstream location reporting uses.
-    pub(crate) last_token_start: usize,
+    pub last_token_start: usize,
 }
 
 impl Lexer {
-    pub(crate) fn new(input: &str) -> Self {
+    pub fn new(input: &str) -> Self {
         Lexer {
             chars: input.chars().collect(),
             pos: 0,
@@ -111,23 +111,23 @@ impl Lexer {
         }
     }
 
-    pub(crate) fn warn_literal(&mut self, message: &str) {
+    pub fn warn_literal(&mut self, message: &str) {
         self.pending_literal_warnings.push(message.to_string());
     }
 
-    pub(crate) fn take_pending_literal_warnings(&mut self) -> Vec<String> {
+    pub fn take_pending_literal_warnings(&mut self) -> Vec<String> {
         std::mem::take(&mut self.pending_literal_warnings)
     }
 
-    pub(crate) fn peek_char(&self) -> Option<char> {
+    pub fn peek_char(&self) -> Option<char> {
         self.chars.get(self.pos).copied()
     }
 
-    pub(crate) fn peek_char_at(&self, offset: usize) -> Option<char> {
+    pub fn peek_char_at(&self, offset: usize) -> Option<char> {
         self.chars.get(self.pos + offset).copied()
     }
 
-    pub(crate) fn advance(&mut self) -> Option<char> {
+    pub fn advance(&mut self) -> Option<char> {
         let ch = self.chars.get(self.pos).copied();
         if ch.is_some() {
             self.pos += 1;
@@ -135,7 +135,7 @@ impl Lexer {
         ch
     }
 
-    pub(crate) fn skip_whitespace(&mut self) {
+    pub fn skip_whitespace(&mut self) {
         while let Some(ch) = self.peek_char() {
             // GNU gram.y SkipSpace: space, tab, form-feed. Newlines stay tokens.
             if ch == ' ' || ch == '\t' || ch == '\r' || ch == '\u{0C}' {
@@ -146,7 +146,7 @@ impl Lexer {
         }
     }
 
-    pub(crate) fn skip_comment(&mut self) {
+    pub fn skip_comment(&mut self) {
         if self.peek_char() == Some('#') {
             while let Some(ch) = self.peek_char() {
                 if ch == '\n' || ch == '\r' {
@@ -156,7 +156,7 @@ impl Lexer {
             }
         }
     }
-    pub(crate) fn next_token(&mut self) -> Token {
+    pub fn next_token(&mut self) -> Token {
         self.skip_whitespace();
         self.skip_comment();
         self.last_token_start = self.pos;
@@ -207,7 +207,7 @@ impl Lexer {
         }
 
         // Identifiers and keywords
-        if crate::value::support::identifier::identifier_alpha(ch) || ch == '.' || ch == '_' {
+        if crate::support::identifier::identifier_alpha(ch) || ch == '.' || ch == '_' {
             return self.read_ident();
         }
 
@@ -380,7 +380,7 @@ impl Lexer {
         }
     }
 
-    pub(crate) fn read_number(&mut self) -> Token {
+    pub fn read_number(&mut self) -> Token {
         let mut s = String::new();
         let mut has_dot = false;
         let mut has_e = false;
@@ -444,7 +444,7 @@ impl Lexer {
             // Use the bounded GNU numeric parser for accepted hexadecimal
             // syntax, including integers longer than u64. The lexer above
             // remains responsible for the source-language token boundaries.
-            let Some(v) = crate::value::support::number_parse::parse_double_str(&s) else {
+            let Some(v) = crate::support::number_parse::parse_double_str(&s) else {
                 return Token::Invalid;
             };
             if self.peek_char() == Some('i') {
@@ -497,7 +497,7 @@ impl Lexer {
         // NumericValue in GNU gram.y uses R_atof for source literals too.
         // Its long-mantissa rounding and underflow differ from C strtod and
         // Rust's correctly rounded parser; reuse our bounded GNU seam.
-        let Some(v) = crate::value::support::number_parse::parse_double_str(&s) else {
+        let Some(v) = crate::support::number_parse::parse_double_str(&s) else {
             return Token::Invalid;
         };
         if self.peek_char() == Some('i') {
@@ -520,7 +520,7 @@ impl Lexer {
     /// Trunk's L-suffix rule (gram.y `NumericValue`): the literal becomes an
     /// integer only when its value is integral and fits in `int`; otherwise
     /// the numeric value wins, with one of upstream's literal warnings.
-    pub(crate) fn integer_or_float(&mut self, v: f64, lexeme: &str, has_dot: bool, has_e: bool) -> Token {
+    pub fn integer_or_float(&mut self, v: f64, lexeme: &str, has_dot: bool, has_e: bool) -> Token {
         let fits = v.is_finite() && v == v.trunc() && i32::try_from(v as i64).is_ok();
         let lexeme = format!("{lexeme}L");
         if fits {
@@ -543,7 +543,7 @@ impl Lexer {
         Token::Number(v)
     }
 
-    pub(crate) fn read_raw_string(&mut self) -> Token {
+    pub fn read_raw_string(&mut self) -> Token {
         let quote = match self.advance() {
             Some('"') => '"',
             Some('\'') => '\'',
@@ -591,7 +591,7 @@ impl Lexer {
         }
     }
 
-    pub(crate) fn take_hex_digits(&mut self, max: usize) -> Option<u32> {
+    pub fn take_hex_digits(&mut self, max: usize) -> Option<u32> {
         let mut val = 0u32;
         let mut n = 0usize;
         while n < max {
@@ -611,14 +611,14 @@ impl Lexer {
     /// \\  \\<newline>, octal, \\xHH, \\u / \\U. Mix of Unicode and octal/hex
     /// is an error. Nul is an error. The reported column is the character
     /// just consumed, not the opening quote.
-    pub(crate) fn bad_escape(&mut self) -> Token {
+    pub fn bad_escape(&mut self) -> Token {
         if self.pos > 0 {
             self.last_token_start = self.pos - 1;
         }
         Token::Invalid
     }
 
-    pub(crate) fn read_string(&mut self) -> Token {
+    pub fn read_string(&mut self) -> Token {
         let quote = self.advance().unwrap_or('"');
         let mut bytes = Vec::new();
         let mut oct_or_hex = false;
@@ -723,7 +723,7 @@ impl Lexer {
         }
     }
 
-    pub(crate) fn read_backtick_name(&mut self) -> Token {
+    pub fn read_backtick_name(&mut self) -> Token {
         self.advance(); // skip `
         let mut s = String::new();
         loop {
@@ -740,10 +740,10 @@ impl Lexer {
         Token::Ident(s)
     }
 
-    pub(crate) fn read_ident(&mut self) -> Token {
+    pub fn read_ident(&mut self) -> Token {
         let mut s = String::new();
         while let Some(ch) = self.peek_char() {
-            if crate::value::support::identifier::identifier_alnum(ch) || ch == '.' || ch == '_' {
+            if crate::support::identifier::identifier_alnum(ch) || ch == '.' || ch == '_' {
                 s.push(ch);
                 self.advance();
             } else {

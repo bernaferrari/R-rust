@@ -17,7 +17,9 @@ pub mod roots { pub use r_core::roots::*; }
 pub mod rng { pub use r_core::rng::*; }
 pub mod path_policy { pub use r_core::path_policy::*; }
 pub mod graphics { pub use r_core::graphics::*; }
-pub mod env;
+pub mod parser { pub use r_core::parser::*; }
+pub mod env { pub use r_core::env::*; }
+pub mod support { pub use r_core::support::*; }
 pub mod eval;
 pub mod primitives;
 pub mod print;
@@ -25,10 +27,8 @@ pub mod regex;
 pub mod rbg1;
 pub mod datasets;
 pub mod civil;
-pub mod parser;
 pub mod conformance_sweep;
 pub mod session;
-pub mod support;
 pub mod vfile;
 
 pub use heap::Heap;

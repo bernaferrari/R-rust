@@ -81,7 +81,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     }
 
     /// The shared placeholder node for `_`, allocated on first use.
-    pub(crate) fn placeholder_node(&mut self) -> Result<ValueId, ParseError> {
+    pub fn placeholder_node(&mut self) -> Result<ValueId, ParseError> {
         if self.placeholder == ValueId::NIL {
             self.placeholder = self.scalar_string("_")?;
         }
@@ -91,7 +91,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// Allocate a fresh symbol object exactly as the bridge importer does:
     /// interned name, NIL value/internal edges — identity is per-node,
     /// equality by interned name.
-    pub(crate) fn install_symbol(&mut self, name: &str) -> ValueId {
+    pub fn install_symbol(&mut self, name: &str) -> ValueId {
         let sym = self.interner.intern_symbol(name);
         self.heap.alloc(RObject::Symbol {
             name: sym,
@@ -100,7 +100,7 @@ impl<'h, 'i> Parser<'h, 'i> {
         })
     }
 
-    pub(crate) fn allocation_error(&self) -> ParseError {
+    pub fn allocation_error(&self) -> ParseError {
         self.token_position_error(
             self.pos.saturating_sub(1),
             "parser allocation failed: arena resource limit exceeded",
@@ -109,7 +109,7 @@ impl<'h, 'i> Parser<'h, 'i> {
 
     /// A pairlist cell — the argument-chain node exactly as the importer's
     /// LISTSXP conversion pins it.
-    pub(crate) fn cons(&mut self, car: ValueId, cdr: ValueId) -> Result<ValueId, ParseError> {
+    pub fn cons(&mut self, car: ValueId, cdr: ValueId) -> Result<ValueId, ParseError> {
         Ok(self.heap.alloc(RObject::Pairlist {
             car,
             cdr,
@@ -119,7 +119,7 @@ impl<'h, 'i> Parser<'h, 'i> {
 
     /// A one-argument call: Language head whose cdr is the pairlist chain,
     /// exactly the importer's LANGSXP shape.
-    pub(crate) fn lang2(&mut self, car: ValueId, arg: ValueId) -> Result<ValueId, ParseError> {
+    pub fn lang2(&mut self, car: ValueId, arg: ValueId) -> Result<ValueId, ParseError> {
         let arg_cell = self.cons(arg, ValueId::NIL)?;
         Ok(self.heap.alloc(RObject::Language {
             car,
@@ -128,7 +128,7 @@ impl<'h, 'i> Parser<'h, 'i> {
         }))
     }
 
-    pub(crate) fn lang3(&mut self, car: ValueId, arg1: ValueId, arg2: ValueId) -> Result<ValueId, ParseError> {
+    pub fn lang3(&mut self, car: ValueId, arg1: ValueId, arg2: ValueId) -> Result<ValueId, ParseError> {
         let arg2_cell = self.cons(arg2, ValueId::NIL)?;
         let arg1_cell = self.cons(arg1, arg2_cell)?;
         Ok(self.heap.alloc(RObject::Language {
@@ -141,7 +141,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// Patch a pairlist cell's tag in place — the heap-native form of
     /// the legacy parser's SETTAG, used when formal arguments and named
     /// call arguments gain their names after construction.
-    pub(crate) fn set_tag(&mut self, cell: ValueId, tag: ValueId) {
+    pub fn set_tag(&mut self, cell: ValueId, tag: ValueId) {
         if let Some(slot @ RObject::Pairlist { .. }) = self.heap.object_mut(cell) {
             if let RObject::Pairlist { tag: slot_tag, .. } = slot {
                 *slot_tag = tag;
@@ -151,7 +151,7 @@ impl<'h, 'i> Parser<'h, 'i> {
 
     /// Patch a cell's car in place — used by pipe rewriting exactly as the
     /// legacy parser's SETCAR.
-    pub(crate) fn set_car(&mut self, cell: ValueId, new_car: ValueId) {
+    pub fn set_car(&mut self, cell: ValueId, new_car: ValueId) {
         if let Some(slot) = self.heap.object_mut(cell) {
             match slot {
                 RObject::Pairlist { car, .. } | RObject::Language { car, .. } => *car = new_car,
@@ -163,37 +163,37 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// Tree accessors mirroring the legacy CAR/CDR/TAG — NIL when the
     /// node is not a chain cell, exactly as the C macros never fire on
     /// non-cells in the parser's controlled usage.
-    pub(crate) fn car(&self, value: ValueId) -> ValueId {
+    pub fn car(&self, value: ValueId) -> ValueId {
         match self.heap.object(value) {
             Some(RObject::Pairlist { car, .. }) | Some(RObject::Language { car, .. }) => *car,
             _ => ValueId::NIL,
         }
     }
 
-    pub(crate) fn cdr(&self, value: ValueId) -> ValueId {
+    pub fn cdr(&self, value: ValueId) -> ValueId {
         match self.heap.object(value) {
             Some(RObject::Pairlist { cdr, .. }) | Some(RObject::Language { cdr, .. }) => *cdr,
             _ => ValueId::NIL,
         }
     }
 
-    pub(crate) fn tag(&self, value: ValueId) -> ValueId {
+    pub fn tag(&self, value: ValueId) -> ValueId {
         match self.heap.object(value) {
             Some(RObject::Pairlist { tag, .. }) | Some(RObject::Language { tag, .. }) => *tag,
             _ => ValueId::NIL,
         }
     }
 
-    pub(crate) fn cadr(&self, value: ValueId) -> ValueId {
+    pub fn cadr(&self, value: ValueId) -> ValueId {
         self.car(self.cdr(value))
     }
 
-    pub(crate) fn caddr(&self, value: ValueId) -> ValueId {
+    pub fn caddr(&self, value: ValueId) -> ValueId {
         self.car(self.cdr(self.cdr(value)))
     }
 
     /// Whether the node is a language call — the LANGSXP type test.
-    pub(crate) fn is_language(&self, value: ValueId) -> bool {
+    pub fn is_language(&self, value: ValueId) -> bool {
         matches!(self.heap.object(value), Some(RObject::Language { .. }))
     }
 
@@ -201,19 +201,19 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// matches. The new world allocates per-node symbols, so the parser's
     /// identity comparisons against fresh operator symbols become name
     /// comparisons exactly as gram.y's interned-string equality intended.
-    pub(crate) fn sym_is(&self, value: ValueId, name: &str) -> bool {
+    pub fn sym_is(&self, value: ValueId, name: &str) -> bool {
         match self.heap.object(value) {
             Some(RObject::Symbol { name: sym, .. }) => self.interner.symbol_name(*sym) == name,
             _ => false,
         }
     }
 
-    pub(crate) fn is_symbol(&self, value: ValueId) -> bool {
+    pub fn is_symbol(&self, value: ValueId) -> bool {
         matches!(self.heap.object(value), Some(RObject::Symbol { .. }))
     }
 
     /// The print name of a symbol node, when it is one.
-    pub(crate) fn symbol_name_string(&self, value: ValueId) -> String {
+    pub fn symbol_name_string(&self, value: ValueId) -> String {
         match self.heap.object(value) {
             Some(RObject::Symbol { name, .. }) => self.interner.symbol_name(*name).to_string(),
             _ => String::new(),
@@ -222,7 +222,7 @@ impl<'h, 'i> Parser<'h, 'i> {
 
     /// The language-head variant of cons for chains built manually —
     /// blocks assemble their call with the head cell typed Language.
-    pub(crate) fn lang_cons(&mut self, car: ValueId, cdr: ValueId) -> Result<ValueId, ParseError> {
+    pub fn lang_cons(&mut self, car: ValueId, cdr: ValueId) -> Result<ValueId, ParseError> {
         Ok(self.heap.alloc(RObject::Language {
             car,
             cdr,
@@ -230,37 +230,37 @@ impl<'h, 'i> Parser<'h, 'i> {
         }))
     }
 
-    pub(crate) fn scalar_real(&mut self, value: f64) -> Result<ValueId, ParseError> {
+    pub fn scalar_real(&mut self, value: f64) -> Result<ValueId, ParseError> {
         Ok(self.heap.alloc(RObject::Real(vec![value])))
     }
 
-    pub(crate) fn scalar_complex(&mut self, imaginary: f64) -> Result<ValueId, ParseError> {
-        Ok(self.heap.alloc(RObject::Complex(vec![crate::value::object::RComplex {
+    pub fn scalar_complex(&mut self, imaginary: f64) -> Result<ValueId, ParseError> {
+        Ok(self.heap.alloc(RObject::Complex(vec![crate::object::RComplex {
             r: 0.0,
             i: imaginary,
         }])))
     }
 
-    pub(crate) fn scalar_complex_parts(
+    pub fn scalar_complex_parts(
         &mut self,
         real: f64,
         imaginary: f64,
     ) -> Result<ValueId, ParseError> {
-        Ok(self.heap.alloc(RObject::Complex(vec![crate::value::object::RComplex {
+        Ok(self.heap.alloc(RObject::Complex(vec![crate::object::RComplex {
             r: real,
             i: imaginary,
         }])))
     }
 
-    pub(crate) fn scalar_integer(&mut self, value: i32) -> Result<ValueId, ParseError> {
+    pub fn scalar_integer(&mut self, value: i32) -> Result<ValueId, ParseError> {
         Ok(self.heap.alloc(RObject::Integer(vec![value])))
     }
 
-    pub(crate) fn scalar_logical(&mut self, value: i32) -> Result<ValueId, ParseError> {
+    pub fn scalar_logical(&mut self, value: i32) -> Result<ValueId, ParseError> {
         Ok(self.heap.alloc(RObject::Logical(vec![value])))
     }
 
-    pub(crate) fn scalar_string(&mut self, value: &str) -> Result<ValueId, ParseError> {
+    pub fn scalar_string(&mut self, value: &str) -> Result<ValueId, ParseError> {
         let interned = self.interner.intern_string(value);
         Ok(self.heap.alloc(RObject::String(vec![interned])))
     }
@@ -269,7 +269,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// them as raw-byte CHARSXP strings. The new world interner is
     /// str-native; lossy conversion matches the sweep's coverage since no
     /// golden exercises non-UTF-8 literals through the native parser yet.
-    pub(crate) fn scalar_bytes(&mut self, bytes: &[u8]) -> Result<ValueId, ParseError> {
+    pub fn scalar_bytes(&mut self, bytes: &[u8]) -> Result<ValueId, ParseError> {
         let text = String::from_utf8_lossy(bytes).into_owned();
         let interned = self.interner.intern_string(&text);
         Ok(self.heap.alloc(RObject::String(vec![interned])))
@@ -277,22 +277,22 @@ impl<'h, 'i> Parser<'h, 'i> {
 
     /// NA_character_ — the NUL-prefixed sentinel encoding the importer
     /// chose for collision-free round-trips.
-    pub(crate) fn scalar_na_string(&mut self) -> Result<ValueId, ParseError> {
+    pub fn scalar_na_string(&mut self) -> Result<ValueId, ParseError> {
         let interned = self.interner.intern_string("\u{0}NA");
         Ok(self.heap.alloc(RObject::String(vec![interned])))
     }
 
-    pub(crate) fn peek(&self) -> &Token {
+    pub fn peek(&self) -> &Token {
         self.tokens.get(self.pos).unwrap_or(&Token::Eof)
     }
 
-    pub(crate) fn advance(&mut self) -> Token {
+    pub fn advance(&mut self) -> Token {
         let tok = self.tokens.get(self.pos).cloned().unwrap_or(Token::Eof);
         self.pos += 1;
         tok
     }
 
-    pub(crate) fn expect(&mut self, expected: &Token) -> Result<(), ParseError> {
+    pub fn expect(&mut self, expected: &Token) -> Result<(), ParseError> {
         let tok = self.advance();
         if &tok == expected {
             Ok(())
@@ -304,7 +304,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// Build the upstream-shaped parse error for the token at `index`:
     /// `unexpected ')' in "<source context>"`, with no context when the
     /// input ran out.
-    pub(crate) fn unexpected_at(&self, index: usize) -> ParseError {
+    pub fn unexpected_at(&self, index: usize) -> ParseError {
         let tok = self.tokens.get(index).cloned().unwrap_or(Token::Eof);
         let head = format!("unexpected {}", token_display(&tok));
         if matches!(tok, Token::Eof) {
@@ -340,7 +340,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     }
 
     /// 1-based line and 0-based column of a char offset in the source.
-    pub(crate) fn line_col(&self, offset: usize) -> (usize, usize) {
+    pub fn line_col(&self, offset: usize) -> (usize, usize) {
         let offset = offset.min(self.source.len());
         let mut line = 1usize;
         let mut col = 0usize;
@@ -370,7 +370,7 @@ impl<'h, 'i> Parser<'h, 'i> {
     }
 
     /// Render `<msg> (<input>:line:col)` for a token index.
-    pub(crate) fn token_position_error(&self, index: usize, msg: &str) -> ParseError {
+    pub fn token_position_error(&self, index: usize, msg: &str) -> ParseError {
         let (start, _) = self
             .spans
             .get(index)
@@ -382,7 +382,7 @@ impl<'h, 'i> Parser<'h, 'i> {
 
     /// Position for the post-parse per-expression checks (gram.y's
     /// R_Parse1 handler): the parser's lookahead is reported there.
-    pub(crate) fn pipebind_position_error(&self, msg: &str) -> ParseError {
+    pub fn pipebind_position_error(&self, msg: &str) -> ParseError {
         let index = self.pos;
         let (start, _) = self
             .spans
@@ -402,20 +402,20 @@ impl<'h, 'i> Parser<'h, 'i> {
     }
 
     /// Skip newlines (but not semicolons).
-    pub(crate) fn skip_newlines(&mut self) {
+    pub fn skip_newlines(&mut self) {
         while self.peek() == &Token::Newline {
             self.advance();
         }
     }
 
     /// Skip semicolons and newlines.
-    pub(crate) fn skip_terminators(&mut self) {
+    pub fn skip_terminators(&mut self) {
         while self.peek() == &Token::Semicolon || self.peek() == &Token::Newline {
             self.advance();
         }
     }
 
-    pub(crate) fn take_token_warnings(&mut self, start: usize, end: usize) -> Vec<String> {
+    pub fn take_token_warnings(&mut self, start: usize, end: usize) -> Vec<String> {
         let mut out = Vec::new();
         self.token_literal_warnings.retain(|(index, message)| {
             if *index >= start && *index < end {
@@ -428,13 +428,13 @@ impl<'h, 'i> Parser<'h, 'i> {
         out
     }
 
-    pub(crate) fn input_len(&self) -> usize {
+    pub fn input_len(&self) -> usize {
         self.spans.last().map(|&(_, b)| b).unwrap_or(0)
     }
 
     /// Does the tree carry the parser-owned placeholder node anywhere —
     /// identity-compared exactly as upstream's distinguished string.
-    pub(crate) fn expr_contains_placeholder(&self, expr: ValueId) -> bool {
+    pub fn expr_contains_placeholder(&self, expr: ValueId) -> bool {
         if self.placeholder == ValueId::NIL {
             return false;
         }
