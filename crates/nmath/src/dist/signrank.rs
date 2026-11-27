@@ -6,7 +6,6 @@
 use crate::constants::*;
 use crate::dpq::*;
 use crate::error::*;
-use crate::rng::*;
 use crate::state::with_required_current_instance;
 use crate::utils::*;
 use libm::*;
@@ -264,7 +263,7 @@ pub fn qsignrank_with_count(
 // =====================================================================
 
 #[must_use]
-pub fn rsignrank_inner(n: f64) -> f64 {
+pub fn rsignrank_inner(rng: &mut dyn FnMut() -> f64, n: f64) -> f64 {
     // IEEE_754
     if isnan(n) {
         return n;
@@ -283,7 +282,7 @@ pub fn rsignrank_inner(n: f64) -> f64 {
     let mut i = 0;
     while i < k {
         i += 1;
-        r += i as f64 * floor(unif_rand() + 0.5);
+        r += i as f64 * floor(rng() + 0.5);
     }
     r
 }
@@ -291,11 +290,6 @@ pub fn rsignrank_inner(n: f64) -> f64 {
 // =====================================================================
 // FFI shims
 // =====================================================================
-
-#[must_use]
-pub fn Rf_dsignrank(x: c_double, n: c_double, give_log: c_int) -> c_double {
-    dsignrank_inner(x, n, give_log != 0)
-}
 
 #[must_use]
 pub fn dsignrank(x: c_double, n: c_double, give_log: c_int) -> c_double {
@@ -321,13 +315,8 @@ pub fn qsignrank(p: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c
 }
 
 #[must_use]
-pub fn Rf_rsignrank(n: c_double) -> c_double {
-    rsignrank_inner(n)
-}
-
-#[must_use]
-pub fn rsignrank(n: c_double) -> c_double {
-    rsignrank_inner(n)
+pub fn rsignrank(rng: &mut dyn FnMut() -> f64, n: c_double) -> c_double {
+    rsignrank_inner(rng, n)
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]

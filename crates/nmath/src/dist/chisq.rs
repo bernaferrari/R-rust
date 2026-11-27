@@ -28,28 +28,18 @@ pub fn qchisq_inner(p: f64, df: f64, lower_tail: bool, log_p: bool) -> f64 {
 // ---- rchisq ----
 
 #[must_use]
-pub fn rchisq_inner(df: f64) -> f64 {
+pub fn rchisq_inner(rng: &mut dyn FnMut() -> f64, df: f64) -> f64 {
     if !r_finite(df) || df < 0.0 {
         return ml_warn_return_nan();
     }
-    crate::dist::gamma::rgamma_inner(df / 2.0, 2.0)
+    crate::dist::gamma::rgamma_inner(rng, df / 2.0, 2.0)
 }
 
 // ---- FFI shims ----
 
 #[must_use]
-pub fn Rf_dchisq(x: f64, df: f64, give_log: i32) -> f64 {
-    dchisq_inner(x, df, give_log != 0)
-}
-
-#[must_use]
 pub fn dchisq(x: f64, df: f64, give_log: i32) -> f64 {
     dchisq_inner(x, df, give_log != 0)
-}
-
-#[must_use]
-pub fn Rf_pchisq(x: f64, df: f64, lower_tail: i32, log_p: i32) -> f64 {
-    pchisq_inner(x, df, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
@@ -58,21 +48,11 @@ pub fn pchisq(x: f64, df: f64, lower_tail: i32, log_p: i32) -> f64 {
 }
 
 #[must_use]
-pub fn Rf_qchisq(p: f64, df: f64, lower_tail: i32, log_p: i32) -> f64 {
-    qchisq_inner(p, df, lower_tail != 0, log_p != 0)
-}
-
-#[must_use]
 pub fn qchisq(p: f64, df: f64, lower_tail: i32, log_p: i32) -> f64 {
     qchisq_inner(p, df, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub fn Rf_rchisq(df: f64) -> f64 {
-    rchisq_inner(df)
-}
-
-#[must_use]
-pub fn rchisq(df: f64) -> f64 {
-    rchisq_inner(df)
+pub fn rchisq(rng: &mut dyn FnMut() -> f64, df: f64) -> f64 {
+    rchisq_inner(rng, df)
 }

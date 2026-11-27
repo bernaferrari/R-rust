@@ -4,7 +4,6 @@
 use crate::constants::*;
 use crate::dpq::*;
 use crate::error::*;
-use crate::rng::*;
 use crate::special::cospi::tanpi;
 use libm::*;
 
@@ -130,22 +129,17 @@ pub fn qcauchy_inner(p: f64, location: f64, scale: f64, lower_tail: bool, log_p:
 }
 
 #[must_use]
-pub fn rcauchy_inner(location: f64, scale: f64) -> f64 {
+pub fn rcauchy_inner(rng: &mut dyn FnMut() -> f64, location: f64, scale: f64) -> f64 {
     if isnan(location) || !r_finite(scale) || scale < 0.0 {
         return ml_warn_return_nan();
     }
     if scale == 0.0 || !r_finite(location) {
         return location;
     }
-    location + scale * tan(PI * unif_rand())
+    location + scale * tan(PI * rng())
 }
 
 // ---- FFI shims ----
-
-#[must_use]
-pub fn Rf_dcauchy(x: f64, location: f64, scale: f64, give_log: i32) -> f64 {
-    dcauchy_inner(x, location, scale, give_log != 0)
-}
 
 #[must_use]
 pub fn dcauchy(x: f64, location: f64, scale: f64, give_log: i32) -> f64 {
@@ -171,11 +165,6 @@ pub fn qcauchy(p: f64, location: f64, scale: f64, lower_tail: i32, log_p: i32) -
 }
 
 #[must_use]
-pub fn Rf_rcauchy(location: f64, scale: f64) -> f64 {
-    rcauchy_inner(location, scale)
-}
-
-#[must_use]
-pub fn rcauchy(location: f64, scale: f64) -> f64 {
-    rcauchy_inner(location, scale)
+pub fn rcauchy(rng: &mut dyn FnMut() -> f64, location: f64, scale: f64) -> f64 {
+    rcauchy_inner(rng, location, scale)
 }

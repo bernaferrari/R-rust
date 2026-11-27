@@ -126,29 +126,20 @@ pub fn qgeom_inner(p: f64, prob: f64, lower_tail: bool, log_p: bool) -> f64 {
 // ---- rgeom ----
 
 #[must_use]
-pub fn rgeom_inner(p: f64) -> f64 {
+pub fn rgeom_inner(rng: &mut dyn FnMut() -> f64, p: f64) -> f64 {
     if !r_finite(p) || p <= 0.0 || p > 1.0 {
         return ml_warn_return_nan();
     }
 
-    rpois_inner(exp_rand() * ((1.0 - p) / p))
+    let exp_draw = exp_rand(rng);
+    rpois_inner(rng, exp_draw * ((1.0 - p) / p))
 }
 
 // ---- FFI shims ----
 
 #[must_use]
-pub fn Rf_dgeom(x: f64, p: f64, give_log: i32) -> f64 {
-    dgeom_inner(x, p, give_log != 0)
-}
-
-#[must_use]
 pub fn dgeom(x: f64, p: f64, give_log: i32) -> f64 {
     dgeom_inner(x, p, give_log != 0)
-}
-
-#[must_use]
-pub fn Rf_pgeom(x: f64, p: f64, lower_tail: i32, log_p: i32) -> f64 {
-    pgeom_inner(x, p, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
@@ -157,21 +148,11 @@ pub fn pgeom(x: f64, p: f64, lower_tail: i32, log_p: i32) -> f64 {
 }
 
 #[must_use]
-pub fn Rf_qgeom(p: f64, prob: f64, lower_tail: i32, log_p: i32) -> f64 {
-    qgeom_inner(p, prob, lower_tail != 0, log_p != 0)
-}
-
-#[must_use]
 pub fn qgeom(p: f64, prob: f64, lower_tail: i32, log_p: i32) -> f64 {
     qgeom_inner(p, prob, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub fn Rf_rgeom(p: f64) -> f64 {
-    rgeom_inner(p)
-}
-
-#[must_use]
-pub fn rgeom(p: f64) -> f64 {
-    rgeom_inner(p)
+pub fn rgeom(rng: &mut dyn FnMut() -> f64, p: f64) -> f64 {
+    rgeom_inner(rng, p)
 }

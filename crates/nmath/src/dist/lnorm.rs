@@ -94,29 +94,19 @@ pub fn qlnorm_inner(p: f64, meanlog: f64, sdlog: f64, lower_tail: bool, log_p: b
 }
 
 #[must_use]
-pub fn rlnorm_inner(meanlog: f64, sdlog: f64) -> f64 {
+pub fn rlnorm_inner(rng: &mut dyn FnMut() -> f64, meanlog: f64, sdlog: f64) -> f64 {
     if isnan(meanlog) || !r_finite(sdlog) || sdlog < 0.0 {
         return ml_warn_return_nan();
     }
 
-    exp(rnorm_inner(meanlog, sdlog))
+    exp(rnorm_inner(rng, meanlog, sdlog))
 }
 
 // ---- FFI shims ----
 
 #[must_use]
-pub fn Rf_dlnorm(x: f64, meanlog: f64, sdlog: f64, give_log: i32) -> f64 {
-    dlnorm_inner(x, meanlog, sdlog, give_log != 0)
-}
-
-#[must_use]
 pub fn dlnorm(x: f64, meanlog: f64, sdlog: f64, give_log: i32) -> f64 {
     dlnorm_inner(x, meanlog, sdlog, give_log != 0)
-}
-
-#[must_use]
-pub fn Rf_plnorm(x: f64, meanlog: f64, sdlog: f64, lower_tail: i32, log_p: i32) -> f64 {
-    plnorm_inner(x, meanlog, sdlog, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
@@ -125,21 +115,11 @@ pub fn plnorm(x: f64, meanlog: f64, sdlog: f64, lower_tail: i32, log_p: i32) -> 
 }
 
 #[must_use]
-pub fn Rf_qlnorm(p: f64, meanlog: f64, sdlog: f64, lower_tail: i32, log_p: i32) -> f64 {
-    qlnorm_inner(p, meanlog, sdlog, lower_tail != 0, log_p != 0)
-}
-
-#[must_use]
 pub fn qlnorm(p: f64, meanlog: f64, sdlog: f64, lower_tail: i32, log_p: i32) -> f64 {
     qlnorm_inner(p, meanlog, sdlog, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub fn Rf_rlnorm(meanlog: f64, sdlog: f64) -> f64 {
-    rlnorm_inner(meanlog, sdlog)
-}
-
-#[must_use]
-pub fn rlnorm(meanlog: f64, sdlog: f64) -> f64 {
-    rlnorm_inner(meanlog, sdlog)
+pub fn rlnorm(rng: &mut dyn FnMut() -> f64, meanlog: f64, sdlog: f64) -> f64 {
+    rlnorm_inner(rng, meanlog, sdlog)
 }

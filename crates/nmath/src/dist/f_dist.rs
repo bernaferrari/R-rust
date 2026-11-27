@@ -302,18 +302,18 @@ pub fn qf_inner(p: f64, df1: f64, df2: f64, lower_tail: bool, log_p: bool) -> f6
 // ---- rf ----
 
 #[must_use]
-pub fn rf_inner(n1: f64, n2: f64) -> f64 {
+pub fn rf_inner(rng: &mut dyn FnMut() -> f64, n1: f64, n2: f64) -> f64 {
     if isnan(n1) || isnan(n2) || n1 <= 0.0 || n2 <= 0.0 {
         return ml_warn_return_nan();
     }
 
     let v1 = if r_finite(n1) {
-        crate::dist::chisq::rchisq_inner(n1) / n1
+        crate::dist::chisq::rchisq_inner(rng, n1) / n1
     } else {
         1.0
     };
     let v2 = if r_finite(n2) {
-        crate::dist::chisq::rchisq_inner(n2) / n2
+        crate::dist::chisq::rchisq_inner(rng, n2) / n2
     } else {
         1.0
     };
@@ -323,18 +323,8 @@ pub fn rf_inner(n1: f64, n2: f64) -> f64 {
 // ---- FFI shims ----
 
 #[must_use]
-pub fn Rf_df(x: f64, m: f64, n: f64, give_log: i32) -> f64 {
-    df_inner(x, m, n, give_log != 0)
-}
-
-#[must_use]
 pub fn df(x: f64, m: f64, n: f64, give_log: i32) -> f64 {
     df_inner(x, m, n, give_log != 0)
-}
-
-#[must_use]
-pub fn Rf_pf(x: f64, df1: f64, df2: f64, lower_tail: i32, log_p: i32) -> f64 {
-    pf_inner(x, df1, df2, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
@@ -343,23 +333,13 @@ pub fn pf(x: f64, df1: f64, df2: f64, lower_tail: i32, log_p: i32) -> f64 {
 }
 
 #[must_use]
-pub fn Rf_qf(p: f64, df1: f64, df2: f64, lower_tail: i32, log_p: i32) -> f64 {
-    qf_inner(p, df1, df2, lower_tail != 0, log_p != 0)
-}
-
-#[must_use]
 pub fn qf(p: f64, df1: f64, df2: f64, lower_tail: i32, log_p: i32) -> f64 {
     qf_inner(p, df1, df2, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub fn Rf_rf(n1: f64, n2: f64) -> f64 {
-    rf_inner(n1, n2)
-}
-
-#[must_use]
-pub fn rf(n1: f64, n2: f64) -> f64 {
-    rf_inner(n1, n2)
+pub fn rf(rng: &mut dyn FnMut() -> f64, n1: f64, n2: f64) -> f64 {
+    rf_inner(rng, n1, n2)
 }
 
 #[cfg(test)]

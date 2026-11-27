@@ -4,7 +4,6 @@
 use crate::constants::*;
 use crate::dpq::*;
 use crate::error::*;
-use crate::rng::unif_rand;
 use libm::*;
 
 // ---- Inner implementations ----
@@ -101,7 +100,7 @@ pub fn qweibull_inner(p: f64, shape: f64, scale: f64, lower_tail: bool, log_p: b
 }
 
 #[must_use]
-pub fn rweibull_inner(shape: f64, scale: f64) -> f64 {
+pub fn rweibull_inner(rng: &mut dyn FnMut() -> f64, shape: f64, scale: f64) -> f64 {
     if !r_finite(shape) || !r_finite(scale) || shape < 0.0 || scale <= 0.0 {
         if scale == 0.0 {
             return 0.0;
@@ -111,31 +110,21 @@ pub fn rweibull_inner(shape: f64, scale: f64) -> f64 {
     }
 
     if shape == 0.0 {
-        return if -log(unif_rand()) <= 1.0 {
+        return if -log(rng()) <= 1.0 {
             0.0
         } else {
             ML_POSINF
         };
     }
 
-    scale * pow(-log(unif_rand()), 1.0 / shape)
+    scale * pow(-log(rng()), 1.0 / shape)
 }
 
 // ---- FFI shims ----
 
 #[must_use]
-pub fn Rf_dweibull(x: f64, shape: f64, scale: f64, give_log: i32) -> f64 {
-    dweibull_inner(x, shape, scale, give_log != 0)
-}
-
-#[must_use]
 pub fn dweibull(x: f64, shape: f64, scale: f64, give_log: i32) -> f64 {
     dweibull_inner(x, shape, scale, give_log != 0)
-}
-
-#[must_use]
-pub fn Rf_pweibull(x: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
-    pweibull_inner(x, shape, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
@@ -144,23 +133,13 @@ pub fn pweibull(x: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> 
 }
 
 #[must_use]
-pub fn Rf_qweibull(p: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
-    qweibull_inner(p, shape, scale, lower_tail != 0, log_p != 0)
-}
-
-#[must_use]
 pub fn qweibull(p: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     qweibull_inner(p, shape, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub fn Rf_rweibull(shape: f64, scale: f64) -> f64 {
-    rweibull_inner(shape, scale)
-}
-
-#[must_use]
-pub fn rweibull(shape: f64, scale: f64) -> f64 {
-    rweibull_inner(shape, scale)
+pub fn rweibull(rng: &mut dyn FnMut() -> f64, shape: f64, scale: f64) -> f64 {
+    rweibull_inner(rng, shape, scale)
 }
 
 #[cfg(test)]
@@ -233,12 +212,12 @@ mod tests {
     fn weibull_shape_zero_random_is_degenerate() {
         let _session = crate::test_session::TestSession::new();
         crate::rng::set_seed(1234, 5678);
-        let got: Vec<f64> = (0..12).map(|_| rweibull_inner(0.0, 1.0)).collect();
+        let got: Vec<f64> = (0..12).map(|_| rweibull_inner(rng, 0.0, 1.0)).collect();
         let inf = f64::INFINITY;
         let want = [inf, 0.0, 0.0, inf, 0.0, inf, 0.0, 0.0, 0.0, 0.0, 0.0, inf];
-        assert_eq!(got, want.to_vec(), "rweibull(shape=0) stream changed");
+        assert_eq!(got, want.to_vec(), "rweibull(rng, shape=0) stream changed");
         // scale == 0 short-circuits to 0 for any shape.
-        assert_eq!(rweibull_inner(2.0, 0.0), 0.0);
+        assert_eq!(rweibull_inner(rng, 2.0, 0.0), 0.0);
     }
 
     /// Negative shape still warns and returns NaN (guard retained).

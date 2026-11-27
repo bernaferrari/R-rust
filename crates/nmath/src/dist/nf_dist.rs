@@ -501,7 +501,7 @@ fn qnchisq(p: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f64 {
 
 /// Random variates from noncentral chi-squared distribution
 /// Ported from rnchisq.c
-fn rnchisq(df: f64, lambda: f64) -> f64 {
+fn rnchisq(rng: &mut dyn FnMut() -> f64, df: f64, lambda: f64) -> f64 {
     if isnan(df) || !r_finite(lambda) || df < 0.0 || lambda < 0.0 {
         return ml_warn_return_nan();
     }
@@ -510,15 +510,15 @@ fn rnchisq(df: f64, lambda: f64) -> f64 {
         return if df == 0.0 {
             0.0
         } else {
-            rgamma_inner(df / 2.0, 2.0)
+            rgamma_inner(rng, df / 2.0, 2.0)
         };
     } else {
-        let mut r = rpois_inner(lambda / 2.0);
+        let mut r = rpois_inner(rng, lambda / 2.0);
         if r > 0.0 {
-            r = rchisq_inner(2.0 * r);
+            r = rchisq_inner(rng, 2.0 * r);
         }
         if df > 0.0 {
-            r += rgamma_inner(df / 2.0, 2.0);
+            r += rgamma_inner(rng, df / 2.0, 2.0);
         }
         r
     }
@@ -696,7 +696,7 @@ pub fn qnf_inner(p: f64, df1: f64, df2: f64, ncp: f64, lower_tail: bool, log_p: 
 // =====================================================================
 
 #[must_use]
-pub fn rnf_inner(df1: f64, df2: f64, ncp: f64) -> f64 {
+pub fn rnf_inner(rng: &mut dyn FnMut() -> f64, df1: f64, df2: f64, ncp: f64) -> f64 {
     if isnan(df1) || isnan(df2) || isnan(ncp) {
         return ml_warn_return_nan();
     }
@@ -708,13 +708,13 @@ pub fn rnf_inner(df1: f64, df2: f64, ncp: f64) -> f64 {
     if !r_finite(df1) {
         v1 = 1.0;
     } else {
-        v1 = rnchisq(df1, ncp) / df1;
+        v1 = rnchisq(rng, df1, ncp) / df1;
     }
 
     let v2 = if !r_finite(df2) {
         1.0
     } else {
-        rchisq_inner(df2) / df2
+        rchisq_inner(rng, df2) / df2
     };
 
     v1 / v2
@@ -725,18 +725,8 @@ pub fn rnf_inner(df1: f64, df2: f64, ncp: f64) -> f64 {
 // =====================================================================
 
 #[must_use]
-pub fn Rf_dnf(x: f64, df1: f64, df2: f64, ncp: f64, give_log: i32) -> f64 {
-    dnf_inner(x, df1, df2, ncp, give_log != 0)
-}
-
-#[must_use]
 pub fn dnf(x: f64, df1: f64, df2: f64, ncp: f64, give_log: i32) -> f64 {
     dnf_inner(x, df1, df2, ncp, give_log != 0)
-}
-
-#[must_use]
-pub fn Rf_pnf(x: f64, df1: f64, df2: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
-    pnf_inner(x, df1, df2, ncp, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
@@ -745,21 +735,11 @@ pub fn pnf(x: f64, df1: f64, df2: f64, ncp: f64, lower_tail: i32, log_p: i32) ->
 }
 
 #[must_use]
-pub fn Rf_qnf(p: f64, df1: f64, df2: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
-    qnf_inner(p, df1, df2, ncp, lower_tail != 0, log_p != 0)
-}
-
-#[must_use]
 pub fn qnf(p: f64, df1: f64, df2: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
     qnf_inner(p, df1, df2, ncp, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub fn Rf_rnf(df1: f64, df2: f64, ncp: f64) -> f64 {
-    rnf_inner(df1, df2, ncp)
-}
-
-#[must_use]
-pub fn rnf(df1: f64, df2: f64, ncp: f64) -> f64 {
-    rnf_inner(df1, df2, ncp)
+pub fn rnf(rng: &mut dyn FnMut() -> f64, df1: f64, df2: f64, ncp: f64) -> f64 {
+    rnf_inner(rng, df1, df2, ncp)
 }

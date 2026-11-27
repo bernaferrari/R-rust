@@ -14,7 +14,7 @@ use std::os::raw::{c_double, c_int};
 ///
 /// `rn` is filled with `K` values where rn[j] ~ Bin(n, prob[j]),
 /// sum_j rn[j] == n, sum_j prob[j] == 1.
-pub fn rmultinom_inner(n: i32, prob: &[f64], rn: &mut [f64]) {
+pub fn rmultinom_inner(rng: &mut dyn FnMut() -> f64, n: i32, prob: &[f64], rn: &mut [f64]) {
     let k = prob.len();
 
     if k < 1 {
@@ -72,7 +72,7 @@ pub fn rmultinom_inner(n: i32, prob: &[f64], rn: &mut [f64]) {
         if prob[i] != 0.0 {
             let pp = prob[i] / p_remaining;
             let val = if pp < 1.0 {
-                rbinom_inner(n_remaining as f64, pp)
+                rbinom_inner(rng, n_remaining as f64, pp)
             } else {
                 // >= 1; > 1 happens because of rounding
                 n_remaining as f64
@@ -104,10 +104,7 @@ pub fn rmultinom_inner(n: i32, prob: &[f64], rn: &mut [f64]) {
 
 // ---- FFI shim ----
 
-pub fn rmultinom(n: c_int, prob: &[c_double], rn: &mut [c_double]) {
-    rmultinom_inner(n, prob, rn);
+pub fn rmultinom(rng: &mut dyn FnMut() -> f64, n: c_int, prob: &[c_double], rn: &mut [c_double]) {
+    rmultinom_inner(rng, n, prob, rn);
 }
 
-pub fn Rf_rmultinom(n: c_int, prob: &[c_double], rn: &mut [c_double]) {
-    rmultinom(n, prob, rn);
-}

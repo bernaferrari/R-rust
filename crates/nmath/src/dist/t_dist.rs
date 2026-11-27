@@ -424,34 +424,24 @@ pub fn qt_inner(p: f64, ndf: f64, lower_tail: bool, log_p: bool) -> f64 {
 // ---- rt ----
 
 #[must_use]
-pub fn rt_inner(df: f64) -> f64 {
+pub fn rt_inner(rng: &mut dyn FnMut() -> f64, df: f64) -> f64 {
     if isnan(df) || df <= 0.0 {
         return ml_warn_return_nan();
     }
 
     if !r_finite(df) {
-        return crate::dist::normal::norm_rand();
+        return crate::dist::normal::norm_rand(rng, );
     } else {
-        let num = crate::dist::normal::norm_rand();
-        num / sqrt(crate::dist::chisq::rchisq_inner(df) / df)
+        let num = crate::dist::normal::norm_rand(rng, );
+        num / sqrt(crate::dist::chisq::rchisq_inner(rng, df) / df)
     }
 }
 
 // ---- FFI shims ----
 
 #[must_use]
-pub fn Rf_dt(x: f64, n: f64, give_log: i32) -> f64 {
-    dt_inner(x, n, give_log != 0)
-}
-
-#[must_use]
 pub fn dt(x: f64, n: f64, give_log: i32) -> f64 {
     dt_inner(x, n, give_log != 0)
-}
-
-#[must_use]
-pub fn Rf_pt(x: f64, n: f64, lower_tail: i32, log_p: i32) -> f64 {
-    pt_inner(x, n, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
@@ -460,23 +450,13 @@ pub fn pt(x: f64, n: f64, lower_tail: i32, log_p: i32) -> f64 {
 }
 
 #[must_use]
-pub fn Rf_qt(p: f64, ndf: f64, lower_tail: i32, log_p: i32) -> f64 {
-    qt_inner(p, ndf, lower_tail != 0, log_p != 0)
-}
-
-#[must_use]
 pub fn qt(p: f64, ndf: f64, lower_tail: i32, log_p: i32) -> f64 {
     qt_inner(p, ndf, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub fn Rf_rt(df: f64) -> f64 {
-    rt_inner(df)
-}
-
-#[must_use]
-pub fn rt(df: f64) -> f64 {
-    rt_inner(df)
+pub fn rt(rng: &mut dyn FnMut() -> f64, df: f64) -> f64 {
+    rt_inner(rng, df)
 }
 
 #[cfg(test)]

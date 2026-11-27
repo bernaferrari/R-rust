@@ -4,7 +4,6 @@
 use crate::constants::*;
 use crate::dpq::*;
 use crate::error::*;
-use crate::rng::*;
 use libm::*;
 
 // ---- Inner implementations (Rust bool params) ----
@@ -73,7 +72,7 @@ pub fn qunif_inner(p: f64, a: f64, b: f64, lower_tail: bool, log_p: bool) -> f64
 }
 
 #[must_use]
-pub fn runif_inner(a: f64, b: f64) -> f64 {
+pub fn runif_inner(rng: &mut dyn FnMut() -> f64, a: f64, b: f64) -> f64 {
     if !r_finite(a) || !r_finite(b) || b < a {
         return ml_warn_return_nan();
     }
@@ -83,7 +82,7 @@ pub fn runif_inner(a: f64, b: f64) -> f64 {
 
     let mut u;
     loop {
-        u = unif_rand();
+        u = rng();
         if u > 0.0 && u < 1.0 {
             break;
         }
@@ -94,18 +93,8 @@ pub fn runif_inner(a: f64, b: f64) -> f64 {
 // ---- FFI shims (c_int -> bool) ----
 
 #[must_use]
-pub fn Rf_dunif(x: f64, a: f64, b: f64, give_log: i32) -> f64 {
-    dunif_inner(x, a, b, give_log != 0)
-}
-
-#[must_use]
 pub fn dunif(x: f64, a: f64, b: f64, give_log: i32) -> f64 {
     dunif_inner(x, a, b, give_log != 0)
-}
-
-#[must_use]
-pub fn Rf_punif(x: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
-    punif_inner(x, a, b, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
@@ -114,21 +103,11 @@ pub fn punif(x: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
 }
 
 #[must_use]
-pub fn Rf_qunif(p: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
-    qunif_inner(p, a, b, lower_tail != 0, log_p != 0)
-}
-
-#[must_use]
 pub fn qunif(p: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
     qunif_inner(p, a, b, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub fn Rf_runif(a: f64, b: f64) -> f64 {
-    runif_inner(a, b)
-}
-
-#[must_use]
-pub fn runif(a: f64, b: f64) -> f64 {
-    runif_inner(a, b)
+pub fn runif(rng: &mut dyn FnMut() -> f64, a: f64, b: f64) -> f64 {
+    runif_inner(rng, a, b)
 }

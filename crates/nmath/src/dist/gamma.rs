@@ -14,7 +14,6 @@ use crate::dist::normal::pnorm5_inner;
 use crate::dist::normal::qnorm5_inner;
 use crate::dpq::*;
 use crate::error::*;
-use crate::rng::*;
 use crate::special::bd0::ebd0;
 use crate::special::gamma::{lgammafn, lgammafn1p, log1pmx};
 use crate::special::stirlerr::stirlerr;
@@ -858,7 +857,7 @@ where
 }
 
 #[must_use]
-pub fn rgamma_inner(a: f64, scale: f64) -> f64 {
+pub fn rgamma_inner(rng: &mut dyn FnMut() -> f64, a: f64, scale: f64) -> f64 {
     // Constants
     const SQRT32: f64 = 5.656854;
     const EXP_M1: f64 = 0.36787944117144232159; // exp(-1) = 1/e
@@ -898,16 +897,16 @@ pub fn rgamma_inner(a: f64, scale: f64) -> f64 {
         // GS algorithm for parameters a < 1
         let e = 1.0 + EXP_M1 * a;
         loop {
-            let p = e * unif_rand();
+            let p = e * rng();
             if p >= 1.0 {
                 let x = -log((e - p) / a);
-                if exp_rand() >= (1.0 - a) * log(x) {
+                if exp_rand(rng, ) >= (1.0 - a) * log(x) {
                     return scale * x;
                 }
             } else {
                 // p < 1 <==> log(p) < 0
                 let x = exp(log(p) / a);
-                if exp_rand() >= x {
+                if exp_rand(rng, ) >= x {
                     return scale * x;
                 }
             }
@@ -929,7 +928,7 @@ pub fn rgamma_inner(a: f64, scale: f64) -> f64 {
     // Step 2: t = standard normal deviate,
     //         x = (s,1/2) -normal deviate.
     // immediate acceptance (i)
-    let t = norm_rand();
+    let t = norm_rand(rng, );
     let state = with_gamma_state(|state| *state);
     let mut x = state.s + 0.5 * t;
     let ret_val = x * x;
@@ -938,7 +937,7 @@ pub fn rgamma_inner(a: f64, scale: f64) -> f64 {
     }
 
     // Step 3: u = 0,1 - uniform sample. squeeze acceptance (s)
-    let u = unif_rand();
+    let u = rng();
     if state.d * u <= t * t * t {
         return scale * ret_val;
     }
@@ -1004,8 +1003,8 @@ pub fn rgamma_inner(a: f64, scale: f64) -> f64 {
         // Step 8: e = standard exponential deviate
         //         u = 0,1 - uniform deviate
         //         t = (b,si)-double exponential (laplace) sample
-        let e = exp_rand();
-        let mut u = unif_rand();
+        let e = exp_rand(rng, );
+        let mut u = rng();
         u = u + u - 1.0;
         let t = if u < 0.0 {
             b_val - si * e
@@ -1042,18 +1041,8 @@ pub fn rgamma_inner(a: f64, scale: f64) -> f64 {
 // =====================================================================
 
 #[must_use]
-pub fn Rf_dgamma(x: f64, shape: f64, scale: f64, give_log: i32) -> f64 {
-    dgamma_inner(x, shape, scale, give_log != 0)
-}
-
-#[must_use]
 pub fn dgamma(x: f64, shape: f64, scale: f64, give_log: i32) -> f64 {
     dgamma_inner(x, shape, scale, give_log != 0)
-}
-
-#[must_use]
-pub fn Rf_pgamma(x: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
-    pgamma_inner(x, shape, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
@@ -1062,23 +1051,13 @@ pub fn pgamma(x: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> f6
 }
 
 #[must_use]
-pub fn Rf_qgamma(p: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
-    qgamma_inner(p, shape, scale, lower_tail != 0, log_p != 0)
-}
-
-#[must_use]
 pub fn qgamma(p: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     qgamma_inner(p, shape, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub fn Rf_rgamma(shape: f64, scale: f64) -> f64 {
-    rgamma_inner(shape, scale)
-}
-
-#[must_use]
-pub fn rgamma(shape: f64, scale: f64) -> f64 {
-    rgamma_inner(shape, scale)
+pub fn rgamma(rng: &mut dyn FnMut() -> f64, shape: f64, scale: f64) -> f64 {
+    rgamma_inner(rng, shape, scale)
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -1092,7 +1071,7 @@ mod tests {
         let mut right = TestSession::new();
 
         left.with_protected(|| {
-            let _ = rgamma_inner(2.5, 1.0);
+            let _ = rgamma_inner(rng, 2.5, 1.0);
             with_gamma_state(|state| {
                 assert_eq!(state.aa, 2.5);
             });

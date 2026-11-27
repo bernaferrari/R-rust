@@ -193,11 +193,6 @@ pub fn Rf_set_seed(i1: std::os::raw::c_uint, i2: std::os::raw::c_uint) {
     set_seed(i1, i2)
 }
 
-#[must_use]
-pub fn Rf_unif_rand() -> f64 {
-    unif_rand()
-}
-
 thread_local! {
     static DEFAULT_RNG: Cell<RngState> = Cell::new(RngState::default());
 }

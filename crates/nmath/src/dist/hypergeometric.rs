@@ -12,7 +12,6 @@ use crate::constants::*;
 use crate::dist::binomial::dbinom_raw;
 use crate::dpq::*;
 use crate::error::*;
-use crate::rng::*;
 use crate::special::gamma::lgammafn;
 use crate::state::with_required_current_instance;
 use crate::utils::*;
@@ -317,7 +316,7 @@ where
 }
 
 #[must_use]
-pub fn rhyper_inner(nn1in: f64, nn2in: f64, kkin: f64) -> f64 {
+pub fn rhyper_inner(rng: &mut dyn FnMut() -> f64, nn1in: f64, nn2in: f64, kkin: f64) -> f64 {
     let int_max = i32::MAX as f64;
 
     if !r_finite(nn1in) || !r_finite(nn2in) || !r_finite(kkin) {
@@ -335,9 +334,9 @@ pub fn rhyper_inner(nn1in: f64, nn2in: f64, kkin: f64) -> f64 {
     if big_n > int_max || kkin >= int_max {
         // large n -- evade integer overflow (and inappropriate algorithms)
         if kkin == 1.0 {
-            return crate::dist::binomial::rbinom_inner(kkin, nn1in / (nn1in + nn2in));
+            return crate::dist::binomial::rbinom_inner(rng, kkin, nn1in / (nn1in + nn2in));
         }
-        return qhyper_inner(unif_rand(), nn1in, nn2in, kkin, false, false);
+        return qhyper_inner(rng(), nn1in, nn2in, kkin, false, false);
     }
 
     let nn1 = nn1in as i32;
@@ -400,7 +399,7 @@ pub fn rhyper_inner(nn1in: f64, nn2in: f64, kkin: f64) -> f64 {
             loop {
                 let mut p = st.w;
                 ix = st.minjx;
-                let mut u = unif_rand() * 1e25;
+                let mut u = rng() * 1e25;
                 while u > p {
                     u -= p;
                     p *= ((st.n1 - ix) as f64) * ((st.k - ix) as f64);
@@ -453,8 +452,8 @@ pub fn rhyper_inner(nn1in: f64, nn2in: f64, kkin: f64) -> f64 {
             // acceptance/rejection test
             let mut n_uv = 0;
             loop {
-                let u = unif_rand() * st.p3;
-                let mut v = unif_rand();
+                let u = rng() * st.p3;
+                let mut v = rng();
                 n_uv += 1;
                 if n_uv >= 10000 {
                     return ml_warn_return_nan();
@@ -587,18 +586,8 @@ pub fn rhyper_inner(nn1in: f64, nn2in: f64, kkin: f64) -> f64 {
 // ---- FFI shims ----
 
 #[must_use]
-pub fn Rf_dhyper(x: f64, r: f64, b: f64, n: f64, give_log: i32) -> f64 {
-    dhyper_inner(x, r, b, n, give_log != 0)
-}
-
-#[must_use]
 pub fn dhyper(x: f64, r: f64, b: f64, n: f64, give_log: i32) -> f64 {
     dhyper_inner(x, r, b, n, give_log != 0)
-}
-
-#[must_use]
-pub fn Rf_phyper(x: f64, nr: f64, nb: f64, n: f64, lower_tail: i32, log_p: i32) -> f64 {
-    phyper_inner(x, nr, nb, n, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
@@ -607,23 +596,13 @@ pub fn phyper(x: f64, nr: f64, nb: f64, n: f64, lower_tail: i32, log_p: i32) -> 
 }
 
 #[must_use]
-pub fn Rf_qhyper(p: f64, nr: f64, nb: f64, n: f64, lower_tail: i32, log_p: i32) -> f64 {
-    qhyper_inner(p, nr, nb, n, lower_tail != 0, log_p != 0)
-}
-
-#[must_use]
 pub fn qhyper(p: f64, nr: f64, nb: f64, n: f64, lower_tail: i32, log_p: i32) -> f64 {
     qhyper_inner(p, nr, nb, n, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub fn Rf_rhyper(nn1: f64, nn2: f64, kk: f64) -> f64 {
-    rhyper_inner(nn1, nn2, kk)
-}
-
-#[must_use]
-pub fn rhyper(nn1: f64, nn2: f64, kk: f64) -> f64 {
-    rhyper_inner(nn1, nn2, kk)
+pub fn rhyper(rng: &mut dyn FnMut() -> f64, nn1: f64, nn2: f64, kk: f64) -> f64 {
+    rhyper_inner(rng, nn1, nn2, kk)
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -637,7 +616,7 @@ mod tests {
         let mut right = TestSession::new();
 
         left.with_protected(|| {
-            let _ = rhyper_inner(30.0, 40.0, 12.0);
+            let _ = rhyper_inner(rng, 30.0, 40.0, 12.0);
             with_rhyper_state(|state| {
                 assert_eq!(state.n1s, 30);
                 assert_eq!(state.n2s, 40);
@@ -663,13 +642,13 @@ mod tests {
         session.with_protected(|| {
             crate::rng::set_seed(1234, 5678);
             let got: Vec<i32> = (0..8)
-                .map(|_| rhyper_inner(30.0, 40.0, 12.0) as i32)
+                .map(|_| rhyper_inner(rng, 30.0, 40.0, 12.0) as i32)
                 .collect();
             assert_eq!(got, [3, 7, 5, 4, 10, 3, 5, 9]);
 
             crate::rng::set_seed(1234, 5678);
             let got: Vec<i32> = (0..8)
-                .map(|_| rhyper_inner(100.0, 200.0, 50.0) as i32)
+                .map(|_| rhyper_inner(rng, 100.0, 200.0, 50.0) as i32)
                 .collect();
             assert_eq!(got, [16, 17, 17, 20, 16, 18, 16, 21]);
         });
@@ -681,14 +660,14 @@ mod tests {
     /// uniform and returns qhyper(u, nn1, nn2, kk, false, false) -- 56 on
     /// this stream, where the old int algorithm drew 49.
     #[test]
-    fn rhyper_large_total_uses_qhyper_inversion() {
+    fn rhyper_large_total_uses_qhyper_inversion(rng: &mut dyn FnMut() -> f64) {
         let mut session = TestSession::new();
         session.with_protected(|| {
             crate::rng::set_seed(1234, 5678);
-            let got = rhyper_inner(2.0e9, 2.0e9, 100.0);
+            let got = rhyper_inner(rng, 2.0e9, 2.0e9, 100.0);
 
             crate::rng::set_seed(1234, 5678);
-            let u = crate::rng::multicarry_unif_rand();
+            let u = crate::rng::multicarry_rng();
             assert_eq!(got, qhyper_inner(u, 2.0e9, 2.0e9, 100.0, false, false));
             assert_eq!(got, 56.0);
         });
@@ -698,13 +677,13 @@ mod tests {
     /// "> INT_MAX", so trunk keeps the (degenerate) int path and draws no
     /// uniform; the old code evaded to qhyper and burned one.
     #[test]
-    fn rhyper_intmax_boundary_uses_int_path_without_uniforms() {
+    fn rhyper_intmax_boundary_uses_int_path_without_uniforms(rng: &mut dyn FnMut() -> f64) {
         let mut session = TestSession::new();
         session.with_protected(|| {
             crate::rng::set_seed(1234, 5678);
-            assert_eq!(rhyper_inner(2147483647.0, 0.0, 5.0), 5.0);
+            assert_eq!(rhyper_inner(rng, 2147483647.0, 0.0, 5.0), 5.0);
             // no uniform consumed: the next draw is still the stream head
-            assert_eq!(crate::rng::multicarry_unif_rand(), 0.102_089_069_807_457_04);
+            assert_eq!(crate::rng::multicarry_rng(), 0.102_089_069_807_457_04);
         });
     }
 }

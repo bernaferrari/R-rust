@@ -4,7 +4,6 @@
 use crate::constants::*;
 use crate::dpq::*;
 use crate::error::*;
-use crate::rng::*;
 use libm::*;
 
 // ---- exp_rand (standard exponential variate) ----
@@ -12,7 +11,7 @@ use libm::*;
 /// exp_rand: random variate from the standard exponential distribution.
 #[must_use]
 /// Ahrens-Dieter (1972) algorithm.
-pub fn exp_rand() -> f64 {
+pub fn exp_rand(rng: &mut dyn FnMut() -> f64) -> f64 {
     // q[k-1] = sum(log(2)^k / k!)  k=1,..,n,
     // The highest n (here 16) is determined by q[n-1] = 1.0
     // within standard precision
@@ -36,9 +35,9 @@ pub fn exp_rand() -> f64 {
     ];
 
     let mut a = 0.0_f64;
-    let mut u = unif_rand();
+    let mut u = rng();
     while u <= 0.0 || u >= 1.0 {
-        u = unif_rand();
+        u = rng();
     }
     loop {
         u += u;
@@ -54,10 +53,10 @@ pub fn exp_rand() -> f64 {
     }
 
     let mut i: usize = 0;
-    let mut ustar = unif_rand();
+    let mut ustar = rng();
     let mut umin = ustar;
     loop {
-        ustar = unif_rand();
+        ustar = rng();
         if umin > ustar {
             umin = ustar;
         }
@@ -134,31 +133,21 @@ pub fn qexp_inner(p: f64, scale: f64, lower_tail: bool, log_p: bool) -> f64 {
 }
 
 #[must_use]
-pub fn rexp_inner(scale: f64) -> f64 {
+pub fn rexp_inner(rng: &mut dyn FnMut() -> f64, scale: f64) -> f64 {
     if !r_finite(scale) || scale <= 0.0 {
         if scale == 0.0 {
             return 0.0;
         }
         return ml_warn_return_nan();
     }
-    scale * exp_rand()
+    scale * exp_rand(rng, )
 }
 
 // ---- FFI shims ----
 
 #[must_use]
-pub fn Rf_dexp(x: f64, scale: f64, give_log: i32) -> f64 {
-    dexp_inner(x, scale, give_log != 0)
-}
-
-#[must_use]
 pub fn dexp(x: f64, scale: f64, give_log: i32) -> f64 {
     dexp_inner(x, scale, give_log != 0)
-}
-
-#[must_use]
-pub fn Rf_pexp(x: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
-    pexp_inner(x, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
@@ -167,26 +156,12 @@ pub fn pexp(x: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
 }
 
 #[must_use]
-pub fn Rf_qexp(p: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
-    qexp_inner(p, scale, lower_tail != 0, log_p != 0)
-}
-
-#[must_use]
 pub fn qexp(p: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     qexp_inner(p, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub fn Rf_rexp(scale: f64) -> f64 {
-    rexp_inner(scale)
+pub fn rexp(rng: &mut dyn FnMut() -> f64, scale: f64) -> f64 {
+    rexp_inner(rng, scale)
 }
 
-#[must_use]
-pub fn rexp(scale: f64) -> f64 {
-    rexp_inner(scale)
-}
-
-#[must_use]
-pub fn Rf_exp_rand() -> f64 {
-    exp_rand()
-}

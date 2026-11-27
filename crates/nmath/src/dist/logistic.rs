@@ -4,7 +4,6 @@
 use crate::constants::*;
 use crate::dpq::*;
 use crate::error::*;
-use crate::rng::*;
 use libm::*;
 
 // ---- log1pexp helper (from plogis.c) ----
@@ -132,7 +131,7 @@ pub fn qlogis_inner(p: f64, location: f64, scale: f64, lower_tail: bool, log_p: 
 }
 
 #[must_use]
-pub fn rlogis_inner(location: f64, scale: f64) -> f64 {
+pub fn rlogis_inner(rng: &mut dyn FnMut() -> f64, location: f64, scale: f64) -> f64 {
     if isnan(location) || !r_finite(scale) {
         return ml_warn_return_nan();
     }
@@ -140,7 +139,7 @@ pub fn rlogis_inner(location: f64, scale: f64) -> f64 {
     if scale == 0.0 || !r_finite(location) {
         return location;
     } else {
-        let u = unif_rand();
+        let u = rng();
         location + scale * log(u / (1.0 - u))
     }
 }
@@ -148,18 +147,8 @@ pub fn rlogis_inner(location: f64, scale: f64) -> f64 {
 // ---- FFI shims ----
 
 #[must_use]
-pub fn Rf_dlogis(x: f64, location: f64, scale: f64, give_log: i32) -> f64 {
-    dlogis_inner(x, location, scale, give_log != 0)
-}
-
-#[must_use]
 pub fn dlogis(x: f64, location: f64, scale: f64, give_log: i32) -> f64 {
     dlogis_inner(x, location, scale, give_log != 0)
-}
-
-#[must_use]
-pub fn Rf_plogis(x: f64, location: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
-    plogis_inner(x, location, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
@@ -168,21 +157,11 @@ pub fn plogis(x: f64, location: f64, scale: f64, lower_tail: i32, log_p: i32) ->
 }
 
 #[must_use]
-pub fn Rf_qlogis(p: f64, location: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
-    qlogis_inner(p, location, scale, lower_tail != 0, log_p != 0)
-}
-
-#[must_use]
 pub fn qlogis(p: f64, location: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     qlogis_inner(p, location, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub fn Rf_rlogis(location: f64, scale: f64) -> f64 {
-    rlogis_inner(location, scale)
-}
-
-#[must_use]
-pub fn rlogis(location: f64, scale: f64) -> f64 {
-    rlogis_inner(location, scale)
+pub fn rlogis(rng: &mut dyn FnMut() -> f64, location: f64, scale: f64) -> f64 {
+    rlogis_inner(rng, location, scale)
 }

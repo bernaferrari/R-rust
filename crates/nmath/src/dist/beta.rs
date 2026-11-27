@@ -9,7 +9,6 @@
 use crate::constants::*;
 use crate::dpq::*;
 use crate::error::*;
-use crate::rng::*;
 use crate::state::with_required_current_instance;
 use crate::utils::{fmax2, fmin2};
 use libm::{exp, expm1, fabs, log, log1p, pow, sqrt, trunc};
@@ -964,7 +963,7 @@ where
 }
 
 #[must_use]
-pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
+pub fn rbeta_inner(rng: &mut dyn FnMut() -> f64, aa: f64, bb: f64) -> f64 {
     const EXPMAX: f64 = (DBL_MAX_EXP as f64) * M_LN2; // = log(DBL_MAX)
 
     if isnan(aa) || isnan(bb) || aa < 0.0 || bb < 0.0 {
@@ -974,7 +973,7 @@ pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
         return 0.5;
     } // a = b = Inf
     if aa == 0.0 && bb == 0.0 {
-        return if unif_rand() < 0.5 { 0.0 } else { 1.0 };
+        return if rng() < 0.5 { 0.0 } else { 1.0 };
     }
     // now, at least one of a, b is finite and positive
     if !r_finite(aa) || bb == 0.0 {
@@ -1029,8 +1028,8 @@ pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
         let (k1, k2) = with_beta_state(|state| (state.k1, state.k2));
 
         loop {
-            let u1 = unif_rand();
-            let u2 = unif_rand();
+            let u1 = rng();
+            let u2 = rng();
             let z: f64;
             if u1 < 0.5 {
                 let y = u1 * u2;
@@ -1067,11 +1066,11 @@ pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
 
         // C: do { ... } while (r + alpha * log(alpha / (b + w)) < t);
         // repeat while that condition holds, return with the current w
-        // once it fails -- no extra unif_rand() on the break paths.
+        // once it fails -- no extra rng() on the break paths.
         let mut w;
         loop {
-            let u1 = unif_rand();
-            let u2 = unif_rand();
+            let u1 = rng();
+            let u2 = rng();
             let (v, w_i) = v_w_from_u1_bet(u1, a);
             w = w_i;
 
@@ -1099,18 +1098,8 @@ pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
 // =====================================================================
 
 #[must_use]
-pub fn Rf_dbeta(x: f64, a: f64, b: f64, give_log: i32) -> f64 {
-    dbeta_inner(x, a, b, give_log != 0)
-}
-
-#[must_use]
 pub fn dbeta(x: f64, a: f64, b: f64, give_log: i32) -> f64 {
     dbeta_inner(x, a, b, give_log != 0)
-}
-
-#[must_use]
-pub fn Rf_pbeta(x: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
-    pbeta_inner(x, a, b, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
@@ -1119,23 +1108,13 @@ pub fn pbeta(x: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
 }
 
 #[must_use]
-pub fn Rf_qbeta(p: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
-    qbeta_inner(p, a, b, lower_tail != 0, log_p != 0)
-}
-
-#[must_use]
 pub fn qbeta(p: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
     qbeta_inner(p, a, b, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub fn Rf_rbeta(a: f64, b: f64) -> f64 {
-    rbeta_inner(a, b)
-}
-
-#[must_use]
-pub fn rbeta(a: f64, b: f64) -> f64 {
-    rbeta_inner(a, b)
+pub fn rbeta(rng: &mut dyn FnMut() -> f64, a: f64, b: f64) -> f64 {
+    rbeta_inner(rng, a, b)
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -1154,7 +1133,7 @@ mod tests {
         let mut right = TestSession::new();
 
         left.with_protected(|| {
-            let _ = rbeta_inner(2.0, 5.0);
+            let _ = rbeta_inner(rng, 2.0, 5.0);
             with_beta_state(|state| {
                 assert_eq!(state.olda, 2.0);
                 assert_eq!(state.oldb, 5.0);
@@ -1199,7 +1178,7 @@ mod tests {
 
         let mut session = TestSession::new();
         session.with_protected(|| {
-            let draws = |n, a, b| -> Vec<f64> { (0..n).map(|_| rbeta_inner(a, b)).collect() };
+            let draws = |n, a, b| -> Vec<f64> { (0..n).map(|_| rbeta_inner(rng, a, b)).collect() };
 
             // --- Algorithm BC (a <= 1) ---
             crate::rng::set_seed(1234, 5678);
@@ -1404,13 +1383,13 @@ mod tests {
             // point mass 1/2 at each of {0, 1}: one uniform per draw,
             // exact integers.
             crate::rng::set_seed(1234, 5678);
-            let got: Vec<f64> = (0..10).map(|_| rbeta_inner(0.0, 0.0)).collect();
+            let got: Vec<f64> = (0..10).map(|_| rbeta_inner(rng, 0.0, 0.0)).collect();
             assert_eq!(got, [0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0]);
 
             // alternating parameters on one stream: re-init (qsame) each call
             crate::rng::set_seed(1234, 5678);
             let alt: Vec<f64> = (0..10)
-                .flat_map(|_| [rbeta_inner(0.4, 6.0), rbeta_inner(2.5, 2.5)])
+                .flat_map(|_| [rbeta_inner(rng, 0.4, 6.0), rbeta_inner(rng, 2.5, 2.5)])
                 .collect();
             assert_close(
                 &alt,
@@ -1467,7 +1446,7 @@ mod tests {
             SCRIPT.with(|q| *q.borrow_mut() = script.iter().copied().collect());
             DRAWN.with(|c| c.set(0));
             set_unif_hook(Some(scripted_unif));
-            let x = rbeta_inner(aa, bb);
+            let x = rbeta_inner(rng, aa, bb);
             set_unif_hook(None);
             (x, DRAWN.with(Cell::get))
         }

@@ -14,7 +14,6 @@ use crate::dist::normal::norm_rand;
 use crate::dist::normal::qnorm5_inner;
 use crate::dpq::*;
 use crate::error::*;
-use crate::rng::*;
 use crate::special::bd0::ebd0;
 use crate::special::gamma::lgammafn;
 use crate::special::stirlerr::stirlerr;
@@ -343,7 +342,7 @@ where
 }
 
 #[must_use]
-pub fn rpois_inner(mu: f64) -> f64 {
+pub fn rpois_inner(rng: &mut dyn FnMut() -> f64, mu: f64) -> f64 {
     let fact: [f64; 10] = [1., 1., 2., 6., 24., 120., 720., 5040., 40320., 362880.];
 
     if !r_finite(mu) || mu < 0.0 {
@@ -383,7 +382,7 @@ pub fn rpois_inner(mu: f64) -> f64 {
         if !big_mu {
             // Small mu path: inversion method
             loop {
-                let u = unif_rand();
+                let u = rng();
                 if u <= st.p0 {
                     return 0.0;
                 }
@@ -421,7 +420,7 @@ pub fn rpois_inner(mu: f64) -> f64 {
         // mu >= 10 path:
 
         // Step N. normal sample
-        let g = mu + st.s * norm_rand();
+        let g = mu + st.s * norm_rand(rng, );
 
         let (pois, fk, difmuk, u_sq, g_pos);
 
@@ -432,7 +431,7 @@ pub fn rpois_inner(mu: f64) -> f64 {
             }
             fk = pois;
             difmuk = mu - fk;
-            let u = unif_rand();
+            let u = rng();
             if st.d * u >= difmuk * difmuk * difmuk {
                 return pois;
             }
@@ -513,8 +512,8 @@ pub fn rpois_inner(mu: f64) -> f64 {
         }
 
         loop {
-            let e = exp_rand();
-            let u = 2.0 * unif_rand() - 1.0;
+            let e = exp_rand(rng, );
+            let u = 2.0 * rng() - 1.0;
             let t = 1.8 + fsign(e, u);
             if t > -0.6744 {
                 let pois_v = floor(mu + st.s * t);
@@ -531,18 +530,8 @@ pub fn rpois_inner(mu: f64) -> f64 {
 // ---- FFI shims ----
 
 #[must_use]
-pub fn Rf_dpois(x: f64, lambda: f64, give_log: i32) -> f64 {
-    dpois_inner(x, lambda, give_log != 0)
-}
-
-#[must_use]
 pub fn dpois(x: f64, lambda: f64, give_log: i32) -> f64 {
     dpois_inner(x, lambda, give_log != 0)
-}
-
-#[must_use]
-pub fn Rf_ppois(x: f64, lambda: f64, lower_tail: i32, log_p: i32) -> f64 {
-    ppois_inner(x, lambda, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
@@ -551,23 +540,13 @@ pub fn ppois(x: f64, lambda: f64, lower_tail: i32, log_p: i32) -> f64 {
 }
 
 #[must_use]
-pub fn Rf_qpois(p: f64, lambda: f64, lower_tail: i32, log_p: i32) -> f64 {
-    qpois_inner(p, lambda, lower_tail != 0, log_p != 0)
-}
-
-#[must_use]
 pub fn qpois(p: f64, lambda: f64, lower_tail: i32, log_p: i32) -> f64 {
     qpois_inner(p, lambda, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub fn Rf_rpois(mu: f64) -> f64 {
-    rpois_inner(mu)
-}
-
-#[must_use]
-pub fn rpois(mu: f64) -> f64 {
-    rpois_inner(mu)
+pub fn rpois(rng: &mut dyn FnMut() -> f64, mu: f64) -> f64 {
+    rpois_inner(rng, mu)
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -581,7 +560,7 @@ mod tests {
         let mut right = TestSession::new();
 
         left.with_protected(|| {
-            let _ = rpois_inner(12.0);
+            let _ = rpois_inner(rng, 12.0);
             with_rpois_state(|state| {
                 assert_eq!(state.muprev, 12.0);
                 assert!(state.s > 0.0);

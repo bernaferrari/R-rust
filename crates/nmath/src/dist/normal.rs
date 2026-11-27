@@ -4,7 +4,6 @@
 use crate::constants::*;
 use crate::dpq::*;
 use crate::error::*;
-use crate::rng::*;
 use crate::utils::*;
 use libm::{exp, fabs, ldexp, log, log1p, sqrt, trunc};
 
@@ -498,14 +497,14 @@ pub fn qnorm5_inner(p: f64, mu: f64, sigma: f64, lower_tail: bool, log_p: bool) 
 // ---- rnorm ----
 
 #[must_use]
-pub fn rnorm_inner(mu: f64, sigma: f64) -> f64 {
+pub fn rnorm_inner(rng: &mut dyn FnMut() -> f64, mu: f64, sigma: f64) -> f64 {
     if isnan(mu) || !r_finite(sigma) || sigma < 0.0 {
         return ml_warn_return_nan();
     }
     if sigma == 0.0 || !r_finite(mu) {
         return mu; /* includes mu = +/- Inf with finite sigma */
     } else {
-        return mu + sigma * norm_rand();
+        return mu + sigma * norm_rand(rng, );
     }
 }
 
@@ -514,36 +513,21 @@ pub fn rnorm_inner(mu: f64, sigma: f64) -> f64 {
 /// norm_rand: random variate from the STANDARD normal distribution N(0,1).
 #[must_use]
 /// Uses INVERSION method (default for standalone mode).
-pub fn norm_rand() -> f64 {
+pub fn norm_rand(rng: &mut dyn FnMut() -> f64) -> f64 {
     const BIG: f64 = 134217728.0; /* 2^27 */
 
     // INVERSION method (default for standalone)
-    /* unif_rand() alone is not of high enough precision */
-    let mut u1 = unif_rand();
-    u1 = (BIG * u1) as i64 as f64 + unif_rand();
+    /* rng() alone is not of high enough precision */
+    let mut u1 = rng();
+    u1 = (BIG * u1) as i64 as f64 + rng();
     qnorm5_inner(u1 / BIG, 0.0, 1.0, true, false)
-}
-
-#[must_use]
-pub fn Rf_norm_rand() -> f64 {
-    norm_rand()
 }
 
 // ---- FFI shims ----
 
 #[must_use]
-pub fn Rf_dnorm(x: f64, mu: f64, sigma: f64, give_log: i32) -> f64 {
-    dnorm4_inner(x, mu, sigma, give_log != 0)
-}
-
-#[must_use]
 pub fn dnorm(x: f64, mu: f64, sigma: f64, give_log: i32) -> f64 {
     dnorm4_inner(x, mu, sigma, give_log != 0)
-}
-
-#[must_use]
-pub fn Rf_pnorm(x: f64, mu: f64, sigma: f64, lower_tail: i32, log_p: i32) -> f64 {
-    pnorm5_inner(x, mu, sigma, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
@@ -552,23 +536,13 @@ pub fn pnorm(x: f64, mu: f64, sigma: f64, lower_tail: i32, log_p: i32) -> f64 {
 }
 
 #[must_use]
-pub fn Rf_qnorm(p: f64, mu: f64, sigma: f64, lower_tail: i32, log_p: i32) -> f64 {
-    qnorm5_inner(p, mu, sigma, lower_tail != 0, log_p != 0)
-}
-
-#[must_use]
 pub fn qnorm(p: f64, mu: f64, sigma: f64, lower_tail: i32, log_p: i32) -> f64 {
     qnorm5_inner(p, mu, sigma, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub fn Rf_rnorm(mu: f64, sigma: f64) -> f64 {
-    rnorm_inner(mu, sigma)
-}
-
-#[must_use]
-pub fn rnorm(mu: f64, sigma: f64) -> f64 {
-    rnorm_inner(mu, sigma)
+pub fn rnorm(rng: &mut dyn FnMut() -> f64, mu: f64, sigma: f64) -> f64 {
+    rnorm_inner(rng, mu, sigma)
 }
 
 #[cfg(test)]

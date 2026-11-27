@@ -11,7 +11,6 @@ use crate::constants::*;
 use crate::dist::normal::qnorm5_inner;
 use crate::dpq::*;
 use crate::error::*;
-use crate::rng::*;
 use crate::special::bd0::bd0;
 use crate::special::stirlerr::stirlerr;
 use crate::state::with_required_current_instance;
@@ -382,7 +381,7 @@ where
 }
 
 #[must_use]
-pub fn rbinom_inner(nin: f64, pp: f64) -> f64 {
+pub fn rbinom_inner(rng: &mut dyn FnMut() -> f64, nin: f64, pp: f64) -> f64 {
     let int_max = i32::MAX as f64;
 
     if !r_finite(nin) {
@@ -404,7 +403,7 @@ pub fn rbinom_inner(nin: f64, pp: f64) -> f64 {
     }
 
     if r >= int_max {
-        return qbinom_inner(unif_rand(), r, pp, false, false);
+        return qbinom_inner(rng(), r, pp, false, false);
     }
 
     let n = r as i32;
@@ -450,16 +449,14 @@ pub fn rbinom_inner(nin: f64, pp: f64) -> f64 {
 
         let use_small = np < 30.0;
 
-        let rbinom_kind = R_binom_kind(); /* ../main/RNG.c */
-
         if !use_small {
             // BTPE algorithm (Kachitvichyanukul & Schmeiser 1988).  The
             // triangular region accepts directly; parallelogram and tail
             // candidates fall through to the shared accept/reject test
             // (rbinom.c:118-182).
             let ix = 'btpe: loop {
-                let u = unif_rand() * st.p4;
-                let v = unif_rand();
+                let u = rng() * st.p4;
+                let v = rng();
                 let ix: i32;
                 let vt: f64;
 
@@ -512,7 +509,7 @@ pub fn rbinom_inner(nin: f64, pp: f64) -> f64 {
                 } else {
                     // 21 <= k <= npq/2 - 2 : ==> 21 <= npq/2 - 2 <==> npq >= 46
                     // squeezing using upper and lower bounds on log(f(x))
-                    let one_6th = if rbinom_kind == Binomtype::BTPE {
+                    let one_6th = if true {
                         0.16666666666666666
                     } else {
                         0.1666666666666
@@ -535,7 +532,7 @@ pub fn rbinom_inner(nin: f64, pp: f64) -> f64 {
                         let x2 = x1 * x1;
                         let f2 = f1 * f1;
                         let w2 = w * w;
-                        if rbinom_kind == Binomtype::BTPE {
+                        if true {
                             if alv
                                 <= st.xm * log(f1 / x1)
                                     + ((n - st.m) as f64 + 0.5) * log(z / w)
@@ -603,7 +600,7 @@ pub fn rbinom_inner(nin: f64, pp: f64) -> f64 {
         loop {
             let mut ix: i32 = 0;
             let mut f = st.qn;
-            let mut u = unif_rand();
+            let mut u = rng();
             loop {
                 if u < f {
                     break;
@@ -627,18 +624,8 @@ pub fn rbinom_inner(nin: f64, pp: f64) -> f64 {
 // ---- FFI shims ----
 
 #[must_use]
-pub fn Rf_dbinom(x: f64, n: f64, p: f64, give_log: i32) -> f64 {
-    dbinom_inner(x, n, p, give_log != 0)
-}
-
-#[must_use]
 pub fn dbinom(x: f64, n: f64, p: f64, give_log: i32) -> f64 {
     dbinom_inner(x, n, p, give_log != 0)
-}
-
-#[must_use]
-pub fn Rf_pbinom(x: f64, n: f64, p: f64, lower_tail: i32, log_p: i32) -> f64 {
-    pbinom_inner(x, n, p, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
@@ -647,23 +634,13 @@ pub fn pbinom(x: f64, n: f64, p: f64, lower_tail: i32, log_p: i32) -> f64 {
 }
 
 #[must_use]
-pub fn Rf_qbinom(p: f64, n: f64, pr: f64, lower_tail: i32, log_p: i32) -> f64 {
-    qbinom_inner(p, n, pr, lower_tail != 0, log_p != 0)
-}
-
-#[must_use]
 pub fn qbinom(p: f64, n: f64, pr: f64, lower_tail: i32, log_p: i32) -> f64 {
     qbinom_inner(p, n, pr, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub fn Rf_rbinom(n: f64, p: f64) -> f64 {
-    rbinom_inner(n, p)
-}
-
-#[must_use]
-pub fn rbinom(n: f64, p: f64) -> f64 {
-    rbinom_inner(n, p)
+pub fn rbinom(rng: &mut dyn FnMut() -> f64, n: f64, p: f64) -> f64 {
+    rbinom_inner(rng, n, p)
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -677,7 +654,7 @@ mod tests {
         let mut right = TestSession::new();
 
         left.with_protected(|| {
-            let _ = rbinom_inner(40.0, 0.3);
+            let _ = rbinom_inner(rng, 40.0, 0.3);
             with_rbinom_state(|state| {
                 assert_eq!(state.nsave, 40);
                 assert_eq!(state.psave, 0.3);
@@ -706,11 +683,11 @@ mod tests {
         let mut session = TestSession::new();
         session.with_protected(|| {
             crate::rng::set_seed(1234, 5678);
-            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(200.0, 0.4) as i32).collect();
+            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(rng, 200.0, 0.4) as i32).collect();
             assert_eq!(got, [72, 87, 77, 77, 85, 85, 81, 87, 73, 93]);
 
             crate::rng::set_seed(1234, 5678);
-            let got: Vec<i32> = (0..12).map(|_| rbinom_inner(2000.0, 0.5) as i32).collect();
+            let got: Vec<i32> = (0..12).map(|_| rbinom_inner(rng, 2000.0, 0.5) as i32).collect();
             assert_eq!(
                 got,
                 [
@@ -719,30 +696,30 @@ mod tests {
             );
 
             crate::rng::set_seed(1234, 5678);
-            let got: Vec<i32> = (0..8).map(|_| rbinom_inner(40.0, 0.3) as i32).collect();
+            let got: Vec<i32> = (0..8).map(|_| rbinom_inner(rng, 40.0, 0.3) as i32).collect();
             assert_eq!(got, [8, 15, 11, 9, 21, 8, 11, 19]);
 
             crate::rng::set_seed(1234, 5678);
-            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(200.0, 0.9) as i32).collect();
+            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(rng, 200.0, 0.9) as i32).collect();
             assert_eq!(got, [185, 176, 182, 184, 166, 186, 181, 169, 182, 172]);
 
             crate::rng::set_seed(99, 424_242);
-            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(300.0, 0.25) as i32).collect();
+            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(rng, 300.0, 0.25) as i32).collect();
             assert_eq!(got, [86, 72, 90, 75, 93, 78, 79, 85, 93, 78]);
 
             crate::rng::set_seed(777, 333);
-            let got: Vec<i32> = (0..15).map(|_| rbinom_inner(500.0, 0.06) as i32).collect();
+            let got: Vec<i32> = (0..15).map(|_| rbinom_inner(rng, 500.0, 0.06) as i32).collect();
             assert_eq!(
                 got,
                 [30, 30, 27, 28, 31, 33, 27, 26, 25, 24, 31, 32, 20, 39, 30]
             );
 
             crate::rng::set_seed(1234, 5678);
-            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(100.0, 0.31) as i32).collect();
+            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(rng, 100.0, 0.31) as i32).collect();
             assert_eq!(got, [27, 25, 35, 25, 33, 38, 27, 32, 29, 30]);
 
             crate::rng::set_seed(5, 5);
-            let got: Vec<i32> = (0..6).map(|_| rbinom_inner(500.0, 0.9) as i32).collect();
+            let got: Vec<i32> = (0..6).map(|_| rbinom_inner(rng, 500.0, 0.9) as i32).collect();
             assert_eq!(got, [440, 448, 452, 451, 450, 456]);
         });
     }
@@ -760,12 +737,12 @@ mod tests {
             assert_eq!(R_binom_kind(), Binomtype::BTPE);
 
             crate::rng::set_seed(2058, 2058 * 7919 + 13);
-            let got: Vec<i32> = (0..6).map(|_| rbinom_inner(200.0, 0.4) as i32).collect();
+            let got: Vec<i32> = (0..6).map(|_| rbinom_inner(rng, 200.0, 0.4) as i32).collect();
             assert_eq!(got, [82, 79, 65, 92, 76, 85]);
 
             set_binom_kind(Binomtype::BUGGY_BTPE);
             crate::rng::set_seed(2058, 2058 * 7919 + 13);
-            let got: Vec<i32> = (0..6).map(|_| rbinom_inner(200.0, 0.4) as i32).collect();
+            let got: Vec<i32> = (0..6).map(|_| rbinom_inner(rng, 200.0, 0.4) as i32).collect();
             assert_eq!(got, [82, 79, 59, 65, 92, 76]);
 
             set_binom_kind(Binomtype::BTPE);
@@ -779,11 +756,11 @@ mod tests {
     fn rbinom_small_np_qn_formula_follows_p_quarter() {
         let mut session = TestSession::new();
         session.with_protected(|| {
-            let _ = rbinom_inner(100.0, 0.1);
+            let _ = rbinom_inner(rng, 100.0, 0.1);
             with_rbinom_state(|st| {
                 assert!((st.qn - exp(100.0 * log1p(-0.1))).abs() < 1e-15);
             });
-            let _ = rbinom_inner(40.0, 0.3);
+            let _ = rbinom_inner(rng, 40.0, 0.3);
             with_rbinom_state(|st| {
                 assert!((st.qn - crate::special::mlutils::R_pow_di(0.7, 40)).abs() < 1e-15);
             });

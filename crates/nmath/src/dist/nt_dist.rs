@@ -5,7 +5,7 @@
 //   From Johnson, Kotz and Balakrishnan (1995) [2nd ed.; formula (31.15), p.516]
 // pnt.c: Algorithm AS 243, Lenth,R.V. (1989). Appl. Statist., Vol.38, 185-189.
 // qnt.c: Inverts pnt via bisection
-// rnt: R generates noncentral t as (rnchisq(1, ncp^2) + norm_rand()) / sqrt(rchisq(df) / df)
+// rnt: R generates noncentral t as (rnchisq(1, ncp^2) + norm_rand(rng, )) / sqrt(rchisq(rng, df) / df)
 
 use crate::constants::*;
 use crate::dpq::*;
@@ -338,25 +338,20 @@ pub fn qnt_inner(p: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f6
 
 // ---- rnt ----
 // R generates noncentral t as:
-//   (rnchisq(1, ncp^2) + norm_rand()) / sqrt(rchisq(df) / df)
+//   (rnchisq(1, ncp^2) + norm_rand(rng, )) / sqrt(rchisq(rng, df) / df)
 
 #[must_use]
-pub fn rnt_inner(df: f64, ncp: f64) -> f64 {
+pub fn rnt_inner(rng: &mut dyn FnMut() -> f64, df: f64, ncp: f64) -> f64 {
     if isnan(df) || isnan(ncp) || df <= 0.0 {
         return ml_warn_return_nan();
     }
     // R's implementation:
-    // rnt = (rnchisq(1, ncp^2) + norm_rand()) / sqrt(rchisq(df) / df)
-    let num = rnchisq_inner(1.0, ncp * ncp) + norm_rand();
-    num / sqrt(rchisq_inner(df) / df)
+    // rnt = (rnchisq(1, ncp^2) + norm_rand(rng, )) / sqrt(rchisq(rng, df) / df)
+    let num = rnchisq_inner(rng, 1.0, ncp * ncp) + norm_rand(rng, );
+    num / sqrt(rchisq_inner(rng, df) / df)
 }
 
 // ---- FFI shims ----
-
-#[must_use]
-pub fn Rf_dnt(x: c_double, df: c_double, ncp: c_double, give_log: c_int) -> c_double {
-    dnt_inner(x, df, ncp, give_log != 0)
-}
 
 #[must_use]
 pub fn dnt(x: c_double, df: c_double, ncp: c_double, give_log: c_int) -> c_double {
@@ -392,13 +387,8 @@ pub fn qnt(p: c_double, df: c_double, ncp: c_double, lower_tail: c_int, log_p: c
 }
 
 #[must_use]
-pub fn Rf_rnt(df: c_double, ncp: c_double) -> c_double {
-    rnt_inner(df, ncp)
-}
-
-#[must_use]
-pub fn rnt(df: c_double, ncp: c_double) -> c_double {
-    rnt_inner(df, ncp)
+pub fn rnt(rng: &mut dyn FnMut() -> f64, df: c_double, ncp: c_double) -> c_double {
+    rnt_inner(rng, df, ncp)
 }
 
 #[cfg(test)]

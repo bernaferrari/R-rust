@@ -6,7 +6,6 @@
 use crate::constants::*;
 use crate::dpq::*;
 use crate::error::*;
-use crate::rng::*;
 use crate::special::choose::{choose, lchoose};
 use crate::state::with_required_current_instance;
 use crate::utils::*;
@@ -267,7 +266,7 @@ pub fn qwilcox_inner(x: f64, m: f64, n: f64, lower_tail: bool, log_p: bool) -> f
 /// r_unif_index: generate a random non-negative integer < dn
 /// using rejection sampling from integers below the next larger power of two.
 /// Ported from R's standalone/sunif.c
-fn r_unif_index(dn: i32) -> i32 {
+fn r_unif_index(rng: &mut dyn FnMut() -> f64, dn: i32) -> i32 {
     if dn <= 0 {
         return 0;
     }
@@ -276,7 +275,7 @@ fn r_unif_index(dn: i32) -> i32 {
         let mut v: i64 = 0;
         let mut n = 0;
         while n <= bits {
-            let v1 = (unif_rand() * 65536.0) as i64;
+            let v1 = (rng() * 65536.0) as i64;
             v = 65536 * v + v1;
             n += 16;
         }
@@ -289,7 +288,7 @@ fn r_unif_index(dn: i32) -> i32 {
 }
 
 #[must_use]
-pub fn rwilcox_inner(m: f64, n: f64) -> f64 {
+pub fn rwilcox_inner(rng: &mut dyn FnMut() -> f64, m: f64, n: f64) -> f64 {
     // IEEE_754
     if isnan(m) || isnan(n) {
         return m + n;
@@ -310,7 +309,7 @@ pub fn rwilcox_inner(m: f64, n: f64) -> f64 {
 
     let mut remaining = k;
     for _i in 0..(n as i32) {
-        let j = r_unif_index(remaining);
+        let j = r_unif_index(rng, remaining);
         r += x[j as usize] as f64;
         remaining -= 1;
         x[j as usize] = x[remaining as usize];
@@ -322,11 +321,6 @@ pub fn rwilcox_inner(m: f64, n: f64) -> f64 {
 // =====================================================================
 // FFI shims
 // =====================================================================
-
-#[must_use]
-pub fn Rf_dwilcox(x: c_double, m: c_double, n: c_double, give_log: c_int) -> c_double {
-    dwilcox_inner(x, m, n, give_log != 0)
-}
 
 #[must_use]
 pub fn dwilcox(x: c_double, m: c_double, n: c_double, give_log: c_int) -> c_double {
@@ -362,13 +356,8 @@ pub fn qwilcox(p: c_double, m: c_double, n: c_double, lower_tail: c_int, log_p: 
 }
 
 #[must_use]
-pub fn Rf_rwilcox(m: c_double, n: c_double) -> c_double {
-    rwilcox_inner(m, n)
-}
-
-#[must_use]
-pub fn rwilcox(m: c_double, n: c_double) -> c_double {
-    rwilcox_inner(m, n)
+pub fn rwilcox(rng: &mut dyn FnMut() -> f64, m: c_double, n: c_double) -> c_double {
+    rwilcox_inner(rng, m, n)
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
