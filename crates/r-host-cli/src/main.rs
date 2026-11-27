@@ -11,72 +11,37 @@ use r_embed::CancellationToken;
 /// The evaluation backend the REPL runs on — the pure-Rust
 /// generational-heap world by default, the migration's first consumer
 /// cutover. The legacy SEXP world remains available behind
-/// RPORT_LEGACY_WORLD while the deletion phases complete; the same
-/// six-method session surface over either engine leaves the REPL
-/// indifferent to which world answers it. RPORT_PURE_WORLD is accepted
-/// as a legacy opt-in synonym so existing scripts keep their meaning.
-enum CliSession {
-    Legacy(r_embed::RSession),
-    Pure(r_embed::PureSession),
+/// Command-line session over the pure world. The legacy engine opt-in was
+/// retired with the consumer migrations: PureSession is the only world.
+struct CliSession {
+    session: r_embed::PureSession,
 }
-
 impl CliSession {
     fn new() -> std::result::Result<CliSession, String> {
-        let legacy_requested = std::env::var_os("RPORT_LEGACY_WORLD").is_some()
-            && std::env::var_os("RPORT_PURE_WORLD").is_none();
-        if !legacy_requested {
-            let mut session = r_embed::PureSession::new();
-            session.enable_host_process_capabilities();
-            return Ok(CliSession::Pure(session));
-        }
-        let mut session = r_embed::RSession::new().map_err(|e| format!("{e}"))?;
+        let mut session = r_embed::PureSession::new();
         session.enable_host_process_capabilities();
-        Ok(CliSession::Legacy(session))
+        Ok(CliSession { session })
     }
-
     fn eval(&mut self, code: &str) -> std::result::Result<String, String> {
-        match self {
-            CliSession::Legacy(session) => session.eval(code).map_err(|e| format!("{e}")),
-            CliSession::Pure(session) => session.eval_output(code),
-        }
+        self.session.eval_output(code)
     }
-
     fn global_binding_names(&mut self) -> Vec<String> {
-        match self {
-            CliSession::Legacy(session) => session.global_binding_names().unwrap_or_default(),
-            CliSession::Pure(session) => session.global_binding_names(),
-        }
+        self.session.global_binding_names()
     }
-
     fn is_input_complete(&mut self, code: &str) -> std::result::Result<bool, String> {
-        match self {
-            CliSession::Legacy(session) => {
-                session.is_input_complete(code).map_err(|e| format!("{e}"))
-            }
-            CliSession::Pure(session) => session.is_input_complete(code),
-        }
+        self.session.is_input_complete(code)
     }
-
     fn eval_result(
         &mut self,
         code: &str,
         token: &CancellationToken,
     ) -> std::result::Result<r_embed::EvalOutput, String> {
-        match self {
-            CliSession::Legacy(session) => session
-                .eval_result_cancellable(code, token)
-                .map_err(|e| format!("{e}")),
-            CliSession::Pure(session) => session
-                .eval_result_cancellable(code, token)
-                .map_err(|e| format!("{e}"))
-        }
+        self.session
+            .eval_result_cancellable(code, token)
+            .map_err(|e| format!("{e}"))
     }
-
     fn close(&mut self) {
-        match self {
-            CliSession::Legacy(session) => session.close(),
-            CliSession::Pure(session) => session.close(),
-        }
+        self.session.close();
     }
 }
 use std::io::{self, Write};
