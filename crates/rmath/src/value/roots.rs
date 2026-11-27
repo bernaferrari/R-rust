@@ -166,6 +166,23 @@ impl RootTable {
         }
     }
 
+    /// Replace the rooted value keeping the token's identity exactly as
+    /// the facade's retained-slot write semantics need — handles survive
+    /// writes, removal alone invalidates them. Returns false for a stale
+    /// or released token.
+    pub fn replace(&mut self, token: RootToken, id: ValueId) -> bool {
+        let Some(entry) = self.entries.get_mut(token.index as usize) else {
+            return false;
+        };
+        match entry {
+            RootEntry::Occupied { generation, id: slot } if *generation == token.generation => {
+                *slot = id;
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// Release a root. Releasing twice is a harmless no-op.
     pub fn release(&mut self, token: RootToken) {
         let Some(entry) = self.entries.get_mut(token.index as usize) else {

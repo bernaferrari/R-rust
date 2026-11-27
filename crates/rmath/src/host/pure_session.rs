@@ -86,7 +86,30 @@ pub struct PureResourceLimits {
 pub struct PureSession {
     session: Session,
     result_limit: Option<usize>,
+    session_id: u64,
 }
+
+/// Opaque, copyable identity for a privately retained pure-world value.
+///
+/// The token bits encode the root table's generational slot exactly as
+/// the facade's RetainedValueId encodes its namespace/slot/generation —
+/// validation rejects foreign sessions, released slots and stale
+/// generations before any access. No heap reference crosses the host
+/// boundary; reads materialize owned snapshots.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PureValueHandle {
+    session_id: u64,
+    token_bits: u64,
+}
+
+impl PureValueHandle {
+    /// The session this handle was created by.
+    pub fn owning_session(&self) -> u64 {
+        self.session_id
+    }
+}
+
+static NEXT_PURE_SESSION_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 impl Default for PureSession {
     fn default() -> Self {
@@ -99,6 +122,7 @@ impl PureSession {
         PureSession {
             session: Session::new(),
             result_limit: None,
+            session_id: NEXT_PURE_SESSION_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         }
     }
 
@@ -479,6 +503,92 @@ impl PureSession {
     /// Close the session — the pure world's heap is plain owned memory,
     /// so closing is a no-op beyond dropping.
     pub fn close(&mut self) {}
+
+    /// Evaluate `expr` and retain the result under a private host root,
+    /// answering the opaque handle exactly as the facade's define_handle
+    /// contracts. The value stays live across garbage collections until
+    /// remove_handle releases it; R bindings never observe the root.
+    pub fn define_handle(&mut self, expr: &str) -> Result<PureValueHandle, String> {
+        let value = self
+            .session
+            .eval_value(expr)
+            .map_err(|e| format!("{e}"))?;
+        let token = self.session.heap.retained_roots.register(value);
+        Ok(PureValueHandle {
+            session_id: self.session_id,
+            token_bits: token.to_bits(),
+        })
+    }
+
+    fn validate_handle(&self, handle: &PureValueHandle) -> Result<crate::value::roots::RootToken, String> {
+        if handle.session_id != self.session_id {
+            return Err(format!(
+                "value handle belongs to session {}, used on session {}",
+                handle.session_id, self.session_id
+            ));
+        }
+        let token = crate::value::roots::RootToken::from_bits(handle.token_bits);
+        if self.session.heap.retained_roots.get(token).is_none() {
+            return Err("value handle refers to a released or stale slot".to_string());
+        }
+        Ok(token)
+    }
+
+    /// Materialize an owned typed snapshot of the handle's value. Reading
+    /// never evaluates R code exactly as the facade's read contract —
+    /// and because the snapshot is owned outright, no borrow guard
+    /// constrains the session afterward.
+    pub fn read_handle(&mut self, handle: &PureValueHandle) -> Result<RValue, String> {
+        let token = self.validate_handle(handle)?;
+        let value = self.session.heap.retained_roots.get(token).expect("validated");
+        Ok(snapshot_value(&self.session.heap, &self.session.interner, value))
+    }
+
+    /// Replace the slot's value with the result of evaluating `expr` in
+    /// the global environment. On error the slot keeps its previous
+    /// value exactly as the facade's write contract; the handle itself
+    /// survives the write.
+    pub fn set_handle(&mut self, handle: &PureValueHandle, expr: &str) -> Result<(), String> {
+        let token = self.validate_handle(handle)?;
+        let value = self
+            .session
+            .eval_value(expr)
+            .map_err(|e| format!("{e}"))?;
+        self.session.heap.retained_roots.replace(token, value);
+        Ok(())
+    }
+
+    /// Evaluate `expr` with the slot's current value bound to `.` in a
+    /// fresh private child frame of the global environment — the facade's
+    /// update semantics exactly. Its successful result replaces the
+    /// root; failed evaluation keeps the previous slot.
+    pub fn update_handle(&mut self, handle: &PureValueHandle, expr: &str) -> Result<(), String> {
+        let token = self.validate_handle(handle)?;
+        let current = self.session.heap.retained_roots.get(token).expect("validated");
+        let global_env = self.session.global_env;
+        let heap = &mut self.session.heap;
+        let interner = &mut self.session.interner;
+        let child = crate::value::env::new_environment(heap, global_env);
+        let dot = interner.intern_symbol(".");
+        crate::value::env::define(heap, child, dot, current).map_err(|e| format!("{e:?}"))?;
+        let expressions = crate::value::parser::parse_native_expressions(expr, heap, interner)
+            .map_err(|e| format!("{e}"))?;
+        let mut last = crate::value::id::ValueId::NIL;
+        for expression in &expressions {
+            last = crate::value::eval::eval(heap, interner, *expression, child).map_err(|e| format!("{e:?}"))?;
+        }
+        self.session.heap.retained_roots.replace(token, last);
+        Ok(())
+    }
+
+    /// Release the private owning root and invalidate the handle exactly
+    /// as the facade's removal contract — later reads, writes and
+    /// removals through the same handle fail validation.
+    pub fn remove_handle(&mut self, handle: &PureValueHandle) -> Result<(), String> {
+        let token = self.validate_handle(handle)?;
+        self.session.heap.retained_roots.release(token);
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1179,7 +1289,13 @@ cat("after|", paste(par("mfg"), collapse=","), "|",
             })
             .next()
             .expect("one rect");
-        assert_eq!(path.fill, Color::RED, "palette index 2 is red");
+        // The R 4.x default palette exactly as the oracle pins it —
+        // index 2 is #DF536B, not the pre-4.0 pure red.
+        assert_eq!(
+            path.fill,
+            Color { r: 0xDF, g: 0x53, b: 0x6B, a: 255 },
+            "palette index 2 is the R 4.x #DF536B"
+        );
     }
 
     #[test]
@@ -1579,6 +1695,58 @@ cat(grconvertX(0:1, "user", "device"), grconvertY(0:1, "user", "device"), "\n")
         assert!(session.remove_file("/data/x.bin"));
         assert!(!session.remove_file("/data/x.bin"));
         assert_eq!(session.list_files(), vec!["/data/y.bin"]);
+    }
+
+    #[test]
+    fn handle_lifecycle_matches_facade_contract() {
+        let mut session = PureSession::new();
+        // Snapshots compare against direct evaluation of the same
+        // expression — representation details stay out of the contract.
+        let reference = |session: &mut PureSession, expr: &str| session.eval(expr).typed;
+        // define + read: the snapshot reflects the evaluated value.
+        let handle = session.define_handle("c(1, 2, 3)").expect("define");
+        let expected = reference(&mut session, "c(1, 2, 3)");
+        assert_eq!(format!("{:?}", session.read_handle(&handle).expect("read")), format!("{expected:?}"));
+        // set replaces the slot; the handle survives the write.
+        session.set_handle(&handle, "42").expect("set");
+        let expected = reference(&mut session, "42");
+        assert_eq!(format!("{:?}", session.read_handle(&handle).expect("read after set")), format!("{expected:?}"));
+        // update binds the current value to `.` in the private frame.
+        session.update_handle(&handle, ". + 8").expect("update");
+        let expected = reference(&mut session, "50");
+        assert_eq!(format!("{:?}", session.read_handle(&handle).expect("read after update")), format!("{expected:?}"));
+        // failed writes keep the previous value exactly as the facade.
+        assert!(session.set_handle(&handle, "stop('boom')").is_err());
+        assert_eq!(format!("{:?}", session.read_handle(&handle).expect("read after error")), format!("{expected:?}"));
+        // removal invalidates every later access.
+        session.remove_handle(&handle).expect("remove");
+        assert!(session.read_handle(&handle).is_err());
+        assert!(session.set_handle(&handle, "1").is_err());
+        assert!(session.remove_handle(&handle).is_err());
+    }
+
+    #[test]
+    fn handle_rejects_foreign_session() {
+        let mut first = PureSession::new();
+        let mut second = PureSession::new();
+        let handle = first.define_handle("1").expect("define");
+        assert!(second.read_handle(&handle).is_err());
+        assert!(second.remove_handle(&handle).is_err());
+    }
+
+    #[test]
+    fn retained_values_survive_allocation_pressure() {
+        let mut session = PureSession::new();
+        let handle = session.define_handle("'preserved'").expect("define");
+        // Ordinary evaluation allocates and collects freely; the root
+        // keeps the retained value live exactly as the facade's private
+        // roots do.
+        let _ = session.eval("for (i in 1:50) x <- paste0('pad', i)");
+        let expected = session.eval("'preserved'").typed;
+        assert_eq!(
+            format!("{:?}", session.read_handle(&handle).expect("read after pressure")),
+            format!("{expected:?}")
+        );
     }
 
     #[test]
