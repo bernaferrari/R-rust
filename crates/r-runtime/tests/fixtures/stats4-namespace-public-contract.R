@@ -1,0 +1,23 @@
+local({
+    suppressPackageStartupMessages(library(stats4))
+    namespace <- asNamespace("stats4")
+    print(isNamespace(namespace) && identical(environmentName(namespace), "stats4"))
+    print(environmentIsLocked(namespace) && identical(asNamespace("stats4"), namespace))
+    print(identical(path.package("stats4"), getNamespaceInfo(namespace, "path")))
+    print(identical(path.package("stats4"), attr(as.environment("package:stats4"), "path")))
+    for (generic in c("coef", "confint", "logLik", "plot", "profile", "show", "summary", "update", "vcov")) {
+        print(hasMethods(generic))
+    }
+    print(is.function(stats4::mle) && identical(environment(stats4::mle), namespace))
+    fit <- stats4::mle(function(mu) sum((c(1, 2, 3) - mu)^2), start = list(mu = 0), method = "BFGS")
+    print(methods::is(fit, "mle"))
+    print(identical(names(coef(fit)), "mu") && abs(coef(fit)[[1L]] - 2) < 1e-6)
+    print(identical(dim(vcov(fit)), c(1L, 1L)) && abs(vcov(fit)[[1L]] - 1/6) < 1e-6)
+    print(inherits(logLik(fit), "logLik") && abs(as.numeric(logLik(fit)) + 2) < 1e-6)
+    print(methods::is(summary(fit), "summary.mle"))
+    detach("package:stats4")
+    print(identical(asNamespace("stats4"), namespace) && methods::is(fit, "mle"))
+    suppressPackageStartupMessages(library(stats4))
+    gc()
+    print(identical(asNamespace("stats4"), namespace) && abs(coef(fit)[[1L]] - 2) < 1e-6)
+})

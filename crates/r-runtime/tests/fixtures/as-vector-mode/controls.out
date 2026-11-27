@@ -1,0 +1,16 @@
+1|ERROR:invalid 'mode' argument
+2|ERROR:invalid 'mode' argument
+3|ERROR:invalid 'mode' argument
+4|ERROR:invalid 'mode' argument
+5|ERROR:invalid 'mode' argument
+6|integer:1L
+7|double:1
+8|function:1
+9|integer:1L
+list-any|structure(list(a = 1), foo = 42)
+list-list|structure(list(a = 1), foo = 42)
+list-expression|structure(expression(a = 1), foo = 42)
+atomic-any|1:2
+other-any|ERROR:cannot coerce type 'symbol' to vector of type 'any'
+other-any|ERROR:cannot coerce type 'environment' to vector of type 'any'
+other-any|ERROR:cannot coerce type 'closure' to vector of type 'any'

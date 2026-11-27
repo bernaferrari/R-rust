@@ -1,0 +1,103 @@
+class: numeric digits: 1 
+[1] 0.1 0.2 3.1
+class: numeric digits: 2 
+[1] 0.1 0.2 3.1
+class: numeric digits: 6 
+[1] 0.10000 0.20000 3.14159
+class: numeric digits: 10 
+[1] 0.099999990 0.200000000 3.141592654
+class: numeric digits: 1 
+pi  e 
+ 3  3 
+class: numeric digits: 2 
+ pi   e 
+3.1 2.7 
+class: numeric digits: 6 
+     pi       e 
+3.14159 2.71828 
+class: numeric digits: 10 
+         pi           e 
+3.141592654 2.718281828 
+class: matrix array digits: 1 
+     [,1]  [,2]
+[1,]    3 1e-04
+[2,]    3 1e+05
+class: matrix array digits: 2 
+     [,1]    [,2]
+[1,]  3.1 1.2e-04
+[2,]  2.7 1.2e+05
+class: matrix array digits: 6 
+        [,1]        [,2]
+[1,] 3.14159 1.23456e-04
+[2,] 2.71828 1.23456e+05
+class: matrix array digits: 10 
+            [,1]        [,2]
+[1,] 3.141592654 1.23456e-04
+[2,] 2.718281828 1.23456e+05
+class: complex digits: 1 
+[1] 3e+00+3e+00i 1e-04+1e+05i
+class: complex digits: 2 
+[1] 3.14159+2.7e+00i 0.00012+1.2e+05i
+class: complex digits: 6 
+[1] 3.141592654+2.71828e+00i 0.000123456+1.23456e+05i
+class: complex digits: 10 
+[1] 3.141592654+2.718281828e+00i 0.000123456+1.234560000e+05i
+coercion and default:
+[1] 3.1
+[1] 3.1
+[1] 3.141593
+recursive parameters restored after callback:
+[[1]]
+[1] 3.1
+
+[[2]]
+callback default, explicit, and format:
+[1] 3.141593
+[1] 3.142
+[1] "3.14"
+
+[[3]]
+[1] 3.1
+
+[[4]]
+expression(foo)
+
+[[5]]
+[1] 3.1
+
+[[1]]
+[1] 3.1
+
+[[2]]
+[1] 3.142
+default restored after callback error:
+[1] 3.141593
+nested list and pairlist paths before caught errors:
+[[1]]
+[1] 3.1
+
+[[2]]
+[[2]][[1]]
+[1] 3.142
+$before
+[1] 3.1
+
+$nested
+$nested$fail
+[1] 3.142
+method without a terminal newline:
+[[1]]
+no newline
+[[2]]
+[1] 3.1
+
+output and message sinks around a caught method error:
+[[1]]
+[1] 3.1
+
+[[2]]
+before after
+caught
+method message
+compiled explicit digits:
+[1] 3.1 2.7

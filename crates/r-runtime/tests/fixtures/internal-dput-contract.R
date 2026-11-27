@@ -1,0 +1,46 @@
+local({
+    old <- options(useFancyQuotes = FALSE)
+    on.exit(options(old))
+    message <- function(expr) tryCatch({ force(expr); "unexpected success" },
+                                      error = function(e) conditionMessage(e))
+    cat(message(.Internal(dput())), "\n", sep = "")
+    cat(message(.Internal(dput(1L))), "\n", sep = "")
+    cat(message(.Internal(dput(1L, stdout()))), "\n", sep = "")
+    cat(message(.Internal(dput(1L, stdout(), 0L, 0L))), "\n", sep = "")
+    opts <- .deparseOpts(c("keepNA", "keepInteger", "niceNames", "showAttributes"))
+    stopifnot(identical(typeof(dput), "closure"),
+              identical(names(formals(dput)), c("x", "file", "control")))
+    cat(message(.Internal(dput(1L, "", opts))), "\n", sep = "")
+    cat(message(.Internal(dput(1L, 1L, opts))), "\n", sep = "")
+    value <- structure(list(x = 1L, y = NA_real_), tag = "kept")
+    returned <- withVisible(.Internal(dput(value, stdout(), opts)))
+    stopifnot(identical(returned$value, value), identical(returned$visible, FALSE))
+    fn <- local({ hidden <- 42L; function(x = hidden) x })
+    original_environment <- environment(fn)
+    returned <- withVisible(.Internal(dput(fn, stdout(), opts)))
+    stopifnot(identical(returned$value, fn), identical(returned$visible, FALSE),
+              identical(environment(fn), original_environment), identical(fn(), 42L))
+    .Internal(dput(1L, stdout(), NULL))
+    connection <- textConnection("lines", "w", local = TRUE)
+    returned <- withVisible(.Internal(dput(c(2L, NA_integer_), connection, opts)))
+    stopifnot(isOpen(connection), identical(returned$value, c(2L, NA_integer_)),
+              identical(returned$visible, FALSE))
+    close(connection)
+    print(lines)
+    path <- tempfile()
+    on.exit(unlink(path), add = TRUE)
+    connection <- file(path, "")
+    returned <- withVisible(.Internal(dput(list(z = 3L), connection, opts)))
+    stopifnot(!isOpen(connection), identical(returned$value, list(z = 3L)),
+              identical(returned$visible, FALSE))
+    close(connection)
+    print(readLines(path))
+    readonly <- rawConnection(as.raw(1:3), "r")
+    cat(message(.Internal(dput(1L, readonly, opts))), "\n", sep = "")
+    stopifnot(isOpen(readonly))
+    close(readonly)
+    public <- withVisible(dput(c(4L, NA_integer_)))
+    stopifnot(identical(public$value, c(4L, NA_integer_)),
+              identical(public$visible, FALSE), identical(1L + 1L, 2L))
+    TRUE
+})

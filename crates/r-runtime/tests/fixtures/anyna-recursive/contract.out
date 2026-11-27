@@ -1,0 +1,38 @@
+atomic_missing|FALSE|FALSE
+atomic_missing|TRUE|TRUE
+atomic_clean|FALSE|FALSE
+atomic_clean|TRUE|FALSE
+singleton|FALSE|FALSE
+singleton|TRUE|TRUE
+logical|FALSE|FALSE
+logical|TRUE|TRUE
+complex|FALSE|FALSE
+complex|TRUE|TRUE
+character|FALSE|FALSE
+character|TRUE|TRUE
+raw|FALSE|FALSE
+raw|TRUE|FALSE
+empty|FALSE|FALSE
+empty|TRUE|FALSE
+pairlist|FALSE|FALSE
+pairlist|TRUE|TRUE
+pairlist_outer|FALSE|FALSE
+pairlist_outer|TRUE|TRUE
+siblings|FALSE|FALSE
+siblings|TRUE|TRUE
+short_circuit|FALSE|FALSE
+short_circuit|TRUE|TRUE
+class|TRUE
+unchanged|TRUE|logical|1
+flag|1|TRUE
+flag|2|FALSE
+flag|3|TRUE
+flag|4|ERROR:NA in coercion to boolean
+flag|5|ERROR:NA in coercion to boolean
+flag|6|ERROR:'length = 2' in coercion to 'logical(1)'
+atomic_ignores_flag|TRUE
+top_dispatch|TRUE
+na_fallback|FALSE|FALSE
+deep_missing|TRUE
+deep_clean|FALSE
+shared_dag|FALSE

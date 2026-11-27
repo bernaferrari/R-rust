@@ -1,0 +1,54 @@
+is.finite|null|logical|0||
+is.finite|logical|logical|2|TRUE,FALSE|
+is.finite|integer|logical|2|TRUE,FALSE|
+is.finite|real|logical|5|TRUE,FALSE,FALSE,FALSE,FALSE|
+is.finite|complex|logical|3|TRUE,FALSE,FALSE|
+is.finite|character|logical|2|FALSE,FALSE|
+is.finite|raw|logical|2|FALSE,FALSE|
+is.finite|list|ERROR|default method not implemented for type 'list'|
+is.finite|expression|ERROR|default method not implemented for type 'expression'|
+is.finite|call|ERROR|default method not implemented for type 'language'|
+is.finite|symbol|ERROR|default method not implemented for type 'symbol'|
+is.finite|environment|ERROR|default method not implemented for type 'environment'|
+is.finite|closure|ERROR|default method not implemented for type 'closure'|
+is.finite|pairlist|ERROR|default method not implemented for type 'pairlist'|
+is.finite|builtin|ERROR|default method not implemented for type 'builtin'|
+is.finite|special|ERROR|default method not implemented for type 'special'|
+is.finite|object|ERROR|default method not implemented for type 'object'|
+is.infinite|null|logical|0||
+is.infinite|logical|logical|2|FALSE,FALSE|
+is.infinite|integer|logical|2|FALSE,FALSE|
+is.infinite|real|logical|5|FALSE,TRUE,TRUE,FALSE,FALSE|
+is.infinite|complex|logical|3|FALSE,TRUE,FALSE|
+is.infinite|character|logical|2|FALSE,FALSE|
+is.infinite|raw|logical|2|FALSE,FALSE|
+is.infinite|list|ERROR|default method not implemented for type 'list'|
+is.infinite|expression|ERROR|default method not implemented for type 'expression'|
+is.infinite|call|ERROR|default method not implemented for type 'language'|
+is.infinite|symbol|ERROR|default method not implemented for type 'symbol'|
+is.infinite|environment|ERROR|default method not implemented for type 'environment'|
+is.infinite|closure|ERROR|default method not implemented for type 'closure'|
+is.infinite|pairlist|ERROR|default method not implemented for type 'pairlist'|
+is.infinite|builtin|ERROR|default method not implemented for type 'builtin'|
+is.infinite|special|ERROR|default method not implemented for type 'special'|
+is.infinite|object|ERROR|default method not implemented for type 'object'|
+is.nan|null|logical|0||
+is.nan|logical|logical|2|FALSE,FALSE|
+is.nan|integer|logical|2|FALSE,FALSE|
+is.nan|real|logical|5|FALSE,FALSE,FALSE,FALSE,TRUE|
+is.nan|complex|logical|3|FALSE,TRUE,FALSE|
+is.nan|character|logical|2|FALSE,FALSE|
+is.nan|raw|logical|2|FALSE,FALSE|
+is.nan|list|ERROR|default method not implemented for type 'list'|
+is.nan|expression|ERROR|default method not implemented for type 'expression'|
+is.nan|call|ERROR|default method not implemented for type 'language'|
+is.nan|symbol|ERROR|default method not implemented for type 'symbol'|
+is.nan|environment|ERROR|default method not implemented for type 'environment'|
+is.nan|closure|ERROR|default method not implemented for type 'closure'|
+is.nan|pairlist|ERROR|default method not implemented for type 'pairlist'|
+is.nan|builtin|ERROR|default method not implemented for type 'builtin'|
+is.nan|special|ERROR|default method not implemented for type 'special'|
+is.nan|object|ERROR|default method not implemented for type 'object'|
+is.finite|names|one,inf,na,nan|TRUE|TRUE|
+is.infinite|names|one,inf,na,nan|TRUE|TRUE|
+is.nan|names|one,inf,na,nan|TRUE|TRUE|

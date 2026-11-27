@@ -1,0 +1,95 @@
+mixed
+[1] "UTF-8"
+[[1]]
+[1] c3 a9 2f c3 a9
+
+bytes
+ERROR: strings with "bytes" encoding are not allowed
+native
+[1] "UTF-8"
+[[1]]
+[1] c3 a9 2f 78
+
+Latin1
+[1] "UTF-8"
+[[1]]
+[1] c3 a9 2f c3 a9
+
+numeric
+[1] "unknown" "unknown"
+[[1]]
+[1] 31 2f 54 52 55 45
+
+[[2]]
+[1] 32 2f 54 52 55 45
+
+zero
+character(0)
+list()
+NULL
+character(0)
+list()
+empty
+[1] "unknown"
+[[1]]
+[1] 2f 78 2f
+
+fsep
+[1] "unknown"
+[[1]]
+[1] 61 2e 62
+
+fsep bytes
+[1] "UTF-8"
+[[1]]
+[1] 61 c3 a9 62
+
+fsep Latin1
+[1] "UTF-8"
+[[1]]
+[1] 61 e9 62
+
+fsep missing
+ERROR: invalid separator
+recycle
+[1] "unknown" "unknown" "unknown"
+[[1]]
+[1] 61 2f 31
+
+[[2]]
+[1] 62 2f 32
+
+[[3]]
+[1] 61 2f 33
+
+NA
+[1] "unknown" "unknown"
+[[1]]
+[1] 4e 41 2f 79
+
+[[2]]
+[1] 78 2f 79
+
+internal
+[1] "UTF-8"
+[[1]]
+[1] c3 a9 2f c3 a9
+
+S3 collecting coercion
+[1] "UTF-8"
+[[1]]
+[1] c3 a9 2f c3 a9
+
+S3 invalid coercion
+ERROR: non-string argument to .Internal(file.path)
+internal symbol
+[1] "UTF-8"
+[[1]]
+[1] c3 a9 2f c3 a9
+
+zero separator
+ERROR: invalid separator
+empty dots before separator validation
+character(0)
+list()
+FILEPATH_ENCODING_COMPLETE

@@ -1,0 +1,14 @@
+fractional-row|2,3,2,3|2,3|2,3|0.66|1
+mfrow-error|invalid value specified for graphical parameter "mfrow"
+mfrow-error|invalid value specified for graphical parameter "mfrow"
+mfrow-error|invalid value specified for graphical parameter "mfrow"
+mfrow-error|invalid value specified for graphical parameter "mfrow"
+mfrow-error|invalid value specified for graphical parameter "mfrow"
+row-after-errors|2,3,2,3|2,3|2,3|0.66|1
+fractional-col|2,3,2,3|2,3|2,3|0.66|1
+mfcol-error|invalid value specified for graphical parameter "mfcol"
+mfcol-error|invalid value specified for graphical parameter "mfcol"
+mfcol-error|invalid value specified for graphical parameter "mfcol"
+mfcol-error|invalid value specified for graphical parameter "mfcol"
+mfcol-error|invalid value specified for graphical parameter "mfcol"
+col-after-errors|2,3,2,3|2,3|2,3|0.66|1

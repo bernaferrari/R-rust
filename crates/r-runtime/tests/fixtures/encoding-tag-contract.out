@@ -1,0 +1,113 @@
+input UTF8
+[1] "UTF-8"
+[[1]]
+[1] c3 a9
+
+input Latin1
+[1] "latin1"
+[[1]]
+[1] e9
+
+input bytes
+[1] "bytes"
+[[1]]
+[1] c3 a9
+
+sprintf UTF8 format UTF8 value
+[1] "UTF-8"
+[[1]]
+[1] c3 a9 3a c3 a9
+
+sprintf UTF8 format Latin1 value
+[1] "UTF-8"
+[[1]]
+[1] c3 a9 3a c3 a9
+
+paste UTF8 Latin1
+[1] "UTF-8"
+[[1]]
+[1] c3 a9 20 c3 a9
+
+paste Latin1 UTF8
+[1] "UTF-8"
+[[1]]
+[1] c3 a9 20 c3 a9
+
+paste bytes UTF8
+[1] "bytes"
+[[1]]
+[1] c3 a9 c3 a9
+
+grep Latin1 pattern
+[1] "UTF-8"  "latin1"
+[[1]]
+[1] c3 a9
+
+[[2]]
+[1] e9
+
+regexpr UTF8 Latin1
+[1] 1
+attr(,"match.length")
+[1] 1
+sub UTF8 Latin1
+[1] "unknown"
+[[1]]
+[1] 78
+
+pmatch mixed tags
+[1] 1
+input native UTF8 bytes
+[1] "unknown"
+[[1]]
+[1] c3 a9
+
+input UTF8 after native copy
+[1] "UTF-8"
+[[1]]
+[1] c3 a9
+
+paste native UTF8 ASCII
+[1] "unknown"
+[[1]]
+[1] c3 a9 20 78
+
+paste Latin1 Latin1
+[1] "UTF-8"
+[[1]]
+[1] c3 a9 20 c3 a9
+
+paste native UTF8 Latin1
+[1] "unknown"
+[[1]]
+[1] c3 a9 20 c3 a9
+
+paste UTF8 Latin1 collapse
+[1] "UTF-8"
+[[1]]
+[1] c3 a9 c3 a9 c3 a9
+
+paste bytes UTF8 collapse
+[1] "bytes"
+[[1]]
+[1] c3 a9 c3 a9 c3 a9
+
+sprintf native format Latin1 value
+[1] "unknown"
+[[1]]
+[1] c3 a9
+
+sprintf byte value
+ERROR: translating strings with "bytes" encoding is not allowed
+paste byte separator
+ERROR: translating strings with "bytes" encoding is not allowed
+sprintf native format utf8 value
+[1] "UTF-8"
+[[1]]
+[1] c3 a9
+
+paste byte collapse
+[1] "bytes"
+[[1]]
+[1] c3 a9 c3 a9 c3 a9
+

@@ -1,0 +1,20 @@
+local({
+    old <- options(width = 24, useFancyQuotes = FALSE)
+    on.exit(options(old), add = TRUE)
+    x <- c("‘alpha’", "é", "界", "e\u0301", "\U0001f642", "\u200b", "a\nb", "a\tb", "a\\b", 'a"b')
+    stopifnot(identical(nchar(x[1:6], type = "width"), c(7L, 1L, 2L, 1L, 2L, 0L)))
+    print(x)
+    print(matrix(x, ncol = 2L))
+    names(x) <- x
+    print(x)
+    print(dQuote(c("alpha", "O'Reilly", 'a"b', NA, ""), q = "UTF-8"))
+    m <- matrix(c("界", "e\u0301", "\U0001f642", "x"), nrow = 2L,
+                dimnames = list(c("row\none", "é"), c("α", "ββ")))
+    names(dimnames(m)) <- c("rows", "cols")
+    print(m)
+    print(m, right = TRUE)
+    print(noquote(m))
+    print(matrix(1:4, nrow = 2L, dimnames = dimnames(m)))
+    print(array(x[1:8], dim = c(2L, 2L, 2L)))
+    cat("UTF-8 display-column controls: TRUE\n")
+})

@@ -1,0 +1,34 @@
+[1] TRUE
+x
+list(tag = {
+    cat("forced dot\n")
+    13L
+})
+consume(x = x, empty = empty, ..., tail = 7L)
+forced x
+[1] 11
+forced dot
+$tag
+[1] 13
+
+[1] 7
+[1] TRUE
+x
+list(tag = {
+    cat("forced dot\n")
+    13L
+})
+consume(x = x, empty = empty, ..., tail = 7L)
+forced x
+[1] 11
+forced dot
+$tag
+[1] 13
+
+[1] 7
+[1] 4
+[1] 4 1
+...
+[1] "broken"
+bad("broken")
+[1] "'...' used in an incorrect context"

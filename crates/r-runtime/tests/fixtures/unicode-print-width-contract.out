@@ -1,0 +1,55 @@
+ [1] "‘alpha’" "é"      
+ [3] "界"      "é"      
+ [5] "🙂"      "​"       
+ [7] "a\nb"    "a\tb"   
+ [9] "a\\b"    "a\"b"   
+     [,1]      [,2]  
+[1,] "‘alpha’" "​"    
+[2,] "é"       "a\nb"
+[3,] "界"      "a\tb"
+[4,] "é"       "a\\b"
+[5,] "🙂"      "a\"b"
+  ‘alpha’         é 
+"‘alpha’"       "é" 
+       界         é 
+     "界"       "é" 
+       🙂          ​ 
+     "🙂"        "​" 
+     a\nb      a\tb 
+   "a\nb"    "a\tb" 
+     a\\b       a"b 
+   "a\\b"    "a\"b" 
+[1] "“alpha”"   
+[2] "“O'Reilly”"
+[3] "“a\"b”"    
+[4] "“NA”"      
+[5] "“”"        
+          cols
+rows       α    ββ  
+  row\none "界" "🙂"
+  é        "é"  "x" 
+          cols
+rows          α   ββ
+  row\none "界" "🙂"
+  é         "é"  "x"
+          cols
+rows       α  ββ
+  row\none 界 🙂
+  é        é  x 
+          cols
+rows       α ββ
+  row\none 1  3
+  é        2  4
+, , 1
+
+     [,1]      [,2]
+[1,] "‘alpha’" "界"
+[2,] "é"       "é" 
+
+, , 2
+
+     [,1] [,2]  
+[1,] "🙂" "a\nb"
+[2,] "​"   "a\tb"
+
+UTF-8 display-column controls: TRUE

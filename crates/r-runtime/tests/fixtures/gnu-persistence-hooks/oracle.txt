@@ -1,0 +1,15 @@
+null-fallback=TRUE
+replacement-identity=TRUE
+invalid-results=TRUE
+missing-restore=TRUE
+repeated-references=2|identity=TRUE
+gc-callback=TRUE
+format-ascii-FALSE-xdr-TRUE-version-2=TRUE
+format-ascii-FALSE-xdr-TRUE-version-3=TRUE
+format-ascii-FALSE-xdr-FALSE-version-2=TRUE
+format-ascii-FALSE-xdr-FALSE-version-3=TRUE
+format-ascii-TRUE-xdr-TRUE-version-2=TRUE
+format-ascii-TRUE-xdr-TRUE-version-3=TRUE
+atomic-excluded=TRUE
+restore-null-and-language=TRUE
+special-environments-excluded=TRUE

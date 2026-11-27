@@ -1,0 +1,48 @@
+pairlist:1:attr|pairlist(`1` = 1, `2` = 2)
+pairlist:1:structure|pairlist(`1` = 1, `2` = 2)
+pairlist:1:replacement|pairlist(`1` = 1, `2` = 2)
+pairlist:2:attr|pairlist(é = 1, 日本 = 2)
+pairlist:2:structure|pairlist(é = 1, 日本 = 2)
+pairlist:2:replacement|pairlist(é = 1, 日本 = 2)
+pairlist:3:attr|pairlist(`TRUE` = 1, 2)
+pairlist:3:structure|pairlist(`TRUE` = 1, 2)
+pairlist:3:replacement|pairlist(`TRUE` = 1, `NA` = 2)
+pairlist:4:attr|ERROR:incompatible 'names' argument
+pairlist:4:structure|ERROR:incompatible 'names' argument
+pairlist:4:replacement|pairlist(`1:2` = 1, `NULL` = 2)
+pairlist:5:attr|ERROR:incompatible 'names' argument
+pairlist:5:structure|ERROR:incompatible 'names' argument
+pairlist:5:replacement|pairlist(foo = 1, `3.5` = 2)
+pairlist:6:attr|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+pairlist:6:structure|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+pairlist:6:replacement|pairlist(`character(0)` = 1, `1` = 2)
+pairlist:7:attr|pairlist(`1` = 1, `02` = 2)
+pairlist:7:structure|pairlist(`1` = 1, `02` = 2)
+pairlist:7:replacement|pairlist(`list(1)` = 1, `as.raw(0x02)` = 2)
+pairlist:8:attr|pairlist(`1+2i` = 1, 2)
+pairlist:8:structure|pairlist(`1+2i` = 1, 2)
+pairlist:8:replacement|pairlist(`1+2i` = 1, 2)
+language:1:attr|f(`2` = 1, 2)
+language:1:structure|f(`2` = 1, 2)
+language:1:replacement|f(`2` = 1, 2)
+language:2:attr|f(日本 = 1, 2)
+language:2:structure|f(日本 = 1, 2)
+language:2:replacement|f(日本 = 1, 2)
+language:3:attr|f(1, 2)
+language:3:structure|f(1, 2)
+language:3:replacement|f(`NA` = 1, 2)
+language:4:attr|ERROR:incompatible 'names' argument
+language:4:structure|ERROR:incompatible 'names' argument
+language:4:replacement|f(`NULL` = 1, 2)
+language:5:attr|ERROR:incompatible 'names' argument
+language:5:structure|ERROR:incompatible 'names' argument
+language:5:replacement|f(`3.5` = 1, 2)
+language:6:attr|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+language:6:structure|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+language:6:replacement|f(`1` = 1, 2)
+language:7:attr|f(`02` = 1, 2)
+language:7:structure|f(`02` = 1, 2)
+language:7:replacement|f(`as.raw(0x02)` = 1, 2)
+language:8:attr|f(1, 2)
+language:8:structure|f(1, 2)
+language:8:replacement|f(1, 2)

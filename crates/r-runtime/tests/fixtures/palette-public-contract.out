@@ -1,0 +1,57 @@
+[1] "black"   "#DF536B" "#61D04F" "#2297E6" "#28E2E5" "#CD0BBC" "#F5C710"
+[8] "gray62" 
+[1] TRUE
+[1] TRUE
+$value
+[1] "black"   "#DF536B" "#61D04F" "#2297E6" "#28E2E5" "#CD0BBC" "#F5C710"
+[8] "gray62" 
+
+$visible
+[1] FALSE
+
+[1] "red"         "#123456"     "transparent"
+      [,1] [,2] [,3]
+red    255   18  255
+green    0   52  255
+blue     0   86  255
+alpha  255  255    0
+$value
+[1] "red"         "#123456"     "transparent"
+
+$visible
+[1] FALSE
+
+[1] TRUE
+$value
+[1] "black"   "#DF536B" "#61D04F" "#2297E6" "#28E2E5" "#CD0BBC" "#F5C710"
+[8] "gray62" 
+
+$visible
+[1] FALSE
+
+[1] "black"   "red"     "green3"  "blue"    "cyan"    "magenta" "yellow" 
+[8] "gray"   
+[1] "invalid argument type"
+[1] TRUE
+[1] "unknown palette (need >= 2 colors)"
+[1] TRUE
+[1] "invalid color name 'no-such-colour'"
+[1] TRUE
+[1] "maximum number of colors is 1024"
+[1] TRUE
+[1] -16777216  -9743393 -11546527  -1665246  -1711576  -4453427 -15677451
+[8]  -6381922
+[1] TRUE
+[1] "black"   "#DF536B"
+[1] "requires INTSXP argument"
+[1] -16777216  -9743393
+[1] TRUE
+$value
+[1] "black"   "#DF536B" "#61D04F" "#2297E6" "#28E2E5" "#CD0BBC" "#F5C710"
+[8] "gray62" 
+
+$visible
+[1] FALSE
+
+[1] "blue" "gold"
+[1] TRUE

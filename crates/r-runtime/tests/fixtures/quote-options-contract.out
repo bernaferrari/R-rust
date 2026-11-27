@@ -1,0 +1,27 @@
+[1] "'alpha'"    "'O'Reilly'" "'a\"b'"     "'NA'"       "''"        
+[1] "\"alpha\""    "\"O'Reilly\"" "\"a\"b\""     "\"NA\""       "\"\""        
+[1] "'alpha'"    "'O'Reilly'" "'a\"b'"     "'NA'"       "''"        
+[1] "\"alpha\""    "\"O'Reilly\"" "\"a\"b\""     "\"NA\""       "\"\""        
+[1] "‘alpha’"    "‘O'Reilly’" "‘a\"b’"     "‘NA’"       "‘’"        
+[1] "“alpha”"    "“O'Reilly”" "“a\"b”"     "“NA”"       "“”"        
+[1] "‘alpha’"    "‘O'Reilly’" "‘a\"b’"     "‘NA’"       "‘’"        
+[1] "“alpha”"    "“O'Reilly”" "“a\"b”"     "“NA”"       "“”"        
+[1] "`alpha'"    "`O'Reilly'" "`a\"b'"     "`NA'"       "`'"        
+[1] "``alpha''"    "``O'Reilly''" "``a\"b''"     "``NA''"       "``''"        
+[1] "<alpha>"    "<O'Reilly>" "<a\"b>"     "<NA>"       "<>"        
+[1] "[alpha]"    "[O'Reilly]" "[a\"b]"     "[NA]"       "[]"        
+character(0)
+character(0)
+character(0)
+character(0)
+character(0)
+character(0)
+[1] "'1'" "'2'" "'3'"
+[1] "\"1\"" "\"2\"" "\"3\""
+[1] "'TRUE'" "'NA'"  
+[1] "\"TRUE\"" "\"NA\""  
+[1] "'a'" "'2'"
+[1] "\"a\"" "\"2\""
+[1] "'a'" "'b'"
+[1] "\"a\"" "\"b\""
+quote formals/options/promise controls: TRUE

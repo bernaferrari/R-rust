@@ -1,0 +1,11 @@
+qna <- readBin(as.raw(c(162,7,0,0,0,0,248,127)), 'double', n=1, size=8, endian='little')
+negqna <- readBin(as.raw(c(162,7,0,0,0,0,248,255)), 'double', n=1, size=8, endian='little')
+x <- c(NA_real_, qna, negqna, NaN, 0, Inf)
+stopifnot(identical(is.na(x), c(TRUE,TRUE,TRUE,TRUE,FALSE,FALSE)))
+stopifnot(identical(is.nan(x), c(FALSE,FALSE,FALSE,TRUE,FALSE,FALSE)))
+z <- complex(real=c(NA_real_,qna,0,0,qna,NaN), imaginary=c(0,0,NA_real_,qna,NaN,qna))
+stopifnot(identical(is.na(z), rep(TRUE,6)))
+stopifnot(identical(is.nan(z), c(FALSE,FALSE,FALSE,FALSE,TRUE,TRUE)))
+stopifnot(identical(is.nan(setNames(x,letters[1:6])),setNames(c(FALSE,FALSE,FALSE,TRUE,FALSE,FALSE),letters[1:6])))
+stopifnot(identical(dim(is.nan(matrix(x,2))),c(2L,3L)))
+TRUE

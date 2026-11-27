@@ -1,0 +1,12 @@
+list(.Code, list(12L, LDNULL.OP, POP.OP, GETVAR.OP, 2L, BRIFNOT.OP, 
+    3L, 11L, LDCONST.OP, 4L, RETURN.OP, LDCONST.OP, 5L, RETURN.OP), 
+    list({
+        if (FALSE) 
+            C_modelframe
+        if (x) 
+            41L
+        else 42L
+    }, if (FALSE) C_modelframe, x, if (x) 41L else 42L, 41L, 
+        42L, structure(c(NA, 1L, 1L, 2L, 2L, 3L, 3L, 3L, 4L, 
+        4L, 4L, 5L, 5L, 5L), class = "expressionsIndex")))
+[1] TRUE

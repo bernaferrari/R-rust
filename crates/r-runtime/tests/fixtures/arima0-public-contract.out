@@ -1,0 +1,28 @@
+
+Call:
+arima0(x = y, seasonal = list(order = c(0, 1, 0)), xreg = x)
+
+Coefficients:
+       xreg1
+      0.1923
+s.e.  0.3146
+
+sigma^2 estimated as 3.575:  log likelihood = -24.67,  aic = 53.34
+    ar     ma    sar    sma period   diff  sdiff 
+     0      0      0      0     12      0      1 
+           n coefficients 
+          12            1 
+
+Call:
+arima0(x = y, seasonal = list(order = c(0, 1, 0)), xreg = x, method = "CSS")
+
+Coefficients:
+       xreg1
+      0.1923
+s.e.  0.3146
+
+sigma^2 estimated as 3.575:  part log likelihood = -24.67
+    ar     ma    sar    sma period   diff  sdiff 
+     0      0      0      0     12      0      1 
+           n coefficients 
+          12            1 

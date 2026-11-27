@@ -1,0 +1,249 @@
+INTEGER
+[1] 1
+attr(,"before")
+[1] 2
+attr(,"bad")
+METHOD-STDOUT
+METHOD-STDERR
+CAUGHT: attribute failure
+LIST
+[[1]]
+[1] 1
+
+attr(,"before")
+[1] 2
+attr(,"bad")
+METHOD-STDOUT
+METHOD-STDERR
+CAUGHT: attribute failure
+PAIRLIST
+[[1]]
+[1] 1
+
+attr(,"before")
+[1] 2
+attr(,"bad")
+METHOD-STDOUT
+METHOD-STDERR
+CAUGHT: attribute failure
+MATRIX
+     [,1] [,2]
+[1,]    1    3
+[2,]    2    4
+attr(,"before")
+[1] 2
+attr(,"bad")
+METHOD-STDOUT
+METHOD-STDERR
+CAUGHT: attribute failure
+EMPTY-LIST
+list()
+attr(,"before")
+[1] 2
+attr(,"bad")
+METHOD-STDOUT
+METHOD-STDERR
+CAUGHT: attribute failure
+S4-ATTRIBUTE
+[1] 1
+attr(,"before")
+[1] 2
+attr(,"bad")
+SHOW-STDOUT
+SHOW-STDERR
+CAUGHT: show attribute failure
+clear-all
+attr(,"first")
+MUTATOR
+attr(,"later")
+KEPT: 17,29
+
+remove-next
+attr(,"first")
+MUTATOR
+
+replace-next
+attr(,"first")
+MUTATOR
+attr(,"later")
+KEPT: 99
+
+SUCCESS-integer
+[1] 1
+attr(,"nested")
+attr(,"nested")$a
+SUCCESS-STDOUT
+SUCCESS-STDERR
+
+attr(,"nested")$b
+[1] 4
+
+attr(,"plain")
+[1] 5
+SUCCESS-real
+[1] 1.5
+attr(,"nested")
+attr(,"nested")$a
+SUCCESS-STDOUT
+SUCCESS-STDERR
+
+attr(,"nested")$b
+[1] 4
+
+attr(,"plain")
+[1] 5
+SUCCESS-logical
+[1] TRUE
+attr(,"nested")
+attr(,"nested")$a
+SUCCESS-STDOUT
+SUCCESS-STDERR
+
+attr(,"nested")$b
+[1] 4
+
+attr(,"plain")
+[1] 5
+SUCCESS-complex
+[1] 1+2i
+attr(,"nested")
+attr(,"nested")$a
+SUCCESS-STDOUT
+SUCCESS-STDERR
+
+attr(,"nested")$b
+[1] 4
+
+attr(,"plain")
+[1] 5
+SUCCESS-text
+[1] "value"
+attr(,"nested")
+attr(,"nested")$a
+SUCCESS-STDOUT
+SUCCESS-STDERR
+
+attr(,"nested")$b
+[1] 4
+
+attr(,"plain")
+[1] 5
+SUCCESS-raw
+[1] 01
+attr(,"nested")
+attr(,"nested")$a
+SUCCESS-STDOUT
+SUCCESS-STDERR
+
+attr(,"nested")$b
+[1] 4
+
+attr(,"plain")
+[1] 5
+SUCCESS-empty_integer
+integer(0)
+attr(,"nested")
+attr(,"nested")$a
+SUCCESS-STDOUT
+SUCCESS-STDERR
+
+attr(,"nested")$b
+[1] 4
+
+attr(,"plain")
+[1] 5
+SUCCESS-empty_real
+numeric(0)
+attr(,"nested")
+attr(,"nested")$a
+SUCCESS-STDOUT
+SUCCESS-STDERR
+
+attr(,"nested")$b
+[1] 4
+
+attr(,"plain")
+[1] 5
+SUCCESS-empty_logical
+logical(0)
+attr(,"nested")
+attr(,"nested")$a
+SUCCESS-STDOUT
+SUCCESS-STDERR
+
+attr(,"nested")$b
+[1] 4
+
+attr(,"plain")
+[1] 5
+SUCCESS-empty_complex
+complex(0)
+attr(,"nested")
+attr(,"nested")$a
+SUCCESS-STDOUT
+SUCCESS-STDERR
+
+attr(,"nested")$b
+[1] 4
+
+attr(,"plain")
+[1] 5
+SUCCESS-empty_raw
+raw(0)
+attr(,"nested")
+attr(,"nested")$a
+SUCCESS-STDOUT
+SUCCESS-STDERR
+
+attr(,"nested")$b
+[1] 4
+
+attr(,"plain")
+[1] 5
+SUCCESS-empty_named_list
+named list()
+attr(,"nested")
+attr(,"nested")$a
+SUCCESS-STDOUT
+SUCCESS-STDERR
+
+attr(,"nested")$b
+[1] 4
+
+attr(,"plain")
+[1] 5
+SUCCESS-expression
+expression(1 + 2)
+attr(,"nested")
+attr(,"nested")$a
+SUCCESS-STDOUT
+SUCCESS-STDERR
+
+attr(,"nested")$b
+[1] 4
+
+attr(,"plain")
+[1] 5
+SUCCESS-array
+, , 1
+
+     [,1] [,2]
+[1,]    1    3
+[2,]    2    4
+
+, , 2
+
+     [,1] [,2]
+[1,]    5    7
+[2,]    6    8
+
+attr(,"nested")
+attr(,"nested")$a
+SUCCESS-STDOUT
+SUCCESS-STDERR
+
+attr(,"nested")$b
+[1] 4
+
+attr(,"plain")
+[1] 5

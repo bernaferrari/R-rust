@@ -1,0 +1,8 @@
+emit <- function(x) cat(paste(capture.output(dput(x)), collapse=" "), "\n", sep="")
+observe <- function(x) { events <- character(); value <- withCallingHandlers(as.complex(x), warning=function(w) {events <<- c(events, conditionMessage(w)); gc(); stopifnot(identical(Re(as.complex(2L)),2)); invokeRestart("muffleWarning")}); emit(typeof(value));emit(Re(value));emit(Im(value));emit(events) }
+for (x in list(NULL, logical(), c(FALSE,TRUE,NA), c(0L,1L,-2L,NA_integer_), c(0,-0,1.9,-1.9,Inf,-Inf,NA_real_,NaN), complex(real=c(NA_real_,NaN,Inf,-0),imaginary=c(0,0,2,NA_real_)), c("0","-1.9","3+2i","2i","-2i","NaN","Inf","1e309","", "bad",NA_character_), as.raw(c(0,1,255)))) observe(x)
+x <- structure(c(0L,2L,NA_integer_), names=c("a","b","c"), note=list(1:3)); y <- as.complex(x); emit(Re(y));emit(Im(y));emit(attributes(y)); y[1] <- 7+2i; emit(x); emit(Re(y));emit(Im(y)); x[2] <- 0L;emit(Re(y));emit(Im(y));emit(x)
+for (x in list(matrix(c(0L,1L,NA_integer_,2L),2), structure(c(0L,1L), class="foo"), list(0L,1L,NA_integer_), pairlist(0L,1L,NA_integer_))) observe(x)
+old <- options(warn=2); message <- tryCatch(as.complex("bad"), error=conditionMessage); options(old);emit(message);observe(2L)
+cx <- structure(complex(real=c(NA_real_,NaN,-0,2),imaginary=c(0,2,0,NA_real_)),names=c("w","x","y","z"),note=list(9L));cy<-as.complex(cx);emit(attributes(cy));emit(attributes(cx));cy[4]<-9+3i;emit(Re(cx));emit(Im(cx));emit(Re(cy));emit(Im(cy));cx[2]<-4+5i;emit(Re(cy));emit(Im(cy))
+as.complex.keep <- function(x,...) structure(3+4i,names="method",note=list(9L)); method<-as.complex(structure(0L,class="keep"));emit(attributes(method));emit(Re(method));emit(Im(method))

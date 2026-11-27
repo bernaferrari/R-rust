@@ -1,0 +1,60 @@
+logical 0 TRUE FALSE logical logical FALSE TRUE
+logical 1 TRUE FALSE logical logical FALSE TRUE
+logical 2 TRUE FALSE logical logical FALSE TRUE
+logical -1 TRUE FALSE logical logical FALSE TRUE
+integer 0 TRUE FALSE integer integer FALSE TRUE
+integer 1 TRUE FALSE integer integer FALSE TRUE
+integer 2 TRUE FALSE integer integer FALSE TRUE
+integer -1 TRUE FALSE integer integer FALSE TRUE
+real 0 TRUE FALSE double numeric FALSE TRUE
+real 1 TRUE FALSE double numeric FALSE TRUE
+real 2 TRUE FALSE double numeric FALSE TRUE
+real -1 TRUE FALSE double numeric FALSE TRUE
+complex 0 TRUE FALSE complex complex FALSE TRUE
+complex 1 TRUE FALSE complex complex FALSE TRUE
+complex 2 TRUE FALSE complex complex FALSE TRUE
+complex -1 TRUE FALSE complex complex FALSE TRUE
+character 0 TRUE FALSE character character FALSE TRUE
+character 1 TRUE FALSE character character FALSE TRUE
+character 2 TRUE FALSE character character FALSE TRUE
+character -1 TRUE FALSE character character FALSE TRUE
+raw 0 TRUE FALSE raw raw FALSE TRUE
+raw 1 TRUE FALSE raw raw FALSE TRUE
+raw 2 TRUE FALSE raw raw FALSE TRUE
+raw -1 TRUE FALSE raw raw FALSE TRUE
+list 0 TRUE FALSE list list FALSE TRUE
+list 1 TRUE FALSE list list FALSE TRUE
+list 2 TRUE FALSE list list FALSE TRUE
+list -1 TRUE FALSE list list FALSE TRUE
+expression 0 TRUE FALSE expression expression FALSE TRUE
+expression 1 TRUE FALSE expression expression FALSE TRUE
+expression 2 TRUE FALSE expression expression FALSE TRUE
+expression -1 TRUE FALSE expression expression FALSE TRUE
+pairlist 0 TRUE FALSE pairlist pairlist FALSE TRUE
+pairlist 1 TRUE FALSE pairlist pairlist FALSE TRUE
+pairlist 2 TRUE FALSE pairlist pairlist FALSE TRUE
+pairlist -1 TRUE FALSE pairlist pairlist FALSE TRUE
+language 0 TRUE FALSE language call FALSE TRUE
+language 1 TRUE FALSE language call FALSE TRUE
+language 2 TRUE FALSE language call FALSE TRUE
+language -1 TRUE FALSE language call FALSE TRUE
+closure 0 TRUE FALSE closure function FALSE TRUE
+closure 1 TRUE FALSE closure function FALSE TRUE
+closure 2 TRUE FALSE closure function FALSE TRUE
+closure -1 TRUE FALSE closure function FALSE TRUE
+matrix 0 TRUE FALSE integer matrix,array FALSE TRUE
+matrix 1 TRUE FALSE integer matrix,array FALSE TRUE
+matrix 2 TRUE FALSE integer matrix,array FALSE TRUE
+matrix -1 TRUE FALSE integer matrix,array FALSE TRUE
+tagged 0 TRUE FALSE integer legacy TRUE TRUE
+tagged 1 TRUE FALSE integer integer FALSE TRUE
+tagged 2 TRUE FALSE integer integer FALSE TRUE
+tagged -1 TRUE FALSE integer integer FALSE TRUE
+isolation TRUE TRUE TRUE TRUE TRUE
+numeric-class TRUE FALSE TRUE TRUE
+old-class TRUE FALSE ConversionOld,list TRUE 1
+slots 0 FALSE,FALSE TRUE
+slots 1 object of class "ConversionSlots" does not correspond to a valid S3 object TRUE
+slots 2 TRUE,TRUE TRUE
+slots -1 TRUE,TRUE TRUE
+environment TRUE FALSE environment TRUE 41

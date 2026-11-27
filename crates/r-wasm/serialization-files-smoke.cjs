@@ -5,7 +5,7 @@ const path = require("node:path");
 if (process.argv.length !== 3)
   throw new Error("usage: node serialization-files-smoke.cjs WASM_PACKAGE");
 const { WasmRSession } = require(path.join(path.resolve(process.argv[2]), "r_wasm.js"));
-const fixtures = path.join(__dirname, "../r-embed/tests/fixtures/gnu-browser-rds");
+const fixtures = path.join(__dirname, "../r-runtime/tests/fixtures/gnu-browser-rds");
 const left = new WasmRSession();
 const right = new WasmRSession();
 let checks = 0,

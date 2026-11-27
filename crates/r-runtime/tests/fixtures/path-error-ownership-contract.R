@@ -1,0 +1,10 @@
+stopifnot(local({x<-rawToChar(as.raw(129));Encoding(x)<-"latin1";e<-tryCatch(file.path(x),error=function(e)e);identical(conditionMessage(e),"unable to translate '<81>' to UTF-8") && identical(Encoding(conditionMessage(e)),"unknown")}))
+stopifnot(local({x<-rawToChar(as.raw(129));Encoding(x)<-"latin1";e<-tryCatch(file.path(x),error=function(e)e);identical(conditionCall(e),quote(file.path(x)))}))
+stopifnot(local({x<-rawToChar(as.raw(129));Encoding(x)<-"latin1";e<-tryCatch(.Internal(file.path(list(x),"/")),error=function(e)e);identical(conditionCall(e),quote(doTryCatch(return(expr),name,parentenv,handler)))}))
+stopifnot(local({x<-rawToChar(as.raw(129));Encoding(x)<-"latin1";z<-try(file.path(x),silent=TRUE);identical(as.character(z),"Error in file.path(x) : unable to translate '<81>' to UTF-8\n")}))
+stopifnot(local({ok<-TRUE;for(n in c(100L,101L)){old<-options(warning.length=n);x<-rawToChar(as.raw(c(rep(233,60),129)));Encoding(x)<-"latin1";e<-tryCatch(file.path(x),error=function(e)e);options(old);want<-paste0("unable to translate '",if(isTRUE(l10n_info()[["UTF-8"]]))strrep("é",39) else strrep(".",n-22L));if(!identical(conditionMessage(e),want))ok<-FALSE};ok}))
+stopifnot(local({x<-rawToChar(as.raw(129));Encoding(x)<-"latin1";seen<-NULL;e<-tryCatch(withCallingHandlers(file.path(x),error=function(e){gc();seen<<-e}),error=function(e){gc();e});identical(seen,e) && identical(conditionMessage(e),geterrmessage())}))
+stopifnot(local({x<-rawToChar(as.raw(255));Encoding(x)<-"bytes";e<-tryCatch(file.path(x),error=function(e)e);identical(conditionMessage(e),"strings with \"bytes\" encoding are not allowed")}))
+stopifnot(local({assign("as.character.bad",function(x,...){gc();s<-rawToChar(as.raw(129));Encoding(s)<-"latin1";s},envir=.GlobalEnv);value<-structure(list(1),class="bad");e<-tryCatch(file.path(value),error=function(e)e);rm("as.character.bad",envir=.GlobalEnv);identical(conditionMessage(e),"unable to translate '<81>' to UTF-8") && identical(file.path("a","b"),"a/b")}))
+stopifnot(local({as.character.bad<-function(x,...)stop("unexpected caller-local method");value<-structure(list(1),class="bad");identical(file.path(value),"1")}))
+TRUE

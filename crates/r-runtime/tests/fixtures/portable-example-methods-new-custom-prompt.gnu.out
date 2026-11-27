@@ -1,0 +1,53 @@
+
+newR> ## using the definition of class "track" from setClass
+newR>␠
+newR> ## Don't show:␠
+newR> setClass("track", slots = c(x="numeric", y="numeric"))
+
+newR> setClass("trackCurve", contains = "track",
+newC>           slots = c(smooth = "numeric"))
+
+newR> ydata <- stats::rnorm(10); ysmooth <- 1:10
+
+newR> ## End(Don't show)
+newR>␠
+newR> ## a new object with two slots specified
+newR> t1 <- new("track", x = seq_along(ydata), y = ydata)
+
+newR> # a new object including an object from a superclass, plus a slot
+newR> t2 <- new("trackCurve", t1, smooth = ysmooth)
+
+newR> ### define a method for initialize, to ensure that new objects have
+newR> ### equal-length x and y slots.  In this version, the slots must still be
+newR> ### supplied by name.
+newR>␠
+newR> setMethod("initialize", "track",␠
+newC>     function(.Object, ...) {
+newC>       .Object <- callNextMethod()
+newC>       if(length(.Object@x) != length(.Object@y))
+newC>       stop("specified x and y of different lengths")
+newC>       .Object
+newC>     })
+
+newR> ### An alternative version that allows x and y to be supplied
+newR> ### unnamed.  A still more friendly version would make the default x
+newR> ### a vector of the same length as y, and vice versa.
+newR>␠
+newR> setMethod("initialize", "track",
+newC>           function(.Object, x = numeric(0), y = numeric(0), ...) {
+newC>               .Object <- callNextMethod(.Object, ...)
+newC>               if(length(x) != length(y))
+newC>                   stop("specified x and y of different lengths")
+newC>               .Object@x <- x
+newC>               .Object@y <- y
+newC>               .Object
+newC>           })
+
+newR> ## Don't show:␠
+newR> removeMethod("initialize", "track")
+[1] TRUE
+
+newR> ## End(Don't show)
+newR>␠
+newR>␠
+newR>␠

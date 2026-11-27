@@ -1,0 +1,18 @@
+"Function '`[`' is not in the derivatives table"
+deriv.default(expr, "x")
+"Function '`a b`' is not in the derivatives table"
+deriv.default(expr, "x")
+"Function '`if`' is not in the derivatives table"
+deriv.default(expr, "x")
+"Function '`%foo%`' is not in the derivatives table"
+deriv.default(expr, "x")
+"Function '`a\\`b`' is not in the derivatives table"
+deriv.default(expr, "x")
+"Function '`a\\nb`' is not in the derivatives table"
+deriv.default(expr, "x")
+"Function 'é' is not in the derivatives table"
+deriv.default(expr, "x")
+"Function 'unknownDerivative' is not in the derivatives table"
+deriv.default(expr, "x")
+structure(4, gradient = structure(4, dim = c(1L, 1L), dimnames = list(
+    NULL, "x")))

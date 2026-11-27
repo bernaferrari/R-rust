@@ -1,0 +1,21 @@
+[1] TRUE
+[1] TRUE
+   null visible 
+   TRUE   FALSE 
+   null visible 
+   TRUE   FALSE 
+   null visible 
+   TRUE   FALSE 
+====
+[1] "unused argument (1)"
+[1] 2
+[1] TRUE
+[1] TRUE
+      generic         class        method 
+      "close"       "probe" "close.probe" 
+  value visible  forced 
+     42       0       0 
+   null visible 
+   TRUE   FALSE 
+[1] "payload"
+[1] "no applicable method for 'close' applied to an object of class \"c('double', 'numeric')\""

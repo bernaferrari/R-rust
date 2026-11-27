@@ -7,8 +7,8 @@ import { pathToFileURL } from 'node:url';
 const directory=path.resolve(process.argv[2] ?? 'crates/r-wasm/pkg');
 const runtime=await import(pathToFileURL(path.join(directory,'r_wasm.js')).href);
 if (runtime.initSync) runtime.initSync({module:fs.readFileSync(path.join(directory,'r_wasm_bg.wasm'))});
-const fixture=fs.readFileSync(new URL('../r-embed/tests/fixtures/loess-isolation.R',import.meta.url),'utf8');
-const gnu=fs.readFileSync(new URL('../r-embed/tests/fixtures/gnu-loess-surface.rds',import.meta.url));
+const fixture=fs.readFileSync(new URL('../r-runtime/tests/fixtures/loess-isolation.R',import.meta.url),'utf8');
+const gnu=fs.readFileSync(new URL('../r-runtime/tests/fixtures/gnu-loess-surface.rds',import.meta.url));
 let checks=0;
 function check(session,code) { assert.equal(session.eval_checked(code).trim(),'[1] TRUE',code);checks++; }
 function dispose(session) {session.close();session.free();}

@@ -1,0 +1,26 @@
+cannot take a sample larger than the population when 'replace = FALSE'
+sample.int(3, 4, FALSE)
+[1] TRUE
+too few positive probabilities
+sample.int(length(x), size, replace, prob)
+[1] TRUE
+cannot take a sample larger than the population when 'replace = FALSE'
+sample.int(x, size, replace, prob)
+[1] TRUE
+[1] TRUE
+[1] TRUE
+invalid 'size' argument
+sample.int(3, -1)
+invalid 'size' argument
+sample.int(3, NULL)
+invalid 'replace' argument
+sample.int(3, 1, NA)
+invalid first argument
+sample.int(0, 1)
+cannot take a sample larger than the population when 'replace = FALSE'
+sample.int(3, 4, FALSE, c(1, 0, 0))
+too few positive probabilities
+sample.int(3, 0, prob = c(0, 0, 0))
+[1] TRUE
+[1] 2 1 4 3
+[1] 3 1 3 2 3

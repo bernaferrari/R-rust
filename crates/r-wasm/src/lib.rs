@@ -559,10 +559,10 @@ mod tests {
         assert_eq!(
             session
                 .eval_checked(include_str!(
-                    "../../r-embed/tests/fixtures/rep-len-admission-contract.R"
+                    "../../r-runtime/tests/fixtures/rep-len-admission-contract.R"
                 ))
                 .unwrap(),
-            include_str!("../../r-embed/tests/fixtures/rep-len-admission-contract.out")
+            include_str!("../../r-runtime/tests/fixtures/rep-len-admission-contract.out")
         );
         session.close();
     }
@@ -578,10 +578,10 @@ mod tests {
         assert_eq!(
             session
                 .eval_checked(include_str!(
-                    "../../r-embed/tests/fixtures/unserialize-connection-contract.R"
+                    "../../r-runtime/tests/fixtures/unserialize-connection-contract.R"
                 ))
                 .unwrap(),
-            include_str!("../../r-embed/tests/fixtures/unserialize-connection-contract.out")
+            include_str!("../../r-runtime/tests/fixtures/unserialize-connection-contract.out")
         );
         session.close();
     }
@@ -673,7 +673,7 @@ emit("failed")
             .expect("caught graphics error remains an evaluation result");
         assert_eq!(
             failed.output(),
-            include_str!("../../r-embed/tests/fixtures/graphics-plot-error-progression-gnu.out")
+            include_str!("../../r-runtime/tests/fixtures/graphics-plot-error-progression-gnu.out")
         );
         assert!(!failed.has_error());
 
@@ -696,7 +696,7 @@ cat("wrapped|", paste(par("mfg"), collapse=","),
             .expect("same browser session and device recover after plot.new error");
         assert_eq!(
             recovered.output(),
-            include_str!("../../r-embed/tests/fixtures/graphics-plot-error-recovery-gnu.out")
+            include_str!("../../r-runtime/tests/fixtures/graphics-plot-error-recovery-gnu.out")
         );
         assert!(!recovered.has_error());
     }

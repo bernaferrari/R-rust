@@ -1,0 +1,7 @@
+print(identical(mapply(function(a,b) a+b, c(1,2), c(3,4)), c(4,6)))
+print(identical(mapply(list('World','!'), list(function(x) paste0(x,'?'), function(x) paste0(x,'!')), FUN=function(value,render) render(value)), c('World?','!!')))
+print(identical(mapply(c(1,2), FUN=function(a,b) a+b, MoreArgs=list(100)), c(101,102)))
+print(identical(mapply(function(a) a, numeric(0)), list()))
+print(identical(mapply(function(x) x+1, c(a=1,b=2), SIMPLIFY=FALSE), list(a=2,b=3)))
+print(identical(mapply(function(a,b) return(a+b), c(1,2), c(3,4)), c(4,6)))
+print(identical(mapply(function(x) c(x,x+1L), 1:2), matrix(c(1L,2L,2L,3L), nrow=2)))

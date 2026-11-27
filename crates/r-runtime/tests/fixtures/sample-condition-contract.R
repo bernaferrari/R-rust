@@ -1,0 +1,27 @@
+report <- function(expr) {
+    tryCatch(eval(substitute(expr),parent.frame()),error=function(e) {
+        cat(conditionMessage(e),'\n',sep='')
+        cat(paste(deparse(conditionCall(e)),collapse=' '),'\n',sep='')
+    })
+}
+set.seed(17)
+before <- .Random.seed
+report(sample.int(3,4,FALSE))
+print(identical(before,.Random.seed))
+report(sample(1:3,2,FALSE,c(1,0,0)))
+print(identical(before,.Random.seed))
+report(sample(3,4,FALSE))
+print(identical(before,.Random.seed))
+print(identical(sample.int(3,0),integer(0)))
+print(identical(before,.Random.seed))
+report(sample.int(3,-1))
+report(sample.int(3,NULL))
+report(sample.int(3,1,NA))
+report(sample.int(0,1))
+report(sample.int(3,4,FALSE,c(1,0,0)))
+report(sample.int(3,0,prob=c(0,0,0)))
+print(identical(before,.Random.seed))
+set.seed(17)
+print(sample.int(7,4))
+set.seed(17)
+print(sample.int(3,5,TRUE,c(1,2,3)))

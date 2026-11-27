@@ -1,0 +1,15 @@
+0 arguments passed to .Internal(dput) which requires 3
+1 argument passed to .Internal(dput) which requires 3
+2 arguments passed to .Internal(dput) which requires 3
+4 arguments passed to .Internal(dput) which requires 3
+'file' must be a character string or connection
+'file' must be a character string or connection
+structure(list(x = 1L, y = NA_real_), tag = "kept")
+function (x = hidden) 
+x
+1
+[1] "c(2L, NA)"
+[1] "list(z = 3L)"
+cannot write to this connection
+c(4L, NA)
+[1] TRUE

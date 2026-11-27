@@ -1,0 +1,32 @@
+wrapper|FALSE|TRUE|
+valid|integer|3|1,2,0||
+empty|integer|3|0,0,0||
+default_empty|integer|1|0||
+default_factor|integer|2|1,2||
+default_real|integer|2|1,1||
+default_missing|integer|1|0|NAs introduced by coercion to integer range|
+null|ERROR|'bin' must be numeric or a factor||
+logical|ERROR|'bin' must be numeric or a factor||
+character|ERROR|'bin' must be numeric or a factor||
+factor|integer|3|1,2,0||
+real|integer|3|1,1,0|NAs introduced by coercion to integer range|
+negative|ERROR|invalid 'nbin' argument||
+zero|integer|0|||
+fraction|integer|2|1,1||
+na_nbins|ERROR|missing value where TRUE/FALSE needed||
+null_nbins|ERROR|argument is of length zero||
+vector_nbins|ERROR|the condition has length > 1||
+logical_nbins|integer|1|1||
+character_nbins|integer|2|1,0||
+large_nbins|ERROR|attempt to make a table with >= 2^31 elements||
+internal|real|ERROR|invalid input|
+internal|logical|ERROR|invalid input|
+internal|null|ERROR|invalid input|
+internal|negative|ERROR|invalid 'nbin' argument|
+internal|missing_size|ERROR|invalid 'nbin' argument|
+internal|na_size|ERROR|invalid 'nbin' argument|
+internal|vector_size|integer|2|1,1|
+internal|character_size|integer|2|1,1|
+internal|missing_argument|ERROR|1 argument passed to .Internal(tabulate) which requires 2|
+internal|extra_argument|ERROR|3 arguments passed to .Internal(tabulate) which requires 2|
+isolation|TRUE|1,2,2|a,b,c|kept|

@@ -1,0 +1,168 @@
+0:vector:1:attr|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:vector:1:structure|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:vector:2:attr|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:vector:2:structure|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:vector:3:attr|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:vector:3:structure|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:vector:4:attr|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:vector:4:structure|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:vector:5:attr|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:vector:5:structure|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:vector:6:attr|structure(character(0), levels = character(0), class = "factor")
+0:vector:6:structure|structure(character(0), levels = character(0), class = "factor")
+0:vector:7:attr|structure(character(0), class = "demo")
+0:vector:7:structure|structure(character(0), class = "demo")
+0:array:1:attr|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:array:1:structure|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:array:2:attr|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:array:2:structure|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:array:3:attr|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:array:3:structure|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:array:4:attr|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:array:4:structure|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:array:5:attr|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:array:5:structure|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:array:6:attr|NULL
+0:array:6:structure|NULL
+0:array:7:attr|NULL
+0:array:7:structure|NULL
+0:matrix:1:attr|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:matrix:1:structure|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:matrix:2:attr|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:matrix:2:structure|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:matrix:3:attr|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:matrix:3:structure|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:matrix:4:attr|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:matrix:4:structure|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:matrix:5:attr|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:matrix:5:structure|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:matrix:6:attr|structure(character(0), levels = character(0), class = "factor")
+0:matrix:6:structure|structure(character(0), levels = character(0), class = "factor")
+0:matrix:7:attr|structure(character(0), class = "demo")
+0:matrix:7:structure|structure(character(0), class = "demo")
+1:vector:1:attr|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:vector:1:structure|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:vector:2:attr|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:vector:2:structure|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:vector:3:attr|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:vector:3:structure|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:vector:4:attr|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:vector:4:structure|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:vector:5:attr|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:vector:5:structure|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:vector:6:attr|NA_character_
+1:vector:6:structure|NA_character_
+1:vector:7:attr|NA_character_
+1:vector:7:structure|NA_character_
+1:array:1:attr|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:array:1:structure|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:array:2:attr|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:array:2:structure|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:array:3:attr|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:array:3:structure|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:array:4:attr|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:array:4:structure|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:array:5:attr|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:array:5:structure|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:array:6:attr|NA_character_
+1:array:6:structure|NA_character_
+1:array:7:attr|NA_character_
+1:array:7:structure|NA_character_
+1:matrix:1:attr|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:matrix:1:structure|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:matrix:2:attr|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:matrix:2:structure|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:matrix:3:attr|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:matrix:3:structure|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:matrix:4:attr|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:matrix:4:structure|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:matrix:5:attr|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:matrix:5:structure|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:matrix:6:attr|NA_character_
+1:matrix:6:structure|NA_character_
+1:matrix:7:attr|NA_character_
+1:matrix:7:structure|NA_character_
+2:vector:1:attr|structure(c("1", "2"), levels = c("é", "日本"), class = "factor")
+2:vector:1:structure|structure(c("1", "2"), levels = c("é", "日本"), class = "factor")
+2:vector:2:attr|structure(c("1", "2"), levels = c("é", "日本"), class = c("ordered",  "factor"))
+2:vector:2:structure|structure(c("1", "2"), levels = c("é", "日本"), class = c("ordered",  "factor"))
+2:vector:3:attr|structure(c(a = "1", b = "2"), levels = c("é", "日本"), class = "factor", marker = "m")
+2:vector:3:structure|structure(c(a = "1", b = "2"), levels = c("é", "日本"), class = "factor", marker = "m")
+2:vector:4:attr|structure(c("1", "2"), class = "demo", marker = "m")
+2:vector:4:structure|structure(c("1", "2"), class = "demo", marker = "m")
+2:vector:5:attr|structure(c("é", "日本"), class = "demo", marker = "m")
+2:vector:5:structure|structure(c("é", "日本"), class = "demo", marker = "m")
+2:vector:6:attr|c(NA_character_, NA_character_)
+2:vector:6:structure|c(NA_character_, NA_character_)
+2:vector:7:attr|c(NA_character_, NA_character_)
+2:vector:7:structure|c(NA_character_, NA_character_)
+2:array:1:attr|ERROR:malformed factor
+2:array:1:structure|ERROR:malformed factor
+2:array:2:attr|ERROR:malformed factor
+2:array:2:structure|ERROR:malformed factor
+2:array:3:attr|ERROR:malformed factor
+2:array:3:structure|ERROR:malformed factor
+2:array:4:attr|structure(c("1", "2"), class = "demo", marker = "m")
+2:array:4:structure|structure(c("1", "2"), class = "demo", marker = "m")
+2:array:5:attr|structure(c("é", "日本"), class = "demo", marker = "m")
+2:array:5:structure|structure(c("é", "日本"), class = "demo", marker = "m")
+2:array:6:attr|c(NA_character_, NA_character_)
+2:array:6:structure|c(NA_character_, NA_character_)
+2:array:7:attr|c(NA_character_, NA_character_)
+2:array:7:structure|c(NA_character_, NA_character_)
+2:matrix:1:attr|structure(c("1", "2"), levels = c("é", "日本"), class = "factor")
+2:matrix:1:structure|structure(c("1", "2"), levels = c("é", "日本"), class = "factor")
+2:matrix:2:attr|structure(c("1", "2"), levels = c("é", "日本"), class = c("ordered",  "factor"))
+2:matrix:2:structure|structure(c("1", "2"), levels = c("é", "日本"), class = c("ordered",  "factor"))
+2:matrix:3:attr|structure(c(a = "1", b = "2"), levels = c("é", "日本"), class = "factor", marker = "m")
+2:matrix:3:structure|structure(c(a = "1", b = "2"), levels = c("é", "日本"), class = "factor", marker = "m")
+2:matrix:4:attr|structure(c("1", "2"), class = "demo", marker = "m")
+2:matrix:4:structure|structure(c("1", "2"), class = "demo", marker = "m")
+2:matrix:5:attr|structure(c("é", "日本"), class = "demo", marker = "m")
+2:matrix:5:structure|structure(c("é", "日本"), class = "demo", marker = "m")
+2:matrix:6:attr|c(NA_character_, NA_character_)
+2:matrix:6:structure|c(NA_character_, NA_character_)
+2:matrix:7:attr|c(NA_character_, NA_character_)
+2:matrix:7:structure|c(NA_character_, NA_character_)
+3:vector:1:attr|c("1", "2", NA)
+3:vector:1:structure|c("1", "2", NA)
+3:vector:2:attr|c("1", "2", NA)
+3:vector:2:structure|c("1", "2", NA)
+3:vector:3:attr|c(a = "1", b = "2", NA)
+3:vector:3:structure|c(a = "1", b = "2", NA)
+3:vector:4:attr|c("1", "2", NA)
+3:vector:4:structure|c("1", "2", NA)
+3:vector:5:attr|c("é", "日本", NA)
+3:vector:5:structure|c("é", "日本", NA)
+3:vector:6:attr|c(NA_character_, NA_character_, NA_character_)
+3:vector:6:structure|c(NA_character_, NA_character_, NA_character_)
+3:vector:7:attr|c(NA_character_, NA_character_, NA_character_)
+3:vector:7:structure|c(NA_character_, NA_character_, NA_character_)
+3:array:1:attr|c("1", "2", NA)
+3:array:1:structure|c("1", "2", NA)
+3:array:2:attr|c("1", "2", NA)
+3:array:2:structure|c("1", "2", NA)
+3:array:3:attr|c(a = "1", b = "2", NA)
+3:array:3:structure|c(a = "1", b = "2", NA)
+3:array:4:attr|c("1", "2", NA)
+3:array:4:structure|c("1", "2", NA)
+3:array:5:attr|c("é", "日本", NA)
+3:array:5:structure|c("é", "日本", NA)
+3:array:6:attr|c(NA_character_, NA_character_, NA_character_)
+3:array:6:structure|c(NA_character_, NA_character_, NA_character_)
+3:array:7:attr|c(NA_character_, NA_character_, NA_character_)
+3:array:7:structure|c(NA_character_, NA_character_, NA_character_)
+3:matrix:1:attr|c("1", "2", NA)
+3:matrix:1:structure|c("1", "2", NA)
+3:matrix:2:attr|c("1", "2", NA)
+3:matrix:2:structure|c("1", "2", NA)
+3:matrix:3:attr|c(a = "1", b = "2", NA)
+3:matrix:3:structure|c(a = "1", b = "2", NA)
+3:matrix:4:attr|c("1", "2", NA)
+3:matrix:4:structure|c("1", "2", NA)
+3:matrix:5:attr|c("é", "日本", NA)
+3:matrix:5:structure|c("é", "日本", NA)
+3:matrix:6:attr|c(NA_character_, NA_character_, NA_character_)
+3:matrix:6:structure|c(NA_character_, NA_character_, NA_character_)
+3:matrix:7:attr|c(NA_character_, NA_character_, NA_character_)
+3:matrix:7:structure|c(NA_character_, NA_character_, NA_character_)

@@ -1,0 +1,12 @@
+stopifnot(identical(typeof(try),"closure"),identical(names(formals(try)),c("expr","silent","outFile")))
+stopifnot(identical(withVisible(try(13L)),list(value=13L,visible=TRUE)))
+stopifnot(identical(withVisible(try(invisible(14L))),list(value=14L,visible=FALSE)))
+stopifnot(identical(try(15L,silent=stop("forced silent"),outFile=stop("forced file")),15L))
+stopifnot(local({z<-withVisible(try(stop(simpleError("supplied")),silent=TRUE));identical(z$visible,FALSE) && inherits(z$value,"try-error") && identical(conditionMessage(attr(z$value,"condition")),"supplied")}))
+stopifnot(local({out<-character();con<-textConnection("out","w",local=TRUE);try(stop(simpleError("supplied")),outFile=con);close(con);identical(out,"Error : supplied")}))
+stopifnot(local({out<-character();con<-textConnection("out","w",local=TRUE);old<-options(try.outFile=con);try(stop(simpleError("option output")));options(old);close(con);identical(out,"Error : option output")}))
+stopifnot(local({old<-options(show.error.messages=FALSE);z<-try(stop(simpleError("hidden")),outFile=stop("forced file"));options(old);identical(as.character(z),"Error : hidden\n")}))
+stopifnot(local({z<-try(stop(simpleError(strrep("x",80),call=quote(f(1)))),silent=TRUE);identical(as.character(z),paste0("Error in f(1) : \n  ",strrep("x",80),"\n"))}))
+stopifnot(local({z<-try(stop(simpleError("line one\nline two")),silent=TRUE);identical(geterrmessage(),as.character(z)) && identical(as.character(z),"Error : line one\nline two\n")}))
+stopifnot(local({e<-environment(getSrcLines);z<-eval(quote(try(stop("staged"),silent=TRUE)),e);identical(as.character(z),"Error in try(stop(\"staged\"), silent = TRUE) : staged\n")}))
+TRUE

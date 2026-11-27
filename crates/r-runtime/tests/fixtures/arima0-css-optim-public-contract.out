@@ -1,0 +1,39 @@
+rosen-analytic
+par=1.000000,1.000000
+value=0.00000000
+counts=110,43;names=function,gradient
+convergence=0
+hessian=802.0004,-400.0000,-400.0000,200.0000;dim=2,2
+rosen-analytic-compiled
+par=1.000000,1.000000
+value=0.00000000
+counts=110,43;names=function,gradient
+convergence=0
+hessian=802.0004,-400.0000,-400.0000,200.0000;dim=2,2
+rosen-numeric
+par=0.999804,0.999608
+value=0.00000004
+counts=120,38;names=function,gradient
+convergence=0
+hessian=801.6881,-399.9218,-399.9218,200.0000;dim=2,2
+rosen-scaled
+par=1.000000,1.000000
+value=0.00000000
+counts=103,46;names=function,gradient
+convergence=0
+hessian=802.0004,-400.0000,-400.0000,200.0000;dim=2,2
+maxit-zero
+par=-1.200000,1.000000
+value=24.20000000
+counts=0,0;names=function,gradient
+convergence=0
+arima0-coef=0,2
+arima0-class=arima0
+report-zero=REPORT must be > 0 (method = "BFGS")
+initial-infinite=initial value in 'vmmin' is not finite
+initial-na=initial value in 'vmmin' is not finite
+maxit-zero-report-zero
+par=-1.200000,1.000000
+value=24.20000000
+counts=0,0;names=function,gradient
+convergence=0

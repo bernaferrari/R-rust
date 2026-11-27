@@ -1,0 +1,103 @@
+{
+  "source_commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+  "invocation": "Rscript --vanilla -e <code>, with readRDS fixture setup where specified",
+  "cases": [
+    {
+      "test": "nested_sink_inside_capture_bypasses_outer_capture",
+      "code": "local({\n                p <- tempfile();\n                captured <- capture.output({ sink(p); cat('inner\\n'); sink() });\n                identical(captured, character()) && identical(readLines(p, warn=FALSE), 'inner')\n            })",
+      "exit": 0,
+      "stdout": "[1] TRUE\n",
+      "stderr": ""
+    },
+    {
+      "test": "write_lines_auto_opens_and_closes_unopened_file_connection",
+      "code": "local({\n                p <- tempfile(); con <- file(p);\n                writeLines('w', con);\n                !isOpen(con) && identical(readLines(p, warn=FALSE), 'w')\n            })",
+      "exit": 0,
+      "stdout": "[1] TRUE\n",
+      "stderr": ""
+    },
+    {
+      "test": "read_lines_auto_opens_and_closes_unopened_file_connection",
+      "code": "local({\n                p <- tempfile(); writeLines('r', p);\n                con <- file(p); value <- readLines(con);\n                identical(c(value, isOpen(con)), c('r', FALSE))\n            })",
+      "exit": 0,
+      "stdout": "[1] TRUE\n",
+      "stderr": ""
+    },
+    {
+      "test": "s3_nextmethod_walks_class_vector_in_order",
+      "code": "local({f<-function(x,...)UseMethod('f');f.default<-function(x,...)'default';f.a<-function(x,...)c('a',NextMethod());f.b<-function(x,...)c('b',NextMethod());paste(f(structure(1,class=c('a','b'))),collapse='/')})",
+      "exit": 0,
+      "stdout": "[1] \"a/b/default\"\n",
+      "stderr": ""
+    },
+    {
+      "test": "s3_usemethod_preserves_named_argument_dispatch",
+      "code": "local({g<-function(x,extra=2)UseMethod('g');g.a<-function(x,extra=0)c(extra,class(x)[1]);paste(g(extra=7,x=structure(1,class='a')),collapse='/')})",
+      "exit": 0,
+      "stdout": "[1] \"7/a\"\n",
+      "stderr": ""
+    },
+    {
+      "test": "serialization_preserves_shared_structure_and_attributes",
+      "code": "local({e<-new.env(parent=emptyenv());e$x<-1L;z<-unserialize(serialize(list(e,e),NULL));z[[1]]$x<-9L;a<-structure(1:3,class=c('a','b'),foo=list(1,2));b<-unserialize(serialize(a,NULL));identical(z[[2]]$x,9L)&&identical(a,b)})",
+      "exit": 0,
+      "stdout": "[1] TRUE\n",
+      "stderr": ""
+    },
+    {
+      "test": "s3_method_sees_original_match_call_and_dots",
+      "code": "local({h<-function(x,...)UseMethod('h');h.a<-function(x,...)list(mc=deparse(match.call()),dots=list(...));r<-h(structure(1,class='a'),k=3);paste(r$mc,r$dots$k,sep='|')})",
+      "exit": 0,
+      "stdout": "[1] \"h.a(x = structure(1, class = \\\"a\\\"), k = 3)|3\"\n",
+      "stderr": ""
+    },
+    {
+      "test": "namespace_call_scalar",
+      "code": "identical(f(-4L),4L)",
+      "fixture": "gnu-bytecode-checkfun/base-abs.rds",
+      "exit": 0,
+      "stdout": "[1] TRUE\n",
+      "stderr": ""
+    },
+    {
+      "test": "namespace_call_named_argument",
+      "code": "identical(f(x=-4L),4L)",
+      "fixture": "gnu-bytecode-checkfun/base-abs.rds",
+      "exit": 0,
+      "stdout": "[1] TRUE\n",
+      "stderr": ""
+    },
+    {
+      "test": "namespace_call_na",
+      "code": "is.na(f(NA_integer_))",
+      "fixture": "gnu-bytecode-checkfun/base-abs.rds",
+      "exit": 0,
+      "stdout": "[1] TRUE\n",
+      "stderr": ""
+    },
+    {
+      "test": "namespace_call_vector",
+      "code": "identical(f(c(-2L,3L)),c(2L,3L))",
+      "fixture": "gnu-bytecode-checkfun/base-abs.rds",
+      "exit": 0,
+      "stdout": "[1] TRUE\n",
+      "stderr": ""
+    },
+    {
+      "test": "computed_call_builtin_control",
+      "code": "identical(f(abs,-4L),4L)",
+      "fixture": "gnu-bytecode-checkfun/callable-argument.rds",
+      "exit": 0,
+      "stdout": "[1] TRUE\n",
+      "stderr": ""
+    },
+    {
+      "test": "computed_call_closure_control",
+      "code": "h<-function(z)z*2L;identical(f(h,5L),10L)",
+      "fixture": "gnu-bytecode-checkfun/callable-argument.rds",
+      "exit": 0,
+      "stdout": "[1] TRUE\n",
+      "stderr": ""
+    }
+  ]
+}

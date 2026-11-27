@@ -1,0 +1,97 @@
+[1] "closure"
+[1] TRUE
+[1] "x"         "useSource" "..."      
+[1] "closure"
+[1] TRUE
+[1] "x"         "..."       "digits"    "quote"     "right"     "row.names"
+[7] "max"      
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] FALSE
+[1] TRUE
+[1] FALSE
+[1] TRUE
+[1] FALSE
+[1] TRUE
+[1] TRUE
+[1] FALSE
+[1] 5
+       number text
+first    1.25    a
+second     NA long
+third  300.00 <NA>
+ number   text
+ "1.25"    "a"
+ "  NA" "long"
+ [ reached 'max' / getOption("max.print") -- omitted 1 rows ]
+      number text
+one     1.25    a
+two       NA long
+three 300.00 <NA>
+[1] number text  
+<0 rows> (or 0-length row.names)
+data frame with 0 columns and 3 rows
+    
+ [ reached 'max' / getOption("max.print") -- omitted 2 columns ]
+ [ reached 'max' / getOption("max.print") -- omitted 3 rows ]
+[1] FALSE
+[1] TRUE
+[1] "invalid 'max' / getOption(\"max.print\"): Inf"
+       number text
+first    1.25    a
+second     NA long
+third  300.00 <NA>
+ number   text
+ "1.25"    "a"
+ "  NA" "long"
+ [ reached 'max' / getOption("max.print") -- omitted 1 rows ]
+      number text
+one     1.25    a
+two       NA long
+three 300.00 <NA>
+[1] number text  
+<0 rows> (or 0-length row.names)
+data frame with 0 columns and 3 rows
+    
+ [ reached 'max' / getOption("max.print") -- omitted 2 columns ]
+ [ reached 'max' / getOption("max.print") -- omitted 3 rows ]
+[1] FALSE
+[1] TRUE
+[1] "invalid 'max' / getOption(\"max.print\"): Inf"
+[1] "NA" "NA" "x "
+[1] FALSE FALSE FALSE
+[1] "NA" NA   "x "
+[1] FALSE  TRUE FALSE
+    
+[1,]
+[2,]
+ [ reached 'max' / getOption("max.print") -- omitted 1 row and 3 columns ]
+     [,1]
+[1,] "a" 
+ [ reached 'max' / getOption("max.print") -- omitted 1 row and 2 columns ]
+     [,1] [,2]   [,3]
+[1,] "a"  "NA"   "b" 
+ [ reached 'max' / getOption("max.print") -- omitted 1 row ]
+     [,1] [,2]   [,3]
+[1,] "a"  "NA"   "b" 
+[2,] NA   "long" "c" 
+    
+[1,]
+[2,]
+ [ reached 'max' / getOption("max.print") -- omitted 1 row and 3 columns ]
+     [,1]
+[1,] a   
+ [ reached 'max' / getOption("max.print") -- omitted 1 row and 2 columns ]
+     [,1] [,2] [,3]
+[1,] a    NA   b   
+ [ reached 'max' / getOption("max.print") -- omitted 1 row ]
+     [,1] [,2] [,3]
+[1,] a    NA   b   
+[2,] <NA> long c   
+[1] "number: Inf"
+[1] "number: -Inf"
+[1] "number: NaN"
+[1] "number: NA"
+[1] TRUE

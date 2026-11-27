@@ -1,0 +1,103 @@
+expression({
+    .tmp1 <- x + y
+    .tmp3 <- .tmp1 + .tmp1
+    .tmp4 <- 1 + 1
+    .value <- .tmp1 * .tmp1
+    .grad <- array(0, c(length(.value), 3L), list(NULL, c("x", 
+        "y", "z")))
+    .hessian <- array(0, c(length(.value), 3L, 3L), list(NULL, 
+        c("x", "y", "z"), c("x", "y", "z")))
+    .grad[, "x"] <- .tmp3
+    .hessian[, "x", "x"] <- .tmp4
+    .hessian[, "x", "y"] <- .hessian[, "y", "x"] <- .tmp4
+    .hessian[, "x", "z"] <- .hessian[, "z", "x"] <- 0
+    .grad[, "y"] <- .tmp3
+    .hessian[, "y", "y"] <- .tmp4
+    .hessian[, "y", "z"] <- .hessian[, "z", "y"] <- 0
+    .grad[, "z"] <- 0
+    attr(.value, "gradient") <- .grad
+    attr(.value, "hessian") <- .hessian
+    .value
+})
+structure(25, gradient = structure(c(10, 10, 0), dim = c(1L, 
+3L), dimnames = list(NULL, c("x", "y", "z"))), hessian = structure(c(2, 
+2, 0, 2, 2, 0, 0, 0, 0), dim = c(1L, 3L, 3L), dimnames = list(
+    NULL, c("x", "y", "z"), c("x", "y", "z"))))
+expression({
+    .tmp1 <- x * y
+    .tmp2 <- sin(.tmp1)
+    .tmp4 <- cos(.tmp1)
+    .tmp5 <- .tmp4 * y
+    .tmp8 <- .tmp2 * y * y
+    .tmp11 <- .tmp2 * x
+    .tmp13 <- .tmp4 - .tmp11 * y
+    .tmp15 <- .tmp4 * x
+    .tmp17 <- .tmp11 * x
+    .value <- .tmp2 + .tmp2
+    .grad <- array(0, c(length(.value), 3L), list(NULL, c("x", 
+        "y", "z")))
+    .hessian <- array(0, c(length(.value), 3L, 3L), list(NULL, 
+        c("x", "y", "z"), c("x", "y", "z")))
+    .grad[, "x"] <- .tmp5 + .tmp5
+    .hessian[, "x", "x"] <- -(.tmp8 + .tmp8)
+    .hessian[, "x", "y"] <- .hessian[, "y", "x"] <- .tmp13 + 
+        .tmp13
+    .hessian[, "x", "z"] <- .hessian[, "z", "x"] <- 0
+    .grad[, "y"] <- .tmp15 + .tmp15
+    .hessian[, "y", "y"] <- -(.tmp17 + .tmp17)
+    .hessian[, "y", "z"] <- .hessian[, "z", "y"] <- 0
+    .grad[, "z"] <- 0
+    attr(.value, "gradient") <- .grad
+    attr(.value, "hessian") <- .hessian
+    .value
+})
+structure(-0.558830996397852, gradient = structure(c(5.7610217199022, 
+3.84068114660146, 0), dim = c(1L, 3L), dimnames = list(NULL, 
+    c("x", "y", "z"))), hessian = structure(c(5.02947896758067, 
+5.27332655168784, 0, 5.27332655168784, 2.23532398559141, 0, 0, 
+0, 0), dim = c(1L, 3L, 3L), dimnames = list(NULL, c("x", "y", 
+"z"), c("x", "y", "z"))))
+expression({
+    .tmp2 <- exp(x * y)
+    .tmp3 <- x + y
+    .tmp5 <- .tmp2 * y
+    .tmp7 <- .tmp3^2
+    .tmp8 <- .tmp2/.tmp7
+    .tmp12 <- .tmp5/.tmp7
+    .tmp17 <- .tmp2 * (2 * .tmp3)/.tmp7^2
+    .tmp20 <- .tmp2 * x
+    .tmp25 <- .tmp20/.tmp7
+    .tmp26 <- .tmp25 - .tmp17
+    .value <- .tmp2/.tmp3
+    .grad <- array(0, c(length(.value), 3L), list(NULL, c("x", 
+        "y", "z")))
+    .hessian <- array(0, c(length(.value), 3L, 3L), list(NULL, 
+        c("x", "y", "z"), c("x", "y", "z")))
+    .grad[, "x"] <- .tmp5/.tmp3 - .tmp8
+    .hessian[, "x", "x"] <- .tmp5 * y/.tmp3 - .tmp12 - (.tmp12 - 
+        .tmp17)
+    .hessian[, "x", "y"] <- .hessian[, "y", "x"] <- (.tmp20 * 
+        y + .tmp2)/.tmp3 - .tmp12 - .tmp26
+    .hessian[, "x", "z"] <- .hessian[, "z", "x"] <- 0
+    .grad[, "y"] <- .tmp20/.tmp3 - .tmp8
+    .hessian[, "y", "y"] <- .tmp20 * x/.tmp3 - .tmp25 - .tmp26
+    .hessian[, "y", "z"] <- .hessian[, "z", "y"] <- 0
+    .grad[, "z"] <- 0
+    attr(.value, "gradient") <- .grad
+    attr(.value, "hessian") <- .hessian
+    .value
+})
+structure(80.685758698547, gradient = structure(c(225.920124355932, 
+145.234365657385, 0), dim = c(1L, 3L), dimnames = list(NULL, 
+    c("x", "y", "z"))), hessian = structure(c(635.80377854455, 
+490.569412887166, 0, 490.569412887166, 264.649288531234, 0, 0, 
+0, 0), dim = c(1L, 3L, 3L), dimnames = list(NULL, c("x", "y", 
+"z"), c("x", "y", "z"))))
+same environment=TRUE
+pairlist(x = 2, y = 3)
+structure(10, gradient = structure(c(7, 2), dim = 1:2, dimnames = list(
+    NULL, c("x", "y"))), hessian = structure(c(2, 1, 1, 0), dim = c(1L, 
+2L, 2L), dimnames = list(NULL, c("x", "y"), c("x", "y"))))
+Function 'unsupportedDerivative' is not in the derivatives table
+structure(4, gradient = structure(4, dim = c(1L, 1L), dimnames = list(
+    NULL, "x")))
