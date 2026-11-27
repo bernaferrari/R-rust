@@ -36,11 +36,22 @@ pub(crate) struct GraphicsParState {
     /// embedders replay onto any target.
     scene: Scene,
     /// File-backed device target exactly as GNU's one-active-device
-    /// model — svg() sets it, dev.off() flushes and clears.
+    /// model — svg()/png() set it, dev.off() flushes and clears.
     pub(crate) device_file: Option<String>,
+    /// The open device's serialization format — vector text or raster
+    /// pixels exactly as GNU's device types distinguish.
+    pub(crate) device_kind: DeviceKind,
     /// Pages begun on this device — the clear events the reset display
     /// list itself can no longer distinguish.
     page_count: u32,
+}
+
+/// The file-backed device's output format exactly as GNU's device
+/// types: vector text for svg(), raster pixels for png().
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DeviceKind {
+    Svg,
+    Png,
 }
 
 /// The validated figure transition exactly as the old world's
@@ -67,6 +78,7 @@ impl GraphicsParState {
             device_height: 504.0,
             scene: Scene::new(504, 504),
             device_file: None,
+            device_kind: DeviceKind::Svg,
             page_count: 0,
         }
     }
@@ -102,7 +114,10 @@ impl GraphicsParState {
     /// Non-finite or zero-span usr yields the degenerate edge exactly
     /// as far as the caller cares — primitives clip regardless.
     pub(crate) fn user_to_device(&self, x: f64, y: f64) -> (f32, f32) {
-        let usr = match self.layout.query("usr") {
+        // The state cascade exactly as every other consumer — plot.window's
+        // usr rides in overrides, and layout has no opinion of its own;
+        // querying layout directly here missed every plot.window call.
+        let usr = match self.query("usr") {
             Some(ParValue::Real(values)) if values.len() == 4 => values,
             _ => vec![0.0, 1.0, 0.0, 1.0],
         };
