@@ -69,6 +69,8 @@ pub struct Heap {
     /// The graphics device state exactly as GNU's per-device GPar —
     /// the layout cascade, dumb overrides, and frame progression.
     pub graphics: crate::value::graphics::GraphicsParState,
+    /// The session-owned Mersenne stream — see value/rng.rs.
+    pub rng: crate::value::rng::PureRng,
     /// The closure context stack GNU's sys.* family reads — one entry per
     /// active closure application, innermost last.
     pub contexts: Vec<crate::value::eval::ContextFrame>,
