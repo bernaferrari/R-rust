@@ -134,6 +134,11 @@ pub struct Heap {
     /// The embedder's virtual file store — browser files persist
     /// bytes by path exactly as the wasm/android hosts consume them.
     pub browser_files: std::collections::HashMap<String, Vec<u8>>,
+    /// Host filesystem confinement exactly as the facade's runtime path
+    /// policy contracts: when set, absolute paths and paths escaping the
+    /// virtual root are refused before any host access. None is the
+    /// permissive native default.
+    pub path_policy: Option<crate::value::path_policy::PathPolicy>,
     /// The live evaluation recursion depth — the resource limit
     /// embedders configure exactly as the legacy world's guard.
     pub eval_depth: usize,

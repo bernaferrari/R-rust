@@ -132,6 +132,19 @@ impl PureSession {
         }
     }
 
+    /// Create a session confined to a virtual filesystem root exactly as
+    /// the facade's browser sandbox contracts — host paths resolve
+    /// through the policy gate before any filesystem access. The
+    /// permissive constructor is `new` exactly as the native default.
+    pub fn new_with_path_policy(allowed_roots: Vec<String>, virtual_root: &str) -> Self {
+        let mut session = Self::new();
+        session.session.heap.path_policy = Some(crate::value::path_policy::PathPolicy::new(
+            allowed_roots,
+            virtual_root,
+        ));
+        session
+    }
+
     /// Parse and evaluate R source into the facade's result contract:
     /// the typed snapshot of the final value, the numeric scalar view,
     /// and the three output streams exactly as Rscript separates them.
