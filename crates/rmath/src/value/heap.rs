@@ -45,6 +45,9 @@ pub struct Heap {
     /// explicitly at file/dir creation since the test harness shares the
     /// real process mask.
     pub umask_state: i64,
+    /// Library search path — GNU's .libPaths() state, scanned by
+    /// find.package and system.file exactly as the loader does.
+    pub lib_paths: Vec<String>,
     /// Graphics parameter state — GNU's par() machine, values as numeric
     /// vectors keyed by parameter name exactly as the device layer holds.
     pub par_state: std::collections::HashMap<String, Vec<f64>>,
