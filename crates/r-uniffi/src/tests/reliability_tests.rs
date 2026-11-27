@@ -20,7 +20,7 @@ use crate::uniffi::worker::{OpKind, QUEUE_CAPACITY, SessionCommand, WorkerHandle
 #[test]
 fn constructor_propagates_worker_init_failure() {
     let result = RSession::initialize(
-        Box::new(|| Err(r_embed::RSessionError::InitFailed("boom".to_string()))),
+        Box::new(|| Err("boom".to_string())),
         Duration::from_secs(5),
     );
 
@@ -35,7 +35,7 @@ fn constructor_fails_when_init_exceeds_handshake_deadline() {
     let result = RSession::initialize(
         Box::new(|| {
             std::thread::sleep(Duration::from_millis(250));
-            r_embed::RSession::new()
+            Ok(r_embed::PureSession::new())
         }),
         Duration::from_millis(80),
     );
@@ -242,7 +242,7 @@ fn cancelled_queued_render_does_not_poison_render_rerun() {
     std::thread::sleep(Duration::from_millis(50));
 
     let cancelled_render = session
-        .render_async("plot(1, 1)".to_string(), 120, 100)
+        .render_async("plot(1, 1)".to_string(), 200, 150)
         .expect("queued render");
     session
         .cancel_operation(cancelled_render)
@@ -263,13 +263,13 @@ fn cancelled_queued_render_does_not_poison_render_rerun() {
     ));
 
     let rerun = session
-        .render_async("plot(1, 1)".to_string(), 120, 100)
+        .render_async("plot(1, 1)".to_string(), 200, 150)
         .expect("render rerun");
     match wait_for_terminal_status(&session, rerun) {
         OperationStatus::Succeeded {
             result: OperationResult::Render { result },
         } => {
-            assert_eq!((result.width, result.height), (120, 100));
+            assert_eq!((result.width, result.height), (200, 150));
             assert!(result.png_bytes.starts_with(&[0x89, b'P', b'N', b'G']));
         }
         status => panic!("expected typed render result, got {status:?}"),

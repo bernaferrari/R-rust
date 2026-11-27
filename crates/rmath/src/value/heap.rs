@@ -128,10 +128,6 @@ pub struct Heap {
     /// registration seeds it today; RBG1 asset loading supplies
     /// real package content when the conversion lands.
     pub package_registry: std::collections::HashMap<String, crate::value::id::ValueId>,
-    /// Library scan paths for filesystem package loading exactly as GNU's
-    /// .libPaths() — synced from the host session's runtime paths at
-    /// construction and whenever they are reconfigured.
-    pub library_paths: Vec<String>,
     /// Long-lived host roots — retained FFI values stay live across
     /// collections exactly as the facade's retained surface needs.
     pub retained_roots: crate::value::roots::RootTable,

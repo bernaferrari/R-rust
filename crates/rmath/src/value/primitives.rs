@@ -20704,7 +20704,7 @@ fn load_source_package(
 ) -> Option<ValueId> {
     let base = heap.base_env_id?;
     let mut package_dir = None;
-    for library in heap.library_paths.clone() {
+    for library in heap.lib_paths.clone() {
         let candidate = std::path::PathBuf::from(library).join(pkg_name);
         if candidate.join("DESCRIPTION").is_file() {
             package_dir = Some(candidate);

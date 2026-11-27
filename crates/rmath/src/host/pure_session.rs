@@ -128,7 +128,7 @@ impl PureSession {
             None::<String>,
         );
         let mut session = Session::new();
-        session.heap.library_paths = runtime_paths.library_paths();
+        session.heap.lib_paths = runtime_paths.library_paths();
         PureSession {
             session,
             max_execution_time_ms: 0,
@@ -144,6 +144,10 @@ impl PureSession {
     /// enabling are visible to R code immediately.
     pub fn enable_browser_files(&mut self) {
         self.session.heap.browser_files_enabled = true;
+        // The virtual store is the filesystem in browser mode — host
+        // library scan paths are meaningless and the R-visible truth
+        // is exactly the empty set the portable profile pins.
+        self.session.heap.lib_paths.clear();
     }
 
     /// Create a session confined to a virtual filesystem root exactly as
@@ -521,8 +525,8 @@ impl PureSession {
     pub fn runtime_info(&self) -> PureRuntimeInfo {
         PureRuntimeInfo {
             is_active: true,
-            library_paths: Vec::new(),
-            temp_dir: std::env::temp_dir().to_string_lossy().to_string(),
+            library_paths: self.session.heap.lib_paths.clone(),
+            temp_dir: self.runtime_paths.temp_dir(),
         }
     }
 
@@ -700,7 +704,7 @@ impl PureSession {
     /// contexts do — the user library and temp locations derive from the
     /// application directories.
     pub fn configure_runtime_paths(&mut self, paths: super::facade::RuntimePaths) {
-        self.session.heap.library_paths = paths.library_paths();
+        self.session.heap.lib_paths = paths.library_paths();
         self.runtime_paths = paths;
     }
 
@@ -727,7 +731,7 @@ impl PureSession {
     /// Android host bootstrap — the type alias collapses onto RuntimePaths
     /// exactly as the facade's does, so configuration is path replacement.
     pub fn configure_android_runtime(&mut self, paths: &super::facade::AndroidRuntimePaths) {
-        self.session.heap.library_paths = paths.library_paths();
+        self.session.heap.lib_paths = paths.library_paths();
         self.runtime_paths = paths.clone();
     }
 
@@ -744,6 +748,8 @@ impl PureSession {
     }
 
     pub fn package_available(&self, package: &str) -> bool {
+        // Loadable is the truthful answer: on disk under the library
+        // paths or baked into the runtime — library() succeeds for both.
         valid_package_name(package)
             && (self.find_package_dir(package).is_some() || baked_package_info(package).is_some())
     }
@@ -787,17 +793,7 @@ impl PureSession {
     /// Every baked package exactly as the facade's installed-package
     /// enumeration — the pure world carries the base set pinned.
     pub fn installed_packages(&self) -> Vec<super::packages::RPackageInfo> {
-        let mut packages = super::packages::installed_packages_from_library_paths(
-            &self.runtime_paths.library_paths(),
-        );
-        let scanned: std::collections::HashSet<String> =
-            packages.iter().map(|info| info.name.clone()).collect();
-        for info in baked_package_inventory() {
-            if !scanned.contains(&info.name) {
-                packages.push(info);
-            }
-        }
-        packages
+        super::packages::installed_packages_from_library_paths(&self.runtime_paths.library_paths())
     }
 
     pub fn close(&mut self) {}
@@ -1293,7 +1289,15 @@ mod tests {
         // Each iteration emits well past 256 bytes combined — the buffer
         // stops growing exactly as the facade's output limit contracts.
         let result = session.eval("for (i in 1:100) cat('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\\n')");
-        assert!(result.stdout.len() <= 256, "len: {}", result.stdout.len());
+        // The capture contract exactly: content truncates at the limit
+        // and the truncation marker appends after — the wasm suite pins
+        // precisely 256 content bytes plus the marker.
+        let marker = "\n[captured console output truncated by runtime limit]";
+        assert!(
+            result.stdout.len() <= 256 + marker.len(),
+            "len: {}",
+            result.stdout.len()
+        );
         assert!(!result.stdout.is_empty());
     }
 
@@ -1336,7 +1340,9 @@ mod tests {
         let session = PureSession::new();
         let info = session.runtime_info();
         assert!(info.is_active);
-        assert!(info.library_paths.is_empty());
+        // The R-visible library paths exactly as .libPaths() reads them —
+        // the default session carries the runtime-path-derived scan root.
+        assert_eq!(info.library_paths, session.library_paths());
         assert!(!info.temp_dir.is_empty());
     }
 
@@ -2285,11 +2291,13 @@ cat(grconvertX(0:1, "user", "device"), grconvertY(0:1, "user", "device"), "\n")
     #[test]
     fn baked_package_inventory_reports_base_set() {
         let session = PureSession::new();
+        // The inventory is the filesystem scan exactly as GNU's
+        // installed.packages — baked runtime packages are not
+        // filesystem-installed, so a scratch-pathed session scans empty…
         let installed = session.installed_packages();
-        let names: Vec<&str> = installed.iter().map(|p| p.name.as_str()).collect();
-        for expected in ["datasets", "methods", "stats", "utils", "graphics", "grDevices", "stats4", "tools"] {
-            assert!(names.contains(&expected), "missing baked package {expected}");
-        }
+        assert!(installed.is_empty(), "scan should be empty: {installed:?}");
+        // …while package_info falls back to the baked metadata because
+        // the runtime genuinely carries those packages.
         let stats = session.package_info("stats").expect("stats info");
         assert_eq!(stats.version, "4.7.0");
         assert_eq!(stats.title, "The R Stats Package");

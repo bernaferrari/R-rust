@@ -499,7 +499,7 @@ fn terminal_callback_can_take_published_eval_and_render_results() {
     ));
 
     let render_id = session
-        .render_async("plot(1, 1)".to_string(), 120, 100)
+        .render_async("plot(1, 1)".to_string(), 200, 150)
         .expect("render id");
     let render_status = statuses_rx
         .recv_timeout(Duration::from_secs(3))

@@ -261,11 +261,10 @@ pub(crate) enum SessionCommand {
 // ---------------------------------------------------------------------------
 
 /// Factory for the worker's interpreter session; injectable for tests.
-pub(crate) type WorkerInit =
-    Box<dyn FnOnce() -> Result<r_embed::RSession, r_embed::RSessionError> + Send>;
+pub(crate) type WorkerInit = Box<dyn FnOnce() -> Result<r_embed::PureSession, String> + Send>;
 
 pub(crate) fn default_init() -> WorkerInit {
-    Box::new(r_embed::RSession::new)
+    Box::new(|| Ok(r_embed::PureSession::new()))
 }
 
 pub(crate) struct WorkerConfig {
@@ -345,7 +344,7 @@ pub(crate) fn spawn_worker(
 /// panic guard, record the terminal outcome, deliver callbacks through the
 /// dispatcher, and reply to a synchronous caller.
 fn execute_operation(
-    session: &mut r_embed::RSession,
+    session: &mut r_embed::PureSession,
     op: OpHandle,
     kind: OpKind,
     table: &Arc<Mutex<OperationTable>>,
@@ -361,9 +360,8 @@ fn execute_operation(
                     paths.cache_dir,
                     paths.bundled_library_dir,
                 );
-                session
-                    .configure_android_runtime(&embed_paths)
-                    .map_err(|err| RError::InitFailed(err.to_string()))
+                session.configure_android_runtime(&embed_paths);
+                Ok(())
             });
             settle(op, result, table, dispatcher, reply, null_eval_result(""));
         }
@@ -379,14 +377,21 @@ fn execute_operation(
             settle(op, result, table, dispatcher, reply, null_eval_result(""));
         }
         OpKind::ResourceLimits { reply } => {
-            let result = run_guarded(|| Ok(session.resource_limits().into()));
+            let result = run_guarded(|| {
+                let limits = session.resource_limits();
+                Ok(ResourceLimits {
+                    max_eval_depth: limits.max_eval_depth,
+                    max_execution_time_ms: limits.max_execution_time_ms,
+                    max_alloc_bytes: limits.max_alloc_bytes.unwrap_or(0),
+                    max_arena_nodes: limits.max_arena_nodes.unwrap_or(0),
+                })
+            });
             settle(op, result, table, dispatcher, reply, null_eval_result(""));
         }
         OpKind::SetResourceLimits { limits, reply } => {
             let result = run_guarded(|| {
-                session
-                    .set_resource_limits(limits.into())
-                    .map_err(|err| RError::EvalError(err.to_string()))
+                session.set_resource_limits(limits.into());
+                Ok(())
             });
             settle(op, result, table, dispatcher, reply, null_eval_result(""));
         }
@@ -432,7 +437,14 @@ fn execute_operation(
                 session
                     .eval_result_cancellable(&code, &op.token)
                     .map(|output| EvalResult {
-                        output: output.output,
+                        // The embedding contract strips the final newline
+                        // GNU's print emission appends — the facade-shaped
+                        // consumers compare against newline-free output.
+                        output: output
+                            .output
+                            .strip_suffix('\n')
+                            .unwrap_or(&output.output)
+                            .to_string(),
                         value: RValue::from(output.value),
                     })
                     .map_err(map_eval_error)
