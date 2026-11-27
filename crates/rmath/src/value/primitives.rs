@@ -6300,9 +6300,7 @@ fn call_primitive_inner(
             let object = bound[0].ok_or(EvalError::TypeError("saveRDS requires an object")).map_err(RSignal::from)?;
             let path = bound[1].and_then(|v| string_operand(heap, interner, v)).unwrap_or_default();
             let bytes = super::rbg1::encode_rds(heap, interner, object);
-            let host = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path)
-                .ok_or_else(|| RSignal::from(EvalError::Condition(format!("cannot write file: {path}"))))?;
-            std::fs::write(&host, &bytes)
+            crate::value::vfile::write_file(heap, &path, &bytes)
                 .map_err(|e| RSignal::from(EvalError::Condition(format!("cannot write file: {e}"))))?;
             heap.visible = false;
             Ok(ValueId::NIL)
@@ -6310,9 +6308,7 @@ fn call_primitive_inner(
         READ_RDS => {
             let bound = bind_formals(heap, interner, args, caller_env, &["file", "refhook"])?;
             let path = bound[0].and_then(|v| string_operand(heap, interner, v)).unwrap_or_default();
-            let host = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path)
-                .ok_or_else(|| RSignal::from(EvalError::Condition(format!("cannot read file: {path}"))))?;
-            let bytes = std::fs::read(&host)
+            let bytes = crate::value::vfile::read_file(heap, &path)
                 .map_err(|e| RSignal::from(EvalError::Condition(format!("cannot read file: {e}"))))?;
             super::rbg1::decode_rds(heap, interner, &bytes, caller_env)
                 .ok_or(EvalError::TypeError("malformed RDS stream").into())
@@ -13562,7 +13558,7 @@ fn writelines_primitive(
     } else {
         let path = string_operand(heap, interner, con_arg)
             .ok_or(EvalError::TypeError("writeLines connection must be a filename"))?;
-        std::fs::write(&path, content)
+        crate::value::vfile::write_file(heap, &path, content.as_bytes())
             .map_err(|_| RSignal::Error(EvalError::TypeError("writeLines: cannot open file")))?;
     }
     heap.visible = false;
@@ -13661,7 +13657,9 @@ fn readlines_primitive(
     } else {
         let path = string_operand(heap, interner, con_arg)
             .ok_or(EvalError::TypeError("readLines connection must be a filename"))?;
-        std::fs::read_to_string(&path)
+        crate::value::vfile::read_file(heap, &path)
+            .map_err(|_| EvalError::TypeError("readLines: cannot open file"))
+            .and_then(|bytes| String::from_utf8(bytes).map_err(|_| EvalError::TypeError("readLines: invalid utf8")))
             .map_err(|_| RSignal::Error(EvalError::TypeError("readLines: cannot open file")))?
     };
     let mut lines: Vec<String> = content
@@ -23847,12 +23845,12 @@ fn open_file_connection(heap: &mut Heap, interner: &mut SymbolInterner, path: St
         .ok_or_else(|| RSignal::from(EvalError::Condition(format!("cannot open the connection to '{path}'"))))?;
     let readable = mode.starts_with('r');
     let read_buf = if readable {
-        std::fs::read(&path).unwrap_or_default()
+        crate::value::vfile::read_file(heap, &path).unwrap_or_default()
     } else {
         // Append modes preserve existing content exactly as GNU — only
         /// pure write modes truncate at open.
         if !mode.starts_with('a') {
-            let _ = std::fs::write(&path, b"");
+            let _ = crate::value::vfile::write_file(heap, &path, b"");
         }
         Vec::new()
     };
@@ -23921,28 +23919,41 @@ fn close_primitive(
 }
 
 /// Append bytes through a write connection — write-through to disk.
-fn connection_write(heap: &Heap, interner: &SymbolInterner, con: ValueId, bytes: &[u8]) -> Result<(), EvalError> {
+fn connection_write(heap: &mut Heap, interner: &SymbolInterner, con: ValueId, bytes: &[u8]) -> Result<(), EvalError> {
     // GNU accepts a filename in place of a connection — the write opens
     /// the path directly, truncating exactly as a freshly opened write
     /// connection would.
     if let Some(path) = string_operand(heap, interner, con) {
-        return std::fs::write(&path, bytes)
-            .map(|_| ())
+        return crate::value::vfile::write_file(heap, &path, bytes)
             .map_err(|_| EvalError::TypeError("invalid connection"));
     }
-    match with_conn(heap, con, |state| {
+    // The write-through target leaves the borrow of the connection cell
+    /// before mutation exactly as the ownership discipline requires —
+    /// virtual appends need the mutable heap.
+    let target = with_conn(heap, con, |state| {
         if state.open {
-            use std::io::Write;
-            let _ = std::fs::OpenOptions::new()
-                .append(true)
-                .open(&state.path)
-                .and_then(|mut f| f.write_all(bytes));
-            true
+            Some(state.path.clone())
         } else {
-            false
+            None
         }
-    }) {
-        Some(true) => Ok(()),
+    });
+    match target {
+        Some(Some(path)) => {
+            if heap.browser_files_enabled || heap.browser_files.contains_key(&path) {
+                let mut data = heap.browser_files.get(&path).cloned().unwrap_or_default();
+                data.extend_from_slice(bytes);
+                heap.browser_files.insert(path, data);
+            } else {
+                // state.path was resolved through the policy gate at open —
+                /// appends inherit the enforcement exactly as documented.
+                use std::io::Write;
+                let _ = std::fs::OpenOptions::new()
+                    .append(true)
+                    .open(&path)
+                    .and_then(|mut f| f.write_all(bytes));
+            }
+            Ok(())
+        }
         _ => Err(EvalError::TypeError("invalid connection")),
     }
 }

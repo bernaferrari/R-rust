@@ -134,6 +134,10 @@ pub struct Heap {
     /// The embedder's virtual file store — browser files persist
     /// bytes by path exactly as the wasm/android hosts consume them.
     pub browser_files: std::collections::HashMap<String, Vec<u8>>,
+    /// When set, the virtual store IS the filesystem exactly as the
+    /// browser facade's contract: reads never fall through to the host,
+    /// writes never escape — the confined-session semantics wasm needs.
+    pub browser_files_enabled: bool,
     /// Host filesystem confinement exactly as the facade's runtime path
     /// policy contracts: when set, absolute paths and paths escaping the
     /// virtual root are refused before any host access. None is the

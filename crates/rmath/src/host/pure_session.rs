@@ -132,6 +132,14 @@ impl PureSession {
         }
     }
 
+    /// Enable the browser file store exactly as the facade's contract —
+    /// the virtual store becomes the filesystem: reads never fall through
+    /// to the host, writes never escape. Host-side imports before or after
+    /// enabling are visible to R code immediately.
+    pub fn enable_browser_files(&mut self) {
+        self.session.heap.browser_files_enabled = true;
+    }
+
     /// Create a session confined to a virtual filesystem root exactly as
     /// the facade's browser sandbox contracts — host paths resolve
     /// through the policy gate before any filesystem access. The
@@ -1809,6 +1817,43 @@ cat(grconvertX(0:1, "user", "device"), grconvertY(0:1, "user", "device"), "\n")
         assert!(session.remove_file("/data/x.bin"));
         assert!(!session.remove_file("/data/x.bin"));
         assert_eq!(session.list_files(), vec!["/data/y.bin"]);
+    }
+
+    #[test]
+    fn browser_files_intercept_r_file_operations() {
+        let mut session = PureSession::new();
+        session.import_file("data/x.csv", b"1,2\n3,4\n");
+        session.enable_browser_files();
+        // R code reads the virtual bytes through the connection channel —
+        // no host file exists at this path on any host.
+        let out = session.eval_output("readLines('data/x.csv')").unwrap_or_else(|e| e);
+        assert!(out.contains("1,2"), "virtual read failed: {out}");
+        // Enabled mode never falls through to the host: a file that
+        // exists on the host but not virtually is invisible exactly as
+        // the browser contract requires. The probe file lives in the
+        // test harness's own temp scratch.
+        let probe = std::env::temp_dir().join("rport-fallthrough-probe.txt");
+        std::fs::write(&probe, b"host-secret\n").expect("probe write");
+        let probe_text = probe.to_string_lossy().replace('\'', "");
+        let missing = session
+            .eval_output(&format!("readLines('{probe_text}')"))
+            .unwrap_or_else(|e| e);
+        let _ = std::fs::remove_file(&probe);
+        assert!(
+            !missing.contains("host-secret"),
+            "fallthrough leak — host file content visible: {missing}"
+        );
+    }
+
+    #[test]
+    fn browser_files_writes_never_escape_enabled() {
+        let mut session = PureSession::new();
+        session.enable_browser_files();
+        // writeLines through a connection lands in the virtual store —
+        // exportable host-side immediately, exactly as the browser needs.
+        session.eval_output("con <- file('out.txt', 'w'); writeLines('hello', con); close(con)");
+        let exported = session.export_file("out.txt");
+        assert_eq!(exported.as_deref().ok().map(|b| String::from_utf8_lossy(b).to_string()), Some("hello\n".to_string()));
     }
 
     #[test]

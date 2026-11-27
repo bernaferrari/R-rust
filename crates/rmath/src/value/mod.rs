@@ -26,6 +26,7 @@ pub mod roots;
 pub mod parser;
 pub mod session;
 pub mod path_policy;
+pub mod vfile;
 
 pub use heap::Heap;
 pub use id::ValueId;
