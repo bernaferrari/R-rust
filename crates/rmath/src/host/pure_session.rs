@@ -732,6 +732,39 @@ mod tests {
     }
 
     #[test]
+    fn save_load_closure_roundtrips_environment_identity() {
+        let mut session = PureSession::new();
+        for step in [
+            "fun <- function(x, y = 2L) x + y",
+            "f <- tempfile()",
+            "save(fun, file = f)",
+            "rm(fun)",
+            "load(f, envir = .GlobalEnv)",
+        ] {
+            session.eval(step);
+        }
+        // The closure environment crosses as the T_GLOBALENV pseudo-
+        // reference exactly as GNU — the call resolves base primitives
+        // through the session chain, the whole point of the mapping.
+        let result = session.eval("fun(3L)");
+        assert!(
+            matches!(result.typed, RValue::Integer(Some(5)) | RValue::Real(Some(5.0))),
+            "typed: {:?}",
+            result.typed
+        );
+        let fun_sym = session.session.interner.intern_symbol("fun");
+        let genv = session.session.global_env;
+        let binding = crate::value::env::lookup_in_frame(&session.session.heap, genv, fun_sym)
+            .expect("fun binding");
+        match session.session.heap.object(binding.value) {
+            Some(crate::value::object::RObject::Closure { env, .. }) => {
+                assert_eq!(*env, genv, "closure env must be the session globalenv");
+            }
+            other => panic!("fun is not a closure: {other:?}"),
+        }
+    }
+
+    #[test]
     fn browser_files_roundtrip() {
         let mut session = PureSession::new();
         session.import_file("/data/x.bin", &[1, 2, 3]);

@@ -254,6 +254,11 @@ pub fn bootstrap_env(heap: &mut Heap, interner: &mut SymbolInterner) -> ValueId 
     // .GlobalEnv resolves to the user environment itself — the global
     /// exactly as GNU's top-level reference.
     let user = env::new_environment(heap, base);
+    // The serialization codec recognizes both identities — closures
+    // capture them by value and the wire carries them as pseudo-
+    // references exactly as GNU's globalenv/baseenv items.
+    heap.global_env_id = Some(user);
+    heap.base_env_id = Some(base);
     let genv_sym = interner.intern_symbol(".GlobalEnv");
     env::define(heap, base, genv_sym, user).expect(".GlobalEnv");
     // The global environment carries its printed name — GNU's

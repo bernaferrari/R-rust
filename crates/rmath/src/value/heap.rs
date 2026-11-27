@@ -108,6 +108,14 @@ pub struct Heap {
     pub sink_file: Option<std::fs::File>,
     /// Sink depth counter backing sink.number().
     pub sink_depth: i32,
+    /// The session's global environment identity — serialization
+    /// maps it to the T_GLOBALENV pseudo-reference exactly as GNU
+    /// writes globalenv, since the environment graph itself never
+    /// crosses the wire. Recorded at bootstrap.
+    pub global_env_id: Option<crate::value::id::ValueId>,
+    /// The base environment identity — same pseudo-reference
+    /// treatment for closures serialized inside base.
+    pub base_env_id: Option<crate::value::id::ValueId>,
     /// The loaded-package registry — package name to namespace
     /// environment exactly as GNU's loadedNamespaces. Synthetic
     /// registration seeds it today; RBG1 asset loading supplies

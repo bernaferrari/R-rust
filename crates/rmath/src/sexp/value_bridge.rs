@@ -1405,66 +1405,11 @@ mod tests {
         heap: &mut crate::value::heap::Heap,
         interner: &mut crate::value::intern::SymbolInterner,
     ) -> crate::value::id::ValueId {
-        use crate::value::env;
-        use crate::value::object::BuiltinId;
-        use crate::value::primitives::primitive_id_for_name;
-        // GNU's environment structure: primitives live in a base environment
-        /// exactly as package:base; user code evaluates in a globalenv whose
-        /// enclosure chain reaches base — ls() sees only user bindings and
-        /// definitions never pollute the base frame.
-        let base = env::new_environment(heap, crate::value::id::ValueId::EMPTY_ENV);
-        for &name in crate::value::primitives::primitive_names() {
-            let sym = interner.intern_symbol(name);
-            let prim = primitive_id_for_name(name).expect("mapped primitive");
-            let object = heap.alloc(RObject::Primitive(BuiltinId(prim)));
-            env::define(heap, base, sym, object).expect("define primitive");
-        }
-        // GNU's reserved typed-NA constants — bindings in base exactly as
-        // GNU's base namespace carries them.
-        let na_int = heap.alloc(RObject::Integer(vec![crate::value::object::NA_INTEGER]));
-        let sym = interner.intern_symbol("NA_integer_");
-        env::define(heap, base, sym, na_int).expect("NA_integer_");
-        let na_real = heap.alloc(RObject::Real(vec![f64::from_bits(crate::value::object::NA_REAL_BITS)]));
-        let sym = interner.intern_symbol("NA_real_");
-        env::define(heap, base, sym, na_real).expect("NA_real_");
-        // pi — GNU's base constant exactly as every other named numeric.
-        let pi_val = heap.alloc(RObject::Real(vec![std::f64::consts::PI]));
-        let sym = interner.intern_symbol("pi");
-        env::define(heap, base, sym, pi_val).expect("pi");
-        // .GlobalEnv resolves to the user environment itself — the global
-        /// exactly as GNU's top-level reference.
-        let user = env::new_environment(heap, base);
-        let genv_sym = interner.intern_symbol(".GlobalEnv");
-        env::define(heap, base, genv_sym, user).expect(".GlobalEnv");
-        // The global environment carries its printed name — GNU's
-        /// R_GlobalEnv exactly — through the slot attribute chain.
-        {
-            let name_sym = interner.intern_symbol("name");
-            let name_val = heap.alloc(RObject::String(vec![interner.intern_string("R_GlobalEnv")]));
-            let tag_obj = heap.alloc(RObject::Symbol { name: name_sym, value: ValueId::UNBOUND, internal: ValueId::NIL });
-            let chain = heap.alloc(RObject::Pairlist { car: name_val, cdr: ValueId::NIL, tag: tag_obj });
-            if let Some(slot) = heap.get_mut(user) {
-                slot.attrib = chain;
-            }
-        }
-        // version and R.version share one list object — identical() over
-        /// them is TRUE exactly as GNU's aliased constants.
-        {
-            let major = heap.alloc(RObject::String(vec![interner.intern_string("4")]));
-            let minor = heap.alloc(RObject::String(vec![interner.intern_string("4.0")]));
-            let version_list = heap.alloc(RObject::List(vec![major, minor]));
-            let vsym = interner.intern_symbol("version");
-            env::define(heap, base, vsym, version_list).expect("version");
-            let rsym = interner.intern_symbol("R.version");
-            env::define(heap, base, rsym, version_list).expect("R.version");
-            let version_string = heap.alloc(RObject::String(vec![interner.intern_string("R version 4.4.0 (rport)")]));
-            let vssym = interner.intern_symbol("R.version.string");
-            env::define(heap, base, vssym, version_string).expect("R.version.string");
-        }
-        let na_str = heap.alloc(RObject::String(vec![interner.intern_string("\0NA")]));
-        let sym = interner.intern_symbol("NA_character_");
-        env::define(heap, base, sym, na_str).expect("NA_character_");
-        user
+        // The canonical bootstrap carries the environment identity wiring
+        // the serialization codec depends on exactly — a stale copy here
+        // dropped global_env_id and closures lost their environments
+        // across save/load.
+        crate::value::session::bootstrap_env(heap, interner)
     }
 
     #[test]

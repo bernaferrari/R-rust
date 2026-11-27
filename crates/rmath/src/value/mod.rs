@@ -18,6 +18,7 @@ pub mod primitives;
 pub mod print;
 pub mod regex;
 pub mod rbg1;
+pub mod datasets;
 pub mod civil;
 pub mod roots;
 pub mod parser;
