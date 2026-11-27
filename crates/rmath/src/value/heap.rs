@@ -36,6 +36,11 @@ pub struct Heap {
     pub pending_warnings: Vec<String>,
     /// suppressWarnings dynamic state — warnings raised while true are dropped.
     pub warn_suppressed: bool,
+    /// gcinfo reporting state — the primitive returns the PRIOR value exactly as GNU.
+    pub gcinfo_state: bool,
+    /// gctorture state pair — prior-value returns exactly as GNU.
+    pub gctorture_state: bool,
+    pub gctorture2_step: i32,
     /// Active S3 dispatch entries — (generic, object, remaining classes) —
     /// pushed by UseMethod/NextMethod exactly as GNU's dispatch context.
     pub s3_dispatch: Vec<(String, crate::value::id::ValueId, Vec<String>)>,
