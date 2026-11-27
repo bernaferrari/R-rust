@@ -27,7 +27,6 @@ impl CliSession {
         if !legacy_requested {
             let mut session = r_embed::PureSession::new();
             session.enable_host_process_capabilities();
-            eprintln!("[rport] pure-Rust world");
             return Ok(CliSession::Pure(session));
         }
         let mut session = r_embed::RSession::new().map_err(|e| format!("{e}"))?;
