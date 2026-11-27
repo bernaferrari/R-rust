@@ -3645,7 +3645,9 @@ fn call_primitive_inner(
                     out.push(interner.intern_string("\0NA"));
                     continue;
                 }
-                match std::fs::canonicalize(path) {
+                match crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), path)
+                    .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::PermissionDenied, "path refused"))
+                    .and_then(|host| std::fs::canonicalize(&host)) {
                     Ok(resolved) => {
                         let text = resolved.to_string_lossy().to_string();
                         // macOS canonicalize surfaces the /private prefix —
@@ -4414,15 +4416,20 @@ fn call_primitive_inner(
             for i in 0..n {
                 let target = &targets[i % targets.len().max(1)];
                 let source = &sources[i % sources.len().max(1)];
-                let success = std::fs::read(source)
+                let success = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), source)
+                    .and_then(|host_source| std::fs::read(&host_source).ok())
                     .and_then(|bytes| {
                         use std::io::Write;
-                        std::fs::OpenOptions::new()
-                            .append(true)
-                            .open(target)
-                            .and_then(|mut f| f.write_all(&bytes))
+                        crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), target)
+                            .and_then(|host_target| {
+                                std::fs::OpenOptions::new()
+                                    .append(true)
+                                    .open(&host_target)
+                                    .and_then(|mut f| f.write_all(&bytes))
+                                    .ok()
+                            })
                     })
-                    .is_ok();
+                    .is_some();
                 out.push(success as i32);
             }
             Ok(heap.alloc(RObject::Logical(out)))
@@ -4436,11 +4443,15 @@ fn call_primitive_inner(
             for i in 0..n {
                 let f = &from[i % from.len().max(1)];
                 let t = &to[i % to.len().max(1)];
+                let host_t = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), t);
                 let success = if id.0 == FILE_LINK {
-                    std::fs::hard_link(f, t).is_ok()
+                    match (crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), f), host_t) {
+                        (Some(host_f), Some(host_t)) => std::fs::hard_link(&host_f, &host_t).is_ok(),
+                        _ => false,
+                    }
                 } else {
                     #[cfg(unix)]
-                    { std::os::unix::fs::symlink(f, t).is_ok() }
+                    { host_t.map(|ht| std::os::unix::fs::symlink(f, &ht).is_ok()).unwrap_or(false) }
                     #[cfg(not(unix))]
                     { false }
                 };
