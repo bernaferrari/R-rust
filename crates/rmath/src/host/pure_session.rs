@@ -1285,6 +1285,23 @@ cat("after|", paste(par("mfg"), collapse=","), "|",
     }
 
     #[test]
+    fn pretty_matches_gnu_tick_sequences() {
+        let mut session = PureSession::new();
+        let out = session.eval(r#"
+cat(paste(pretty(1:100), collapse=","), "\n", sep="")
+cat(paste(pretty(c(0,1)), collapse=","), "\n", sep="")
+cat(paste(pretty(1:10), collapse=","), "\n", sep="")
+cat(paste(pretty(c(-3,3), n=4), collapse=","), "\n", sep="")
+cat(length(pretty(numeric(0))), "\n", sep="")
+"#);
+        assert_eq!(
+            out.stdout,
+            "0,20,40,60,80,100\n0,0.2,0.4,0.6,0.8,1\n0,2,4,6,8,10\n-4,-2,0,2,4\n0\n",
+            "GNU canonical tick sequences"
+        );
+    }
+
+    #[test]
     fn data_loads_datasets_into_the_calling_environment() {
         let mut session = PureSession::new();
         let result = session.eval("data(iris)");
