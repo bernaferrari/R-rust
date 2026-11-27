@@ -959,6 +959,38 @@ plot.new(); emit("mfrow2")
     }
 
     #[test]
+    fn graphics_near_i32_max_values_are_safe() {
+        // GNU's overflow-hardened behavior exactly as the oracle pins:
+        /// huge-but-valid grids step without overflow, and out-of-range
+        /// mfrow rejects atomically with the exact error text.
+        let mut session = PureSession::new();
+        let script = r#"
+par(mfrow=c(46340,46340)); par(mfg=c(46340,46340))
+cat("large|", paste(par("mfg"), collapse=","), "\n", sep="")
+par(mfrow=c(1,2147483647))
+cat("page|", par("page"), "|mfg|", paste(par("mfg"), collapse=","), "\n", sep="")
+par(mfg=c(1,2147483647))
+cat("max-mfg|", paste(par("mfg"), collapse=","), "|page|", par("page"), "\n", sep="")
+"#;
+        let expected = "large|46340,46340,46340,46340\npage|TRUE|mfg|1,2147483647,1,2147483647\nmax-mfg|1,2147483647,1,2147483647|page|TRUE\n";
+        assert_eq!(session.eval(script).stdout, expected, "large values");
+
+        let mut session = PureSession::new();
+        let wrap_script = r#"
+par(mfrow=c(46340,46340)); par(mar=rep(0,4))
+cat("start|", paste(par("mfg"), collapse=","), "\n", sep="")
+plot.new(); cat("plot1|", paste(par("mfg"), collapse=","), "\n", sep="")
+plot.new(); cat("plot2|", paste(par("mfg"), collapse=","), "\n", sep="")
+tryCatch(par(mfrow=c(50000,50000)), error=function(e)
+  cat("overflow-error|", conditionMessage(e), "\n", sep=""))
+cat("after|", paste(par("mfg"), collapse=","), "|",
+    paste(par("mfrow"), collapse=","), "\n", sep="")
+"#;
+        let wrap_expected = "start|46340,46340,46340,46340\nplot1|1,1,46340,46340\nplot2|1,2,46340,46340\noverflow-error|invalid value specified for graphical parameter \"mfrow\"\nafter|1,2,46340,46340|46340,46340\n";
+        assert_eq!(session.eval(wrap_script).stdout, wrap_expected, "wrap safety");
+    }
+
+    #[test]
     fn data_loads_datasets_into_the_calling_environment() {
         let mut session = PureSession::new();
         let result = session.eval("data(iris)");
