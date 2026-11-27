@@ -108,6 +108,14 @@ pub struct Heap {
     pub sink_file: Option<std::fs::File>,
     /// Sink depth counter backing sink.number().
     pub sink_depth: i32,
+    /// The live evaluation recursion depth — the resource limit
+    /// embedders configure exactly as the legacy world's guard.
+    pub eval_depth: usize,
+    /// The configured depth ceiling; zero selects the GNU default.
+    pub max_eval_depth: usize,
+    /// The host-configured execution deadline, polled alongside
+    /// cancellation at eval entry exactly as the time limit needs.
+    pub eval_deadline: Option<std::time::Instant>,
     /// Cooperative cancellation cell — the host's token observes
     /// SIGINT exactly as the legacy world's does; eval polls it at entry.
     pub cancellation: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,

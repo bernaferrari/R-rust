@@ -79,7 +79,45 @@ impl From<EvalError> for RSignal {
 /// chain, forcing promise bindings. Language nodes are calls: the operator
 /// evaluates to a primitive or closure, arguments become promises bound to
 /// the closure's formals, and the body evaluates in the application frame.
+/// Evaluate one expression node in the given environment — the single
+/// recursion point of the tree-walking evaluator. The wrapper carries the
+/// depth resource limit: every recursive descent passes through here, so
+/// the guard decrements exactly once per frame however the node exits.
 pub fn eval(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    expr: ValueId,
+    env_id: ValueId,
+) -> EvalResult {
+    // GNU's nested-too-deeply ceiling — options(expressions=) in shape,
+    /// the host's resource limit in authority. Zero configures the GNU
+    /// default of 500 exactly as the facade's resource contract pins.
+    let ceiling = if heap.max_eval_depth == 0 {
+        500
+    } else {
+        heap.max_eval_depth
+    };
+    if heap.eval_depth >= ceiling {
+        return Err(RSignal::from(EvalError::Condition(
+            "evaluation nested too deeply: infinite recursion / options(expressions=)?".to_string(),
+        )));
+    }
+    // The deadline shares the cancellation poll site — one cheap check
+    /// pair per node against the tree walk's cost.
+    if let Some(deadline) = heap.eval_deadline {
+        if std::time::Instant::now() >= deadline {
+            return Err(RSignal::from(EvalError::Condition(
+                "evaluation time limit exceeded".to_string(),
+            )));
+        }
+    }
+    heap.eval_depth += 1;
+    let result = eval_node(heap, interner, expr, env_id);
+    heap.eval_depth -= 1;
+    result
+}
+
+fn eval_node(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     expr: ValueId,

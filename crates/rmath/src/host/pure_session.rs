@@ -138,6 +138,29 @@ impl PureSession {
             .collect()
     }
 
+    /// Configure the embedder's resource limits — the facade's
+    /// contract exactly: eval-depth ceiling (zero for the GNU 500),
+    /// wall-clock execution deadline derived from the millisecond
+        /// budget, memory caps pending the heap's admission control.
+    pub fn set_resource_limits(&mut self, limits: super::values::RResourceLimits) {
+        self.session.heap.max_eval_depth = limits.max_eval_depth as usize;
+        self.session.heap.eval_deadline = if limits.max_execution_time_ms == 0 {
+            None
+        } else {
+            Some(
+                std::time::Instant::now()
+                    + std::time::Duration::from_millis(limits.max_execution_time_ms),
+            )
+        };
+    }
+
+    /// Live heap occupancy for the embedder's memory pressure
+    /// instrumentation — node count and payload bytes exactly as the
+    /// facade's memory usage surface reports them.
+    pub fn heap_live_nodes(&self) -> usize {
+        self.session.heap.live_count()
+    }
+
     /// Process-capability opt-in — a no-op in the pure world, where the
     /// capability surface has no legacy process state to unlock.
     pub fn enable_host_process_capabilities(&mut self) {}
@@ -249,6 +272,62 @@ mod tests {
         let token = crate::host::facade::HostCancellationToken::new();
         let result = session.eval_result_cancellable("40 + 2", &token);
         assert!(result.is_ok(), "evaluation completes: {result:?}");
+    }
+
+    #[test]
+    fn depth_limit_catches_infinite_recursion() {
+        let mut session = PureSession::new();
+        let result = session.eval("f <- function() f()\nf()");
+        match result.typed {
+            RValue::Error(message) => {
+                assert!(
+                    message.contains("nested too deeply"),
+                    "depth error text: {message}"
+                );
+            }
+            other => panic!("expected depth error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn shallow_recursion_stays_within_the_default_ceiling() {
+        let mut session = PureSession::new();
+        // Depth-20 self-recursion through the fibonacci shape — far inside
+        // the 500 default exactly as ordinary consumer code is.
+        let result = session.eval(
+            "fib <- function(n) if (n < 2) n else fib(n - 1) + fib(n - 2)\nfib(10)",
+        );
+        assert_eq!(result.typed, RValue::Real(Some(55.0)));
+    }
+
+    #[test]
+    fn execution_deadline_aborts_unbounded_loops() {
+        let mut session = PureSession::new();
+        session.set_resource_limits(crate::host::values::RResourceLimits {
+            max_eval_depth: 0,
+            max_execution_time_ms: 50,
+            max_alloc_bytes: 0,
+            max_arena_nodes: 0,
+        });
+        // The deadline recomputes at configuration time; an unbounded loop
+        // exceeds it within milliseconds exactly as a runaway script does.
+        let result = session.eval("while (TRUE) 1");
+        match result.typed {
+            RValue::Error(message) => {
+                assert!(
+                    message.contains("time limit"),
+                    "deadline error text: {message}"
+                );
+            }
+            other => panic!("expected deadline error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn heap_occupancy_reports_live_nodes() {
+        let mut session = PureSession::new();
+        session.eval("x <- 1:100");
+        assert!(session.heap_live_nodes() > 0);
     }
 
     #[test]
