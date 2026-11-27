@@ -47,7 +47,9 @@ for (const kind of ['numeric', 'complex']) {
     catch (error) { message = error.message; }
     if (!message.includes(`error code -4 from Lapack routine '${factorization}()'`)) throw new Error(`internal empty ${kind} rcond: ${message}`);
 }
-const png = runtime.render_png("plot(x=1:3,y=3:1,col='red')", 100, 100);
+// 320x240: GNU-faithful margins validation rejects smaller canvases exactly as
+// desktop R errors "figure margins too large" on tiny devices.
+const png = runtime.render_png("plot(x=1:3,y=3:1,col='red')", 320, 240);
 if (png[0] !== 137 || png[1] !== 80 || png.length < 100) throw new Error('render bridge');
 runtime.eval_checked("x<-seq(0,1,length.out=15); y<-sin(5*x)+x^2; f<-loess(y~x); stopifnot(abs(f$fitted[1]+.02619684)<1e-8)");
 const smooth = runtime.render_png("plot(x,y,main='LOESS μ'); lines(x,predict(f),col='red',lwd=2)",320,240);
