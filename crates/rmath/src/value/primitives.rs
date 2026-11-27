@@ -16842,7 +16842,7 @@ fn color_ramp_primitive(
 /// 657-entry database, #RRGGBB/#RRGGBBAA hex literally, exactly as
 /// colors.c's col2name.
 fn resolve_named_color(name: &str) -> Option<(u32, u32, u32, u32)> {
-    use crate::library::grdevices::colors::names_table::COLOR_DATA;
+    use crate::value::support::colors::COLOR_DATA;
     if let Some(hex) = name.strip_prefix('#') {
         let digits = hex.len();
         if digits == 6 || digits == 8 {
@@ -16875,7 +16875,7 @@ fn colors_primitive(
     _args: ValueId,
     _caller_env: ValueId,
 ) -> EvalResult {
-    use crate::library::grdevices::colors::names_table::COLOR_DATA;
+    use crate::value::support::colors::COLOR_DATA;
     let out: Vec<super::intern::InternedStr> = COLOR_DATA.iter().map(|entry| {
         let name = std::str::from_utf8(entry.name).unwrap_or("").trim_end_matches('\0');
         interner.intern_string(name)

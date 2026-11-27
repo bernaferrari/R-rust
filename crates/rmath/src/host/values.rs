@@ -1,5 +1,4 @@
 #![warn(unused_unsafe)]
-use super::*;
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -77,34 +76,7 @@ impl Default for RResourceLimits {
     }
 }
 
-impl RResult {
-    pub(crate) fn with_error_output(mut self) -> Self {
-        if let RValue::Error(message) = &self.typed {
-            let message = message.trim_end();
-            self.output = if message.starts_with("Error") {
-                message.to_string()
-            } else {
-                // Prefer the fully rendered top-level error text (with call
-                // attribution, "Error in <call> : ...") when it was rendered
-                // by this exact error — mirroring what Rscript prints on
-                // stderr. The last-rendered check rejects stale renders left
-                // in the error buffer by earlier, already-caught errors.
-                let rendered = crate::mainutils::errors::try_last_rendered_message(message);
-                match rendered.as_deref().map(str::trim_end) {
-                    Some(rendered)
-                        if rendered.starts_with("Error") && rendered.contains(message) =>
-                    {
-                        rendered.to_string()
-                    }
-                    _ => format!("Error: {message}"),
-                }
-                .trim_end()
-                .to_string()
-            };
-        }
-        self
-    }
-}
+
 
 /// Owned representation of evaluated R values suitable for FFI boundaries.
 #[derive(Debug, Clone, PartialEq)]
@@ -154,53 +126,7 @@ pub struct RComplexValue {
     pub imaginary: f64,
 }
 
-impl From<SexpComplex> for RComplexValue {
-    fn from(value: SexpComplex) -> Self {
-        RComplexValue {
-            real: value.real,
-            imaginary: value.imaginary,
-        }
-    }
-}
-
 impl RValue {
-    pub fn from_sexp(sexp: Sexp<'_>) -> Self {
-        match sexp.clone().to_owned_value() {
-            Ok(value) => RValue::from_owned_value(value),
-            Err(_error) => RValue::Unsupported {
-                type_name: format!("invalid {}", sexp.typeof_().0),
-            },
-        }
-    }
-
-    pub(crate) fn from_owned_value(value: SexpValue) -> Self {
-        match value {
-            SexpValue::Null => RValue::Null,
-            SexpValue::Logical(value) => RValue::Logical(value),
-            SexpValue::Integer(value) => RValue::Integer(value),
-            SexpValue::Real(value) => RValue::Real(value),
-            SexpValue::LogicalVector(values) => RValue::LogicalVector(values),
-            SexpValue::IntegerVector(values) => RValue::IntegerVector(values),
-            SexpValue::RealVector(values) => RValue::RealVector(values),
-            SexpValue::StringVector(values) => RValue::StringVector(values),
-            SexpValue::RawVector(values) => RValue::RawVector(values),
-            SexpValue::ComplexVector(values) => RValue::ComplexVector(
-                values
-                    .into_iter()
-                    .map(|value| value.map(RComplexValue::from))
-                    .collect(),
-            ),
-            SexpValue::List(values) => {
-                RValue::List(values.into_iter().map(RValue::from_owned_value).collect())
-            }
-            SexpValue::Attributed { value, metadata } => RValue::Attributed {
-                value: Box::new(RValue::from_owned_value(*value)),
-                metadata: RMetadata::from(metadata),
-            },
-            SexpValue::Unsupported { type_name } => RValue::Unsupported { type_name },
-        }
-    }
-
     pub(crate) fn numeric_scalar_value(&self) -> f64 {
         match self {
             RValue::Integer(Some(value)) => *value as f64,
@@ -227,77 +153,4 @@ impl RValue {
             _ => 0.0,
         }
     }
-}
-
-impl From<SexpAttribute> for RAttribute {
-    fn from(attribute: SexpAttribute) -> Self {
-        RAttribute {
-            name: attribute.name,
-            value: RValue::from_owned_value(attribute.value),
-        }
-    }
-}
-
-impl From<SexpMetadata> for RMetadata {
-    fn from(metadata: SexpMetadata) -> Self {
-        RMetadata {
-            names: metadata.names,
-            dim: metadata.dim,
-            class: metadata.class,
-            levels: metadata.levels,
-            attributes: metadata
-                .attributes
-                .into_iter()
-                .map(RAttribute::from)
-                .collect(),
-        }
-    }
-}
-
-/// Supported mathematical functions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RMathFunc {
-    Abs,
-    Sqrt,
-    Ceil,
-    Floor,
-    Trunc,
-    Exp,
-    Log,
-    Log2,
-    Log10,
-    Sin,
-    Cos,
-    Tan,
-    Asin,
-    Acos,
-    Atan,
-    Gamma,
-    Lgamma,
-}
-
-/// Supported Bessel function families.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RBesselFunc {
-    J,
-    Y,
-    I,
-    K,
-}
-
-// ---------------------------------------------------------------------------
-// Free functions for simple operations (no session needed)
-// ---------------------------------------------------------------------------
-
-/// Compute `dnorm(x, mean, sd)`.
-pub fn dnorm_free(x: f64, mean: f64, sd: f64) -> f64 {
-    crate::nmath::dist::normal::dnorm(x, mean, sd, 0)
-}
-
-pub fn pnorm_free(x: f64, mean: f64, sd: f64) -> f64 {
-    crate::nmath::dist::normal::pnorm(x, mean, sd, 1, 0)
-}
-
-pub fn qnorm_free(p: f64, mean: f64, sd: f64) -> f64 {
-    crate::nmath::dist::normal::qnorm(p, mean, sd, 1, 0)
 }

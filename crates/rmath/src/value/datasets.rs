@@ -11,7 +11,7 @@ use super::intern::SymbolInterner;
 
 /// The database byte image — the canonical asset, shared with the legacy
 /// world's copy rather than duplicated.
-pub(crate) const DATABASE: &[u8] = include_bytes!("../library/datasets/assets/Rdata.rdb");
+pub(crate) const DATABASE: &[u8] = include_bytes!("assets/datasets/Rdata.rdb");
 
 /// Object inventory — name, database offset, slice length — generated
 /// from the pinned export exactly as the legacy world's table.

@@ -1,1 +1,0 @@
-function(x=unit(.5,'npc'),y=unit(.5,'npc'),r=unit(.5,'snpc'),default.units='npc',name=NULL,gp=gpar(),vp=NULL) { z<-circleGrob(x=x,y=y,r=r,default.units=default.units,name=name,gp=gp,vp=vp); grid.draw(z); invisible(z) }

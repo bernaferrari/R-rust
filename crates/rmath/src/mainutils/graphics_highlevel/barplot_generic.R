@@ -1,1 +1,0 @@
-function(height, ...) UseMethod("barplot")

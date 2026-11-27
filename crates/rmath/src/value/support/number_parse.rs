@@ -264,8 +264,8 @@ mod tests {
             if expected.is_nan() {
                 assert!(actual.is_nan(), "{:?}", String::from_utf8_lossy(&input));
                 assert_eq!(
-                    crate::sexp::ffi::R_IsNA(actual),
-                    crate::sexp::ffi::R_IsNA(expected)
+                    is_na_bits(actual),
+                    is_na_bits(expected)
                 );
             } else {
                 assert_eq!(
@@ -296,7 +296,7 @@ mod tests {
             b"1.9999999999999998",
         ] {
             let result = parse_number(input, b'.', false, 1);
-            assert!(crate::sexp::ffi::R_IsNA(result.value));
+            assert!(is_na_bits(result.value));
             assert_eq!(result.consumed, 0);
             assert!(!result.accuracy_loss);
             let result = parse_number(input, b'.', false, NA_INTEGER);
@@ -324,7 +324,7 @@ mod tests {
         assert_eq!(comma.value, -125.0);
         assert_eq!(comma.consumed, 9);
         let na = parse_number(b" \tNArest", b'.', true, 0);
-        assert!(crate::sexp::ffi::R_IsNA(na.value));
+        assert!(is_na_bits(na.value));
         assert_eq!(na.consumed, 4);
         assert_eq!(parse_number(b"+NA", b'.', true, 0).consumed, 0);
         assert_eq!(parse_number(b"1\0suffix", b'.', false, 0).consumed, 1);
@@ -341,4 +341,11 @@ pub(crate) fn parse_double_str(s: &str) -> Option<f64> {
     }
     let parsed = parse_number(trimmed.as_bytes(), b'.', false, 0);
     (parsed.consumed == trimmed.len()).then_some(parsed.value)
+}
+
+/// NA bit-pattern check for the numeric parser's tests — NaN with GNU's
+/// payload exactly as value::object::NA_REAL_BITS encodes.
+#[cfg(test)]
+fn is_na_bits(x: f64) -> bool {
+    x.is_nan() && (x.to_bits() as u32) == 0x07A2
 }

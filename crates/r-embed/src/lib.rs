@@ -20,11 +20,9 @@
 // session. This crate is the stable re-export boundary embedders depend on.
 pub use rmath::host::{
     AndroidRuntimePaths, EvalOutput, HostCancellationToken as CancellationToken, RArenaStats,
-    RAttribute, RComplexValue, RMemoryUsage, RMetadata, RPackageInfo, RResourceLimits, RRuntimeInfo,
-    RSession, RSessionError, RValue, RWorkspaceReservation, RuntimePathPolicy, RuntimePaths,
-    ValueHandle,
+    RAttribute, RComplexValue, RMetadata, RPackageInfo, RResourceLimits, RRuntimeInfo,
+    RSessionError, RValue, RuntimePaths,
 };
-pub use rmath::host::facade::{ReadGuard, WriteGuard};
 pub use rmath::host::pure_session::{
     PureResourceLimits, PureRuntimeInfo, PureSession,
 };

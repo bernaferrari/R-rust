@@ -889,14 +889,14 @@ impl PureSession {
 /// base-package inventory GNU R installs, minus the internal compiler
 /// assets that never surface as a user package.
 const BAKED_PACKAGES: &[(&str, &str)] = &[
-    ("datasets", include_str!("../library/datasets/assets/DESCRIPTION")),
-    ("methods", include_str!("../library/methods/portable/assets/DESCRIPTION")),
-    ("stats", include_str!("../library/portable_package/assets/stats/DESCRIPTION")),
-    ("utils", include_str!("../library/portable_package/assets/utils/DESCRIPTION")),
-    ("graphics", include_str!("../library/portable_package/assets/graphics/DESCRIPTION")),
-    ("grDevices", include_str!("../library/portable_package/assets/grDevices/DESCRIPTION")),
-    ("stats4", include_str!("../library/portable_package/assets/stats4/DESCRIPTION")),
-    ("tools", include_str!("../library/portable_package/assets/tools/DESCRIPTION")),
+    ("datasets", include_str!("../value/assets/datasets/DESCRIPTION")),
+    ("methods", include_str!("../value/assets/methods/DESCRIPTION")),
+    ("stats", include_str!("../value/assets/packages/stats/DESCRIPTION")),
+    ("utils", include_str!("../value/assets/packages/utils/DESCRIPTION")),
+    ("graphics", include_str!("../value/assets/packages/graphics/DESCRIPTION")),
+    ("grDevices", include_str!("../value/assets/packages/grDevices/DESCRIPTION")),
+    ("stats4", include_str!("../value/assets/packages/stats4/DESCRIPTION")),
+    ("tools", include_str!("../value/assets/packages/tools/DESCRIPTION")),
 ];
 
 /// Read one field of a Debian-control-format DESCRIPTION exactly as the

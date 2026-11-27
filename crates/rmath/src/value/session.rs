@@ -436,13 +436,13 @@ pub fn bootstrap_env(heap: &mut Heap, interner: &mut SymbolInterner) -> ValueId 
 fn register_baked_packages(heap: &mut Heap, interner: &mut SymbolInterner, base: ValueId) {
     use std::io::Read;
     const PACKAGES: &[(&str, &[u8])] = &[
-        ("stats", include_bytes!("../library/portable_package/assets/stats/exports.rds")),
-        ("utils", include_bytes!("../library/portable_package/assets/utils/exports.rds")),
-        ("graphics", include_bytes!("../library/portable_package/assets/graphics/exports.rds")),
-        ("grDevices", include_bytes!("../library/portable_package/assets/grDevices/exports.rds")),
-        ("stats4", include_bytes!("../library/portable_package/assets/stats4/exports.rds")),
-        ("tools", include_bytes!("../library/portable_package/assets/tools/exports.rds")),
-        ("methods", include_bytes!("../library/methods/portable/assets/exports.rds")),
+        ("stats", include_bytes!("assets/packages/stats/exports.rds")),
+        ("utils", include_bytes!("assets/packages/utils/exports.rds")),
+        ("graphics", include_bytes!("assets/packages/graphics/exports.rds")),
+        ("grDevices", include_bytes!("assets/packages/grDevices/exports.rds")),
+        ("stats4", include_bytes!("assets/packages/stats4/exports.rds")),
+        ("tools", include_bytes!("assets/packages/tools/exports.rds")),
+        ("methods", include_bytes!("assets/methods/exports.rds")),
     ];
     for &(package, gzipped) in PACKAGES {
         let namespace = env::new_environment(heap, base);
