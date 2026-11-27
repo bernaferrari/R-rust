@@ -275,6 +275,32 @@ impl PureSession {
     /// whether evaluation is live, the library search roots and the
     /// scratch directory. The pure world carries no library roots yet —
     /// the packages arc owns that surface.
+    /// Install the device raster geometry exactly as an embedder's
+    /// surface resize does — the layout cascade and the scene both
+    /// recompute against the new page.
+    pub fn set_device_size(&mut self, width: f64, height: f64) {
+        self.session.heap.graphics.set_device_size(width, height);
+    }
+
+    /// The frame's display list as engine-encoded bytes — the
+    /// backend-neutral scene embedders replay or diff. Serialization
+    /// is the engine's own wire format exactly as the old world's
+    /// renderplot snapshots.
+    pub fn scene_snapshot(&self) -> Vec<u8> {
+        self.session
+            .heap
+            .graphics
+            .scene()
+            .encode()
+            .unwrap_or_default()
+    }
+
+    /// How many pages the device has begun — embedders detect page
+    /// turns across evals since the resetting display list cannot.
+    pub fn page_count(&self) -> u64 {
+        u64::from(self.session.heap.graphics.page_count())
+    }
+
     pub fn runtime_info(&self) -> PureRuntimeInfo {
         PureRuntimeInfo {
             is_active: true,
@@ -1211,6 +1237,19 @@ cat("after|", paste(par("mfg"), collapse=","), "|",
             .filter(|c| matches!(c, PathCommand::MoveTo(_, _)))
             .count();
         assert_eq!(moves, 2, "plus is two strokes");
+    }
+
+    #[test]
+    fn scene_snapshot_roundtrips_through_the_engine_codec() {
+        let mut session = PureSession::new();
+        session.set_device_size(640.0, 480.0);
+        session.eval("plot.new(); plot.window(c(0,1), c(0,1)); lines(c(0,1), c(0,1))");
+        let bytes = session.scene_snapshot();
+        assert!(!bytes.is_empty(), "snapshot encodes");
+        let scene = r_graphics_engine::Scene::decode(&bytes).expect("decodes");
+        assert_eq!(scene.dimensions(), (640, 480), "device geometry carried");
+        assert!(scene.operations().len() >= 2, "clear plus the polyline");
+        assert_eq!(session.page_count(), 1, "one page begun");
     }
 
     #[test]
