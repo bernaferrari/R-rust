@@ -17721,36 +17721,18 @@ fn parse_primitive(
     parse_source(heap, interner, &source)
 }
 
-/// Parse source text into the imported expression vector — the thread-local
-/// session parse and bridge import both dget and the parse primitive share.
+/// Parse source text into the expression vector through the new world's
+/// own parser — no legacy session, no bridge import: the migration's
+/// canonical path. Syntax errors surface as conditions exactly as GNU's
+/// parse() raises them.
 fn parse_source(heap: &mut Heap, interner: &mut SymbolInterner, source: &str) -> EvalResult {
-    use std::cell::RefCell;
-    thread_local! {
-        static PARSE_SESSION: RefCell<Option<crate::sexp::session::RSession>> = const { RefCell::new(None) };
-    }
     // Empty source parses to the empty expression vector exactly as GNU.
     if source.trim().is_empty() {
         return Ok(heap.alloc(RObject::Expression(Vec::new())));
     }
-    let imported = PARSE_SESSION.with(|cell| {
-        let mut slot = cell.borrow_mut();
-        if slot.is_none() {
-            *slot = Some(crate::sexp::session::RSession::new());
-        }
-        let session = slot.as_ref().expect("session initialized");
-        let expressions = session.with_active(|| {
-            crate::eval::parser::parse_active_expressions(source).unwrap_or_default()
-        });
-        let mut bridge = crate::sexp::value_bridge::ValueBridge::new();
-        let mut out = Vec::new();
-        for expr in &expressions {
-            if let Ok(id) = bridge.import(heap, interner, expr) {
-                out.push(id);
-            }
-        }
-        out
-    });
-    Ok(heap.alloc(RObject::Expression(imported)))
+    let expressions = crate::value::parser::parse_native_expressions(source, heap, interner)
+        .map_err(|error| RSignal::from(EvalError::Condition(Box::leak(error.0.into_boxed_str()).to_string())))?;
+    Ok(heap.alloc(RObject::Expression(expressions)))
 }
 
 /// Is this object a classed factor — the class chain carrying "factor"
