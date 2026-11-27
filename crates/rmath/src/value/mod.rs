@@ -25,6 +25,7 @@ pub mod civil;
 pub mod roots;
 pub mod parser;
 pub mod session;
+pub mod support;
 pub mod path_policy;
 pub mod vfile;
 

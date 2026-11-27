@@ -19,21 +19,9 @@ mod simple_case;
 mod wctype_tables;
 pub(crate) use simple_case::{simple_lower, simple_upper};
 
-/// GNU R's portable wide-character alphabetic class. Its table includes
-/// non-ASCII decimal digits, as R's UTF-8 identifier rules require.
-pub(crate) fn identifier_alpha(ch: char) -> bool {
-    if ch.is_ascii() {
-        return ch.is_ascii_alphabetic();
-    }
-    let value = ch as u32;
-    let ranges = identifier_table::R_ALPHA;
-    let index = ranges.partition_point(|&(_, last)| last < value);
-    ranges.get(index).is_some_and(|&(first, _)| first <= value)
-}
-
-pub(crate) fn identifier_alnum(ch: char) -> bool {
-    ch.is_ascii_digit() || identifier_alpha(ch)
-}
+/// Canonical implementations live in the pure world
+/// (value::support::identifier); re-exported until the old world's deletion.
+pub(crate) use crate::value::support::identifier::{identifier_alpha, identifier_alnum};
 
 // -----------------------------------------------------------------------
 // Type aliases
@@ -582,7 +570,8 @@ mod case_tests;
 
 #[cfg(test)]
 mod identifier_tests {
-    use super::{identifier_alnum, identifier_alpha, identifier_table::R_ALPHA};
+    use super::{identifier_alnum, identifier_alpha};
+    use crate::value::support::identifier::R_ALPHA;
 
     #[test]
     fn identifier_class_matches_generated_range_boundaries() {

@@ -23791,7 +23791,7 @@ fn weighted_sample_indices_pure(
             // ProbSampleReplace exactly: descending heapsort with the
             /// permutation carried, cumulative in place, linear scan.
             let mut perm: Vec<i32> = (1..=n as i32).collect();
-            crate::mainutils::sort::revsort_with_perm(&mut p, &mut perm, n);
+            crate::value::support::sort::revsort_with_perm(&mut p, &mut perm, n);
             for i in 1..n {
                 p[i] += p[i - 1];
             }
@@ -23814,7 +23814,7 @@ fn weighted_sample_indices_pure(
         // ProbSampleNoReplace exactly: descending heapsort, totalmass
         /// depletion with the p/perm shift-down compaction.
         let mut perm: Vec<i32> = (1..=n as i32).collect();
-        crate::mainutils::sort::revsort_with_perm(&mut p, &mut perm, n);
+        crate::value::support::sort::revsort_with_perm(&mut p, &mut perm, n);
         let mut totalmass = 1.0_f64;
         let mut out = Vec::with_capacity(size);
         for i in 0..size {

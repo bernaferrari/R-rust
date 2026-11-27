@@ -207,7 +207,7 @@ impl Lexer {
         }
 
         // Identifiers and keywords
-        if crate::mainutils::rlocale::identifier_alpha(ch) || ch == '.' || ch == '_' {
+        if crate::value::support::identifier::identifier_alpha(ch) || ch == '.' || ch == '_' {
             return self.read_ident();
         }
 
@@ -444,7 +444,7 @@ impl Lexer {
             // Use the bounded GNU numeric parser for accepted hexadecimal
             // syntax, including integers longer than u64. The lexer above
             // remains responsible for the source-language token boundaries.
-            let Some(v) = crate::mainutils::coerce::parse_double_str(&s) else {
+            let Some(v) = crate::value::support::number_parse::parse_double_str(&s) else {
                 return Token::Invalid;
             };
             if self.peek_char() == Some('i') {
@@ -497,7 +497,7 @@ impl Lexer {
         // NumericValue in GNU gram.y uses R_atof for source literals too.
         // Its long-mantissa rounding and underflow differ from C strtod and
         // Rust's correctly rounded parser; reuse our bounded GNU seam.
-        let Some(v) = crate::mainutils::coerce::parse_double_str(&s) else {
+        let Some(v) = crate::value::support::number_parse::parse_double_str(&s) else {
             return Token::Invalid;
         };
         if self.peek_char() == Some('i') {
@@ -743,7 +743,7 @@ impl Lexer {
     pub(crate) fn read_ident(&mut self) -> Token {
         let mut s = String::new();
         while let Some(ch) = self.peek_char() {
-            if crate::mainutils::rlocale::identifier_alnum(ch) || ch == '.' || ch == '_' {
+            if crate::value::support::identifier::identifier_alnum(ch) || ch == '.' || ch == '_' {
                 s.push(ch);
                 self.advance();
             } else {
