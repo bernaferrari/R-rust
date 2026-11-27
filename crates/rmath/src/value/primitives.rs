@@ -1304,15 +1304,16 @@ fn call_primitive_inner(
             }
             let mut created = true;
             for path in string_vec(heap, interner, path_arg) {
-                let result = match crate::value::path_policy::resolve_host_path(
+                let host_path = crate::value::path_policy::resolve_host_path(
                     heap.path_policy.as_ref(),
                     &path,
-                ) {
+                );
+                let result = match &host_path {
                     Some(host) => {
                         if recursive {
-                            std::fs::create_dir_all(&host)
+                            std::fs::create_dir_all(host)
                         } else {
-                            std::fs::create_dir(&host)
+                            std::fs::create_dir(host)
                         }
                     }
                     None => Err(std::io::Error::new(
@@ -1328,7 +1329,9 @@ fn call_primitive_inner(
                     {
                         use std::os::unix::fs::PermissionsExt;
                         let mode = 0o777 & !heap.umask_state & 0o7777;
-                        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode as u32));
+                        if let Some(host) = &host_path {
+                            let _ = std::fs::set_permissions(host, std::fs::Permissions::from_mode(mode as u32));
+                        }
                     }
                 }
             }
@@ -1384,7 +1387,14 @@ fn call_primitive_inner(
                     out.push(interner.intern_string(&text));
                 }
                 let mut collected: Vec<String> = Vec::new();
-                let mut stack: Vec<(String, String)> = vec![(root.clone(), String::new())];
+                // The echoed root line keeps the user-facing text exactly as
+                // GNU; descent walks the resolved host path, denial mirroring
+                // the unreadable-directory empty listing.
+                let host_root = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), root);
+                let mut stack: Vec<(String, String)> = match host_root {
+                    Some(host) => vec![(host, String::new())],
+                    None => Vec::new(),
+                };
                 while let Some((dir, rel)) = stack.pop() {
                     if let Ok(entries) = std::fs::read_dir(&dir) {
                         let mut names: Vec<String> = entries
@@ -1602,7 +1612,9 @@ fn call_primitive_inner(
                                             heap.emit("\n");
                                         }
                                         if delete {
-                                            let _ = std::fs::remove_file(path);
+                                            if let Some(host) = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), path) {
+                                                let _ = std::fs::remove_file(host);
+                                            }
                                         }
                                     }
                                     heap.visible = false;
@@ -2066,7 +2078,8 @@ fn call_primitive_inner(
             let mut sizes = Vec::new();
             let mut dirs = Vec::new();
             for path in &paths {
-                let meta = std::fs::metadata(path);
+                let meta = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), path)
+                    .and_then(|host| std::fs::metadata(&host).ok());
                 sizes.push(meta.as_ref().map(|m| m.len() as f64).unwrap_or(f64::NAN));
                 dirs.push(meta.map(|m| if m.is_dir() { 1 } else { 0 }).unwrap_or(crate::value::object::NA_INTEGER));
             }
@@ -4143,6 +4156,8 @@ fn call_primitive_inner(
             let root = lookup("path", 0)
                 .and_then(|v| string_operand(heap, interner, v))
                 .unwrap_or_else(|| ".".to_string());
+            let root = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &root)
+                .unwrap_or_else(|| "\0refused".to_string());
             let pattern = lookup("pattern", 1).and_then(|v| string_operand(heap, interner, v));
             let all_files = lookup("all.files", 2).map(|v| logical_scalar(heap, v)).unwrap_or(false);
             let recursive = lookup("recursive", 4).map(|v| logical_scalar(heap, v)).unwrap_or(false);
@@ -4467,13 +4482,16 @@ fn call_primitive_inner(
             let interned: Vec<_> = paths
                 .iter()
                 .map(|p| {
-                    if !std::path::Path::new(p).exists() {
-                        interner.intern_string("\0NA")
-                    } else {
-                        match std::fs::read_link(p) {
+                    let host = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), p);
+                    match host {
+                        None => interner.intern_string("\0NA"),
+                        Some(host) if !std::path::Path::new(&host).exists() => {
+                            interner.intern_string("\0NA")
+                        }
+                        Some(host) => match std::fs::read_link(&host) {
                             Ok(target) => interner.intern_string(&target.to_string_lossy()),
                             Err(_) => interner.intern_string(""),
-                        }
+                        },
                     }
                 })
                 .collect();
@@ -4484,9 +4502,12 @@ fn call_primitive_inner(
             let paths = string_vec(heap, interner, operands[0]);
             let out: Vec<f64> = paths
                 .iter()
-                .map(|p| match std::fs::metadata(p) {
-                    Ok(md) => md.len() as f64,
-                    Err(_) => f64::from_bits(crate::value::object::NA_REAL_BITS),
+                .map(|p| {
+                    match crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), p)
+                        .and_then(|host| std::fs::metadata(&host).ok()) {
+                        Some(md) => md.len() as f64,
+                        None => f64::from_bits(crate::value::object::NA_REAL_BITS),
+                    }
                 })
                 .collect();
             Ok(heap.alloc(RObject::Real(out)))
@@ -4498,12 +4519,15 @@ fn call_primitive_inner(
             let paths = string_vec(heap, interner, operands[0]);
             let out: Vec<f64> = paths
                 .iter()
-                .map(|p| match std::fs::metadata(p).and_then(|md| md.modified()) {
-                    Ok(mtime) => mtime
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_secs_f64())
-                        .unwrap_or(0.0),
-                    Err(_) => f64::from_bits(crate::value::object::NA_REAL_BITS),
+                .map(|p| {
+                    match crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), p)
+                        .and_then(|host| std::fs::metadata(&host).and_then(|md| md.modified()).ok()) {
+                        Some(mtime) => mtime
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs_f64())
+                            .unwrap_or(0.0),
+                        None => f64::from_bits(crate::value::object::NA_REAL_BITS),
+                    }
                 })
                 .collect();
             let result = heap.alloc(RObject::Real(out));
@@ -4518,7 +4542,12 @@ fn call_primitive_inner(
             let paths = string_vec(heap, interner, operands[0]);
             let out: Vec<i32> = paths
                 .iter()
-                .map(|p| if std::path::Path::new(p).exists() { 0 } else { -1 })
+                .map(|p| {
+                    match crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), p) {
+                        Some(host) if std::path::Path::new(&host).exists() => 0,
+                        _ => -1,
+                    }
+                })
                 .collect();
             Ok(heap.alloc(RObject::Integer(out)))
         }
@@ -15311,7 +15340,9 @@ fn save_primitive(
         bindings.push((name.clone(), binding.value));
     }
     let bytes = super::rbg1::encode_save(heap, interner, &bindings);
-    std::fs::write(&path, bytes).map_err(|e| EvalError::TypeError("save write failed"))?;
+    let host = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path)
+        .ok_or(EvalError::TypeError("save write failed"))?;
+    std::fs::write(&host, bytes).map_err(|e| EvalError::TypeError("save write failed"))?;
     Ok(ValueId::NIL)
 }
 
@@ -15356,7 +15387,9 @@ fn load_primitive(
         cursor = cdr;
     }
     let path = file_path.ok_or(EvalError::TypeError("load requires file"))?;
-    let bytes = std::fs::read(&path).map_err(|e| EvalError::TypeError("load read failed"))?;
+    let host = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path)
+        .ok_or(EvalError::TypeError("load read failed"))?;
+    let bytes = std::fs::read(&host).map_err(|e| EvalError::TypeError("load read failed"))?;
     let bindings = super::rbg1::decode_save(heap, interner, &bytes, envir)
         .ok_or(EvalError::TypeError("bad save file"))?;
     let mut names: Vec<super::intern::InternedStr> = Vec::new();
