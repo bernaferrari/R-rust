@@ -844,6 +844,36 @@ mod tests {
     }
 
     #[test]
+    fn data_loads_datasets_into_the_calling_environment() {
+        let mut session = PureSession::new();
+        let result = session.eval("data(iris)");
+        // GNU returns the loaded names invisibly — nothing prints, the
+        // binding lands in the calling frame exactly as data() promises.
+        assert_eq!(result.stdout, "", "stdout: {:?}", result.stdout);
+        let shape = session.eval("dim(iris)");
+        assert!(
+            matches!(&shape.typed, RValue::IntegerVector(v) if v == &vec![Some(150), Some(5)]),
+            "dim: {:?}",
+            shape.typed
+        );
+        // Bare-symbol and character forms name datasets alike exactly as
+        // GNU's list capture, and missing datasets error readably.
+        session.eval("data(\"AirPassengers\")");
+        let ts = session.eval("length(AirPassengers)");
+        assert!(
+            matches!(&ts.typed, RValue::Integer(Some(144)) | RValue::Real(Some(144.0))),
+            "length: {:?}",
+            ts.typed
+        );
+        let missing = session.eval("data(no_such_dataset)");
+        assert!(
+            matches!(missing.typed, RValue::Error { .. }),
+            "typed: {:?}",
+            missing.typed
+        );
+    }
+
+    #[test]
     fn save_load_closure_roundtrips_environment_identity() {
         let mut session = PureSession::new();
         for step in [
