@@ -57,6 +57,41 @@ pub fn lookup(heap: &Heap, env: ValueId, sym: SymId) -> Option<(ValueId, Binding
     None
 }
 
+/// Enumerate the frame's own binding symbols in insertion order — the
+/// completion pool and ls() walk exactly as GNU's frame scan. Hash frames
+/// lose ordering exactly as GNU's hashtab enumeration does.
+pub fn frame_symbols(heap: &Heap, env: ValueId) -> Vec<SymId> {
+    let mut out = Vec::new();
+    let Some(slot) = heap.get(env) else {
+        return out;
+    };
+    if let RObject::Environment { frame, .. } = &slot.body {
+        match frame {
+            crate::value::object::EnvFrame::Empty => {}
+            crate::value::object::EnvFrame::List(entries) => {
+                for (sym, binding) in entries {
+                    if binding.value != ValueId::UNBOUND {
+                        out.push(*sym);
+                    }
+                }
+            }
+            crate::value::object::EnvFrame::Hash(map) => {
+                let mut pairs: Vec<(SymId, bool)> = map
+                    .iter()
+                    .map(|(sym, binding)| (*sym, binding.value != ValueId::UNBOUND))
+                    .collect();
+                pairs.sort_by_key(|(sym, _)| sym.0);
+                for (sym, live) in pairs {
+                    if live {
+                        out.push(sym);
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Define a binding in the environment's own frame — GNU's `defineVar`.
 ///
 /// Definition shadows any existing binding in the same frame and never

@@ -25,6 +25,7 @@ pub use rmath::host::{
     ValueHandle,
 };
 pub use rmath::host::facade::{ReadGuard, WriteGuard};
+pub use rmath::host::pure_session::PureSession;
 pub use rmath::host::InteractiveOutput;
 pub use rmath::{MAX_BROWSER_FILE_BYTES, MAX_BROWSER_FILE_PATH_BYTES};
 

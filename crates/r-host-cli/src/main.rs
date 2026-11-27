@@ -7,6 +7,80 @@
 
 use anyhow::Result;
 use r_embed::CancellationToken;
+
+/// The evaluation backend the REPL runs on — the legacy SEXP world by
+/// default, the pure-Rust generational-heap world with RPORT_PURE_WORLD
+/// set. The migration's first consumer cutover: the same six-method
+/// session surface over either engine, so the REPL is indifferent to
+/// which world answers it. Ctrl-C cancellation of a running evaluation
+/// still belongs to the legacy world alone; the pure world's cooperative
+/// cancellation is the follow-up slice.
+enum CliSession {
+    Legacy(r_embed::RSession),
+    Pure(r_embed::PureSession),
+}
+
+impl CliSession {
+    fn new() -> std::result::Result<CliSession, String> {
+        if std::env::var_os("RPORT_PURE_WORLD").is_some() {
+            let mut session = r_embed::PureSession::new();
+            session.enable_host_process_capabilities();
+            eprintln!("[rport] pure-Rust world");
+            return Ok(CliSession::Pure(session));
+        }
+        let mut session = r_embed::RSession::new().map_err(|e| format!("{e}"))?;
+        session.enable_host_process_capabilities();
+        Ok(CliSession::Legacy(session))
+    }
+
+    fn eval(&mut self, code: &str) -> std::result::Result<String, String> {
+        match self {
+            CliSession::Legacy(session) => session.eval(code).map_err(|e| format!("{e}")),
+            CliSession::Pure(session) => session.eval_output(code),
+        }
+    }
+
+    fn global_binding_names(&mut self) -> Vec<String> {
+        match self {
+            CliSession::Legacy(session) => session.global_binding_names().unwrap_or_default(),
+            CliSession::Pure(session) => session.global_binding_names(),
+        }
+    }
+
+    fn is_input_complete(&mut self, code: &str) -> std::result::Result<bool, String> {
+        match self {
+            CliSession::Legacy(session) => {
+                session.is_input_complete(code).map_err(|e| format!("{e}"))
+            }
+            CliSession::Pure(session) => session.is_input_complete(code),
+        }
+    }
+
+    fn eval_result(
+        &mut self,
+        code: &str,
+        token: &CancellationToken,
+    ) -> std::result::Result<r_embed::EvalOutput, String> {
+        match self {
+            CliSession::Legacy(session) => session
+                .eval_result_cancellable(code, token)
+                .map_err(|e| format!("{e}")),
+            CliSession::Pure(session) => {
+                // Cooperative cancellation is the pure world's follow-up
+                /// slice; the token is inert here until it lands.
+                let _ = token;
+                session.eval_result(code).map_err(|e| format!("{e}"))
+            }
+        }
+    }
+
+    fn close(&mut self) {
+        match self {
+            CliSession::Legacy(session) => session.close(),
+            CliSession::Pure(session) => session.close(),
+        }
+    }
+}
 use std::io::{self, Write};
 use std::sync::{
     LazyLock,
@@ -379,13 +453,14 @@ fn main() -> Result<()> {
 
     install_sigint_handler();
 
-    let mut session = r_embed::RSession::new().map_err(|e| anyhow::anyhow!(e))?;
-    session.enable_host_process_capabilities();
+    let mut session = CliSession::new().map_err(|e| anyhow::anyhow!(e))?;
 
     // Backing store for `history()`: the Rust-side list is authoritative and
     // mirrored into the session after every executed command.
     let mut history: Vec<String> = Vec::new();
-    session.eval(".rport.history <- character(0)\nhistory <- function() .rport.history")?;
+    session
+        .eval(".rport.history <- character(0)\nhistory <- function() .rport.history")
+        .map_err(|e| anyhow::anyhow!(e))?;
 
     let mut line_num = 1;
     let mut pending = String::new();
@@ -402,7 +477,7 @@ fn main() -> Result<()> {
 
         let line = match read_input(&prompt, &mut |prefix: &str| {
             // The CLI degrades to static completions on error.
-            let mut pool = session.global_binding_names().unwrap_or_default();
+            let mut pool = session.global_binding_names();
             pool.extend(STATIC_COMPLETIONS.iter().map(|s| s.to_string()));
             filter_completions(prefix, &pool)
         })? {
@@ -455,7 +530,7 @@ fn main() -> Result<()> {
 
         EVAL_TOKEN.reset();
         EVAL_IN_PROGRESS.store(true, Ordering::Relaxed);
-        let result = session.eval_result_cancellable(&command, &EVAL_TOKEN);
+        let result = session.eval_result(&command, &EVAL_TOKEN);
         EVAL_IN_PROGRESS.store(false, Ordering::Relaxed);
 
         match result {

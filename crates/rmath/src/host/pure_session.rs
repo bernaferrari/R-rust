@@ -60,6 +60,76 @@ impl PureSession {
     pub fn inner(&self) -> &Session {
         &self.session
     }
+
+    /// Evaluate and return output exactly as the facade's string eval —
+    /// the fire-and-forget shape the CLI's history plumbing consumes.
+    pub fn eval_output(&mut self, code: &str) -> Result<String, String> {
+        let full = self.session.eval_full(code);
+        match full.error {
+            Some(message) => Err(message),
+            None => Ok(full.output),
+        }
+    }
+
+    /// The facade's EvalOutput shape — output transcript plus the typed
+    /// final value exactly as `eval_result_cancellable` answers it. The
+    /// pure world has no cancellation machinery yet; Ctrl-C during
+    /// evaluation is the documented follow-up slice.
+    pub fn eval_result(
+        &mut self,
+        code: &str,
+    ) -> Result<super::facade::EvalOutput, super::facade::RSessionError> {
+        let result = self.eval(code);
+        match result.typed {
+            RValue::Error(message) => Err(super::facade::RSessionError::EvalError(message)),
+            value => Ok(super::facade::EvalOutput {
+                output: result.output,
+                value,
+            }),
+        }
+    }
+
+    /// Whether `code` is a syntactically complete R input — incomplete
+    /// means the parser reached end-of-input mid-construct exactly as
+    /// GNU's continuation-prompt discipline detects.
+    pub fn is_input_complete(&mut self, code: &str) -> Result<bool, String> {
+        use crate::value::parser::parse_native_expressions;
+        // Parse against the scratch state of the live heap: incomplete
+        // input never mutates the environment, and a complete input's
+        // parse artifacts collect with the next evaluation exactly as
+        // GNU's parser allocations do.
+        match parse_native_expressions(code, &mut self.session.heap, &mut self.session.interner) {
+            Ok(_) => Ok(true),
+            Err(error) => {
+                let text = format!("{error}");
+                if text.contains("end of input") {
+                    Ok(false)
+                } else {
+                    // A complete-but-invalid input is complete exactly as
+                    // GNU's REPL treats it — the syntax error surfaces at
+                    // evaluation, not as a continuation prompt.
+                    Ok(true)
+                }
+            }
+        }
+    }
+
+    /// The user-visible binding names of the global environment — the
+    /// completion pool exactly as the facade's enumeration answers it.
+    pub fn global_binding_names(&self) -> Vec<String> {
+        crate::value::env::frame_symbols(&self.session.heap, self.session.global_env)
+            .iter()
+            .map(|sym| self.session.interner.symbol_name(*sym).to_string())
+            .collect()
+    }
+
+    /// Process-capability opt-in — a no-op in the pure world, where the
+    /// capability surface has no legacy process state to unlock.
+    pub fn enable_host_process_capabilities(&mut self) {}
+
+    /// Close the session — the pure world's heap is plain owned memory,
+    /// so closing is a no-op beyond dropping.
+    pub fn close(&mut self) {}
 }
 
 #[cfg(test)]
