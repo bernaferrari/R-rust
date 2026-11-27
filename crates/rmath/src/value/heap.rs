@@ -108,6 +108,11 @@ pub struct Heap {
     pub sink_file: Option<std::fs::File>,
     /// Sink depth counter backing sink.number().
     pub sink_depth: i32,
+    /// The loaded-package registry — package name to namespace
+    /// environment exactly as GNU's loadedNamespaces. Synthetic
+    /// registration seeds it today; RBG1 asset loading supplies
+    /// real package content when the conversion lands.
+    pub package_registry: std::collections::HashMap<String, crate::value::id::ValueId>,
     /// Long-lived host roots — retained FFI values stay live across
     /// collections exactly as the facade's retained surface needs.
     pub retained_roots: crate::value::roots::RootTable,

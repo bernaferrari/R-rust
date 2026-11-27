@@ -512,6 +512,92 @@ mod tests {
         assert!(session.define_retained("2").is_ok());
     }
 
+    fn register_synthetic_package(session: &mut PureSession) {
+        // A minimal package exactly as the loader will produce one: a
+        // namespace environment whose frame carries the package's
+        // bindings, registered by name in the heap's loaded-namespaces
+        // registry.
+        use crate::value::env;
+        use crate::value::object::RObject;
+        let heap = &mut session.session.heap;
+        let interner = &mut session.session.interner;
+        let base = crate::value::id::ValueId::EMPTY_ENV;
+        let ns = env::new_environment(heap, base);
+        let forty_two = heap.alloc(RObject::Real(vec![42.0]));
+        let sym = interner.intern_symbol("pkg_answer");
+        env::define(heap, ns, sym, forty_two).expect("define");
+        heap.package_registry.insert("synthetic".to_string(), ns);
+    }
+
+    #[test]
+    fn library_attaches_namespace_into_the_search_path() {
+        let mut session = PureSession::new();
+        register_synthetic_package(&mut session);
+        session.eval("library(synthetic)");
+        // The binding resolves through the search path — no qualification
+        // needed exactly as GNU's attached-package visibility pins.
+        let result = session.eval("pkg_answer");
+        assert!(
+            !matches!(result.typed, RValue::Error(_)),
+            "typed: {:?}",
+            result.typed
+        );
+        assert!(result.stdout.contains("42"), "stdout: {:?}", result.stdout);
+    }
+
+    #[test]
+    fn namespace_access_resolves_without_attach() {
+        let mut session = PureSession::new();
+        register_synthetic_package(&mut session);
+        // :: reaches into the namespace directly — no library() needed,
+        // exactly as GNU's namespace access precedes attachment.
+        let result = session.eval("synthetic::pkg_answer");
+        assert!(
+            !matches!(result.typed, RValue::Error(_)),
+            "typed: {:?}",
+            result.typed
+        );
+        assert!(result.stdout.contains("42"), "stdout: {:?}", result.stdout);
+    }
+
+    #[test]
+    fn require_answers_boolean() {
+        let mut session = PureSession::new();
+        register_synthetic_package(&mut session);
+        // GNU: require returns its logical INVISIBLY — nothing auto-prints
+        // at the top level, but the value binds exactly as any other.
+        let yes = session.eval("x <- require(synthetic)");
+        assert!(!yes.stdout.contains("TRUE"), "stdout: {:?}", yes.stdout);
+        let bound = session.eval("x");
+        assert!(bound.stdout.contains("TRUE"), "stdout: {:?}", bound.stdout);
+        let no = session.eval("y <- require(nonexistent)");
+        assert!(!no.stdout.contains("FALSE"), "stdout: {:?}", no.stdout);
+        let bound = session.eval("y");
+        assert!(bound.stdout.contains("FALSE"), "stdout: {:?}", bound.stdout);
+    }
+
+    #[test]
+    fn missing_package_errors_with_gnu_message() {
+        let mut session = PureSession::new();
+        let err = session
+            .eval_output("library(nonexistent)")
+            .expect_err("expected an error");
+        assert!(
+            err.contains("there is no package called 'nonexistent'"),
+            "err: {err}"
+        );
+    }
+
+    #[test]
+    fn missing_namespace_member_errors() {
+        let mut session = PureSession::new();
+        register_synthetic_package(&mut session);
+        let err = session
+            .eval_output("synthetic::absent_name")
+            .expect_err("expected an error");
+        assert!(err.contains("not an exported object"), "err: {err}");
+    }
+
     #[test]
     fn browser_files_roundtrip() {
         let mut session = PureSession::new();

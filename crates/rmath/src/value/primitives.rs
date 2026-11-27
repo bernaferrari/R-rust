@@ -567,6 +567,10 @@ pub mod primitive_ids {
     pub const IS_RESTART: u32 = 549;
     pub const RESTART_DESCRIPTION: u32 = 550;
     pub const WITH_CALLING_HANDLERS: u32 = 551;
+    pub const NS_GET: u32 = 552;
+    pub const NS_GET3: u32 = 553;
+    pub const LIBRARY: u32 = 554;
+    pub const REQUIRE: u32 = 555;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -597,7 +601,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN, SUMMARY_FN, MATRIX_MULT, CROSSPROD, TCROSSPROD, MAXCOL, IDIV, NROW_FN, NCOL_FN, SYS_GETPID, OLSONNAMES, IQR_FN, SYS_CHMOD, FILE_INFO, SYS_GETLOCALE, SYS_SETLOCALE, NZCHAR, AT_OP, AT_ASSIGN, SYS_INFO, SYS_TIME, SYS_DATE, SYS_WHICH, FLOOR, CEILING, TRUNC, ROUND, SIGNIF, EXPM1, LOG1P, ACOSH, ASINH, ATANH, COSPI, SINPI, TANPI, ANYNA, SYS_LOCALECONV, AGREP, AGREPL, APPLY, AS_ENVIRONMENT, AS_CALL, ENC2NATIVE, ENC2UTF8, SEARCH_FN, AS_FACTOR, AS_ORDERED, ADDNA, APERM, ADDMARGINS, DOT_SUBSET, DOT_SUBSET2, ASPLIT, ATTACH, DETACH, POS_TO_ENV, DOT_CLASS2, GC_TIME, AVE, BACKSOLVE, BQUOTE, CALL_FN, CHAR_TO_RAW, CHARMATCH, CUMSUM, CUMPROD, CUMMIN, CUMMAX, COMMENT_FN, COMMENT_ASSIGN, COMPLETE_CASES, COLSUMS, ROWSUMS, COLMEANS, ROWMEANS, DCAUCHY, DCHISQ, DEXP, CUT, DATE_FN, CAPABILITIES, BY_FN, BROWSER_FN, DGAMMA, DGEOM, DNBINOM, DIFF, DIAG, DO_CALL, DWEIBULL, DROP_FN, DROPLEVELS, DUPLICATED, ANYDUPLICATED, DIR_EXISTS, FILE_CREATE, FILE_ACCESS, ENVIRONMENT_ASSIGN, FORCEANDCALL, DECLARE, PRIMTRACE, PRIMUNTRACE, STANDARDGENERIC, DMULTINOM, DOTS_LENGTH, DOTS_NAMES, DOTS_ELT, IS_DATA_FRAME, FILE_APPEND, FILE_LINK, FILE_SYMLINK, SYS_READLINK, FILE_SIZE, FILE_MTIME, GL, HEAD_FN, TAIL_FN, INTERACTION, GCINFO, GCTORTURE, GCTORTURE2, IS_FINITE, IS_INFINITE, IS_NAN, IS_VECTOR, IS_LOADED, L10N_INFO, CSTACK_INFO, EXTSOFTVERSION, LIST_FILES, MEMORY_PROFILE, ENV_IS_LOCKED, LOCK_BINDING, BINDING_IS_LOCKED, UNLOCK_BINDING, LOCK_ENVIRONMENT, MAKE_ACTIVE_BINDING, BINDING_IS_ACTIVE, SYS_UMASK, NORMALIZE_PATH, OLDCLASS, OLDCLASS_ASSIGN, IS_OBJECT, PAIRLIST_CTOR, AS_PAIRLIST, OUTER, ON_EXIT, IS_S4_TEST, NARGS, SYS_NFRAME, SYS_CALL, SYS_FRAME, SYS_FUNCTION, PARENT_FRAME, IS_FUNCTION, METHODS, PAR, LAYOUT, FORMAT_DF, LIB_PATHS, FIND_PACKAGE, SYSTEM_FILE, FORMAT_INFO, PCAUCHY, QCAUCHY, PCHISQ, QCHISQ, PEXP, QEXP, PGAMMA, QGAMMA, PGEOM, QGEOM, PNBINOM, QNBINOM, PWEIBULL, QWEIBULL, RANGE_FN, PMIN, PMAX, PMATCH, PROP_TABLE, ROW_FN, COL_FN, RELEVEL, SEARCHPATHS, PATH_EXPAND, PCRE_CONFIG, RAWTOCHAR, QHYPER, PTUKEY, QPOIS, QBINOM, DUNIF, PUNIF, QUNIF, SIGN, SEQ_ALONG, SEQ_INT, SCAN, SINGLE, SINK, SINK_NUMBER, SORT_LIST, SOURCE, SYS_SOURCE, SPLIT, SWITCH, SUPPRESS_MESSAGES, STRWRAP, XTFRM, CACHE_CLASS, STARTSWITH, ENDSWITH, TOUPPER, TOLOWER, CHARTR, TRIMWS, TABULATE, SYSTEM2, WITH, LENGTHS, WRITE_TABLE, WRITE_CSV2, READ_FWF, SAVE_RDS, READ_RDS, WITH_RESTARTS, INVOKE_RESTART, TRY_INVOKE_RESTART, FIND_RESTART, COMPUTE_RESTARTS, IS_RESTART, RESTART_DESCRIPTION, WITH_CALLING_HANDLERS};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN, SUMMARY_FN, MATRIX_MULT, CROSSPROD, TCROSSPROD, MAXCOL, IDIV, NROW_FN, NCOL_FN, SYS_GETPID, OLSONNAMES, IQR_FN, SYS_CHMOD, FILE_INFO, SYS_GETLOCALE, SYS_SETLOCALE, NZCHAR, AT_OP, AT_ASSIGN, SYS_INFO, SYS_TIME, SYS_DATE, SYS_WHICH, FLOOR, CEILING, TRUNC, ROUND, SIGNIF, EXPM1, LOG1P, ACOSH, ASINH, ATANH, COSPI, SINPI, TANPI, ANYNA, SYS_LOCALECONV, AGREP, AGREPL, APPLY, AS_ENVIRONMENT, AS_CALL, ENC2NATIVE, ENC2UTF8, SEARCH_FN, AS_FACTOR, AS_ORDERED, ADDNA, APERM, ADDMARGINS, DOT_SUBSET, DOT_SUBSET2, ASPLIT, ATTACH, DETACH, POS_TO_ENV, DOT_CLASS2, GC_TIME, AVE, BACKSOLVE, BQUOTE, CALL_FN, CHAR_TO_RAW, CHARMATCH, CUMSUM, CUMPROD, CUMMIN, CUMMAX, COMMENT_FN, COMMENT_ASSIGN, COMPLETE_CASES, COLSUMS, ROWSUMS, COLMEANS, ROWMEANS, DCAUCHY, DCHISQ, DEXP, CUT, DATE_FN, CAPABILITIES, BY_FN, BROWSER_FN, DGAMMA, DGEOM, DNBINOM, DIFF, DIAG, DO_CALL, DWEIBULL, DROP_FN, DROPLEVELS, DUPLICATED, ANYDUPLICATED, DIR_EXISTS, FILE_CREATE, FILE_ACCESS, ENVIRONMENT_ASSIGN, FORCEANDCALL, DECLARE, PRIMTRACE, PRIMUNTRACE, STANDARDGENERIC, DMULTINOM, DOTS_LENGTH, DOTS_NAMES, DOTS_ELT, IS_DATA_FRAME, FILE_APPEND, FILE_LINK, FILE_SYMLINK, SYS_READLINK, FILE_SIZE, FILE_MTIME, GL, HEAD_FN, TAIL_FN, INTERACTION, GCINFO, GCTORTURE, GCTORTURE2, IS_FINITE, IS_INFINITE, IS_NAN, IS_VECTOR, IS_LOADED, L10N_INFO, CSTACK_INFO, EXTSOFTVERSION, LIST_FILES, MEMORY_PROFILE, ENV_IS_LOCKED, LOCK_BINDING, BINDING_IS_LOCKED, UNLOCK_BINDING, LOCK_ENVIRONMENT, MAKE_ACTIVE_BINDING, BINDING_IS_ACTIVE, SYS_UMASK, NORMALIZE_PATH, OLDCLASS, OLDCLASS_ASSIGN, IS_OBJECT, PAIRLIST_CTOR, AS_PAIRLIST, OUTER, ON_EXIT, IS_S4_TEST, NARGS, SYS_NFRAME, SYS_CALL, SYS_FRAME, SYS_FUNCTION, PARENT_FRAME, IS_FUNCTION, METHODS, PAR, LAYOUT, FORMAT_DF, LIB_PATHS, FIND_PACKAGE, SYSTEM_FILE, FORMAT_INFO, PCAUCHY, QCAUCHY, PCHISQ, QCHISQ, PEXP, QEXP, PGAMMA, QGAMMA, PGEOM, QGEOM, PNBINOM, QNBINOM, PWEIBULL, QWEIBULL, RANGE_FN, PMIN, PMAX, PMATCH, PROP_TABLE, ROW_FN, COL_FN, RELEVEL, SEARCHPATHS, PATH_EXPAND, PCRE_CONFIG, RAWTOCHAR, QHYPER, PTUKEY, QPOIS, QBINOM, DUNIF, PUNIF, QUNIF, SIGN, SEQ_ALONG, SEQ_INT, SCAN, SINGLE, SINK, SINK_NUMBER, SORT_LIST, SOURCE, SYS_SOURCE, SPLIT, SWITCH, SUPPRESS_MESSAGES, STRWRAP, XTFRM, CACHE_CLASS, STARTSWITH, ENDSWITH, TOUPPER, TOLOWER, CHARTR, TRIMWS, TABULATE, SYSTEM2, WITH, LENGTHS, WRITE_TABLE, WRITE_CSV2, READ_FWF, SAVE_RDS, READ_RDS, WITH_RESTARTS, INVOKE_RESTART, TRY_INVOKE_RESTART, FIND_RESTART, COMPUTE_RESTARTS, IS_RESTART, RESTART_DESCRIPTION, WITH_CALLING_HANDLERS, NS_GET, NS_GET3, LIBRARY, REQUIRE};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -5987,6 +5991,9 @@ fn call_primitive_inner(
             Ok(heap.alloc(RObject::String(vec![interner.intern_string(&text)])))
         }
         WITH_CALLING_HANDLERS => with_calling_handlers_primitive(heap, interner, args, caller_env),
+        NS_GET | NS_GET3 => ns_get_primitive(heap, interner, args, caller_env),
+        LIBRARY => library_primitive(heap, interner, args, caller_env, false),
+        REQUIRE => library_primitive(heap, interner, args, caller_env, true),
         SAVE_RDS => {
             let bound = bind_formals(heap, interner, args, caller_env, &["object", "file", "ascii", "version", "compress", "refhook"])?;
             let object = bound[0].ok_or(EvalError::TypeError("saveRDS requires an object")).map_err(RSignal::from)?;
@@ -7742,7 +7749,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom", "message", "missing", "parent.env", "order", "rank", "ordered", "is.ordered", "is.factor", "na.omit", "na.exclude", "pbeta", "dbeta", "qbeta", "find", "UseMethod", "NextMethod", "getS3method", "emptyenv", "as.integer", "as.numeric", "as.double", "stopifnot", "sequence", "rep.int", "rep_len", "dt", "pt", "qt", "sample", "sample.int", "builtins", "regexec", "df", "pf", "qf", "substr", "file", "isOpen", "close", "flush", "writeChar", "readChar", "union", "intersect", "setdiff", "setequal", "table", "setClass", "new", "is", "slot", "slotNames", "unname", "which.min", "which.max", "withVisible", "system", "writeBin", "readBin", "url", "dim<-", "storage.mode<-", "as.list", "body", "summary", "%*%", "crossprod", "tcrossprod", "max.col", "%/%", "NROW", "NCOL", "Sys.getpid", "OlsonNames", "IQR", "Sys.chmod", "file.info", "Sys.getlocale", "Sys.setlocale", "nzchar", "@", "@<-", "Sys.info", "Sys.time", "Sys.Date", "Sys.which", "floor", "ceiling", "trunc", "round", "signif", "expm1", "log1p", "acosh", "asinh", "atanh", "cospi", "sinpi", "tanpi", "anyNA", "Sys.localeconv", "agrep", "agrepl", "apply", "as.environment", "as.call", "enc2native", "enc2utf8", "search", "as.factor", "as.ordered", "addNA", "aperm", "addmargins", ".subset", ".subset2", "asplit", "attach", "detach", "pos.to.env", ".class2", "gc.time", "ave", "backsolve", "bquote", "call", "charToRaw", "charmatch", "cumsum", "cumprod", "cummin", "cummax", "comment", "comment<-", "complete.cases", "colSums", "rowSums", "colMeans", "rowMeans", "dcauchy", "dchisq", "dexp", "cut", "date", "capabilities", "by", "browser", "bzfile", "gzfile", "xzfile", "dgamma", "dgeom", "dnbinom", "diff", "diag", "do.call", "dweibull", "drop", "droplevels", "duplicated", "anyDuplicated", "dir.exists", "file.create", "file.access", "environment<-", "forceAndCall", "declare", ".primTrace", ".primUntrace", "standardGeneric", "dmultinom", "...length", "...names", "...elt", "is.data.frame", "file.append", "file.link", "file.symlink", "Sys.readlink", "file.size", "file.mtime", "gl", "head", "tail", "interaction", "gcinfo", "gctorture", "gctorture2", "is.finite", "is.infinite", "is.nan", "is.vector", "is.loaded", "l10n_info", "Cstack_info", "extSoftVersion", "list.files", "memory.profile", "environmentIsLocked", "lockBinding", "bindingIsLocked", "unlockBinding", "lockEnvironment", "makeActiveBinding", "bindingIsActive", "Sys.umask", "normalizePath", "oldClass", "oldClass<-", "is.object", "pairlist", "as.pairlist", "outer", "on.exit", "isS4", "nargs", "sys.nframe", "sys.call", "sys.frame", "sys.function", "parent.frame", "is.function", "methods", "par", "layout", "format.data.frame", ".libPaths", "find.package", "system.file", "format.info", "pcauchy", "qcauchy", "pchisq", "qchisq", "pexp", "qexp", "pgamma", "qgamma", "pgeom", "qgeom", "pnbinom", "qnbinom", "pweibull", "qweibull", "range", "pmin", "pmax", "pmatch", "prop.table", "row", "col", "relevel", "searchpaths", "path.expand", "pcre_config", "rawToChar", "qhyper", "ptukey", "qpois", "qbinom", "dunif", "punif", "qunif", "sign", "seq_along", "seq.int", "scan", "single", "sink", "sink.number", "sort.list", "source", "sys.source", "split", "switch", "suppressMessages", "strwrap", "xtfrm", ".cache_class", "startsWith", "endsWith", "toupper", "tolower", "chartr", "trimws", "tabulate", "system2", "with", "lengths", "write.table", "write.csv2", "read.fwf", "saveRDS", "readRDS", "withRestarts", "invokeRestart", "tryInvokeRestart", "findRestart", "computeRestarts", "isRestart", "restartDescription", "withCallingHandlers",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom", "message", "missing", "parent.env", "order", "rank", "ordered", "is.ordered", "is.factor", "na.omit", "na.exclude", "pbeta", "dbeta", "qbeta", "find", "UseMethod", "NextMethod", "getS3method", "emptyenv", "as.integer", "as.numeric", "as.double", "stopifnot", "sequence", "rep.int", "rep_len", "dt", "pt", "qt", "sample", "sample.int", "builtins", "regexec", "df", "pf", "qf", "substr", "file", "isOpen", "close", "flush", "writeChar", "readChar", "union", "intersect", "setdiff", "setequal", "table", "setClass", "new", "is", "slot", "slotNames", "unname", "which.min", "which.max", "withVisible", "system", "writeBin", "readBin", "url", "dim<-", "storage.mode<-", "as.list", "body", "summary", "%*%", "crossprod", "tcrossprod", "max.col", "%/%", "NROW", "NCOL", "Sys.getpid", "OlsonNames", "IQR", "Sys.chmod", "file.info", "Sys.getlocale", "Sys.setlocale", "nzchar", "@", "@<-", "Sys.info", "Sys.time", "Sys.Date", "Sys.which", "floor", "ceiling", "trunc", "round", "signif", "expm1", "log1p", "acosh", "asinh", "atanh", "cospi", "sinpi", "tanpi", "anyNA", "Sys.localeconv", "agrep", "agrepl", "apply", "as.environment", "as.call", "enc2native", "enc2utf8", "search", "as.factor", "as.ordered", "addNA", "aperm", "addmargins", ".subset", ".subset2", "asplit", "attach", "detach", "pos.to.env", ".class2", "gc.time", "ave", "backsolve", "bquote", "call", "charToRaw", "charmatch", "cumsum", "cumprod", "cummin", "cummax", "comment", "comment<-", "complete.cases", "colSums", "rowSums", "colMeans", "rowMeans", "dcauchy", "dchisq", "dexp", "cut", "date", "capabilities", "by", "browser", "bzfile", "gzfile", "xzfile", "dgamma", "dgeom", "dnbinom", "diff", "diag", "do.call", "dweibull", "drop", "droplevels", "duplicated", "anyDuplicated", "dir.exists", "file.create", "file.access", "environment<-", "forceAndCall", "declare", ".primTrace", ".primUntrace", "standardGeneric", "dmultinom", "...length", "...names", "...elt", "is.data.frame", "file.append", "file.link", "file.symlink", "Sys.readlink", "file.size", "file.mtime", "gl", "head", "tail", "interaction", "gcinfo", "gctorture", "gctorture2", "is.finite", "is.infinite", "is.nan", "is.vector", "is.loaded", "l10n_info", "Cstack_info", "extSoftVersion", "list.files", "memory.profile", "environmentIsLocked", "lockBinding", "bindingIsLocked", "unlockBinding", "lockEnvironment", "makeActiveBinding", "bindingIsActive", "Sys.umask", "normalizePath", "oldClass", "oldClass<-", "is.object", "pairlist", "as.pairlist", "outer", "on.exit", "isS4", "nargs", "sys.nframe", "sys.call", "sys.frame", "sys.function", "parent.frame", "is.function", "methods", "par", "layout", "format.data.frame", ".libPaths", "find.package", "system.file", "format.info", "pcauchy", "qcauchy", "pchisq", "qchisq", "pexp", "qexp", "pgamma", "qgamma", "pgeom", "qgeom", "pnbinom", "qnbinom", "pweibull", "qweibull", "range", "pmin", "pmax", "pmatch", "prop.table", "row", "col", "relevel", "searchpaths", "path.expand", "pcre_config", "rawToChar", "qhyper", "ptukey", "qpois", "qbinom", "dunif", "punif", "qunif", "sign", "seq_along", "seq.int", "scan", "single", "sink", "sink.number", "sort.list", "source", "sys.source", "split", "switch", "suppressMessages", "strwrap", "xtfrm", ".cache_class", "startsWith", "endsWith", "toupper", "tolower", "chartr", "trimws", "tabulate", "system2", "with", "lengths", "write.table", "write.csv2", "read.fwf", "saveRDS", "readRDS", "withRestarts", "invokeRestart", "tryInvokeRestart", "findRestart", "computeRestarts", "isRestart", "restartDescription", "withCallingHandlers", "::", ":::", "library", "require",
     ]
 }
 
@@ -7986,6 +7993,10 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "isRestart" => Some(IS_RESTART),
         "restartDescription" => Some(RESTART_DESCRIPTION),
         "withCallingHandlers" => Some(WITH_CALLING_HANDLERS),
+        "::" => Some(NS_GET),
+        ":::" => Some(NS_GET3),
+        "library" => Some(LIBRARY),
+        "require" => Some(REQUIRE),
         // bzfile/gzfile share the raw-byte connection machinery — GNU pipes
         // through the codec, but within-R observable behavior (write/read
         // roundtrips, append semantics) is identical; real compression is
@@ -16041,6 +16052,124 @@ pub(crate) fn fire_calling_handlers(
         apply_closure_value(heap, interner, handler, &[condition], caller_env)?;
     }
     Ok(())
+}
+
+/// pkg::name / pkg:::name — namespace access exactly as GNU: both
+/// operands arrive as literal symbols, never evaluated. The package must
+/// be registered in the loaded-namespaces registry; the name resolves in
+/// the package's namespace frame alone — no chain walk, since a namespace
+/// encloses only its imports exactly as GNU's namespace discipline pins.
+/// (The exports-versus-everything distinction between :: and ::: lands
+/// with real package metadata; the machinery slice resolves both through
+/// the one namespace frame.)
+fn ns_get_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let raw = raw_args(heap, args);
+    if raw.len() != 2 {
+        return Err(EvalError::TypeError(":: requires a package and a name").into());
+    }
+    let pkg_name = match heap.object(raw[0]) {
+        Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+        Some(RObject::String(_)) => {
+            let v = eval(heap, interner, raw[0], caller_env)?;
+            string_operand(heap, interner, v).unwrap_or_default()
+        }
+        _ => return Err(EvalError::TypeError(":: requires a package symbol").into()),
+    };
+    let member = match heap.object(raw[1]) {
+        Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+        Some(RObject::String(entries)) => entries
+            .first()
+            .map(|e| interner.string_text(*e).to_string())
+            .unwrap_or_default(),
+        _ => return Err(EvalError::TypeError(":: requires a name symbol").into()),
+    };
+    let Some(namespace) = heap.package_registry.get(&pkg_name).copied() else {
+        return Err(EvalError::Condition(format!(
+            "there is no package called '{pkg_name}'"
+        ))
+        .into());
+    };
+    let sym = interner.intern_symbol(&member);
+    match super::env::lookup_in_frame(heap, namespace, sym) {
+        Some(binding) => force_if_promise(heap, interner, binding.value),
+        None => Err(EvalError::Condition(format!(
+            "'{member}' is not an exported object from 'namespace:{pkg_name}'"
+        ))
+        .into()),
+    }
+}
+
+/// library(pkg) / require(pkg) — attach the registered package namespace
+/// into the search path exactly as GNU: spliced directly after .GlobalEnv,
+/// its enclosure becoming whatever the user environment enclosed before —
+/// the very splice attach() performs, with the package namespace as the
+/// spliced environment. The package name arrives as a literal symbol or a
+/// character scalar exactly as GNU's unevaluated package argument does;
+/// require answers TRUE/FALSE rather than erroring when absent.
+fn library_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+    require_form: bool,
+) -> EvalResult {
+    let raw = raw_args(heap, args);
+    if raw.is_empty() {
+        return Err(EvalError::TypeError("library requires a package").into());
+    }
+    let pkg_name = match heap.object(raw[0]) {
+        Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+        _ => {
+            let v = eval(heap, interner, raw[0], caller_env)?;
+            string_operand(heap, interner, v).unwrap_or_default()
+        }
+    };
+    let found = heap.package_registry.get(&pkg_name).copied();
+    let Some(namespace) = found else {
+        if require_form {
+            heap.visible = false;
+            return Ok(heap.alloc(RObject::Logical(vec![0])));
+        }
+        return Err(EvalError::Condition(format!(
+            "there is no package called '{pkg_name}'"
+        ))
+        .into());
+    };
+    // Already-attached packages re-attach harmlessly in GNU; the splice
+    /// is idempotent when the namespace already heads the chain position.
+    let genv = {
+        let sym = interner.intern_symbol(".GlobalEnv");
+        match super::env::lookup(heap, caller_env, sym) {
+            Some((_, binding)) => binding.value,
+            None => caller_env,
+        }
+    };
+    let already = match heap.object(genv) {
+        Some(RObject::Environment { enclos, .. }) => *enclos == namespace,
+        _ => false,
+    };
+    if !already {
+        let old_enclos = match heap.object(genv) {
+            Some(RObject::Environment { enclos, .. }) => *enclos,
+            _ => ValueId::EMPTY_ENV,
+        };
+        if let Some(RObject::Environment { enclos, .. }) = heap.object_mut(namespace) {
+            *enclos = old_enclos;
+        }
+        if let Some(RObject::Environment { enclos, .. }) = heap.object_mut(genv) {
+            *enclos = namespace;
+        }
+    }
+    heap.visible = false;
+    if require_form {
+        return Ok(heap.alloc(RObject::Logical(vec![1])));
+    }
+    Ok(namespace)
 }
 
 /// write.table/write.csv2 — tabular serialization: the header row of
