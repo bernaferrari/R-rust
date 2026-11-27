@@ -14953,6 +14953,145 @@ fn lines_primitive(
     Ok(ValueId::NIL)
 }
 
+/// GNU primitive argument matching exactly as pmatch's exact pass:
+/// tagged arguments bind by exact name first, untagged arguments fill
+/// the remaining slots in order. Tags read through the interner as
+/// plain symbol names.
+fn eval_matched_args(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+    names: &[&str],
+) -> Result<Vec<Option<ValueId>>, RSignal> {
+    let mut slots: Vec<Option<ValueId>> = vec![None; names.len()];
+    // Collect (tag, value) pairs without evaluating — matching is
+    /// structural exactly as GNU's argument resolution precedes forcing.
+    let mut items: Vec<(Option<String>, ValueId)> = Vec::new();
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        let name = if tag == ValueId::NIL {
+            None
+        } else if let Some(RObject::Symbol { name, .. }) = heap.object(tag) {
+            Some(interner.symbol_name(*name).to_string())
+        } else {
+            None
+        };
+        items.push((name, car));
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    // Exact-name pass first.
+    let mut used = vec![false; items.len()];
+    for (slot, param) in names.iter().enumerate() {
+        for (i, (tag, car)) in items.iter().enumerate() {
+            if used[i] {
+                continue;
+            }
+            if tag.as_deref() == Some(param) {
+                let value = eval(heap, interner, *car, caller_env)?;
+                slots[slot] = Some(force_if_promise(heap, interner, value)?);
+                used[i] = true;
+                break;
+            }
+        }
+    }
+    // Positional filling for the untagged remainder.
+    let mut next_slot = 0;
+    for (i, (tag, car)) in items.iter().enumerate() {
+        if used[i] || tag.is_some() {
+            continue;
+        }
+        while next_slot < names.len() && slots[next_slot].is_some() {
+            next_slot += 1;
+        }
+        if next_slot >= names.len() {
+            break;
+        }
+        let value = eval(heap, interner, *car, caller_env)?;
+        slots[next_slot] = Some(force_if_promise(heap, interner, value)?);
+        used[i] = true;
+    }
+    Ok(slots)
+}
+
+/// Resolve one R color exactly as GNU's portable reach: palette
+/// indices (1-based), the common names, hex literals, transparent.
+/// NA and unknown colors yield None exactly as col2rgb's NA.
+fn resolve_rcolor(
+    heap: &Heap,
+    interner: &SymbolInterner,
+    value: ValueId,
+    index: usize,
+) -> Option<r_graphics_engine::Color> {
+    use r_graphics_engine::Color;
+    const PALETTE: [Color; 8] = [
+        Color::BLACK,
+        Color::RED,
+        Color { r: 0, g: 205, b: 0, a: 255 },
+        Color::BLUE,
+        Color { r: 0, g: 255, b: 255, a: 255 },
+        Color { r: 255, g: 0, b: 255, a: 255 },
+        Color { r: 255, g: 255, b: 0, a: 255 },
+        Color { r: 190, g: 190, b: 190, a: 255 },
+    ];
+    match heap.object(value) {
+        Some(RObject::String(values)) => {
+            let text = interner.string_text(*values.get(index % values.len().max(1))?);
+            Some(match text {
+                "black" => Color::BLACK,
+                "white" => Color::WHITE,
+                "red" => Color::RED,
+                "blue" => Color::BLUE,
+                "green" => Color { r: 0, g: 255, b: 0, a: 255 },
+                "yellow" => Color { r: 255, g: 255, b: 0, a: 255 },
+                "cyan" => Color { r: 0, g: 255, b: 255, a: 255 },
+                "magenta" => Color { r: 255, g: 0, b: 255, a: 255 },
+                "gray" | "grey" => Color { r: 190, g: 190, b: 190, a: 255 },
+                "orange" => Color { r: 255, g: 165, b: 0, a: 255 },
+                "purple" => Color { r: 160, g: 32, b: 240, a: 255 },
+                "brown" => Color { r: 165, g: 42, b: 42, a: 255 },
+                "pink" => Color { r: 255, g: 192, b: 203, a: 255 },
+                "transparent" | "NA" => return None,
+                other => {
+                    if let Some(hex) = other.strip_prefix('#') {
+                        if hex.len() == 6 {
+                            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+                            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+                            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+                            return Some(Color { r, g, b, a: 255 });
+                        }
+                    }
+                    return None;
+                }
+            })
+        }
+        Some(RObject::Integer(values)) | Some(RObject::Logical(values)) => {
+            let idx = *values.get(index % values.len().max(1))?;
+            if idx == i32::MIN || idx < 1 {
+                None
+            } else {
+                Some(PALETTE[((idx - 1) as usize) % PALETTE.len()])
+            }
+        }
+        Some(RObject::Real(values)) => {
+            let idx = *values.get(index % values.len().max(1))? as i32;
+            if idx < 1 {
+                None
+            } else {
+                Some(PALETTE[((idx - 1) as usize) % PALETTE.len()])
+            }
+        }
+        _ => None,
+    }
+}
+
 /// rect(xleft, ybottom, xright, ytop) — GNU's recycled quads exactly:
 /// fill with col (transparent when NA), stroke with border. The four
 /// coordinates recycle against each other in lockstep.
@@ -14963,11 +15102,25 @@ fn rect_primitive(
     caller_env: ValueId,
 ) -> EvalResult {
     use r_graphics_engine::{Color, DrawOperation, Path, Stroke};
-    let operands = eval_args(heap, interner, args, caller_env, 4)?;
-    let xl = reals_of_value(heap, operands[0]).unwrap_or_default();
-    let yb = reals_of_value(heap, operands[1]).unwrap_or_default();
-    let xr = reals_of_value(heap, operands[2]).unwrap_or_default();
-    let yt = reals_of_value(heap, operands[3]).unwrap_or_default();
+    // Positional order covers GNU's first four exactly; col/border are
+    /// effectively always named in practice — the density/angle/lty
+    /// slots of GNU's full signature remain unwired.
+    let slots = eval_matched_args(
+        heap,
+        interner,
+        args,
+        caller_env,
+        &["xleft", "ybottom", "xright", "ytop", "col", "border"],
+    )?;
+    let coord = |slot: usize| -> Vec<f64> {
+        slots[slot]
+            .and_then(|v| reals_of_value(heap, v).ok())
+            .unwrap_or_default()
+    };
+    let xl = coord(0);
+    let yb = coord(1);
+    let xr = coord(2);
+    let yt = coord(3);
     if xl.is_empty() || yb.is_empty() || xr.is_empty() || yt.is_empty() {
         return Ok(ValueId::NIL);
     }
@@ -14989,9 +15142,17 @@ fn rect_primitive(
         if w <= 0.0 || h <= 0.0 {
             continue;
         }
+        let fill = slots[4]
+            .and_then(|v| resolve_rcolor(heap, interner, v, i))
+            .unwrap_or(Color { r: 0, g: 0, b: 0, a: 0 });
+        let border = match slots[5] {
+            Some(v) => resolve_rcolor(heap, interner, v, i)
+                .unwrap_or(Color { r: 0, g: 0, b: 0, a: 0 }),
+            None => Color::BLACK,
+        };
         let path = Path {
-            fill: Color { r: 0, g: 0, b: 0, a: 0 },
-            stroke: Stroke::new(1.0, Color::BLACK),
+            fill,
+            stroke: Stroke::new(1.0, border),
             anti_alias: true,
             ..Path::rect(x, y, w, h)
         };

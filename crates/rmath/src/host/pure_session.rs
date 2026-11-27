@@ -1122,6 +1122,41 @@ cat("after|", paste(par("mfg"), collapse=","), "|",
     }
 
     #[test]
+    fn graphics_rect_honors_named_color_arguments() {
+        use r_graphics_engine::{Color, DrawOperation};
+        let mut session = PureSession::new();
+        session.eval("plot.new(); plot.window(c(0,1), c(0,1)); rect(0.1, 0.1, 0.5, 0.5, col=\"red\", border=\"blue\")");
+        let ops = session.session.heap.graphics.scene().operations();
+        let path = ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOperation::Path(path) => Some(path),
+                _ => None,
+            })
+            .next()
+            .expect("one rect");
+        assert_eq!(path.fill, Color::RED, "named col fills");
+        assert_eq!(path.stroke.color, Color::BLUE, "named border strokes");
+        // Palette indices resolve 1-based exactly as col2rgb.
+        let mut session = PureSession::new();
+        session.eval("plot.new(); plot.window(c(0,1), c(0,1)); rect(0.1, 0.1, 0.5, 0.5, col=2)");
+        let path = session
+            .session
+            .heap
+            .graphics
+            .scene()
+            .operations()
+            .iter()
+            .filter_map(|op| match op {
+                DrawOperation::Path(path) => Some(path),
+                _ => None,
+            })
+            .next()
+            .expect("one rect");
+        assert_eq!(path.fill, Color::RED, "palette index 2 is red");
+    }
+
+    #[test]
     fn data_loads_datasets_into_the_calling_environment() {
         let mut session = PureSession::new();
         let result = session.eval("data(iris)");
