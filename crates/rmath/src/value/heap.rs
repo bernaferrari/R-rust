@@ -153,6 +153,15 @@ pub struct Heap {
     /// facade's output limit. Sink writes bypass: they never
     /// accumulate in memory.
     pub output_byte_cap: Option<usize>,
+    /// Whether the cap dropped emission this evaluation — the transcript
+    /// marker decision rides this exactly as the facade's truncated flag.
+    pub output_capture_truncated: bool,
+    /// The call expression of the innermost raising frame while an error
+    /// propagates — GNU's context-stack conditionCall discipline exactly:
+    /// attached once at the frame that raised, never overwritten as the
+    /// error unwinds outward, cleared when the condition is handled or
+    /// reaches the top level. NIL means no error in flight.
+    pub error_call: crate::value::id::ValueId,
     /// Cumulative bytes emitted this evaluation — the cap measures the
     /// eval's total output, not the drained buffer's momentary length,
     /// exactly as the facade's per-eval limit contract needs. The session
@@ -231,10 +240,12 @@ impl Heap {
         // simply stops growing, the memory protection the embedder needs.
         if let Some(cap) = self.output_byte_cap {
             if self.output_bytes_emitted >= cap {
+                self.output_capture_truncated = true;
                 return;
             }
             let remaining = cap - self.output_bytes_emitted;
             if text.len() > remaining {
+                self.output_capture_truncated = true;
                 // Truncate at a character boundary — the budget is bytes,
                 // the buffer is UTF-8.
                 let mut end = remaining.min(text.len());

@@ -162,24 +162,43 @@ impl PureSession {
             (Some(message), _) => RValue::Error(message.clone()),
             (None, Some(value)) => {
                 let snapshot = snapshot_value(&self.session.heap, &self.session.interner, value);
-                // The export budget admits or rejects exactly as the
-                // facade's admission check — a over-budget result answers
-                // an error rather than a partial value.
-                match self.result_limit {
-                    Some(limit) => match admit_rvalue(&snapshot, limit) {
-                        Ok(()) => snapshot,
-                        Err(message) => RValue::Error(message),
-                    },
-                    None => snapshot,
+                // The export budget admits visible results exactly as the
+                // facade's admission check — an invisible value (the
+                // assignment's own answer, say) crosses as nothing the
+                // host inspects, so its size never enters the budget.
+                if !full.visible {
+                    snapshot
+                } else {
+                    match self.result_limit {
+                        Some(limit) => match admit_rvalue(&snapshot, limit) {
+                            Ok(()) => snapshot,
+                            Err(message) => RValue::Error(message),
+                        },
+                        None => snapshot,
+                    }
                 }
             }
             (None, None) => RValue::Null,
         };
         let value = typed.numeric_scalar_value();
+        let mut display = full.output;
+        // The display truncation pass exactly as the facade's result
+        /// budget — the transcript itself fits the embedder's budget or
+        /// it ends at the boundary with the truncation marker.
+        if let Some(limit) = self.result_limit {
+            if display.len() > limit {
+                let mut boundary = limit;
+                while !display.is_char_boundary(boundary) {
+                    boundary -= 1;
+                }
+                display.truncate(boundary);
+                display.push_str("\n[result output truncated by runtime limit]");
+            }
+        }
         RResult {
             value,
             typed,
-            output: full.output,
+            output: display,
             stdout: full.stdout,
             stderr: full.stderr,
         }
@@ -262,10 +281,16 @@ impl PureSession {
     /// The user-visible binding names of the global environment — the
     /// completion pool exactly as the facade's enumeration answers it.
     pub fn global_binding_names(&self) -> Vec<String> {
-        crate::value::env::frame_symbols(&self.session.heap, self.session.global_env)
-            .iter()
-            .map(|sym| self.session.interner.symbol_name(*sym).to_string())
-            .collect()
+        // Sorted exactly as the facade contract pins and GNU's ls()
+        /// answers — frame order is insertion order, meaningless to
+        /// the embedder snapshotting its workspace.
+        let mut names: Vec<String> =
+            crate::value::env::frame_symbols(&self.session.heap, self.session.global_env)
+                .iter()
+                .map(|sym| self.session.interner.symbol_name(*sym).to_string())
+                .collect();
+        names.sort();
+        names
     }
 
     /// Configure the embedder's resource limits — the facade's
@@ -369,12 +394,16 @@ impl PureSession {
         code: &str,
         width: u32,
         height: u32,
-    ) -> Result<super::facade::InteractiveOutput, String> {
+    ) -> Result<super::facade::InteractiveOutput, super::facade::RSessionError> {
         if width < 32 || height < 32 {
-            return Err("plot width and height must be at least 32 pixels".to_string());
+            return Err(super::facade::RSessionError::RenderError(
+                "plot width and height must be at least 32 pixels".to_string(),
+            ));
         }
         if u64::from(width) * u64::from(height) > 16_777_216 {
-            return Err("plot exceeds 16M-pixel limit".to_string());
+            return Err(super::facade::RSessionError::RenderError(
+                "plot exceeds 16M-pixel limit".to_string(),
+            ));
         }
         self.session
             .heap
@@ -382,7 +411,7 @@ impl PureSession {
             .set_device_size(f64::from(width), f64::from(height));
         self.session.heap.graphics.clear_scene();
         let before = self.session.heap.graphics.scene().operations().len();
-        let output = self.eval_output(code).unwrap_or_else(|e| e);
+        let full = self.session.eval_full(code);
         let scene = self.session.heap.graphics.scene();
         let drew = scene.operations().len() > before;
         let png = if drew {
@@ -390,22 +419,59 @@ impl PureSession {
         } else {
             None
         };
-        Ok(super::facade::InteractiveOutput { output, png })
+        // The facade's interactive contract exactly: evaluation that
+        /// errors after producing output or drawing answers the
+        /// error-with-output shape, never a silent fold — graphics may
+        /// have progressed before the error and the embedder is owed
+        /// both halves. Clean output rides stdout; the error line itself
+        /// belongs to the message, not the transcript.
+        match full.error {
+            Some(message) => Err(super::facade::RSessionError::EvalErrorWithOutput {
+                message,
+                output: full.stdout,
+                png,
+            }),
+            None => Ok(super::facade::InteractiveOutput {
+                output: full.output,
+                png,
+            }),
+        }
     }
 
     /// Render ordinary R evaluation into owned PNG bytes — the facade's
-    /// `render_with_dimensions` contract: an error when evaluation drew
-    /// nothing, exactly as a plot-less render request must fail rather
-    /// than hand the embedder a blank canvas it cannot distinguish.
+    /// `render_with_dimensions` contract exactly: evaluation errors
+    /// propagate, and a plot-less evaluation still renders — the device
+    /// finish hands back the blank canvas exactly as the facade's
+    /// renderer does, since blank is what R drew.
     #[cfg(feature = "renderplot-device")]
     pub fn render_with_dimensions(
         &mut self,
         code: &str,
         width: u32,
         height: u32,
-    ) -> Result<Vec<u8>, String> {
-        let result = self.eval_interactive(code, width, height)?;
-        result.png.ok_or(result.output)
+    ) -> Result<Vec<u8>, super::facade::RSessionError> {
+        if width < 32 || height < 32 {
+            return Err(super::facade::RSessionError::RenderError(
+                "plot width and height must be at least 32 pixels".to_string(),
+            ));
+        }
+        if u64::from(width) * u64::from(height) > 16_777_216 {
+            return Err(super::facade::RSessionError::RenderError(
+                "plot exceeds 16M-pixel limit".to_string(),
+            ));
+        }
+        self.session
+            .heap
+            .graphics
+            .set_device_size(f64::from(width), f64::from(height));
+        self.session.heap.graphics.clear_scene();
+        let full = self.session.eval_full(code);
+        if let Some(message) = full.error {
+            return Err(super::facade::RSessionError::EvalError(message));
+        }
+        render_scene_to_png(self.session.heap.graphics.scene()).ok_or_else(|| {
+            super::facade::RSessionError::RenderError("scene rasterization failed".to_string())
+        })
     }
 
     /// Capture an owned graphics scene after evaluation — the facade's
@@ -1975,11 +2041,17 @@ cat(grconvertX(0:1, "user", "device"), grconvertY(0:1, "user", "device"), "\n")
             .render_with_dimensions("plot(c(1,2,3), c(1,4,9))", 200, 150)
             .expect("drawing renders");
         assert_eq!(&png[1..4], b"PNG", "not a png stream");
-        // A plot-less render fails with the evaluation output as the
-        // error — the embedder sees what R printed instead of a canvas.
+        // A plot-less render still finishes — the facade's device
+        // contract hands back the blank canvas because blank is what
+        // the evaluation drew.
+        let blank = session
+            .render_with_dimensions("1 + 1", 200, 150)
+            .expect("blank render still finishes");
+        assert_eq!(&blank[1..4], b"PNG", "blank canvas is still a png stream");
+        // Evaluation errors propagate rather than rendering.
         assert!(
-            session.render_with_dimensions("1 + 1", 200, 150).is_err(),
-            "arithmetic must not render a blank canvas"
+            session.render_with_dimensions("stop('boom')", 200, 150).is_err(),
+            "evaluation errors must propagate"
         );
     }
 

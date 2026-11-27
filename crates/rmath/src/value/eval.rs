@@ -405,7 +405,7 @@ fn call(
     } else {
         args
     };
-    match heap.object(callee) {
+    let result = match heap.object(callee) {
         Some(RObject::Primitive(id)) => {
             let id = *id;
             crate::value::primitives::call_primitive(heap, interner, id, args, caller_env)
@@ -415,7 +415,18 @@ fn call(
             apply_closure(heap, interner, formals, body, closure_env, args, caller_env, call_expr, callee)
         }
         _ => Err(EvalError::NotCallable.into()),
+    };
+    // conditionCall fidelity — GNU's context stack answers the raising
+    /// frame's call: attach this call when the error originates here
+    /// (no inner frame claimed it), and never overwrite as the error
+    /// unwinds through outer frames. Control flow is not a condition
+    /// and attaches nothing.
+    if let Err(RSignal::Error(_)) = &result {
+        if heap.error_call == ValueId::NIL {
+            heap.error_call = call_expr;
+        }
     }
+    result
 }
 
 /// Apply a closure: match arguments to formals as lazy promises, then

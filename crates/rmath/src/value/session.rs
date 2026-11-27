@@ -73,6 +73,9 @@ impl Session {
         value: ValueId,
         pending: &[ValueId],
     ) -> Result<(), String> {
+        // An error that reached the top level leaves no raising call
+        // behind — the channel belongs to the error in flight only.
+        self.heap.error_call = crate::value::id::ValueId::NIL;
         let pressured = self.heap.gc_pressure();
         let capped = self.heap.memory_cap_bytes.is_some() || self.heap.node_cap.is_some();
         let memory_tripped = self.heap.memory_cap_tripped;
@@ -198,6 +201,7 @@ impl Session {
     /// error aborts the remaining script with output-so-far preserved.
     pub fn eval_full(&mut self, source: &str) -> FullEval {
         self.heap.output_bytes_emitted = 0;
+        self.heap.output_capture_truncated = false;
         let mut full = FullEval::default();
         let expressions = match parse_native_expressions(source, &mut self.heap, &mut self.interner) {
             Ok(expressions) => expressions,
@@ -250,6 +254,7 @@ impl Session {
                         full.output.push_str(&block);
                     }
                     full.value = Some(value);
+                    full.visible = self.heap.visible;
                 }
                 Err(signal) => {
                     // Collection still runs — the unwound garbage must
@@ -266,6 +271,14 @@ impl Session {
                     return full;
                 }
             }
+        }
+        if self.heap.output_capture_truncated {
+            // The capture marker joins stdout and the transcript exactly
+            /// as the facade appends it — output the runtime dropped on
+            /// the embedder's behalf is announced, never silent.
+            let marker = "\n[captured console output truncated by runtime limit]";
+            full.stdout.push_str(marker);
+            full.output.push_str(marker);
         }
         full
     }
@@ -284,6 +297,10 @@ pub struct FullEval {
     pub output: String,
     /// The final expression's value when evaluation completed.
     pub value: Option<ValueId>,
+    /// Whether the final expression answered visibly — export admission
+    /// applies to visible results only, since an invisible value crosses
+    /// the boundary as nothing the host was meant to inspect.
+    pub visible: bool,
     /// GNU-rendered error text when evaluation aborted.
     pub error: Option<String>,
 }

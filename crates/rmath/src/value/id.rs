@@ -12,6 +12,12 @@ pub struct ValueId {
     generation: u32,
 }
 
+impl Default for ValueId {
+    fn default() -> Self {
+        ValueId::NIL
+    }
+}
+
 impl ValueId {
     /// Sentinel generation reserved for constants that never address the heap.
     const SENTINEL_GEN: u32 = u32::MAX;
