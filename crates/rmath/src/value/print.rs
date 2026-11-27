@@ -29,19 +29,53 @@ pub fn format_real(v: f64) -> String {
     if v == 0.0 {
         return "0".to_string();
     }
-    let abs = v.abs();
-    let exponent = abs.log10().floor() as i32;
-    // The %g window: fixed notation inside [-4, precision), scientific
-    // outside — R's digits=7 default exactly.
-    if exponent >= 7 || exponent < -4 {
-        let mantissa = v / 10f64.powi(exponent);
-        let mantissa_text = trim_fixed(mantissa, 6);
-        let sign = if exponent < 0 { "-" } else { "+" };
-        format!("{}e{}{:02}", mantissa_text, sign, exponent.abs())
+    // GNU format.c's formatReal exactly: fixed notation whenever its
+    /// width does not exceed scientific width plus scipen — a width
+    /// comparison, not an exponent threshold. digits=7 and scipen=0
+    /// are the pinned defaults.
+    let (neg, kpower, nsig) = scientific_parts(v);
+    let left = kpower + 1;
+    let right = nsig - left;
+    let rgt = right.max(0);
+    let d = nsig - 1;
+    if needs_scientific(v) {
+        // Scientific exactly as GNU: nsig significant digits in the
+        /// mantissa, two-digit minimum exponent.
+        let mantissa = v / 10f64.powi(kpower);
+        // Rounding to nsig significant digits can carry into the next
+        /// power exactly as GNU — the exponent shifts with it.
+        let mut mantissa_text = trim_fixed(mantissa, (nsig - 1).max(0) as usize);
+        let mut kpower = kpower;
+        if mantissa_text.parse::<f64>().unwrap_or(0.0).abs() >= 10.0 {
+            mantissa_text = trim_fixed(mantissa / 10.0, (nsig - 1).max(0) as usize);
+            kpower += 1;
+        }
+        let sign = if kpower < 0 { "-" } else { "+" };
+        format!("{}e{}{:02}", mantissa_text, sign, kpower.abs())
     } else {
-        let decimals = (6 - exponent).max(0) as usize;
-        trim_fixed(v, decimals)
+        trim_fixed(v, rgt as usize)
     }
+}
+
+/// GNU format.c's scientific(): (neg, kpower, nsig) with nsig the
+/// lesser of digits=7 and the shortest round-trip significant count.
+fn scientific_parts(v: f64) -> (i32, i32, i32) {
+    let neg = if v < 0.0 { 1 } else { 0 };
+    // GNU rounds to digits significant figures FIRST — carry-over
+    /// changes both the exponent and the significant count exactly as
+    /// 999999999999 rounding into 1e12 demonstrates.
+    let abs = v.abs();
+    let rough_exp = abs.log10().floor() as i32;
+    let rounded: f64 = format!("{:.*e}", 6, abs)
+        .parse()
+        .unwrap_or(abs);
+    let _ = rough_exp;
+    let s = format!("{:e}", rounded);
+    let (mantissa, exponent) = s.split_once('e').unwrap_or((s.as_str(), "0"));
+    let kpower: i32 = exponent.parse().unwrap_or(0);
+    let nsig_actual = mantissa.chars().filter(|c| c.is_ascii_digit()).count() as i32;
+    let nsig = 7.min(nsig_actual).max(1);
+    (neg, kpower, nsig)
 }
 
 /// Fixed-notation formatting with trailing zeros and a trailing decimal
@@ -71,17 +105,37 @@ pub fn format_complex(z: crate::value::object::RComplex) -> String {
     format!("{}{}{}{}", format_real(z.r), sign, format_real(z.i.abs()), "i")
 }
 
+/// GNU's fixed-vs-scientific decision exactly as formatReal: fixed
+/// whenever its width does not exceed scientific width (scipen = 0).
+fn needs_scientific(v: f64) -> bool {
+    if !v.is_finite() || v == 0.0 {
+        return false;
+    }
+    let (neg, kpower, nsig) = scientific_parts(v);
+    let left = kpower + 1;
+    let sleft = neg + if left <= 0 { 1 } else { left };
+    let right = nsig - left;
+    let rgt = right.max(0);
+    let w_f = sleft + rgt + i32::from(rgt != 0);
+    let e = if left > 100 || left <= -99 { 2 } else { 1 };
+    let d = nsig - 1;
+    let w_e = neg + i32::from(d > 0) + d + 4 + e;
+    w_f > w_e
+}
+
 fn decimals_used(v: f64) -> Option<usize> {
     if v.is_nan() || v.is_infinite() || v == 0.0 {
         return Some(0);
     }
-    let abs = v.abs();
-    let exponent = abs.log10().floor() as i32;
-    if exponent >= 7 || exponent < -4 {
+    if needs_scientific(v) {
         return None;
     }
-    let decimals = (6 - exponent).max(0) as usize;
-    let text = format!("{:.*}", decimals, v);
+    // Fixed-notation decimals exactly as formatReal's rgt — trailing
+    /// zeros trimmed after rendering at the computed precision.
+    let (_, kpower, nsig) = scientific_parts(v);
+    let left = kpower + 1;
+    let rgt = (nsig - left).max(0) as usize;
+    let text = format!("{:.*}", rgt, v);
     let trimmed = text.trim_end_matches('0').trim_end_matches('.');
     Some(trimmed.split('.').nth(1).map(|s| s.len()).unwrap_or(0))
 }
