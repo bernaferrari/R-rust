@@ -1396,6 +1396,60 @@ cat(grconvertX(0:1, "user", "device"), grconvertY(0:1, "user", "device"), "\n")
     }
 
     #[test]
+    fn graphics_segments_abline_polygon_emit_paths() {
+        use r_graphics_engine::{DrawOperation, PathCommand};
+        // segments recycle endpoints and split nothing without NA.
+        let mut session = PureSession::new();
+        session.eval(
+            "plot.new(); plot.window(c(0,1), c(0,1)); segments(0.1, 0.1, c(0.9, 0.8), c(0.9, 0.2))",
+        );
+        let paths = session
+            .session
+            .heap
+            .graphics
+            .scene()
+            .operations()
+            .iter()
+            .filter(|op| matches!(op, DrawOperation::Path(_)))
+            .count();
+        assert_eq!(paths, 2, "recycled endpoints emit two segments");
+        // abline h/v span the window exactly.
+        let mut session = PureSession::new();
+        session.eval("plot.new(); plot.window(c(0,1), c(0,1)); abline(h=0.5, v=0.5)");
+        let spans: Vec<&r_graphics_engine::Path> = session
+            .session
+            .heap
+            .graphics
+            .scene()
+            .operations()
+            .iter()
+            .filter_map(|op| match op {
+                DrawOperation::Path(path) => Some(path),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(spans.len(), 2, "h and v each emit one line");
+        // polygon closes its path.
+        let mut session = PureSession::new();
+        session.eval(
+            "plot.new(); plot.window(c(0,1), c(0,1)); polygon(c(0.2, 0.8, 0.5), c(0.2, 0.2, 0.8), col='red')",
+        );
+        let closed = session
+            .session
+            .heap
+            .graphics
+            .scene()
+            .operations()
+            .iter()
+            .filter_map(|op| match op {
+                DrawOperation::Path(path) => Some(path),
+                _ => None,
+            })
+            .any(|path| path.commands.iter().any(|c| matches!(c, PathCommand::Close)));
+        assert!(closed, "polygon closes its path");
+    }
+
+    #[test]
     fn data_loads_datasets_into_the_calling_environment() {
         let mut session = PureSession::new();
         let result = session.eval("data(iris)");
