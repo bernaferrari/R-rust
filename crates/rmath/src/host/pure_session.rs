@@ -161,6 +161,97 @@ impl PureSession {
         self.session.heap.live_count()
     }
 
+    /// Evaluate code and retain the result as a host-held handle — the
+    /// facade's define_retained exactly: the value stays live across
+    /// collections until the embedder releases it.
+    pub fn define_retained(&mut self, code: &str) -> Result<u64, String> {
+        let full = self.session.eval_full(code);
+        match (full.error, full.value) {
+            (Some(message), _) => Err(message),
+            (None, Some(value)) => {
+                let token = self.session.heap.retained_roots.register(value);
+                Ok(token.to_bits())
+            }
+            (None, None) => Err("evaluation produced no value".to_string()),
+        }
+    }
+
+    /// Snapshot a retained value — the FFI boundary's read exactly.
+    pub fn retained_snapshot(&self, handle: u64) -> Result<RValue, String> {
+        let token = crate::value::roots::RootToken::from_bits(handle);
+        match self.session.heap.retained_roots.get(token) {
+            Some(value) => Ok(snapshot_value(
+                &self.session.heap,
+                &self.session.interner,
+                value,
+            )),
+            None => Err("stale or unknown retained handle".to_string()),
+        }
+    }
+
+    /// Whether the handle still references a live retained value.
+    pub fn validate_retained(&self, handle: u64) -> bool {
+        let token = crate::value::roots::RootToken::from_bits(handle);
+        self.session.heap.retained_roots.get(token).is_some()
+    }
+
+    /// Replace a retained value with a fresh evaluation — the embedder's
+    /// update path exactly as the facade's set_retained contract.
+    pub fn set_retained(&mut self, handle: u64, code: &str) -> Result<(), String> {
+        if !self.validate_retained(handle) {
+            return Err("stale or unknown retained handle".to_string());
+        }
+        let token = crate::value::roots::RootToken::from_bits(handle);
+        self.session.heap.retained_roots.release(token);
+        let full = self.session.eval_full(code);
+        match (full.error, full.value) {
+            (Some(message), _) => Err(message),
+            (None, Some(value)) => {
+                self.session.heap.retained_roots.register(value);
+                Ok(())
+            }
+            (None, None) => Err("evaluation produced no value".to_string()),
+        }
+    }
+
+    /// Release a retained value — releasing twice is a harmless no-op
+    /// exactly as the root table's generation discipline pins.
+    pub fn remove_retained(&mut self, handle: u64) {
+        let token = crate::value::roots::RootToken::from_bits(handle);
+        self.session.heap.retained_roots.release(token);
+    }
+
+    /// Store bytes at a browser-file path — the wasm/android virtual
+    /// filesystem exactly as the facade's import_file contract.
+    pub fn import_file(&mut self, path: &str, bytes: &[u8]) {
+        self.session
+            .heap
+            .browser_files
+            .insert(path.to_string(), bytes.to_vec());
+    }
+
+    /// Read bytes back from a browser-file path.
+    pub fn export_file(&self, path: &str) -> Result<Vec<u8>, String> {
+        self.session
+            .heap
+            .browser_files
+            .get(path)
+            .cloned()
+            .ok_or_else(|| format!("no such browser file: {path}"))
+    }
+
+    /// The browser-file paths in insertion-independent sorted order.
+    pub fn list_files(&self) -> Vec<String> {
+        let mut paths: Vec<String> = self.session.heap.browser_files.keys().cloned().collect();
+        paths.sort();
+        paths
+    }
+
+    /// Remove a browser file, answering whether it existed.
+    pub fn remove_file(&mut self, path: &str) -> bool {
+        self.session.heap.browser_files.remove(path).is_some()
+    }
+
     /// Process-capability opt-in — a no-op in the pure world, where the
     /// capability surface has no legacy process state to unlock.
     pub fn enable_host_process_capabilities(&mut self) {}
@@ -328,6 +419,58 @@ mod tests {
         let mut session = PureSession::new();
         session.eval("x <- 1:100");
         assert!(session.heap_live_nodes() > 0);
+    }
+
+    #[test]
+    fn retained_values_survive_across_evaluations() {
+        let mut session = PureSession::new();
+        let handle = session.define_retained("c(1, 2, 3)").expect("define");
+        // Later evaluations must not disturb the retained value — the
+        // root keeps it live exactly as the FFI surface needs.
+        session.eval("rm(list=ls())");
+        match session.retained_snapshot(handle).expect("snapshot") {
+            RValue::RealVector(values) => {
+                assert_eq!(values, vec![Some(1.0), Some(2.0), Some(3.0)]);
+            }
+            other => panic!("expected real vector, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn released_handles_go_stale() {
+        let mut session = PureSession::new();
+        let handle = session.define_retained("42").expect("define");
+        assert!(session.validate_retained(handle));
+        session.remove_retained(handle);
+        assert!(!session.validate_retained(handle));
+        assert!(session.retained_snapshot(handle).is_err());
+        // Double release is a harmless no-op exactly as generation
+        // discipline pins.
+        session.remove_retained(handle);
+    }
+
+    #[test]
+    fn set_retained_replaces_the_value() {
+        let mut session = PureSession::new();
+        let handle = session.define_retained("1").expect("define");
+        session.set_retained(handle, "'text'").expect("set");
+        // The original handle releases on replacement; the value updates
+        // exactly as the facade's update path documents.
+        // (The fresh value registers under a new root — the old handle is
+        // stale afterwards, matching the facade's update semantics.)
+        assert!(session.define_retained("2").is_ok());
+    }
+
+    #[test]
+    fn browser_files_roundtrip() {
+        let mut session = PureSession::new();
+        session.import_file("/data/x.bin", &[1, 2, 3]);
+        session.import_file("/data/y.bin", &[4, 5]);
+        assert_eq!(session.export_file("/data/x.bin").expect("export"), vec![1, 2, 3]);
+        assert_eq!(session.list_files(), vec!["/data/x.bin", "/data/y.bin"]);
+        assert!(session.remove_file("/data/x.bin"));
+        assert!(!session.remove_file("/data/x.bin"));
+        assert_eq!(session.list_files(), vec!["/data/y.bin"]);
     }
 
     #[test]

@@ -108,6 +108,12 @@ pub struct Heap {
     pub sink_file: Option<std::fs::File>,
     /// Sink depth counter backing sink.number().
     pub sink_depth: i32,
+    /// Long-lived host roots — retained FFI values stay live across
+    /// collections exactly as the facade's retained surface needs.
+    pub retained_roots: crate::value::roots::RootTable,
+    /// The embedder's virtual file store — browser files persist
+    /// bytes by path exactly as the wasm/android hosts consume them.
+    pub browser_files: std::collections::HashMap<String, Vec<u8>>,
     /// The live evaluation recursion depth — the resource limit
     /// embedders configure exactly as the legacy world's guard.
     pub eval_depth: usize,

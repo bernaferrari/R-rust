@@ -92,6 +92,23 @@ pub struct RootToken {
     generation: u32,
 }
 
+impl RootToken {
+    /// Pack the token into a FFI-stable opaque handle — index in the low
+    /// bits, generation above, so stale handles mismatch exactly as the
+    /// generation check needs.
+    pub fn to_bits(self) -> u64 {
+        (self.index as u64) | ((self.generation as u64) << 32)
+    }
+
+    /// Unpack a handle produced by [`RootToken::to_bits`].
+    pub fn from_bits(bits: u64) -> RootToken {
+        RootToken {
+            index: bits as u32,
+            generation: (bits >> 32) as u32,
+        }
+    }
+}
+
 /// Stable roots for host-held handles and long-lived runtime caches.
 ///
 /// Unlike the LIFO stack, table entries persist independently until
