@@ -107,6 +107,13 @@ impl CancellationToken {
         self.requested.store(false, Ordering::Relaxed);
     }
 
+    /// Share the underlying cancellation cell — the pure world's
+    /// evaluator polls the same atomic, so one host token cancels
+    /// evaluations in either world exactly as the CLI's SIGINT flow needs.
+    pub fn shared_flag(&self) -> Arc<AtomicBool> {
+        self.requested.clone()
+    }
+
     /// Return whether cancellation has been requested.
     pub fn is_requested(&self) -> bool {
         self.requested.load(Ordering::Relaxed)

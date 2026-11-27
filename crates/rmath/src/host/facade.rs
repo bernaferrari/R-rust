@@ -136,6 +136,12 @@ impl HostCancellationToken {
         self.inner.request();
     }
 
+    /// The shared cancellation cell for the pure world's evaluator —
+    /// crate-visible exactly as the migration boundary needs.
+    pub(crate) fn shared_flag(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+        self.inner.shared_flag()
+    }
+
     pub fn reset(&self) {
         self.inner.reset();
     }

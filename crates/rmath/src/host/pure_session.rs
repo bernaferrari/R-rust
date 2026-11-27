@@ -89,6 +89,21 @@ impl PureSession {
         }
     }
 
+    /// Evaluate with the host's cancellation token observing SIGINT —
+    /// the facade's cancellable entry point exactly. The token cell rides
+    /// the heap for the evaluation's duration and clears afterward so a
+    /// later non-cancellable eval never inherits a stale watch.
+    pub fn eval_result_cancellable(
+        &mut self,
+        code: &str,
+        cancellation: &super::facade::HostCancellationToken,
+    ) -> Result<super::facade::EvalOutput, super::facade::RSessionError> {
+        self.session.heap.cancellation = Some(cancellation.shared_flag());
+        let result = self.eval_result(code);
+        self.session.heap.cancellation = None;
+        result
+    }
+
     /// Whether `code` is a syntactically complete R input — incomplete
     /// means the parser reached end-of-input mid-construct exactly as
     /// GNU's continuation-prompt discipline detects.
@@ -189,6 +204,51 @@ mod tests {
             result.typed,
             RValue::IntegerVector(vec![Some(1), None, Some(3)])
         );
+    }
+
+    #[test]
+    fn pre_cancelled_token_aborts_immediately() {
+        let mut session = PureSession::new();
+        let token = crate::host::facade::HostCancellationToken::new();
+        token.cancel();
+        let result = session.eval_result_cancellable("1 + 1", &token);
+        match result {
+            Err(crate::host::facade::RSessionError::EvalError(message)) => {
+                assert_eq!(message, "operation cancelled");
+            }
+            other => panic!("expected cancellation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cancellation_mid_loop_unwinds_evaluation() {
+        let mut session = PureSession::new();
+        let token = crate::host::facade::HostCancellationToken::new();
+        // The canceller thread flips the shared cell directly — the same
+        // atomic the SIGINT handler drives through token.cancel().
+        let cell = token.shared_flag();
+        let handle = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            cell.store(true, std::sync::atomic::Ordering::Relaxed);
+        });
+        // An unbounded loop would never finish without cancellation —
+        // completion with the cancellation error is the proof.
+        let result = session.eval_result_cancellable("while (TRUE) 1", &token);
+        handle.join().expect("canceller thread");
+        match result {
+            Err(crate::host::facade::RSessionError::EvalError(message)) => {
+                assert_eq!(message, "operation cancelled");
+            }
+            other => panic!("expected cancellation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn uncancelled_token_lets_evaluation_finish() {
+        let mut session = PureSession::new();
+        let token = crate::host::facade::HostCancellationToken::new();
+        let result = session.eval_result_cancellable("40 + 2", &token);
+        assert!(result.is_ok(), "evaluation completes: {result:?}");
     }
 
     #[test]

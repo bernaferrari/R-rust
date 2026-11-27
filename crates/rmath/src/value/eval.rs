@@ -85,6 +85,17 @@ pub fn eval(
     expr: ValueId,
     env_id: ValueId,
 ) -> EvalResult {
+    // Cooperative cancellation: the host's token polls at every recursive
+    // entry — a relaxed atomic load, nanoseconds against the tree walk —
+    // so SIGINT unwinds long evaluation exactly as the legacy world's
+    // does. The error text matches the facade's cancellation contract.
+    if let Some(cell) = &heap.cancellation {
+        if cell.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(RSignal::from(EvalError::Condition(
+                "operation cancelled".to_string(),
+            )));
+        }
+    }
     if expr == ValueId::NIL {
         return Ok(ValueId::NIL);
     }

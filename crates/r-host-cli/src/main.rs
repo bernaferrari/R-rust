@@ -65,12 +65,9 @@ impl CliSession {
             CliSession::Legacy(session) => session
                 .eval_result_cancellable(code, token)
                 .map_err(|e| format!("{e}")),
-            CliSession::Pure(session) => {
-                // Cooperative cancellation is the pure world's follow-up
-                /// slice; the token is inert here until it lands.
-                let _ = token;
-                session.eval_result(code).map_err(|e| format!("{e}"))
-            }
+            CliSession::Pure(session) => session
+                .eval_result_cancellable(code, token)
+                .map_err(|e| format!("{e}"))
         }
     }
 
