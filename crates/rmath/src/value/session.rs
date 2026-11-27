@@ -97,6 +97,21 @@ impl Session {
         }
         Ok(std::mem::take(&mut self.heap.output))
     }
+
+    /// Evaluate R source and return the final expression's value handle —
+    /// the host facade's `eval_result` entry point. Output accumulation
+    /// follows the script contract exactly as `eval_script`; the caller
+    /// reads the heap state directly for the value snapshot.
+    pub fn eval_value(&mut self, source: &str) -> Result<ValueId, SessionError> {
+        let expressions = parse_native_expressions(source, &mut self.heap, &mut self.interner)
+            .map_err(SessionError::Parse)?;
+        let mut last = ValueId::NIL;
+        for expr in &expressions {
+            last = eval(&mut self.heap, &mut self.interner, *expr, self.global_env)
+                .map_err(SessionError::Eval)?;
+        }
+        Ok(last)
+    }
 }
 
 /// GNU's environment structure: primitives live in a base environment

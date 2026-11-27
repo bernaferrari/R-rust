@@ -40,6 +40,7 @@ pub use resources::{RMemoryUsage, RWorkspaceReservation};
 pub(crate) mod packages;
 mod session;
 mod values;
+pub mod value_snapshot;
 
 pub mod facade;
 #[cfg(feature = "renderplot-device")]
