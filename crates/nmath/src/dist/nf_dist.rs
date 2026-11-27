@@ -501,7 +501,7 @@ fn qnchisq(p: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f64 {
 
 /// Random variates from noncentral chi-squared distribution
 /// Ported from rnchisq.c
-fn rnchisq(rng: &mut dyn FnMut() -> f64, df: f64, lambda: f64) -> f64 {
+fn rnchisq(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, df: f64, lambda: f64) -> f64 {
     if isnan(df) || !r_finite(lambda) || df < 0.0 || lambda < 0.0 {
         return ml_warn_return_nan();
     }
@@ -510,15 +510,15 @@ fn rnchisq(rng: &mut dyn FnMut() -> f64, df: f64, lambda: f64) -> f64 {
         return if df == 0.0 {
             0.0
         } else {
-            rgamma_inner(rng, df / 2.0, 2.0)
+            rgamma_inner(rng, ms, df / 2.0, 2.0)
         };
     } else {
-        let mut r = rpois_inner(rng, lambda / 2.0);
+        let mut r = rpois_inner(rng, ms, lambda / 2.0);
         if r > 0.0 {
-            r = rchisq_inner(rng, 2.0 * r);
+            r = rchisq_inner(rng, ms, 2.0 * r);
         }
         if df > 0.0 {
-            r += rgamma_inner(rng, df / 2.0, 2.0);
+            r += rgamma_inner(rng, ms, df / 2.0, 2.0);
         }
         r
     }
@@ -697,7 +697,7 @@ pub fn qnf_inner(p: f64, df1: f64, df2: f64, ncp: f64, lower_tail: bool, log_p: 
 // =====================================================================
 
 #[must_use]
-pub fn rnf_inner(rng: &mut dyn FnMut() -> f64, df1: f64, df2: f64, ncp: f64) -> f64 {
+pub fn rnf_inner(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, df1: f64, df2: f64, ncp: f64) -> f64 {
     if isnan(df1) || isnan(df2) || isnan(ncp) {
         return ml_warn_return_nan();
     }
@@ -709,13 +709,13 @@ pub fn rnf_inner(rng: &mut dyn FnMut() -> f64, df1: f64, df2: f64, ncp: f64) -> 
     if !r_finite(df1) {
         v1 = 1.0;
     } else {
-        v1 = rnchisq(rng, df1, ncp) / df1;
+        v1 = rnchisq(rng, ms, df1, ncp) / df1;
     }
 
     let v2 = if !r_finite(df2) {
         1.0
     } else {
-        rchisq_inner(rng, df2) / df2
+        rchisq_inner(rng, ms, df2) / df2
     };
 
     v1 / v2
@@ -741,6 +741,6 @@ pub fn qnf(p: f64, df1: f64, df2: f64, ncp: f64, lower_tail: i32, log_p: i32) ->
 }
 
 #[must_use]
-pub fn rnf(rng: &mut dyn FnMut() -> f64, df1: f64, df2: f64, ncp: f64) -> f64 {
-    rnf_inner(rng, df1, df2, ncp)
+pub fn rnf(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, df1: f64, df2: f64, ncp: f64) -> f64 {
+    rnf_inner(rng, ms, df1, df2, ncp)
 }

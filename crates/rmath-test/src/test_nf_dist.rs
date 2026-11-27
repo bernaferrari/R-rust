@@ -2,6 +2,7 @@ use crate::comparisons::*;
 use rmath::nmath::dist::nf_dist::*;
 
 pub fn run_tests() -> Result<(), String> {
+    let mut ms_state = rmath::nmath::state::MathState::default();
     // dnf tests
     assert_nan(dnf_inner(f64::NAN, 1.0, 1.0, 0.0, false), "dnf(NaN,1,1,0)");
     assert_nan(dnf_inner(1.0, f64::NAN, 1.0, 0.0, false), "dnf(1,NaN,1,0)");
@@ -54,12 +55,12 @@ pub fn run_tests() -> Result<(), String> {
 
     // rnf tests
     let mut rng_state = rmath::nmath::rng::RngState(42, 24);
-    let r1 = rnf_inner(&mut || rng_state.unif(), 3.0, 5.0, 2.0);
+    let r1 = rnf_inner(&mut || rng_state.unif(), &mut ms_state, 3.0, 5.0, 2.0);
     if r1 < 0.0 {
         return Err(format!("rnf(3,5,2) = {}, expected >= 0", r1));
     }
     let mut rng_state = rmath::nmath::rng::RngState(42, 24);
-    let r2 = rnf_inner(&mut || rng_state.unif(), 3.0, 5.0, 2.0);
+    let r2 = rnf_inner(&mut || rng_state.unif(), &mut ms_state, 3.0, 5.0, 2.0);
     assert_equiv(r1, r2, "rnf reproducible");
 
     Ok(())

@@ -325,6 +325,7 @@ pub fn qbinom_inner(p: f64, n: f64, pr: f64, lower_tail: bool, log_p: bool) -> f
 
 // ---- rbinom ----
 
+#[derive(Debug)]
 pub struct RbinomState {
     c: f64,
     fm: f64,
@@ -381,7 +382,7 @@ where
 }
 
 #[must_use]
-pub fn rbinom_inner(rng: &mut dyn FnMut() -> f64, nin: f64, pp: f64) -> f64 {
+pub fn rbinom_inner(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, nin: f64, pp: f64) -> f64 {
     let int_max = i32::MAX as f64;
 
     if !r_finite(nin) {
@@ -413,7 +414,7 @@ pub fn rbinom_inner(rng: &mut dyn FnMut() -> f64, nin: f64, pp: f64) -> f64 {
     let r_val = p / q;
     let g = r_val * ((n as f64) + 1.0);
 
-    with_rbinom_state(|st| {
+    let st = &mut ms.binom_state;
         // Setup, perform only when parameters change
         if pp != st.psave || n != st.nsave {
             st.psave = pp;
@@ -618,7 +619,7 @@ pub fn rbinom_inner(rng: &mut dyn FnMut() -> f64, nin: f64, pp: f64) -> f64 {
             }
             return result as f64;
         }
-    })
+
 }
 
 // ---- FFI shims ----
@@ -639,39 +640,18 @@ pub fn qbinom(p: f64, n: f64, pr: f64, lower_tail: i32, log_p: i32) -> f64 {
 }
 
 #[must_use]
-pub fn rbinom(rng: &mut dyn FnMut() -> f64, n: f64, p: f64) -> f64 {
-    rbinom_inner(rng, n, p)
+pub fn rbinom(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, n: f64, p: f64) -> f64 {
+    rbinom_inner(rng, ms, n, p)
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
-    use crate::test_session::TestSession;
 
-    #[test]
-    fn rbinom_state_is_session_local_on_same_thread() {
-        let mut rng_state = crate::rng::RngState::default();
-        let mut left = TestSession::new();
-        let mut right = TestSession::new();
-
-        left.with_protected(|| {
-            let _ = rbinom_inner(&mut || rng_state.unif(), 40.0, 0.3);
-            with_rbinom_state(|state| {
-                assert_eq!(state.nsave, 40);
-                assert_eq!(state.psave, 0.3);
-            });
-        });
-
-        right.with_protected(|| {
-            with_rbinom_state(|state| {
-                assert_eq!(state.nsave, -1);
-                assert_eq!(state.psave, -1.0);
-            });
-        });
-    }
 
     #[test]
     fn rbinom_matches_stock_multicarry_stream() {
+        let mut ms_state = crate::state::MathState::default();
         // Golden values captured from stock R 4.6.1 (rbinom.c BTPE) driven
         // with the same Marsaglia-MultiCarry stream: after
         // RNGkind("Marsaglia-Multicarry"), .Random.seed <- c(10401L, i1, i2).
@@ -681,14 +661,13 @@ mod tests {
         // Re-verified against trunk (bac5839) rbinom.c compiled standalone
         // with this stream: PR#19049's sign fix and the qn log1p path do
         // not shift any of these sequences.
-        let mut session = TestSession::new();
-        session.with_protected(|| {
+                {
             let mut rng_state = crate::rng::RngState(1234, 5678);
-            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(&mut || rng_state.unif(), 200.0, 0.4) as i32).collect();
+            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(&mut || rng_state.unif(), &mut ms_state, 200.0, 0.4) as i32).collect();
             assert_eq!(got, [72, 87, 77, 77, 85, 85, 81, 87, 73, 93]);
 
             let mut rng_state = crate::rng::RngState(1234, 5678);
-            let got: Vec<i32> = (0..12).map(|_| rbinom_inner(&mut || rng_state.unif(), 2000.0, 0.5) as i32).collect();
+            let got: Vec<i32> = (0..12).map(|_| rbinom_inner(&mut || rng_state.unif(), &mut ms_state, 2000.0, 0.5) as i32).collect();
             assert_eq!(
                 got,
                 [
@@ -697,32 +676,32 @@ mod tests {
             );
 
             let mut rng_state = crate::rng::RngState(1234, 5678);
-            let got: Vec<i32> = (0..8).map(|_| rbinom_inner(&mut || rng_state.unif(), 40.0, 0.3) as i32).collect();
+            let got: Vec<i32> = (0..8).map(|_| rbinom_inner(&mut || rng_state.unif(), &mut ms_state, 40.0, 0.3) as i32).collect();
             assert_eq!(got, [8, 15, 11, 9, 21, 8, 11, 19]);
 
             let mut rng_state = crate::rng::RngState(1234, 5678);
-            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(&mut || rng_state.unif(), 200.0, 0.9) as i32).collect();
+            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(&mut || rng_state.unif(), &mut ms_state, 200.0, 0.9) as i32).collect();
             assert_eq!(got, [185, 176, 182, 184, 166, 186, 181, 169, 182, 172]);
 
             let mut rng_state = crate::rng::RngState(99, 424_242);
-            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(&mut || rng_state.unif(), 300.0, 0.25) as i32).collect();
+            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(&mut || rng_state.unif(), &mut ms_state, 300.0, 0.25) as i32).collect();
             assert_eq!(got, [86, 72, 90, 75, 93, 78, 79, 85, 93, 78]);
 
             let mut rng_state = crate::rng::RngState(777, 333);
-            let got: Vec<i32> = (0..15).map(|_| rbinom_inner(&mut || rng_state.unif(), 500.0, 0.06) as i32).collect();
+            let got: Vec<i32> = (0..15).map(|_| rbinom_inner(&mut || rng_state.unif(), &mut ms_state, 500.0, 0.06) as i32).collect();
             assert_eq!(
                 got,
                 [30, 30, 27, 28, 31, 33, 27, 26, 25, 24, 31, 32, 20, 39, 30]
             );
 
             let mut rng_state = crate::rng::RngState(1234, 5678);
-            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(&mut || rng_state.unif(), 100.0, 0.31) as i32).collect();
+            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(&mut || rng_state.unif(), &mut ms_state, 100.0, 0.31) as i32).collect();
             assert_eq!(got, [27, 25, 35, 25, 33, 38, 27, 32, 29, 30]);
 
             let mut rng_state = crate::rng::RngState(5, 5);
-            let got: Vec<i32> = (0..6).map(|_| rbinom_inner(&mut || rng_state.unif(), 500.0, 0.9) as i32).collect();
+            let got: Vec<i32> = (0..6).map(|_| rbinom_inner(&mut || rng_state.unif(), &mut ms_state, 500.0, 0.9) as i32).collect();
             assert_eq!(got, [440, 448, 452, 451, 450, 456]);
-        });
+        }
     }
 
     /// PR#19049: the corrected (BTPE) Stirling squeeze terms and the
@@ -738,16 +717,10 @@ mod tests {
     #[test]
     fn rbinom_small_np_qn_formula_follows_p_quarter() {
         let mut rng_state = crate::rng::RngState::default();
-        let mut session = TestSession::new();
-        session.with_protected(|| {
-            let _ = rbinom_inner(&mut || rng_state.unif(), 100.0, 0.1);
-            with_rbinom_state(|st| {
-                assert!((st.qn - exp(100.0 * log1p(-0.1))).abs() < 1e-15);
-            });
-            let _ = rbinom_inner(&mut || rng_state.unif(), 40.0, 0.3);
-            with_rbinom_state(|st| {
-                assert!((st.qn - crate::special::mlutils::R_pow_di(0.7, 40)).abs() < 1e-15);
-            });
-        });
+        let mut ms_state = crate::state::MathState::default();
+        let _ = rbinom_inner(&mut || rng_state.unif(), &mut ms_state, 100.0, 0.1);
+        assert!((ms_state.binom_state.qn - exp(100.0 * log1p(-0.1))).abs() < 1e-15);
+        let _ = rbinom_inner(&mut || rng_state.unif(), &mut ms_state, 40.0, 0.3);
+        assert!((ms_state.binom_state.qn - crate::special::mlutils::R_pow_di(0.7, 40)).abs() < 1e-15);
     }
 }

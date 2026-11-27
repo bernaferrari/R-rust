@@ -527,24 +527,24 @@ pub fn qnbinom_mu_inner(p: f64, size: f64, mu: f64, lower_tail: bool, log_p: boo
 // ---- rnbinom ----
 
 #[must_use]
-pub fn rnbinom_inner(rng: &mut dyn FnMut() -> f64, size: f64, prob: f64) -> f64 {
+pub fn rnbinom_inner(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, size: f64, prob: f64) -> f64 {
     if !r_finite(prob) || isnan(size) || size <= 0.0 || prob <= 0.0 || prob > 1.0 {
         // prob = 1 is ok, PR#1218
         return ml_warn_return_nan();
     }
     let size = if !r_finite(size) { DBL_MAX / 2.0 } else { size };
-    // '/2' to prevent rgamma(rng, ) returning Inf
+    // '/2' to prevent rgamma(rng, ms, ) returning Inf
     if prob == 1.0 {
         return 0.0;
     }
-    let gamma_draw = rgamma_inner(rng, size, (1.0 - prob) / prob);
-    rpois_inner(rng, gamma_draw)
+    let gamma_draw = rgamma_inner(rng, ms, size, (1.0 - prob) / prob);
+    rpois_inner(rng, ms, gamma_draw)
 }
 
 // ---- rnbinom_mu ----
 
 #[must_use]
-pub fn rnbinom_mu_inner(rng: &mut dyn FnMut() -> f64, size: f64, mu: f64) -> f64 {
+pub fn rnbinom_mu_inner(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, size: f64, mu: f64) -> f64 {
     if !r_finite(mu) || isnan(size) || size <= 0.0 || mu < 0.0 {
         return ml_warn_return_nan();
     }
@@ -552,8 +552,8 @@ pub fn rnbinom_mu_inner(rng: &mut dyn FnMut() -> f64, size: f64, mu: f64) -> f64
     if mu == 0.0 {
         return 0.0;
     }
-    let gamma_draw = rgamma_inner(rng, size, mu / size);
-    rpois_inner(rng, gamma_draw)
+    let gamma_draw = rgamma_inner(rng, ms, size, mu / size);
+    rpois_inner(rng, ms, gamma_draw)
 }
 
 // ---- FFI shims ----
@@ -657,11 +657,11 @@ pub fn qnbinom_mu(
 }
 
 #[must_use]
-pub fn rnbinom(rng: &mut dyn FnMut() -> f64, size: c_double, prob: c_double) -> c_double {
-    rnbinom_inner(rng, size, prob)
+pub fn rnbinom(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, size: c_double, prob: c_double) -> c_double {
+    rnbinom_inner(rng, ms, size, prob)
 }
 
 #[must_use]
-pub fn rnbinom_mu(rng: &mut dyn FnMut() -> f64, size: c_double, mu: c_double) -> c_double {
-    rnbinom_mu_inner(rng, size, mu)
+pub fn rnbinom_mu(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, size: c_double, mu: c_double) -> c_double {
+    rnbinom_mu_inner(rng, ms, size, mu)
 }

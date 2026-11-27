@@ -469,7 +469,7 @@ pub fn qnchisq_inner(p: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -
 // ---- rnchisq ----
 
 #[must_use]
-pub fn rnchisq_inner(rng: &mut dyn FnMut() -> f64, df: f64, lambda: f64) -> f64 {
+pub fn rnchisq_inner(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, df: f64, lambda: f64) -> f64 {
     if isnan(df) || !r_finite(lambda) || df < 0.0 || lambda < 0.0 {
         return ml_warn_return_nan();
     }
@@ -478,15 +478,15 @@ pub fn rnchisq_inner(rng: &mut dyn FnMut() -> f64, df: f64, lambda: f64) -> f64 
         return if df == 0.0 {
             0.0
         } else {
-            rgamma_inner(rng, df / 2.0, 2.0)
+            rgamma_inner(rng, ms, df / 2.0, 2.0)
         };
     } else {
-        let mut r = rpois_inner(rng, lambda / 2.0);
+        let mut r = rpois_inner(rng, ms, lambda / 2.0);
         if r > 0.0 {
-            r = rchisq_inner(rng, 2.0 * r);
+            r = rchisq_inner(rng, ms, 2.0 * r);
         }
         if df > 0.0 {
-            r += rgamma_inner(rng, df / 2.0, 2.0);
+            r += rgamma_inner(rng, ms, df / 2.0, 2.0);
         }
         r
     }
@@ -544,8 +544,8 @@ pub fn qnchisq(
 }
 
 #[must_use]
-pub fn rnchisq(rng: &mut dyn FnMut() -> f64, df: c_double, ncp: c_double) -> c_double {
-    rnchisq_inner(rng, df, ncp)
+pub fn rnchisq(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, df: c_double, ncp: c_double) -> c_double {
+    rnchisq_inner(rng, ms, df, ncp)
 }
 
 #[cfg(test)]
@@ -554,11 +554,12 @@ mod tests {
 
     #[test]
     fn seeded_standalone_sample_completes_and_is_reproducible() {
+        let mut ms_state = crate::state::MathState::default();
         let mut rng_state = crate::rng::RngState(42, 24);
-        let first = rnchisq_inner(&mut || rng_state.unif(), 3.0, 2.0);
+        let first = rnchisq_inner(&mut || rng_state.unif(), &mut ms_state, 3.0, 2.0);
 
         let mut rng_state = crate::rng::RngState(42, 24);
-        let second = rnchisq_inner(&mut || rng_state.unif(), 3.0, 2.0);
+        let second = rnchisq_inner(&mut || rng_state.unif(), &mut ms_state, 3.0, 2.0);
 
         assert!(first.is_finite());
         assert!(first >= 0.0);

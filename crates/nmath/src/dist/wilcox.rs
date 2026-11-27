@@ -31,7 +31,7 @@ where
 /// cwilcox: count the number of choices with statistic = k
 /// This counts the number of subsets of size n from {1, ..., m+n}
 /// whose Wilcoxon rank sum statistic equals k.
-fn cwilcox(k: i32, m: i32, n: i32) -> f64 {
+fn cwilcox(ms: &mut crate::state::MathState, k: i32, m: i32, n: i32) -> f64 {
     let u = m * n;
     if k < 0 || k > u {
         return 0.0;
@@ -50,20 +50,21 @@ fn cwilcox(k: i32, m: i32, n: i32) -> f64 {
         return if k == 0 { 1.0 } else { 0.0 };
     }
 
-    // Simplify: if k < j, same count as cwilcox(k, i, k)
+    // Simplify: if k < j, same count as cwilcox(ms, k, i, k)
     if j > 0 && k < j {
-        return cwilcox(k, i, k);
+        return cwilcox(ms, k, i, k);
     }
 
     // Check cache first
-    let cached = with_wilcox_cache(|cache| {
-        if let Some(entry) = cache.get(&(i, j)) {
-            if entry.len() > k as usize && entry[k as usize] >= 0.0 {
-                return Some(entry[k as usize]);
+    let cached = {
+        let cache = &mut ms.wilcox_cache;
+        match cache.get(&(i, j)) {
+            Some(entry) if entry.len() > k as usize && entry[k as usize] >= 0.0 => {
+                Some(entry[k as usize])
             }
+            _ => None,
         }
-        None
-    });
+    };
     if let Some(val) = cached {
         return val;
     }
@@ -72,18 +73,18 @@ fn cwilcox(k: i32, m: i32, n: i32) -> f64 {
     let val = if j == 0 {
         if k == 0 { 1.0 } else { 0.0 }
     } else {
-        cwilcox(k - j, i - 1, j) + cwilcox(k, i, j - 1)
+        cwilcox(ms, k - j, i - 1, j) + cwilcox(ms, k, i, j - 1)
     };
 
     // Store in cache
-    with_wilcox_cache(|cache| {
+    { let cache = &mut ms.wilcox_cache;
         let entry = cache
             .entry((i, j))
             .or_insert_with(|| vec![-1.0_f64; (c + 1) as usize]);
         if (k as usize) < entry.len() {
             entry[k as usize] = val;
         }
-    });
+    };
 
     val
 }
@@ -93,7 +94,7 @@ fn cwilcox(k: i32, m: i32, n: i32) -> f64 {
 // =====================================================================
 
 #[must_use]
-pub fn dwilcox_inner(x: f64, m: f64, n: f64, log_p: bool) -> f64 {
+pub fn dwilcox_inner(ms: &mut crate::state::MathState, x: f64, m: f64, n: f64, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(m) || isnan(n) {
         return x + m + n;
@@ -117,9 +118,9 @@ pub fn dwilcox_inner(x: f64, m: f64, n: f64, log_p: bool) -> f64 {
     let xx = x as i32;
 
     let d = if log_p {
-        log(cwilcox(xx, mm, nn)) - lchoose(m + n, n)
+        log(cwilcox(ms, xx, mm, nn)) - lchoose(m + n, n)
     } else {
-        cwilcox(xx, mm, nn) / choose(m + n, n)
+        cwilcox(ms, xx, mm, nn) / choose(m + n, n)
     };
 
     d
@@ -130,7 +131,7 @@ pub fn dwilcox_inner(x: f64, m: f64, n: f64, log_p: bool) -> f64 {
 // =====================================================================
 
 #[must_use]
-pub fn pwilcox_inner(q: f64, m: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
+pub fn pwilcox_inner(ms: &mut crate::state::MathState, q: f64, m: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(q) || isnan(m) || isnan(n) {
         return q + m + n;
@@ -164,12 +165,12 @@ pub fn pwilcox_inner(q: f64, m: f64, n: f64, lower_tail: bool, log_p: bool) -> f
     if q <= (m * n / 2.0) {
         let q_int = q as i32;
         for i in 0..=q_int {
-            p += cwilcox(i, mm, nn) / denom;
+            p += cwilcox(ms, i, mm, nn) / denom;
         }
     } else {
         let q_int = (m * n - q) as i32;
         for i in 0..q_int {
-            p += cwilcox(i, mm, nn) / denom;
+            p += cwilcox(ms, i, mm, nn) / denom;
         }
         lower_tail = !lower_tail; // p = 1 - p;
     }
@@ -182,7 +183,7 @@ pub fn pwilcox_inner(q: f64, m: f64, n: f64, lower_tail: bool, log_p: bool) -> f
 // =====================================================================
 
 #[must_use]
-pub fn qwilcox_inner(x: f64, m: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
+pub fn qwilcox_inner(ms: &mut crate::state::MathState, x: f64, m: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(m) || isnan(n) {
         return x + m + n;
@@ -238,7 +239,7 @@ pub fn qwilcox_inner(x: f64, m: f64, n: f64, lower_tail: bool, log_p: bool) -> f
     if x <= 0.5 {
         x = x - 10.0 * DBL_EPSILON;
         loop {
-            p += cwilcox(q, mm, nn) / denom;
+            p += cwilcox(ms, q, mm, nn) / denom;
             if p >= x {
                 break;
             }
@@ -247,7 +248,7 @@ pub fn qwilcox_inner(x: f64, m: f64, n: f64, lower_tail: bool, log_p: bool) -> f
     } else {
         x = 1.0 - x + 10.0 * DBL_EPSILON;
         loop {
-            p += cwilcox(q, mm, nn) / denom;
+            p += cwilcox(ms, q, mm, nn) / denom;
             if p > x {
                 q = (m * n - q as f64) as i32;
                 break;
@@ -323,36 +324,18 @@ pub fn rwilcox_inner(rng: &mut dyn FnMut() -> f64, m: f64, n: f64) -> f64 {
 // =====================================================================
 
 #[must_use]
-pub fn dwilcox(x: c_double, m: c_double, n: c_double, give_log: c_int) -> c_double {
-    dwilcox_inner(x, m, n, give_log != 0)
+pub fn dwilcox(ms: &mut crate::state::MathState, x: c_double, m: c_double, n: c_double, give_log: c_int) -> c_double {
+    dwilcox_inner(ms, x, m, n, give_log != 0)
 }
 
-pub fn Rf_pwilcox(
-    q: c_double,
-    m: c_double,
-    n: c_double,
-    lower_tail: c_int,
-    log_p: c_int,
-) -> c_double {
-    pwilcox_inner(q, m, n, lower_tail != 0, log_p != 0)
+
+pub fn pwilcox(ms: &mut crate::state::MathState, q: c_double, m: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
+    pwilcox_inner(ms, q, m, n, lower_tail != 0, log_p != 0)
 }
 
-pub fn pwilcox(q: c_double, m: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
-    pwilcox_inner(q, m, n, lower_tail != 0, log_p != 0)
-}
 
-pub fn Rf_qwilcox(
-    p: c_double,
-    m: c_double,
-    n: c_double,
-    lower_tail: c_int,
-    log_p: c_int,
-) -> c_double {
-    qwilcox_inner(p, m, n, lower_tail != 0, log_p != 0)
-}
-
-pub fn qwilcox(p: c_double, m: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
-    qwilcox_inner(p, m, n, lower_tail != 0, log_p != 0)
+pub fn qwilcox(ms: &mut crate::state::MathState, p: c_double, m: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
+    qwilcox_inner(ms, p, m, n, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
@@ -363,83 +346,67 @@ pub fn rwilcox(rng: &mut dyn FnMut() -> f64, m: c_double, n: c_double) -> c_doub
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
-    use crate::test_session::TestSession;
 
-    #[test]
-    fn wilcox_cache_is_session_local_on_same_thread() {
-        let mut left = TestSession::new();
-        let mut right = TestSession::new();
-
-        let left_value = left.with_protected(|| cwilcox(6, 4, 5));
-        right.with_protected(|| {
-            with_wilcox_cache(|cache| assert!(!cache.contains_key(&(4, 5))));
-            assert_eq!(cwilcox(6, 4, 5), left_value);
-        });
-
-        left.with_protected(|| {
-            with_wilcox_cache(|cache| assert!(cache.contains_key(&(4, 5))));
-        });
-    }
 
     #[test]
     fn dwilcox_is_bit_identical_when_m_and_n_swap() {
-        let mut session = TestSession::new();
-        session.with_protected(|| {
+        let mut ms_state = crate::state::MathState::default();
+                {
             for &(m, n) in &[(2.0, 3.0), (7.0, 9.0), (6.0, 10.0), (5.0, 10.0)] {
                 let max = (m * n) as i32 + 1;
                 for x in -1..=max {
                     let xf = x as f64;
-                    let a = dwilcox_inner(xf, m, n, false);
-                    let b = dwilcox_inner(xf, n, m, false);
+                    let a = dwilcox_inner(&mut ms_state, xf, m, n, false);
+                    let b = dwilcox_inner(&mut ms_state, xf, n, m, false);
                     assert_eq!(
                         a.to_bits(),
                         b.to_bits(),
-                        "dwilcox({xf}, {m}, {n})={a} != dwilcox({xf}, {n}, {m})={b}"
+                        "dwilcox(&mut ms_state, {xf}, {m}, {n})={a} != dwilcox(&mut ms_state, {xf}, {n}, {m})={b}"
                     );
                 }
             }
-        });
+        }
     }
     #[test]
     fn qwilcox_log_one_uses_finite_support_after_size_validation() {
-        let mut session = TestSession::new();
-        session.with_protected(|| {
+        let mut ms_state = crate::state::MathState::default();
+                {
             for lower in [false, true] {
                 let expected = if lower { 12.0 } else { 0.0 };
-                assert_eq!(qwilcox_inner(0.0, 3.0, 4.0, lower, true), expected);
-                assert_eq!(qwilcox_inner(-0.0, 3.0, 4.0, lower, true), expected);
+                assert_eq!(qwilcox_inner(&mut ms_state, 0.0, 3.0, 4.0, lower, true), expected);
+                assert_eq!(qwilcox_inner(&mut ms_state, -0.0, 3.0, 4.0, lower, true), expected);
                 assert_eq!(
-                    qwilcox_inner(0.0, 0.51, 4.0, lower, true),
+                    qwilcox_inner(&mut ms_state, 0.0, 0.51, 4.0, lower, true),
                     if lower { 4.0 } else { 0.0 }
                 );
                 for m in [0.0, -1.0, 0.49] {
-                    assert!(qwilcox_inner(0.0, m, 4.0, lower, true).is_nan());
+                    assert!(qwilcox_inner(&mut ms_state, 0.0, m, 4.0, lower, true).is_nan());
                 }
-                assert!(qwilcox_inner(f64::NEG_INFINITY, 3.0, 4.0, lower, true).is_nan());
+                assert!(qwilcox_inner(&mut ms_state, f64::NEG_INFINITY, 3.0, 4.0, lower, true).is_nan());
             }
             // Boundary and invalid-size paths must not allocate count caches.
-            with_wilcox_cache(|cache| assert!(cache.is_empty()));
-        });
+            assert!(ms_state.wilcox_cache.is_empty());
+        }
     }
     #[test]
     fn qwilcox_finite_probability_neighbors_stay_unchanged() {
-        let mut session = TestSession::new();
-        session.with_protected(|| {
+        let mut ms_state = crate::state::MathState::default();
+                {
             for lower in [false, true] {
-                assert_eq!(qwilcox_inner(0.5_f64.ln(), 3.0, 4.0, lower, true), 6.0);
+                assert_eq!(qwilcox_inner(&mut ms_state, 0.5_f64.ln(), 3.0, 4.0, lower, true), 6.0);
                 assert_eq!(
-                    qwilcox_inner(0.99_f64.ln(), 3.0, 4.0, lower, true),
+                    qwilcox_inner(&mut ms_state, 0.99_f64.ln(), 3.0, 4.0, lower, true),
                     if lower { 12.0 } else { 0.0 }
                 );
                 assert_eq!(
-                    qwilcox_inner(0.0, 3.0, 4.0, lower, false),
+                    qwilcox_inner(&mut ms_state, 0.0, 3.0, 4.0, lower, false),
                     if lower { 0.0 } else { 12.0 }
                 );
                 assert_eq!(
-                    qwilcox_inner(1.0, 3.0, 4.0, lower, false),
+                    qwilcox_inner(&mut ms_state, 1.0, 3.0, 4.0, lower, false),
                     if lower { 12.0 } else { 0.0 }
                 );
             }
-        });
+        }
     }
 }

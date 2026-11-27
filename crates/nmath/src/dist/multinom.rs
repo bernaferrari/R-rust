@@ -14,7 +14,7 @@ use std::os::raw::{c_double, c_int};
 ///
 /// `rn` is filled with `K` values where rn[j] ~ Bin(n, prob[j]),
 /// sum_j rn[j] == n, sum_j prob[j] == 1.
-pub fn rmultinom_inner(rng: &mut dyn FnMut() -> f64, n: i32, prob: &[f64], rn: &mut [f64]) {
+pub fn rmultinom_inner(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, n: i32, prob: &[f64], rn: &mut [f64]) {
     let k = prob.len();
 
     if k < 1 {
@@ -72,7 +72,7 @@ pub fn rmultinom_inner(rng: &mut dyn FnMut() -> f64, n: i32, prob: &[f64], rn: &
         if prob[i] != 0.0 {
             let pp = prob[i] / p_remaining;
             let val = if pp < 1.0 {
-                rbinom_inner(rng, n_remaining as f64, pp)
+                rbinom_inner(rng, ms, n_remaining as f64, pp)
             } else {
                 // >= 1; > 1 happens because of rounding
                 n_remaining as f64
@@ -104,7 +104,7 @@ pub fn rmultinom_inner(rng: &mut dyn FnMut() -> f64, n: i32, prob: &[f64], rn: &
 
 // ---- FFI shim ----
 
-pub fn rmultinom(rng: &mut dyn FnMut() -> f64, n: c_int, prob: &[c_double], rn: &mut [c_double]) {
-    rmultinom_inner(rng, n, prob, rn);
+pub fn rmultinom(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, n: c_int, prob: &[c_double], rn: &mut [c_double]) {
+    rmultinom_inner(rng, ms, n, prob, rn);
 }
 

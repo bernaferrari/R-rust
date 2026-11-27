@@ -28,7 +28,7 @@ where
 
 /// csignrank: counts for the signed rank distribution.
 /// Returns the number of ways to get statistic = k for n signed ranks.
-fn csignrank(k: i32, n: i32) -> f64 {
+fn csignrank(ms: &mut crate::state::MathState, k: i32, n: i32) -> f64 {
     let u = n * (n + 1) / 2;
     let c = (u / 2) as i32;
 
@@ -44,7 +44,7 @@ fn csignrank(k: i32, n: i32) -> f64 {
         return 1.0;
     }
 
-    with_signrank_cache(|cache| {
+    { let cache = &mut ms.signrank_cache;
         let entry = cache
             .entry(n)
             .or_insert_with(|| vec![0.0_f64; (c + 1) as usize]);
@@ -69,7 +69,7 @@ fn csignrank(k: i32, n: i32) -> f64 {
         }
 
         entry[k as usize]
-    })
+    }
 }
 
 // =====================================================================
@@ -77,13 +77,12 @@ fn csignrank(k: i32, n: i32) -> f64 {
 // =====================================================================
 
 #[must_use]
-pub fn dsignrank_inner(x: f64, n: f64, log_p: bool) -> f64 {
-    dsignrank_with_count(x, n, log_p, csignrank)
+pub fn dsignrank_inner(ms: &mut crate::state::MathState, x: f64, n: f64, log_p: bool) -> f64 {
+    dsignrank_with_count(x, n, log_p, |k, nn| csignrank(ms, k, nn))
 }
 
 /// Evaluate with copied counts supplied by the host; no buffer loan crosses a count request.
-pub fn dsignrank_with_count(
-    x: f64,
+pub fn dsignrank_with_count(    x: f64,
     n: f64,
     log_p: bool,
     mut count: impl FnMut(i32, i32) -> f64,
@@ -116,13 +115,12 @@ pub fn dsignrank_with_count(
 // =====================================================================
 
 #[must_use]
-pub fn psignrank_inner(x: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
-    psignrank_with_count(x, n, lower_tail, log_p, csignrank)
+pub fn psignrank_inner(ms: &mut crate::state::MathState, x: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
+    psignrank_with_count(x, n, lower_tail, log_p, |k, nn| csignrank(ms, k, nn))
 }
 
 /// Evaluate with copied counts supplied by the host; no buffer loan crosses a count request.
-pub fn psignrank_with_count(
-    x: f64,
+pub fn psignrank_with_count(    x: f64,
     n: f64,
     lower_tail: bool,
     log_p: bool,
@@ -173,13 +171,12 @@ pub fn psignrank_with_count(
 // =====================================================================
 
 #[must_use]
-pub fn qsignrank_inner(x: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
-    qsignrank_with_count(x, n, lower_tail, log_p, csignrank)
+pub fn qsignrank_inner(ms: &mut crate::state::MathState, x: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
+    qsignrank_with_count(x, n, lower_tail, log_p, |k, nn| csignrank(ms, k, nn))
 }
 
 /// Evaluate with copied counts supplied by the host; no buffer loan crosses a count request.
-pub fn qsignrank_with_count(
-    x: f64,
+pub fn qsignrank_with_count(    x: f64,
     n: f64,
     lower_tail: bool,
     log_p: bool,
@@ -292,26 +289,20 @@ pub fn rsignrank_inner(rng: &mut dyn FnMut() -> f64, n: f64) -> f64 {
 // =====================================================================
 
 #[must_use]
-pub fn dsignrank(x: c_double, n: c_double, give_log: c_int) -> c_double {
-    dsignrank_inner(x, n, give_log != 0)
+pub fn dsignrank(ms: &mut crate::state::MathState, x: c_double, n: c_double, give_log: c_int) -> c_double {
+    dsignrank_inner(ms, x, n, give_log != 0)
 }
 
-pub fn Rf_psignrank(x: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
-    psignrank_inner(x, n, lower_tail != 0, log_p != 0)
-}
 
 #[must_use]
-pub fn psignrank(x: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
-    psignrank_inner(x, n, lower_tail != 0, log_p != 0)
+pub fn psignrank(ms: &mut crate::state::MathState, x: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
+    psignrank_inner(ms, x, n, lower_tail != 0, log_p != 0)
 }
 
-pub fn Rf_qsignrank(p: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
-    qsignrank_inner(p, n, lower_tail != 0, log_p != 0)
-}
 
 #[must_use]
-pub fn qsignrank(p: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
-    qsignrank_inner(p, n, lower_tail != 0, log_p != 0)
+pub fn qsignrank(ms: &mut crate::state::MathState, p: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
+    qsignrank_inner(ms, p, n, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
@@ -322,21 +313,5 @@ pub fn rsignrank(rng: &mut dyn FnMut() -> f64, n: c_double) -> c_double {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
-    use crate::test_session::TestSession;
 
-    #[test]
-    fn signrank_cache_is_session_local_on_same_thread() {
-        let mut left = TestSession::new();
-        let mut right = TestSession::new();
-
-        let left_value = left.with_protected(|| csignrank(3, 4));
-        right.with_protected(|| {
-            with_signrank_cache(|cache| assert!(!cache.contains_key(&4)));
-            assert_eq!(csignrank(3, 4), left_value);
-        });
-
-        left.with_protected(|| {
-            with_signrank_cache(|cache| assert!(cache.contains_key(&4)));
-        });
-    }
 }

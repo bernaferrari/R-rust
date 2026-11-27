@@ -253,6 +253,7 @@ fn afc(i: i32) -> f64 {
     (di + 0.5) * log(di) - di + M_LN_SQRT_2PI + (0.0833333333333333 - 0.00277777777777778 / i2) / di
 }
 
+#[derive(Debug)]
 pub struct RhyperState {
     ks: i32,
     n1s: i32,
@@ -316,7 +317,7 @@ where
 }
 
 #[must_use]
-pub fn rhyper_inner(rng: &mut dyn FnMut() -> f64, nn1in: f64, nn2in: f64, kkin: f64) -> f64 {
+pub fn rhyper_inner(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, nn1in: f64, nn2in: f64, kkin: f64) -> f64 {
     let int_max = i32::MAX as f64;
 
     if !r_finite(nn1in) || !r_finite(nn2in) || !r_finite(kkin) {
@@ -334,7 +335,7 @@ pub fn rhyper_inner(rng: &mut dyn FnMut() -> f64, nn1in: f64, nn2in: f64, kkin: 
     if big_n > int_max || kkin >= int_max {
         // large n -- evade integer overflow (and inappropriate algorithms)
         if kkin == 1.0 {
-            return crate::dist::binomial::rbinom_inner(rng, kkin, nn1in / (nn1in + nn2in));
+            return crate::dist::binomial::rbinom_inner(rng, ms, kkin, nn1in / (nn1in + nn2in));
         }
         return qhyper_inner(rng(), nn1in, nn2in, kkin, false, false);
     }
@@ -343,7 +344,7 @@ pub fn rhyper_inner(rng: &mut dyn FnMut() -> f64, nn1in: f64, nn2in: f64, kkin: 
     let nn2 = nn2in as i32;
     let kk = kkin as i32;
 
-    with_rhyper_state(|st| {
+    { let st = &mut ms.hyper_state;
         // Setup based on parameter changes
         let setup1 = nn1 != st.n1s || nn2 != st.n2s;
         // n1 | n2 changed => setup all; else kk changed => setup k only
@@ -580,7 +581,7 @@ pub fn rhyper_inner(rng: &mut dyn FnMut() -> f64, nn1in: f64, nn2in: f64, kkin: 
         }
 
         ix as f64
-    })
+    }
 }
 
 // ---- FFI shims ----
@@ -601,58 +602,34 @@ pub fn qhyper(p: f64, nr: f64, nb: f64, n: f64, lower_tail: i32, log_p: i32) -> 
 }
 
 #[must_use]
-pub fn rhyper(rng: &mut dyn FnMut() -> f64, nn1: f64, nn2: f64, kk: f64) -> f64 {
-    rhyper_inner(rng, nn1, nn2, kk)
+pub fn rhyper(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, nn1: f64, nn2: f64, kk: f64) -> f64 {
+    rhyper_inner(rng, ms, nn1, nn2, kk)
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
-    use crate::test_session::TestSession;
 
-    #[test]
-    fn rhyper_state_is_session_local_on_same_thread() {
-        let mut rng_state = crate::rng::RngState::default();
-        let mut left = TestSession::new();
-        let mut right = TestSession::new();
-
-        left.with_protected(|| {
-            let _ = rhyper_inner(&mut || rng_state.unif(), 30.0, 40.0, 12.0);
-            with_rhyper_state(|state| {
-                assert_eq!(state.n1s, 30);
-                assert_eq!(state.n2s, 40);
-                assert_eq!(state.ks, 12);
-            });
-        });
-
-        right.with_protected(|| {
-            with_rhyper_state(|state| {
-                assert_eq!(state.n1s, -1);
-                assert_eq!(state.n2s, -1);
-                assert_eq!(state.ks, -1);
-            });
-        });
-    }
 
     /// Goldens from trunk (bac5839) rhyper.c compiled standalone with the
     /// built-in Marsaglia-MultiCarry stream (identical to the vendored
     /// old-commit values on these sequences).
     #[test]
     fn rhyper_matches_trunk_multicarry_stream() {
-        let mut session = TestSession::new();
-        session.with_protected(|| {
+        let mut ms_state = crate::state::MathState::default();
+                {
             let mut rng_state = crate::rng::RngState(1234, 5678);
             let got: Vec<i32> = (0..8)
-                .map(|_| rhyper_inner(&mut || rng_state.unif(), 30.0, 40.0, 12.0) as i32)
+                .map(|_| rhyper_inner(&mut || rng_state.unif(), &mut ms_state, 30.0, 40.0, 12.0) as i32)
                 .collect();
             assert_eq!(got, [3, 7, 5, 4, 10, 3, 5, 9]);
 
             let mut rng_state = crate::rng::RngState(1234, 5678);
             let got: Vec<i32> = (0..8)
-                .map(|_| rhyper_inner(&mut || rng_state.unif(), 100.0, 200.0, 50.0) as i32)
+                .map(|_| rhyper_inner(&mut || rng_state.unif(), &mut ms_state, 100.0, 200.0, 50.0) as i32)
                 .collect();
             assert_eq!(got, [16, 17, 17, 20, 16, 18, 16, 21]);
-        });
+        }
     }
 
     /// Trunk guard: evade the int algorithms when the *total* nn1+nn2
@@ -662,16 +639,16 @@ mod tests {
     /// this stream, where the old int algorithm drew 49.
     #[test]
     fn rhyper_large_total_uses_qhyper_inversion() {
-        let mut session = TestSession::new();
-        session.with_protected(|| {
+        let mut ms_state = crate::state::MathState::default();
+                {
             let mut rng_state = crate::rng::RngState(1234, 5678);
-            let got = rhyper_inner(&mut || rng_state.unif(), 2.0e9, 2.0e9, 100.0);
+            let got = rhyper_inner(&mut || rng_state.unif(), &mut ms_state, 2.0e9, 2.0e9, 100.0);
 
             let mut rng_state = crate::rng::RngState(1234, 5678);
             let u = rng_state.unif();
             assert_eq!(got, qhyper_inner(u, 2.0e9, 2.0e9, 100.0, false, false));
             assert_eq!(got, 56.0);
-        });
+        }
     }
 
     /// nn1 == INT_MAX exactly with nn2 == 0: N == INT_MAX is not
@@ -679,12 +656,12 @@ mod tests {
     /// uniform; the old code evaded to qhyper and burned one.
     #[test]
     fn rhyper_intmax_boundary_uses_int_path_without_uniforms() {
-        let mut session = TestSession::new();
-        session.with_protected(|| {
+        let mut ms_state = crate::state::MathState::default();
+                {
             let mut rng_state = crate::rng::RngState(1234, 5678);
-            assert_eq!(rhyper_inner(&mut || rng_state.unif(), 2147483647.0, 0.0, 5.0), 5.0);
+            assert_eq!(rhyper_inner(&mut || rng_state.unif(), &mut ms_state, 2147483647.0, 0.0, 5.0), 5.0);
             // no uniform consumed: the next draw is still the stream head
             assert_eq!(rng_state.unif(), 0.102_089_069_807_457_04);
-        });
+        }
     }
 }

@@ -26844,7 +26844,7 @@ fn r_zoo(
     caller_env: ValueId,
     param_names: &[&str],
     defaults: &[f64],
-    draw: impl Fn(&mut dyn FnMut() -> f64, &[f64]) -> f64,
+    draw: impl Fn(&mut dyn FnMut() -> f64, &mut crate::nmath::state::MathState, &[f64]) -> f64,
 ) -> EvalResult {
     let mut names: Vec<&str> = vec!["n"];
     names.extend_from_slice(param_names);
@@ -26868,7 +26868,7 @@ fn r_zoo(
         let mut unif = move || rng.unif();
         for i in 0..n.min(10_000_000) {
             let draw_params: Vec<f64> = params.iter().map(|v| v[i % v.len()]).collect();
-            out.push(draw(&mut unif, &draw_params));
+            out.push(draw(&mut unif, &mut heap.math, &draw_params));
         }
     }
     Ok(heap.alloc(RObject::Real(out)))
@@ -26887,18 +26887,18 @@ macro_rules! zoo_primitive {
     };
 }
 
-zoo_primitive!(rbinom_primitive, ["size", "prob"], [1.0, 0.5], |rng: &mut dyn FnMut() -> f64, ps: &[f64]| crate::nmath::dist::binomial::rbinom(rng, ps[0], ps[1]));
-zoo_primitive!(rpois_primitive, ["lambda"], [1.0], |rng: &mut dyn FnMut() -> f64, ps: &[f64]| crate::nmath::dist::poisson::rpois(rng, ps[0]));
-zoo_primitive!(rbeta_primitive, ["shape1", "shape2"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, ps: &[f64]| crate::nmath::dist::beta::rbeta(rng, ps[0], ps[1]));
-zoo_primitive!(rchisq_primitive, ["df"], [1.0], |rng: &mut dyn FnMut() -> f64, ps: &[f64]| crate::nmath::dist::chisq::rchisq(rng, ps[0]));
-zoo_primitive!(rt_primitive, ["df"], [1.0], |rng: &mut dyn FnMut() -> f64, ps: &[f64]| crate::nmath::dist::t_dist::rt(rng, ps[0]));
-zoo_primitive!(rf_primitive, ["df1", "df2"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, ps: &[f64]| crate::nmath::dist::f_dist::rf(rng, ps[0], ps[1]));
-zoo_primitive!(rlnorm_primitive, ["meanlog", "sdlog"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ps: &[f64]| crate::nmath::dist::lnorm::rlnorm(rng, ps[0], ps[1]));
-zoo_primitive!(rlogis_primitive, ["location", "scale"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ps: &[f64]| crate::nmath::dist::logistic::rlogis(rng, ps[0], ps[1]));
-zoo_primitive!(rcauchy_primitive, ["location", "scale"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ps: &[f64]| crate::nmath::dist::cauchy::rcauchy(rng, ps[0], ps[1]));
-zoo_primitive!(rgeom_primitive, ["prob"], [0.5], |rng: &mut dyn FnMut() -> f64, ps: &[f64]| crate::nmath::dist::geometric::rgeom(rng, ps[0]));
-zoo_primitive!(rweibull_primitive, ["shape", "scale"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, ps: &[f64]| crate::nmath::dist::weibull::rweibull(rng, ps[0], ps[1]));
-zoo_primitive!(rnbinom_primitive, ["size", "prob"], [1.0, 0.5], |rng: &mut dyn FnMut() -> f64, ps: &[f64]| crate::nmath::dist::nbinom::rnbinom(rng, ps[0], ps[1]));
+zoo_primitive!(rbinom_primitive, ["size", "prob"], [1.0, 0.5], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::binomial::rbinom(rng, ms, ps[0], ps[1]));
+zoo_primitive!(rpois_primitive, ["lambda"], [1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::poisson::rpois(rng, ms, ps[0]));
+zoo_primitive!(rbeta_primitive, ["shape1", "shape2"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::beta::rbeta(rng, ms, ps[0], ps[1]));
+zoo_primitive!(rchisq_primitive, ["df"], [1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::chisq::rchisq(rng, ms, ps[0]));
+zoo_primitive!(rt_primitive, ["df"], [1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::t_dist::rt(rng, ms, ps[0]));
+zoo_primitive!(rf_primitive, ["df1", "df2"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::f_dist::rf(rng, ms, ps[0], ps[1]));
+zoo_primitive!(rlnorm_primitive, ["meanlog", "sdlog"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::lnorm::rlnorm(rng, ps[0], ps[1]));
+zoo_primitive!(rlogis_primitive, ["location", "scale"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::logistic::rlogis(rng, ps[0], ps[1]));
+zoo_primitive!(rcauchy_primitive, ["location", "scale"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::cauchy::rcauchy(rng, ps[0], ps[1]));
+zoo_primitive!(rgeom_primitive, ["prob"], [0.5], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::geometric::rgeom(rng, ms, ps[0]));
+zoo_primitive!(rweibull_primitive, ["shape", "scale"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::weibull::rweibull(rng, ps[0], ps[1]));
+zoo_primitive!(rnbinom_primitive, ["size", "prob"], [1.0, 0.5], |rng: &mut dyn FnMut() -> f64, ms: &mut crate::nmath::state::MathState, ps: &[f64]| crate::nmath::dist::nbinom::rnbinom(rng, ms, ps[0], ps[1]));
 
 /// rgamma(n, shape, rate, scale) — GNU's parameterization exactly: scale
 /// defaults to 1/rate and an explicit scale overrides rate.
@@ -26933,7 +26933,7 @@ fn rgamma_primitive(
                 Some(values) => values[i % values.len()],
                 None => 1.0 / rates[i % rates.len()],
             };
-            out.push(crate::nmath::dist::gamma::rgamma(&mut unif, shape, scale));
+            out.push(crate::nmath::dist::gamma::rgamma(&mut unif, &mut heap.math, shape, scale));
         }
     }
     Ok(heap.alloc(RObject::Real(out)))
@@ -26947,7 +26947,7 @@ fn rexp_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    r_zoo(heap, interner, args, caller_env, &["rate"], &[1.0], |rng: &mut dyn FnMut() -> f64, ps: &[f64]| {
+    r_zoo(heap, interner, args, caller_env, &["rate"], &[1.0], |rng: &mut dyn FnMut() -> f64, _ms: &mut crate::nmath::state::MathState, ps: &[f64]| {
         crate::nmath::dist::exponential::rexp(rng, 1.0 / ps[0])
     })
 }
@@ -26976,6 +26976,7 @@ fn rhyper_primitive(
         for i in 0..nn.min(10_000_000) {
             out.push(crate::nmath::dist::hypergeometric::rhyper(
                 &mut unif,
+                &mut heap.math,
                 ms[i % ms.len()],
                 ns[i % ns.len()],
                 ks[i % ks.len()],

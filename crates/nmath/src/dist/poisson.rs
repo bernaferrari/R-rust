@@ -280,6 +280,7 @@ pub fn qpois_inner(p: f64, lambda: f64, lower_tail: bool, log_p: bool) -> f64 {
 // ---- rpois ----
 
 // Persistent state for rpois (mirrors C's function-level static variables)
+#[derive(Debug)]
 pub struct RpoisState {
     l: i32,
     m: i32,
@@ -342,7 +343,7 @@ where
 }
 
 #[must_use]
-pub fn rpois_inner(rng: &mut dyn FnMut() -> f64, mu: f64) -> f64 {
+pub fn rpois_inner(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, mu: f64) -> f64 {
     let fact: [f64; 10] = [1., 1., 2., 6., 24., 120., 720., 5040., 40320., 362880.];
 
     if !r_finite(mu) || mu < 0.0 {
@@ -354,7 +355,7 @@ pub fn rpois_inner(rng: &mut dyn FnMut() -> f64, mu: f64) -> f64 {
 
     let big_mu = mu >= 10.0;
 
-    with_rpois_state(|st| {
+    { let st = &mut ms.pois_state;
         let mut new_big_mu = false;
 
         if !(big_mu && mu == st.muprev) {
@@ -524,7 +525,7 @@ pub fn rpois_inner(rng: &mut dyn FnMut() -> f64, mu: f64) -> f64 {
                 }
             }
         }
-    })
+    }
 }
 
 // ---- FFI shims ----
@@ -545,41 +546,18 @@ pub fn qpois(p: f64, lambda: f64, lower_tail: i32, log_p: i32) -> f64 {
 }
 
 #[must_use]
-pub fn rpois(rng: &mut dyn FnMut() -> f64, mu: f64) -> f64 {
-    rpois_inner(rng, mu)
+pub fn rpois(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, mu: f64) -> f64 {
+    rpois_inner(rng, ms, mu)
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
-    use crate::test_session::TestSession;
 
-    #[test]
-    fn rpois_state_is_session_local_on_same_thread() {
-        let mut rng_state = crate::rng::RngState::default();
-        let mut left = TestSession::new();
-        let mut right = TestSession::new();
-
-        left.with_protected(|| {
-            let _ = rpois_inner(&mut || rng_state.unif(), 12.0);
-            with_rpois_state(|state| {
-                assert_eq!(state.muprev, 12.0);
-                assert!(state.s > 0.0);
-            });
-        });
-
-        right.with_protected(|| {
-            with_rpois_state(|state| {
-                assert_eq!(state.muprev, 0.0);
-                assert_eq!(state.s, 0.0);
-            });
-        });
-    }
 
     #[test]
     fn qpois_lambda_zero_is_zero_including_p_one() {
-        let mut session = TestSession::new();
-        session.with_protected(|| {
+                {
             for &p in &[0.0, 0.125, 0.5, 0.875, 1.0] {
                 assert_eq!(qpois_inner(p, 0.0, true, false), 0.0, "qpois({p}, 0)");
                 assert_eq!(
@@ -590,6 +568,6 @@ mod tests {
             }
             assert_eq!(qpois_inner(1.0, 1.0, true, false), f64::INFINITY);
             assert_eq!(qpois_inner(0.0, 1.0, true, false), 0.0);
-        });
+        }
     }
 }

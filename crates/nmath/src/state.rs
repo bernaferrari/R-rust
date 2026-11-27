@@ -13,7 +13,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 /// Per-session continuation state used by the nmath distribution samplers.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct MathState {
     /// Signed-rank distribution memo table.
     pub signrank_cache: HashMap<i32, Vec<f64>>,

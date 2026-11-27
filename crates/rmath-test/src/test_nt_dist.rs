@@ -2,6 +2,7 @@ use crate::comparisons::*;
 use rmath::nmath::dist::nt_dist::*;
 
 pub fn run_tests() -> Result<(), String> {
+    let mut ms_state = rmath::nmath::state::MathState::default();
     // dnt tests
     assert_nan(dnt_inner(f64::NAN, 3.0, 0.0, false), "dnt(NaN,3,0)");
     assert_nan(dnt_inner(0.0, f64::NAN, 0.0, false), "dnt(0,NaN,0)");
@@ -39,14 +40,14 @@ pub fn run_tests() -> Result<(), String> {
 
     // rnt tests
     let mut rng_state = rmath::nmath::rng::RngState(42, 24);
-    let r1 = rnt_inner(&mut || rng_state.unif(), 3.0, 2.0);
+    let r1 = rnt_inner(&mut || rng_state.unif(), &mut ms_state, 3.0, 2.0);
     if !(r1.is_finite()) {
         return Err(format!("rnt(3,2) = {}, expected finite", r1));
     }
     let mut rng_state = rmath::nmath::rng::RngState(42, 24);
-    let r2 = rnt_inner(&mut || rng_state.unif(), 3.0, 2.0);
+    let r2 = rnt_inner(&mut || rng_state.unif(), &mut ms_state, 3.0, 2.0);
     assert_equiv(r1, r2, "rnt reproducible");
-    assert_nan(rnt_inner(&mut || rng_state.unif(), f64::NAN, 2.0), "rnt(NaN,2)");
+    assert_nan(rnt_inner(&mut || rng_state.unif(), &mut ms_state, f64::NAN, 2.0), "rnt(NaN,2)");
 
     Ok(())
 }

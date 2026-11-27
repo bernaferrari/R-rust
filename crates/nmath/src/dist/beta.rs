@@ -931,6 +931,7 @@ pub fn qbeta_inner(alpha: f64, p: f64, q: f64, lower_tail: bool, log_p: bool) ->
 // =====================================================================
 
 #[derive(Clone, Copy)]
+#[derive(Debug)]
 pub struct BetaState {
     olda: f64,
     oldb: f64,
@@ -962,9 +963,21 @@ where
     with_required_current_instance(|instance| f(&mut instance.beta_state))
 }
 
+const EXPMAX: f64 = (DBL_MAX_EXP as f64) * M_LN2; // = log(DBL_MAX)
+
+fn v_w_from_u1_bet(beta: f64, u1: f64, aa_val: f64) -> (f64, f64) {
+    let v = beta * log(u1 / (1.0 - u1));
+    if v <= EXPMAX {
+        let w = aa_val * exp(v);
+        let w = if !r_finite(w) { DBL_MAX } else { w };
+        (v, w)
+    } else {
+        (v, DBL_MAX)
+    }
+}
+
 #[must_use]
-pub fn rbeta_inner(rng: &mut dyn FnMut() -> f64, aa: f64, bb: f64) -> f64 {
-    const EXPMAX: f64 = (DBL_MAX_EXP as f64) * M_LN2; // = log(DBL_MAX)
+pub fn rbeta_inner(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, aa: f64, bb: f64) -> f64 {
 
     if isnan(aa) || isnan(bb) || aa < 0.0 || bb < 0.0 {
         return ml_warn_return_nan();
@@ -986,46 +999,35 @@ pub fn rbeta_inner(rng: &mut dyn FnMut() -> f64, aa: f64, bb: f64) -> f64 {
     let (a, b): (f64, f64);
     let alpha: f64;
 
-    let qsame = with_beta_state(|state| {
+    let qsame = { let state = &mut ms.beta_state;
         let same = (state.olda == aa) && (state.oldb == bb);
         if !same {
             state.olda = aa;
             state.oldb = bb;
         }
         same
-    });
+    };
 
     a = fmin2(aa, bb);
     b = fmax2(aa, bb); // a <= b
     alpha = a + b;
 
-    let v_w_from_u1_bet = |u1: f64, aa_val: f64| -> (f64, f64) {
-        let beta = with_beta_state(|state| state.beta);
-        let v = beta * log(u1 / (1.0 - u1));
-        if v <= EXPMAX {
-            let w = aa_val * exp(v);
-            let w = if !r_finite(w) { DBL_MAX } else { w };
-            (v, w)
-        } else {
-            (v, DBL_MAX)
-        }
-    };
 
     if a <= 1.0 {
         // --- Algorithm BC ---
         if !qsame {
             // fma() matches the contraction clang applies to these
             // a*b+-c subexpressions when compiling stock R's rbeta.c.
-            with_beta_state(|state| {
+            { let state = &mut ms.beta_state;
                 state.beta = 1.0 / a;
                 state.delta = 1.0 + b - a;
                 state.k1 = state.delta * 0.0416667_f64.mul_add(a, 0.0138889)
                     / b.mul_add(state.beta, -0.777778);
                 state.k2 = (0.5 + 0.25 / state.delta).mul_add(a, 0.25);
-            });
+            };
         }
 
-        let (k1, k2) = with_beta_state(|state| (state.k1, state.k2));
+        let (k1, k2) = (ms.beta_state.k1, ms.beta_state.k2);
 
         loop {
             let u1 = rng();
@@ -1040,7 +1042,7 @@ pub fn rbeta_inner(rng: &mut dyn FnMut() -> f64, aa: f64, bb: f64) -> f64 {
             } else {
                 z = u1 * u1 * u2;
                 if z <= 0.25 {
-                    let (_, w) = v_w_from_u1_bet(u1, b);
+                    let (_, w) = v_w_from_u1_bet(ms.beta_state.beta, u1, b);
                     return if aa == a { a / (a + w) } else { w / (a + w) };
                 }
                 if z >= k2 {
@@ -1048,7 +1050,7 @@ pub fn rbeta_inner(rng: &mut dyn FnMut() -> f64, aa: f64, bb: f64) -> f64 {
                 }
             }
 
-            let (v, w) = v_w_from_u1_bet(u1, b);
+            let (v, w) = v_w_from_u1_bet(ms.beta_state.beta, u1, b);
             if alpha.mul_add(log(alpha / (a + w)) + v, -1.3862944) >= log(z) {
                 return if aa == a { a / (a + w) } else { w / (a + w) };
             }
@@ -1056,13 +1058,13 @@ pub fn rbeta_inner(rng: &mut dyn FnMut() -> f64, aa: f64, bb: f64) -> f64 {
     } else {
         // Algorithm BB
         if !qsame {
-            with_beta_state(|state| {
+            { let state = &mut ms.beta_state;
                 state.beta = sqrt((alpha - 2.0) / (2.0 * a).mul_add(b, -alpha));
                 state.gamma = a + 1.0 / state.beta;
-            });
+            };
         }
 
-        let gamma_v = with_beta_state(|state| state.gamma);
+        let gamma_v = (ms.beta_state.gamma);
 
         // C: do { ... } while (r + alpha * log(alpha / (b + w)) < t);
         // repeat while that condition holds, return with the current w
@@ -1071,7 +1073,7 @@ pub fn rbeta_inner(rng: &mut dyn FnMut() -> f64, aa: f64, bb: f64) -> f64 {
         loop {
             let u1 = rng();
             let u2 = rng();
-            let (v, w_i) = v_w_from_u1_bet(u1, a);
+            let (v, w_i) = v_w_from_u1_bet(ms.beta_state.beta, u1, a);
             w = w_i;
 
             let z = u1 * u1 * u2;
@@ -1113,8 +1115,8 @@ pub fn qbeta(p: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
 }
 
 #[must_use]
-pub fn rbeta(rng: &mut dyn FnMut() -> f64, a: f64, b: f64) -> f64 {
-    rbeta_inner(rng, a, b)
+pub fn rbeta(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, a: f64, b: f64) -> f64 {
+    rbeta_inner(rng, ms, a, b)
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -1122,32 +1124,8 @@ mod tests {
     use super::*;
     /// (name, aa, bb, scripted uniforms, consumed count, expected draw bits)
     type ConsumptionCase = (&'static str, f64, f64, &'static [f64], usize, u64);
-    use crate::test_session::TestSession;
     use std::collections::VecDeque;
 
-    #[test]
-    fn rbeta_state_is_session_local_on_same_thread() {
-        let mut rng_state = crate::rng::RngState::default();
-        let mut left = TestSession::new();
-        let mut right = TestSession::new();
-
-        left.with_protected(|| {
-            let _ = rbeta_inner(&mut || rng_state.unif(), 2.0, 5.0);
-            with_beta_state(|state| {
-                assert_eq!(state.olda, 2.0);
-                assert_eq!(state.oldb, 5.0);
-                assert!(state.beta > 0.0);
-            });
-        });
-
-        right.with_protected(|| {
-            with_beta_state(|state| {
-                assert_eq!(state.olda, -1.0);
-                assert_eq!(state.oldb, -1.0);
-                assert_eq!(state.beta, 0.0);
-            });
-        });
-    }
 
     /// Golden values captured from stock R 4.6.1 (Rscript, rbeta.c Cheng
     /// BB/BC) driven with the same Marsaglia-MultiCarry stream: after
@@ -1165,6 +1143,7 @@ mod tests {
     /// outside this tolerance.
     #[test]
     fn rbeta_matches_stock_multicarry_stream() {
+        let mut ms_state = crate::state::MathState::default();
         fn assert_close(got: &[f64], want: &[f64]) {
         let mut rng_state = crate::rng::RngState::default();
             assert_eq!(got.len(), want.len());
@@ -1176,14 +1155,13 @@ mod tests {
             }
         }
 
-        let mut session = TestSession::new();
-        session.with_protected(|| {
-            let draws = |st: &mut crate::rng::RngState, n, a, b| -> Vec<f64> { (0..n).map(|_| rbeta_inner(&mut || st.unif(), a, b)).collect() };
+                {
+            let draws = |st: &mut crate::rng::RngState, ms: &mut crate::state::MathState, n, a, b| -> Vec<f64> { (0..n).map(|_| rbeta_inner(&mut || st.unif(), ms, a, b)).collect() };
 
             // --- Algorithm BC (a <= 1) ---
             let mut rng_state = crate::rng::RngState(1234, 5678);
             assert_close(
-                &draws(&mut rng_state, 10, 0.5, 0.8),
+                &draws(&mut rng_state, &mut ms_state, 10, 0.5, 0.8),
                 &[
                     0.64631808969296334,
                     8.8350185132821101e-07,
@@ -1200,7 +1178,7 @@ mod tests {
 
             let mut rng_state = crate::rng::RngState(1234, 5678);
             assert_close(
-                &draws(&mut rng_state, 10, 0.3, 4.0),
+                &draws(&mut rng_state, &mut ms_state, 10, 0.3, 4.0),
                 &[
                     0.30957547638272714,
                     1.335388546829043e-11,
@@ -1218,7 +1196,7 @@ mod tests {
             // aa != a: swapped return orientation
             let mut rng_state = crate::rng::RngState(1234, 5678);
             assert_close(
-                &draws(&mut rng_state, 10, 2.0, 0.5),
+                &draws(&mut rng_state, &mut ms_state, 10, 2.0, 0.5),
                 &[
                     0.57771418887069192,
                     0.99999964659907215,
@@ -1236,7 +1214,7 @@ mod tests {
             // long squeeze / k2 / full-reject chains
             let mut rng_state = crate::rng::RngState(99, 424_242);
             assert_close(
-                &draws(&mut rng_state, 12, 0.2, 0.7),
+                &draws(&mut rng_state, &mut ms_state, 12, 0.2, 0.7),
                 &[
                     5.6833061096527566e-05,
                     0.00094560177296646895,
@@ -1255,7 +1233,7 @@ mod tests {
 
             let mut rng_state = crate::rng::RngState(777, 333);
             assert_close(
-                &draws(&mut rng_state, 12, 0.75, 1.0),
+                &draws(&mut rng_state, &mut ms_state, 12, 0.75, 1.0),
                 &[
                     0.68899338644560904,
                     0.65683652938523518,
@@ -1275,7 +1253,7 @@ mod tests {
             // extreme small shapes
             let mut rng_state = crate::rng::RngState(5, 5);
             assert_close(
-                &draws(&mut rng_state, 8, 0.01, 0.01),
+                &draws(&mut rng_state, &mut ms_state, 8, 0.01, 0.01),
                 &[
                     1.0,
                     1.3544983664016456e-126,
@@ -1291,7 +1269,7 @@ mod tests {
             // --- Algorithm BB (a > 1) ---
             let mut rng_state = crate::rng::RngState(1234, 5678);
             assert_close(
-                &draws(&mut rng_state, 10, 2.0, 5.0),
+                &draws(&mut rng_state, &mut ms_state, 10, 2.0, 5.0),
                 &[
                     0.094090019232039065,
                     0.22287638999845477,
@@ -1308,7 +1286,7 @@ mod tests {
 
             let mut rng_state = crate::rng::RngState(1234, 5678);
             assert_close(
-                &draws(&mut rng_state, 10, 1.5, 3.7),
+                &draws(&mut rng_state, &mut ms_state, 10, 1.5, 3.7),
                 &[
                     0.075571467517154087,
                     0.21451181811913961,
@@ -1325,7 +1303,7 @@ mod tests {
 
             let mut rng_state = crate::rng::RngState(99, 424_242);
             assert_close(
-                &draws(&mut rng_state, 12, 10.0, 10.0),
+                &draws(&mut rng_state, &mut ms_state, 12, 10.0, 10.0),
                 &[
                     0.63158320880509089,
                     0.43231241590366881,
@@ -1344,7 +1322,7 @@ mod tests {
 
             let mut rng_state = crate::rng::RngState(777, 333);
             assert_close(
-                &draws(&mut rng_state, 12, 1.2, 1.3),
+                &draws(&mut rng_state, &mut ms_state, 12, 1.2, 1.3),
                 &[
                     0.30799027502945509,
                     0.32936235574929068,
@@ -1365,7 +1343,7 @@ mod tests {
             // catastrophically, so the mul_add contraction above matters.
             let mut rng_state = crate::rng::RngState(1234, 5678);
             assert_close(
-                &draws(&mut rng_state, 10, 1.0000001, 1.0000001),
+                &draws(&mut rng_state, &mut ms_state, 10, 1.0000001, 1.0000001),
                 &[
                     0.10208907977268006,
                     0.36901409043763672,
@@ -1383,13 +1361,13 @@ mod tests {
             // point mass 1/2 at each of {0, 1}: one uniform per draw,
             // exact integers.
             let mut rng_state = crate::rng::RngState(1234, 5678);
-            let got: Vec<f64> = (0..10).map(|_| rbeta_inner(&mut || rng_state.unif(), 0.0, 0.0)).collect();
+            let got: Vec<f64> = (0..10).map(|_| rbeta_inner(&mut || rng_state.unif(), &mut ms_state, 0.0, 0.0)).collect();
             assert_eq!(got, [0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0]);
 
             // alternating parameters on one stream: re-init (qsame) each call
             let mut rng_state = crate::rng::RngState(1234, 5678);
             let alt: Vec<f64> = (0..10)
-                .flat_map(|_| [rbeta_inner(&mut || rng_state.unif(), 0.4, 6.0), rbeta_inner(&mut || rng_state.unif(), 2.5, 2.5)])
+                .flat_map(|_| [rbeta_inner(&mut || rng_state.unif(), &mut ms_state, 0.4, 6.0), rbeta_inner(&mut || rng_state.unif(), &mut ms_state, 2.5, 2.5)])
                 .collect();
             assert_close(
                 &alt,
@@ -1416,7 +1394,7 @@ mod tests {
                     0.39971678235016006,
                 ],
             );
-        });
+        }
     }
 
     /// Replays deterministic uniform sequences through a hooked unif_rand
@@ -1431,8 +1409,9 @@ mod tests {
     /// libm, IEEE ops and mul_add are platform-stable).
     #[test]
     fn rbeta_consumption_order_matches_c_reference() {
-        fn rbeta_scripted(aa: f64, bb: f64, script: &[f64]) -> (f64, usize) {
-            with_beta_state(|state| *state = BetaState::default());
+        let mut ms_state = crate::state::MathState::default();
+        fn rbeta_scripted(ms_state: &mut crate::state::MathState, aa: f64, bb: f64, script: &[f64]) -> (f64, usize) {
+            ms_state.beta_state = BetaState::default();
             let mut queue: VecDeque<f64> = script.iter().copied().collect();
             let mut drawn = 0usize;
             let x = rbeta_inner(
@@ -1440,6 +1419,7 @@ mod tests {
                     drawn += 1;
                     queue.pop_front().expect("script exhausted")
                 },
+                ms_state,
                 aa,
                 bb,
             );
@@ -1533,20 +1513,18 @@ mod tests {
             ),
         ];
 
-        let mut session = TestSession::new();
-        session.with_protected(|| {
+                {
             for (name, aa, bb, script, want_used, want_bits) in cases {
-                let (x, used) = rbeta_scripted(*aa, *bb, script);
+                let (x, used) = rbeta_scripted(&mut ms_state, *aa, *bb, script);
                 assert_eq!(used, *want_used, "{name}: uniforms consumed");
                 assert_eq!(x.to_bits(), *want_bits, "{name}: returned value");
             }
-        });
+        }
     }
 
     #[test]
     fn qbeta_small_a_huge_b_matches_inverse() {
-        let mut session = TestSession::new();
-        session.with_protected(|| {
+                {
             let a = 2f64.powi(-8);
             for e in 200..206 {
                 let b = 2f64.powi(e);
@@ -1558,16 +1536,15 @@ mod tests {
                     "pbeta(qbeta(1/8, {a}, 2^{e})) = {pq}"
                 );
             }
-        });
+        }
     }
 
     #[test]
     fn qbeta_tiny_equal_shapes_is_one() {
-        let mut session = TestSession::new();
-        session.with_protected(|| {
+                {
             let q = qbeta_inner(0.95, 1e-307, 1e-307, true, false);
             assert_eq!(q, 1.0, "qbeta(0.95, 1e-307, 1e-307) = {q}");
-        });
+        }
     }
 }
 

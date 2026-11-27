@@ -126,13 +126,13 @@ pub fn qgeom_inner(p: f64, prob: f64, lower_tail: bool, log_p: bool) -> f64 {
 // ---- rgeom ----
 
 #[must_use]
-pub fn rgeom_inner(rng: &mut dyn FnMut() -> f64, p: f64) -> f64 {
+pub fn rgeom_inner(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, p: f64) -> f64 {
     if !r_finite(p) || p <= 0.0 || p > 1.0 {
         return ml_warn_return_nan();
     }
 
     let exp_draw = exp_rand(rng);
-    rpois_inner(rng, exp_draw * ((1.0 - p) / p))
+    rpois_inner(rng, ms, exp_draw * ((1.0 - p) / p))
 }
 
 // ---- FFI shims ----
@@ -153,6 +153,6 @@ pub fn qgeom(p: f64, prob: f64, lower_tail: i32, log_p: i32) -> f64 {
 }
 
 #[must_use]
-pub fn rgeom(rng: &mut dyn FnMut() -> f64, p: f64) -> f64 {
-    rgeom_inner(rng, p)
+pub fn rgeom(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, p: f64) -> f64 {
+    rgeom_inner(rng, ms, p)
 }

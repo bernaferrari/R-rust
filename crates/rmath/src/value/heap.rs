@@ -71,6 +71,10 @@ pub struct Heap {
     pub graphics: crate::value::graphics::GraphicsParState,
     /// The session-owned Mersenne stream — see value/rng.rs.
     pub rng: crate::value::rng::PureRng,
+    /// Per-session sampler memoization — GNU's static setup state in
+    /// rbinom.c/rpois.c/rgamma.c/rbeta.c/rhyper.c and the signrank/wilcox
+    /// distribution caches, owned by the session instead of thread-locals.
+    pub math: crate::nmath::state::MathState,
     /// The color palette exactly as GNU's per-device state — palette()
     /// reads and replaces it, empty falling back to the R 4.x default.
     pub palette: Vec<String>,

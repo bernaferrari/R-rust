@@ -424,7 +424,7 @@ pub fn qt_inner(p: f64, ndf: f64, lower_tail: bool, log_p: bool) -> f64 {
 // ---- rt ----
 
 #[must_use]
-pub fn rt_inner(rng: &mut dyn FnMut() -> f64, df: f64) -> f64 {
+pub fn rt_inner(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, df: f64) -> f64 {
     if isnan(df) || df <= 0.0 {
         return ml_warn_return_nan();
     }
@@ -433,7 +433,7 @@ pub fn rt_inner(rng: &mut dyn FnMut() -> f64, df: f64) -> f64 {
         return crate::dist::normal::norm_rand(rng, );
     } else {
         let num = crate::dist::normal::norm_rand(rng, );
-        num / sqrt(crate::dist::chisq::rchisq_inner(rng, df) / df)
+        num / sqrt(crate::dist::chisq::rchisq_inner(rng, ms, df) / df)
     }
 }
 
@@ -455,8 +455,8 @@ pub fn qt(p: f64, ndf: f64, lower_tail: i32, log_p: i32) -> f64 {
 }
 
 #[must_use]
-pub fn rt(rng: &mut dyn FnMut() -> f64, df: f64) -> f64 {
-    rt_inner(rng, df)
+pub fn rt(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, df: f64) -> f64 {
+    rt_inner(rng, ms, df)
 }
 
 #[cfg(test)]

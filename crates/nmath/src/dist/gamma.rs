@@ -821,6 +821,7 @@ pub fn qgamma_inner(p: f64, alpha: f64, scale: f64, lower_tail: bool, log_p: boo
 
 /// Per-session state for the rgamma GD algorithm.
 #[derive(Clone, Copy)]
+#[derive(Debug)]
 pub struct GammaState {
     aa: f64,
     aaa: f64,
@@ -857,7 +858,7 @@ where
 }
 
 #[must_use]
-pub fn rgamma_inner(rng: &mut dyn FnMut() -> f64, a: f64, scale: f64) -> f64 {
+pub fn rgamma_inner(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, a: f64, scale: f64) -> f64 {
     // Constants
     const SQRT32: f64 = 5.656854;
     const EXP_M1: f64 = 0.36787944117144232159; // exp(-1) = 1/e
@@ -916,20 +917,20 @@ pub fn rgamma_inner(rng: &mut dyn FnMut() -> f64, a: f64, scale: f64) -> f64 {
     // --- a >= 1 : GD algorithm ---
 
     // Step 1: Recalculations of s2, s, d if a has changed
-    with_gamma_state(|state| {
+    { let state = &mut ms.gamma_state;
         if a != state.aa {
             state.aa = a;
             state.s2 = a - 0.5;
             state.s = sqrt(state.s2);
             state.d = SQRT32 - state.s * 12.0;
         }
-    });
+    };
 
     // Step 2: t = standard normal deviate,
     //         x = (s,1/2) -normal deviate.
     // immediate acceptance (i)
     let t = norm_rand(rng, );
-    let state = with_gamma_state(|state| *state);
+    let state = (*&mut ms.gamma_state);
     let mut x = state.s + 0.5 * t;
     let ret_val = x * x;
     if t >= 0.0 {
@@ -943,7 +944,7 @@ pub fn rgamma_inner(rng: &mut dyn FnMut() -> f64, a: f64, scale: f64) -> f64 {
     }
 
     // Step 4: recalculations of q0, b, si, c if necessary
-    with_gamma_state(|state| {
+    { let state = &mut ms.gamma_state;
         if a != state.aaa {
             state.aaa = a;
             let r = 1.0 / a;
@@ -969,9 +970,9 @@ pub fn rgamma_inner(rng: &mut dyn FnMut() -> f64, a: f64, scale: f64) -> f64 {
             state.si = si;
             state.c = c;
         }
-    });
+    };
 
-    let state = with_gamma_state(|state| *state);
+    let state = (*&mut ms.gamma_state);
     let q0 = state.q0;
     let s = state.s;
     let s2 = state.s2;
@@ -1056,42 +1057,21 @@ pub fn qgamma(p: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> f6
 }
 
 #[must_use]
-pub fn rgamma(rng: &mut dyn FnMut() -> f64, shape: f64, scale: f64) -> f64 {
-    rgamma_inner(rng, shape, scale)
+pub fn rgamma(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, shape: f64, scale: f64) -> f64 {
+    rgamma_inner(rng, ms, shape, scale)
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
-    use crate::test_session::TestSession;
 
-    #[test]
-    fn rgamma_state_is_session_local_on_same_thread() {
-        let mut rng_state = crate::rng::RngState::default();
-        let mut left = TestSession::new();
-        let mut right = TestSession::new();
-
-        left.with_protected(|| {
-            let _ = rgamma_inner(&mut || rng_state.unif(), 2.5, 1.0);
-            with_gamma_state(|state| {
-                assert_eq!(state.aa, 2.5);
-            });
-        });
-
-        right.with_protected(|| {
-            with_gamma_state(|state| {
-                assert_eq!(state.aa, 0.0);
-            });
-        });
-    }
 
     #[test]
     fn dgamma_subnormal_x_keeps_the_poisson_term() {
-        let mut session = TestSession::new();
-        session.with_protected(|| {
+                {
             // d-p-q-r-tst-2.R: shape/x overflows, but log(shape) - log(x)
             let d = dgamma_inner(6.953355807835004e-310, 0.99, 1.0, true);
             assert!((d - 7.1127667376).abs() < 1e-9, "dgamma = {d}");
-        });
+        }
     }
 }

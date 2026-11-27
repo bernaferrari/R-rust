@@ -2,6 +2,7 @@ use crate::comparisons::*;
 use rmath::nmath::dist::nchisq::*;
 
 pub fn run_tests() -> Result<(), String> {
+    let mut ms_state = rmath::nmath::state::MathState::default();
     // dnchisq tests
     assert_nan(dnchisq_inner(f64::NAN, 1.0, 0.0, false), "dnchisq(NaN,1,0)");
     assert_nan(dnchisq_inner(1.0, f64::NAN, 0.0, false), "dnchisq(1,NaN,0)");
@@ -58,14 +59,14 @@ pub fn run_tests() -> Result<(), String> {
 
     // rnchisq tests
     let mut rng_state = rmath::nmath::rng::RngState(42, 24);
-    let r1 = rnchisq_inner(&mut || rng_state.unif(), 3.0, 2.0);
+    let r1 = rnchisq_inner(&mut || rng_state.unif(), &mut ms_state, 3.0, 2.0);
     if r1 < 0.0 {
         return Err(format!("rnchisq(3,2) = {}, expected >= 0", r1));
     }
     let mut rng_state = rmath::nmath::rng::RngState(42, 24);
-    let r2 = rnchisq_inner(&mut || rng_state.unif(), 3.0, 2.0);
+    let r2 = rnchisq_inner(&mut || rng_state.unif(), &mut ms_state, 3.0, 2.0);
     assert_equiv(r1, r2, "rnchisq reproducible");
-    assert_nan(rnchisq_inner(&mut || rng_state.unif(), f64::NAN, 2.0), "rnchisq(NaN,2)");
+    assert_nan(rnchisq_inner(&mut || rng_state.unif(), &mut ms_state, f64::NAN, 2.0), "rnchisq(NaN,2)");
 
     Ok(())
 }

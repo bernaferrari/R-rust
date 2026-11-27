@@ -28,11 +28,11 @@ pub fn qchisq_inner(p: f64, df: f64, lower_tail: bool, log_p: bool) -> f64 {
 // ---- rchisq ----
 
 #[must_use]
-pub fn rchisq_inner(rng: &mut dyn FnMut() -> f64, df: f64) -> f64 {
+pub fn rchisq_inner(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, df: f64) -> f64 {
     if !r_finite(df) || df < 0.0 {
         return ml_warn_return_nan();
     }
-    crate::dist::gamma::rgamma_inner(rng, df / 2.0, 2.0)
+    crate::dist::gamma::rgamma_inner(rng, ms, df / 2.0, 2.0)
 }
 
 // ---- FFI shims ----
@@ -53,6 +53,6 @@ pub fn qchisq(p: f64, df: f64, lower_tail: i32, log_p: i32) -> f64 {
 }
 
 #[must_use]
-pub fn rchisq(rng: &mut dyn FnMut() -> f64, df: f64) -> f64 {
-    rchisq_inner(rng, df)
+pub fn rchisq(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathState, df: f64) -> f64 {
+    rchisq_inner(rng, ms, df)
 }
