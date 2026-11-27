@@ -24044,9 +24044,39 @@ fn file_primitive(
 /// `url()` — identical open semantics either way. GNU classes every
 /// connection with its flavor riding in front of "connection".
 fn open_file_connection(heap: &mut Heap, interner: &mut SymbolInterner, path: String, mode: String, flavor: &str) -> EvalResult {
+    let readable = mode.starts_with('r');
+    // Browser-file sessions treat the virtual store as the filesystem
+    /// exactly as the facade's browser profile does — no host resolution
+    /// at all: reads require the key to exist, write modes truncate or
+    /// create in the store, and the connection carries the R-visible
+    /// path so the virtual-aware write-through keys correctly.
+    if heap.browser_files_enabled {
+        let read_buf = if readable {
+            match heap.browser_files.get(&path) {
+                Some(bytes) => bytes.clone(),
+                None => {
+                    return Err(RSignal::from(EvalError::Condition(format!(
+                        "cannot open the connection to '{path}'"
+                    ))));
+                }
+            }
+        } else {
+            if !mode.starts_with('a') {
+                heap.browser_files.insert(path.clone(), Vec::new());
+            }
+            Vec::new()
+        };
+        let state = ConnState { path, open: true, readable, read_buf, cursor: 0 };
+        let cell = std::rc::Rc::new(ConnCell(std::cell::RefCell::new(state)));
+        let conn = heap.alloc(RObject::External(cell));
+        let class = heap.alloc(RObject::String(vec![
+            interner.intern_string(flavor),
+            interner.intern_string("connection"),
+        ]));
+        return copy_with_attrib(heap, interner, conn, "class", class).map_err(RSignal::from);
+    }
     let path = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path)
         .ok_or_else(|| RSignal::from(EvalError::Condition(format!("cannot open the connection to '{path}'"))))?;
-    let readable = mode.starts_with('r');
     let read_buf = if readable {
         crate::value::vfile::read_file(heap, &path).unwrap_or_default()
     } else {

@@ -2108,6 +2108,30 @@ cat(grconvertX(0:1, "user", "device"), grconvertY(0:1, "user", "device"), "\n")
     }
 
     #[test]
+    fn browser_files_connection_reads_stay_virtual() {
+        let mut session = PureSession::new();
+        session.import_file("data/lines.txt", b"alpha\nbeta\n");
+        session.enable_browser_files();
+        // The connection-mediated path — file() plus readLines(con) —
+        /// is what read.fwf, read.csv and source() ride on; it must
+        /// consult the virtual store exactly as the direct path does.
+        let out = session
+            .eval_output("con <- file('data/lines.txt', 'r'); lines <- readLines(con); close(con); print(lines)")
+            .unwrap_or_else(|e| e);
+        assert!(out.contains("alpha"), "virtual connection read failed: {out}");
+        assert!(out.contains("beta"), "second line missing: {out}");
+        // A missing virtual key errors exactly as a missing host file
+        /// would — no silent empty reads in enabled mode.
+        let missing = session
+            .eval_output("file('data/absent.txt', 'r')")
+            .unwrap_or_else(|e| e);
+        assert!(
+            missing.contains("cannot open") || missing.to_lowercase().contains("error"),
+            "missing virtual file should error: {missing}"
+        );
+    }
+
+    #[test]
     fn browser_files_writes_never_escape_enabled() {
         let mut session = PureSession::new();
         session.enable_browser_files();
