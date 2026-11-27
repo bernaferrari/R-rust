@@ -18,3 +18,292 @@ const DBL_EPSILON: f64 = 2.220446049250313e-16;
 // Per-session cached workspace for csignrank.
 // w[n] is a Vec<f64> of size (c+1) where c = n*(n+1)/4 (truncated).
 // A value of -1.0 means "not yet computed".
+/// csignrank: counts for the signed rank distribution.
+/// Returns the number of ways to get statistic = k for n signed ranks.
+fn csignrank(ms: &mut crate::state::MathState, k: i32, n: i32) -> f64 {
+    let u = n * (n + 1) / 2;
+    let c = (u / 2) as i32;
+
+    if k < 0 || k > u {
+        return 0.0;
+    }
+    let mut k = k;
+    if k > c {
+        k = u - k;
+    }
+
+    if n == 1 {
+        return 1.0;
+    }
+
+    { let cache = &mut ms.signrank_cache;
+        let entry = cache
+            .entry(n)
+            .or_insert_with(|| vec![0.0_f64; (c + 1) as usize]);
+
+        // Check if already computed (w[0] == 1 means initialized)
+        if entry[0] == 1.0 {
+            return entry[k as usize];
+        }
+
+        // Initialize: w[0] = w[1] = 1
+        entry[0] = 1.0;
+        if entry.len() > 1 {
+            entry[1] = 1.0;
+        }
+
+        for j in 2..=(n as usize) {
+            let end = imin2((j * (j + 1) / 2) as i32, c as i32) as usize;
+            let jj = j;
+            for i in (jj..=end).rev() {
+                entry[i] += entry[i - jj];
+            }
+        }
+
+        entry[k as usize]
+    }
+}
+
+// =====================================================================
+// dsignrank
+// =====================================================================
+
+#[must_use]
+pub fn dsignrank_inner(ms: &mut crate::state::MathState, x: f64, n: f64, log_p: bool) -> f64 {
+    dsignrank_with_count(x, n, log_p, |k, nn| csignrank(ms, k, nn))
+}
+
+/// Evaluate with copied counts supplied by the host; no buffer loan crosses a count request.
+pub fn dsignrank_with_count(    x: f64,
+    n: f64,
+    log_p: bool,
+    mut count: impl FnMut(i32, i32) -> f64,
+) -> f64 {
+    // IEEE_754
+    if isnan(x) || isnan(n) {
+        return x + n;
+    }
+    let n = r_forceint(n);
+    if n <= 0.0 {
+        return ml_warn_return_nan();
+    }
+
+    if r_nonint(x) {
+        return r_d__0(log_p);
+    }
+    let x = r_forceint(x);
+    if x < 0.0 || x > n * (n + 1.0) / 2.0 {
+        return r_d__0(log_p);
+    }
+
+    let nn = n as i32;
+    let d = r_d_exp(log(count(x as i32, nn)) - n * M_LN2, log_p);
+
+    d
+}
+
+// =====================================================================
+// psignrank
+// =====================================================================
+
+#[must_use]
+pub fn psignrank_inner(ms: &mut crate::state::MathState, x: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
+    psignrank_with_count(x, n, lower_tail, log_p, |k, nn| csignrank(ms, k, nn))
+}
+
+/// Evaluate with copied counts supplied by the host; no buffer loan crosses a count request.
+pub fn psignrank_with_count(    x: f64,
+    n: f64,
+    lower_tail: bool,
+    log_p: bool,
+    mut count: impl FnMut(i32, i32) -> f64,
+) -> f64 {
+    // IEEE_754
+    if isnan(x) || isnan(n) {
+        return x + n;
+    }
+    if !r_finite(n) {
+        return ml_warn_return_nan();
+    }
+    let n = r_forceint(n);
+    if n <= 0.0 {
+        return ml_warn_return_nan();
+    }
+
+    let x = floor(x + 1e-7);
+    if x < 0.0 {
+        return r_dt_0(lower_tail, log_p);
+    }
+    if x >= n * (n + 1.0) / 2.0 {
+        return r_dt_1(lower_tail, log_p);
+    }
+
+    let nn = n as i32;
+    let f = exp(-n * M_LN2);
+    let mut p = 0.0;
+    let mut lower_tail = lower_tail;
+
+    if x <= n * (n + 1.0) / 4.0 {
+        for i in 0..=(x as i32) {
+            p += count(i, nn) * f;
+        }
+    } else {
+        let x_new = (n * (n + 1.0) / 2.0 - x) as i32;
+        for i in 0..x_new {
+            p += count(i, nn) * f;
+        }
+        lower_tail = !lower_tail; // p = 1 - p;
+    }
+
+    r_dt_val(p, lower_tail, log_p)
+}
+
+// =====================================================================
+// qsignrank
+// =====================================================================
+
+#[must_use]
+pub fn qsignrank_inner(ms: &mut crate::state::MathState, x: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
+    qsignrank_with_count(x, n, lower_tail, log_p, |k, nn| csignrank(ms, k, nn))
+}
+
+/// Evaluate with copied counts supplied by the host; no buffer loan crosses a count request.
+pub fn qsignrank_with_count(    x: f64,
+    n: f64,
+    lower_tail: bool,
+    log_p: bool,
+    mut count: impl FnMut(i32, i32) -> f64,
+) -> f64 {
+    // IEEE_754
+    if isnan(x) || isnan(n) {
+        return x + n;
+    }
+    if !r_finite(x) || !r_finite(n) {
+        return ml_warn_return_nan();
+    }
+
+    // R_Q_P01_check(x): range validation only. The boundary returns below
+    // (R_DT_0 -> 0, R_DT_1 -> n(n+1)/2) must not be preempted here, so this
+    // mirrors the dpq.h macro exactly and nothing else.
+    if (log_p && x > 0.0) || (!log_p && (x < 0.0 || x > 1.0)) {
+        return ml_warn_return_nan();
+    }
+
+    let n = r_forceint(n);
+    if n <= 0.0 {
+        return ml_warn_return_nan();
+    }
+
+    // R_Q_P01_boundaries(p, 0, n*(n+1)/2)
+    let p_is_0 = if log_p {
+        x == if lower_tail { ML_NEGINF } else { 0.0 }
+    } else {
+        x == if lower_tail { 0.0 } else { 1.0 }
+    };
+    let p_is_1 = if log_p {
+        x == if lower_tail { 0.0 } else { ML_NEGINF }
+    } else {
+        x == if lower_tail { 1.0 } else { 0.0 }
+    };
+
+    if p_is_0 {
+        return 0.0;
+    }
+    if p_is_1 {
+        return n * (n + 1.0) / 2.0;
+    }
+
+    let mut x = x;
+    if log_p || !lower_tail {
+        x = r_dt_qiv(x, lower_tail, log_p); // lower_tail, non-log "p"
+    }
+
+    let nn = n as i32;
+    let f = exp(-n * M_LN2);
+    let mut p = 0.0;
+    let mut q: i32 = 0;
+
+    if x <= 0.5 {
+        x = x - 10.0 * DBL_EPSILON;
+        loop {
+            p += count(q, nn) * f;
+            if p >= x {
+                break;
+            }
+            q += 1;
+        }
+    } else {
+        x = 1.0 - x + 10.0 * DBL_EPSILON;
+        loop {
+            p += count(q, nn) * f;
+            if p > x {
+                q = (n * (n + 1.0) / 2.0 - q as f64) as i32;
+                break;
+            }
+            q += 1;
+        }
+    }
+
+    q as f64
+}
+
+// =====================================================================
+// rsignrank
+// =====================================================================
+
+#[must_use]
+pub fn rsignrank_inner(rng: &mut dyn FnMut() -> f64, n: f64) -> f64 {
+    // IEEE_754
+    if isnan(n) {
+        return n;
+    }
+    let n = r_forceint(n);
+    if n < 0.0 {
+        return ml_warn_return_nan();
+    }
+
+    if n == 0.0 {
+        return 0.0;
+    }
+
+    let mut r = 0.0;
+    let k = n as i32;
+    let mut i = 0;
+    while i < k {
+        i += 1;
+        r += i as f64 * floor(rng() + 0.5);
+    }
+    r
+}
+
+// =====================================================================
+// FFI shims
+// =====================================================================
+
+#[must_use]
+pub fn dsignrank(ms: &mut crate::state::MathState, x: c_double, n: c_double, give_log: c_int) -> c_double {
+    dsignrank_inner(ms, x, n, give_log != 0)
+}
+
+
+#[must_use]
+pub fn psignrank(ms: &mut crate::state::MathState, x: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
+    psignrank_inner(ms, x, n, lower_tail != 0, log_p != 0)
+}
+
+
+#[must_use]
+pub fn qsignrank(ms: &mut crate::state::MathState, p: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
+    qsignrank_inner(ms, p, n, lower_tail != 0, log_p != 0)
+}
+
+#[must_use]
+pub fn rsignrank(rng: &mut dyn FnMut() -> f64, n: c_double) -> c_double {
+    rsignrank_inner(rng, n)
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+
+}

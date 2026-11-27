@@ -421,7 +421,36 @@ pub fn bootstrap_env(heap: &mut Heap, interner: &mut SymbolInterner) -> ValueId 
     let sym = interner.intern_symbol("NA_character_");
     env::define(heap, base, sym, na_str).expect("NA_character_");    register_baked_packages(heap, interner, base);
     attach_default_packages(heap, interner, base, user);
+    populate_rlevel_namespaces(heap, interner);
     user
+}
+
+/// GNU populates package namespaces with R-level closures defined in the
+/// package's own sources — modifyList, most of stats modeling, the print
+/// methods. The pure world evaluates the pinned per-package R sources into
+/// their namespace environments exactly as GNU's lazy-load installation
+/// does: each definition binds in the namespace and closures capture it as
+/// their enclosure, so namespace-internal references resolve namespace-first
+/// exactly as GNU. Evaluation is best-effort at bootstrap — a definition
+/// whose primitives are unimplemented stays absent, mirroring the
+/// unimplemented-export surface exactly as the primitive remainder does.
+fn populate_rlevel_namespaces(heap: &mut Heap, interner: &mut SymbolInterner) {
+    use super::eval::eval;
+    use super::parser::parse_native_expressions;
+    const SOURCES: &[(&str, &str)] = &[
+        ("utils", include_str!("assets/rlevel/utils.R")),
+    ];
+    for &(package, source) in SOURCES {
+        let Some(namespace) = heap.package_registry.get(package).copied() else {
+            continue;
+        };
+        let Ok(expressions) = parse_native_expressions(source, heap, interner) else {
+            continue;
+        };
+        for expr in &expressions {
+            let _ = eval(heap, interner, *expr, namespace);
+        }
+    }
 }
 
 /// The pinned baked-package export manifests, decoded and resolved at
