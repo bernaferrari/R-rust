@@ -2311,20 +2311,44 @@ print(array(1:4, c(2, 2), dimnames = list(c(\"r1\", \"r2\"), c(\"c1\", \"c2\")))
                 Ok(s) => s,
                 Err(_) => continue,
             };
-            // Native-parse mode: the new world's own parser produces heap
-            /// objects directly, eliminating the SEXP parse + bridge import
-            /// pipeline — the structural cutover `.11` migration builds on.
+            // Native mode: the productized new-world session owns the whole
+            /// pipeline — parse, eval, auto-print, warning flush — with zero
+            /// legacy-world involvement. Bridge mode still exercises the SEXP
+            /// parse + import pipeline as the importer's conformance proof.
             let native_parse = std::env::var("RPORT_NATIVE_PARSE").is_ok();
             let mut heap = Heap::new();
             let mut interner = SymbolInterner::new();
-            let imported: Vec<ValueId> = if native_parse {
-                match crate::value::parser::parse_native_expressions(&source, &mut heap, &mut interner) {
-                    Ok(exprs) if !exprs.is_empty() => exprs,
-                    _ => {
-                        parse_skip += 1;
+            if native_parse {
+                let mut native = crate::value::session::Session::new();
+                match native.eval_script(&source) {
+                    Ok(output) => {
+                        heap.output = output;
+                    }
+                    Err(error) => {
+                        let error = format!("{error:?}");
+                        let variant_inner = error
+                            .strip_prefix("Eval(")
+                            .unwrap_or(&error)
+                            .trim_end_matches(')');
+                        let variant = variant_inner
+                            .split('(')
+                            .next()
+                            .unwrap_or("unknown")
+                            .trim()
+                            .to_string();
+                        let detail = variant_inner
+                            .split('"')
+                            .nth(1)
+                            .map(|s| format!(":{s}"))
+                            .unwrap_or_default();
+                        let reason = format!("{variant}{detail}");
+                        failure_reasons.entry(reason).or_default().push(name.clone());
                         continue;
                     }
                 }
+            }
+            let imported: Vec<ValueId> = if native_parse {
+                Vec::new()
             } else {
                 let expressions: Vec<_> = session.with_active(|| {
                     crate::eval::parser::parse_active_expressions(&source).unwrap_or_default()
