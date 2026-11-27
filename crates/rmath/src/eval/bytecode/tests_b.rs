@@ -1227,6 +1227,13 @@ fn gnu_cfg_proves_unequal_depths_and_checks_every_alternative() {
     assert_eq!(validate_gnu_adapter_stream(&growing, 1), Ok(false));
 }
 
+// Archived with the wire-format migration: the fixture is a GNU-format
+// serialization, unreadable since the GNU reader retired in 59ed44fe7.
+// The GNU-dialect execution engine this validates is itself archived
+// with the SEXP world's deletion in rport-c2v5f.12 — the pure world's
+// evaluator never carries GNU bytecode. The fixture and generator
+// remain in-tree as the migration's evidence trail.
+#[ignore = "GNU-format fixture unreadable since the wire migration; the engine it validates retires with the SEXP world"]
 #[test]
 fn gnu_cfg_executes_shadowed_stop_switch_without_source_fallback() {
     use crate::sexp::session::RSession;
