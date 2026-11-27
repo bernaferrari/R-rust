@@ -1623,6 +1623,32 @@ fn call_primitive_inner(
                                     heap.visible = false;
                                     return Ok(ValueId::NIL);
                                 }
+                                "warning" => {
+                                    // GNU's internal contract exactly:
+                                    /// warning(call., immediate., noBreaks.,
+                                    /// message...) — the logical flag triple
+                                    /// leads and never enters the message,
+                                    /// and the call returns the message
+                                    /// string rather than NULL.
+                                    let raw_inner = raw_args(heap, inner_args);
+                                    let mut message = String::new();
+                                    for expr in raw_inner.iter().skip(3) {
+                                        let evaluated = eval(heap, interner, *expr, caller_env)?;
+                                        let v = force_if_promise(heap, interner, evaluated)?;
+                                        for piece in string_vec(heap, interner, v) {
+                                            if piece != "\0NA" {
+                                                message.push_str(&piece);
+                                            }
+                                        }
+                                    }
+                                    fire_calling_handlers(heap, interner, "warning", &message, caller_env)?;
+                                    if !heap.warn_suppressed {
+                                        heap.pending_warnings.push(message.clone());
+                                    }
+                                    heap.visible = false;
+                                    let text = interner.intern_string(&message);
+                                    return Ok(heap.alloc(RObject::String(vec![text])));
+                                }
                                 ".dfltWarn" => {
                                     // The default warning handler — buffer
                                     // the message exactly as warning() does.
