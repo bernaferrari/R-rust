@@ -2,7 +2,6 @@
 //! them — the device-state consumers extracted from the flat registry as
 //! the first domain module of the r-base internal split.
 
-use crate::primitives::*;
 use r_core::prim::*;
 use r_core::attrib::{get_attrib, string_vec};
 use r_core::attrib;
@@ -17,7 +16,7 @@ use r_core::print;
 use r_core::graphics;
 use r_core::civil;
 use r_core::support;
-use crate::primitives::primitive_ids::*;
+use r_core::primitive_ids::*;
 use r_core::eval::RSignal;
 
 pub fn par_default(name: &str) -> Vec<f64> {

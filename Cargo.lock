@@ -1630,6 +1630,7 @@ dependencies = [
  "r-core",
  "r-graphics-engine",
  "r-math",
+ "r-stats",
  "sha2",
  "web-time",
 ]
@@ -1743,6 +1744,14 @@ dependencies = [
  "serde_json",
  "sha2",
  "web-time",
+]
+
+[[package]]
+name = "r-stats"
+version = "0.1.0"
+dependencies = [
+ "r-core",
+ "r-math",
 ]
 
 [[package]]

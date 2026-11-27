@@ -1,0 +1,10 @@
+[package]
+name = "r-stats"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The statistics domain builtins exactly as GNU's stats package organizes them — distributions, random samplers, sampling algorithms, statistical summaries, and the loess/predict modeling chain"
+
+[dependencies]
+r-core = { path = "../r-core" }
+r-math = { path = "../r-math" }

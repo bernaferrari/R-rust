@@ -13,6 +13,7 @@ members = [
   "crates/r-core",
   "crates/r-base",
   "crates/r-runtime",
+    "crates/r-stats",
   "crates/rmath-test",
   "tests/script-diff",
 ]

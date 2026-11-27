@@ -3,9 +3,9 @@
 //! statistical summaries, and the loess/predict modeling chain, extracted
 //! from the flat registry as the second domain module.
 
-use crate::primitives::*;
+#![forbid(unsafe_code)]
 use r_core::prim::*;
-use crate::primitives::primitive_ids::*;
+use r_core::primitive_ids::*;
 use r_core::attrib::{get_attrib, string_vec};
 use r_core::eval::{eval, force_if_promise, EvalError, EvalResult, RSignal};
 use r_core::heap::Heap;

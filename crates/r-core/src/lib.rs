@@ -22,6 +22,7 @@ pub mod object;
 pub mod parser;
 pub mod print;
 pub mod prim;
+pub mod primitive_ids;
 pub mod regex;
 pub mod rbg1;
 pub mod path_policy;
