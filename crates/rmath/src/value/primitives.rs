@@ -13141,6 +13141,20 @@ fn matrix_primitive(
             }
             heap.alloc(RObject::String(out))
         }
+        Some(RObject::Complex(values)) => {
+            let mut out = Vec::with_capacity(total);
+            for i in 0..total {
+                out.push(values[i % values.len().max(1)]);
+            }
+            heap.alloc(RObject::Complex(out))
+        }
+        Some(RObject::Raw(values)) => {
+            let mut out = Vec::with_capacity(total);
+            for i in 0..total {
+                out.push(values[i % values.len().max(1)]);
+            }
+            heap.alloc(RObject::Raw(out))
+        }
         _ => return Err(EvalError::TypeError("matrix data must be atomic").into()),
     };
     let dims = heap.alloc(RObject::Integer(vec![nrow as i32, ncol as i32]));
