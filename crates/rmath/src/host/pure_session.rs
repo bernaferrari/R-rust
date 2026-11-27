@@ -870,6 +870,64 @@ par(new=FALSE); plot.new(); emit("after-new-false")
     }
 
     #[test]
+    fn graphics_fresh_device_mfg_matches_oracle() {
+        // GNU's fresh-device reset: the pending mfg governs new/page
+        /// reporting, but the first plot.new restarts at cell 1 — then
+        /// ordinary stepping takes over in row and column order.
+        let row_script = r#"
+emit <- function(tag) cat(tag, "|", paste(par("mfg"), collapse=","), "|",
+                       par("new"), "|", par("page"), "\n", sep="")
+par(mfrow=c(2,3)); par(mfg=c(2,2)); emit("row-mfg")
+par(new=FALSE); emit("row-false")
+plot.new(); emit("row-first")
+par(new=FALSE); plot.new(); emit("row-next")
+tryCatch(par(mfg=c(0,2)), error=function(e)
+  cat("invalid|", conditionMessage(e), "\n", sep=""))
+par(new=FALSE); plot.new(); emit("row-after-invalid")
+"#;
+        let col_script = r#"
+emit <- function(tag) cat(tag, "|", paste(par("mfg"), collapse=","), "|",
+                       par("new"), "|", par("page"), "\n", sep="")
+par(mfcol=c(2,3)); par(mfg=c(2,2)); emit("col-mfg")
+par(new=FALSE); emit("col-false")
+plot.new(); emit("col-first")
+par(new=FALSE); plot.new(); emit("col-next")
+plot.new(); emit("col-implicit")
+"#;
+        let row_expected = "row-mfg|2,2,2,3|TRUE|TRUE\nrow-false|2,2,2,3|TRUE|TRUE\nrow-first|1,1,2,3|TRUE|FALSE\nrow-next|1,2,2,3|FALSE|FALSE\ninvalid|invalid value specified for graphical parameter \"mfg\"\nrow-after-invalid|1,3,2,3|FALSE|FALSE\n";
+        let col_expected = "col-mfg|2,2,2,3|TRUE|TRUE\ncol-false|2,2,2,3|TRUE|TRUE\ncol-first|1,1,2,3|TRUE|FALSE\ncol-next|2,1,2,3|FALSE|FALSE\ncol-implicit|1,2,2,3|FALSE|FALSE\n";
+        let mut row_session = PureSession::new();
+        assert_eq!(row_session.eval(row_script).stdout, row_expected, "row");
+        let mut col_session = PureSession::new();
+        assert_eq!(col_session.eval(col_script).stdout, col_expected, "col");
+    }
+
+    #[test]
+    fn graphics_mfrow_coercion_matches_oracle() {
+        let mut session = PureSession::new();
+        let script = r#"
+emit <- function(tag) {
+  cat(tag, "|", paste(par("mfg"), collapse=","), "|",
+      paste(par("mfrow"), collapse=","), "|",
+      paste(par("mfcol"), collapse=","), "|", par("cex"), "|", par("mex"),
+      "\n", sep="")
+}
+
+bad <- list(c(NA_real_,2), c(Inf,2), c(-.2,2), c(0,2), c(2147483648,2))
+par(mfrow=c(2.9,3.1)); emit("fractional-row")
+for (x in bad) suppressWarnings(tryCatch(par(mfrow=x), error=function(e)
+  cat("mfrow-error|", conditionMessage(e), "\n", sep="")))
+emit("row-after-errors")
+par(mfcol=c(2.9,3.1)); emit("fractional-col")
+for (x in bad) suppressWarnings(tryCatch(par(mfcol=x), error=function(e)
+  cat("mfcol-error|", conditionMessage(e), "\n", sep="")))
+emit("col-after-errors")
+"#;
+        let expected = "fractional-row|2,3,2,3|2,3|2,3|0.66|1\nmfrow-error|invalid value specified for graphical parameter \"mfrow\"\nmfrow-error|invalid value specified for graphical parameter \"mfrow\"\nmfrow-error|invalid value specified for graphical parameter \"mfrow\"\nmfrow-error|invalid value specified for graphical parameter \"mfrow\"\nmfrow-error|invalid value specified for graphical parameter \"mfrow\"\nrow-after-errors|2,3,2,3|2,3|2,3|0.66|1\nfractional-col|2,3,2,3|2,3|2,3|0.66|1\nmfcol-error|invalid value specified for graphical parameter \"mfcol\"\nmfcol-error|invalid value specified for graphical parameter \"mfcol\"\nmfcol-error|invalid value specified for graphical parameter \"mfcol\"\nmfcol-error|invalid value specified for graphical parameter \"mfcol\"\nmfcol-error|invalid value specified for graphical parameter \"mfcol\"\ncol-after-errors|2,3,2,3|2,3|2,3|0.66|1\n";
+        assert_eq!(session.eval(script).stdout, expected, "coercion");
+    }
+
+    #[test]
     fn data_loads_datasets_into_the_calling_environment() {
         let mut session = PureSession::new();
         let result = session.eval("data(iris)");
