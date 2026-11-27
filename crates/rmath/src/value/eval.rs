@@ -110,9 +110,18 @@ pub fn eval(
             let sym = *name;
             let label = interner.symbol_name(sym).to_string();
             heap.visible = true;
-            let (_, binding) = env::lookup(heap, env_id, sym)
-                .ok_or(EvalError::UnboundVariable(label)).map_err(RSignal::from)?;
-            force_if_promise(heap, interner, binding.value)
+            match env::lookup(heap, env_id, sym) {
+                Some((_, binding)) => force_if_promise(heap, interner, binding.value),
+                None => {
+                    // `..N` reads the Nth dots element directly — GNU's
+                    /// positional dots access resolved at lookup time.
+                    if let Some(index) = parse_dotdot_index(&label) {
+                        return dots_elt(heap, interner, env_id, index)
+                            .ok_or(EvalError::UnboundVariable(label)).map_err(RSignal::from);
+                    }
+                    Err(RSignal::from(EvalError::UnboundVariable(label)))
+                }
+            }
         }
         RObject::Promise { .. } => force_if_promise(heap, interner, expr),
         RObject::Language { car, cdr, .. } => {
@@ -186,6 +195,73 @@ fn call(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
+    // Dots forwarding: a bare `...` argument splices the caller's dots
+    /// pairlist into the call exactly as GNU — promises carried intact so
+    /// downstream forcing shares the original cells.
+    let dots_sym = interner.intern_symbol("...");
+    let needs_splice = {
+        let mut cursor = args;
+        let mut found = false;
+        for _ in 0..MAX_LIST_LENGTH {
+            match heap.object(cursor) {
+                Some(RObject::Pairlist { car, cdr, .. }) => {
+                    if matches!(heap.object(*car), Some(RObject::Symbol { name, .. }) if *name == dots_sym) {
+                        found = true;
+                        break;
+                    }
+                    if *cdr == ValueId::NIL {
+                        break;
+                    }
+                    cursor = *cdr;
+                }
+                _ => break,
+            }
+        }
+        found
+    };
+    let args = if needs_splice {
+        // Rebuild the chain: ordinary cells copy through, `...` cells
+        /// expand into the visible dots in order.
+        let mut source: Vec<(ValueId, ValueId)> = Vec::new();
+        let mut cursor = args;
+        for _ in 0..MAX_LIST_LENGTH {
+            match heap.object(cursor) {
+                Some(RObject::Pairlist { car, cdr, tag }) => {
+                    source.push((*car, *tag));
+                    if *cdr == ValueId::NIL {
+                        break;
+                    }
+                    cursor = *cdr;
+                }
+                _ => break,
+            }
+        }
+        let mut expanded: Vec<(ValueId, ValueId)> = Vec::new();
+        let mut spliced = false;
+        for (car, tag) in source {
+            if matches!(heap.object(car), Some(RObject::Symbol { name, .. }) if *name == dots_sym) {
+                if let Some(cells) = dots_cells(heap, interner, caller_env) {
+                    for (cell_car, cell_tag) in cells {
+                        expanded.push((cell_car, cell_tag));
+                    }
+                    spliced = true;
+                }
+            } else {
+                expanded.push((car, tag));
+            }
+        }
+        if spliced {
+            let mut rebuilt = ValueId::NIL;
+            for (car, tag) in expanded.iter().rev() {
+                rebuilt = heap.alloc(RObject::Pairlist { car: *car, cdr: rebuilt, tag: *tag });
+            }
+            rebuilt
+        } else {
+            args
+        }
+    } else {
+        args
+    };
     match heap.object(callee) {
         Some(RObject::Primitive(id)) => {
             let id = *id;
@@ -235,13 +311,26 @@ fn apply_closure(
     // Collect supplied arguments: (optional name, expr) in order.
     let arg_list = collect_args(heap, args);
 
-    // Exact-name matching first, then positional distribution of the rest —
-    // GNU's matchArgs ordering, minus partial matching for now.
+    // GNU's dots split: formals before `...` match exactly then
+    // positionally; formals after it match exact-name only; every argument
+    // unconsumed lands in the dots pairlist in supplied order.
+    let dots_sym = interner.intern_symbol("...");
+    let dots_position = formal_list.iter().position(|(sym, _)| *sym == dots_sym);
+    let (pre_formals, post_formals): (Vec<(SymId, ValueId)>, Vec<(SymId, ValueId)>) = match dots_position {
+        Some(pos) => (
+            formal_list[..pos].to_vec(),
+            formal_list[pos + 1..].to_vec(),
+        ),
+        None => (formal_list.clone(), Vec::new()),
+    };
+
+    // Exact-name matching across all non-dots formals first.
     let mut used_args = vec![false; arg_list.len()];
     let mut bindings: Vec<(SymId, ValueId)> = Vec::new();
-    let mut unnamed_formals: Vec<(SymId, ValueId)> = Vec::new();
+    let mut pre_unmatched: Vec<(SymId, ValueId)> = Vec::new();
+    let mut remaining: Vec<(SymId, ValueId)> = Vec::new();
 
-    for (sym, default) in &formal_list {
+    for (sym, default) in &pre_formals {
         let named = arg_list
             .iter()
             .enumerate()
@@ -251,12 +340,24 @@ fn apply_closure(
             used_args[index] = true;
             bindings.push((*sym, *expr));
         } else {
-            unnamed_formals.push((*sym, *default));
+            pre_unmatched.push((*sym, *default));
+        }
+    }
+    for (sym, default) in &post_formals {
+        let named = arg_list
+            .iter()
+            .enumerate()
+            .find(|(index, (name, _))| !used_args[*index] && name == &Some(*sym))
+            .map(|(index, (_, expr))| (index, expr));
+        if let Some((index, expr)) = named {
+            used_args[index] = true;
+            bindings.push((*sym, *expr));
+        } else {
+            remaining.push((*sym, *default));
         }
     }
 
-    // Positional distribution over the remaining formals. Collected eagerly
-    // so the distribution loop can mark arguments used.
+    // Positional distribution over unmatched pre-dots formals only.
     let positional: Vec<(usize, ValueId)> = arg_list
         .iter()
         .enumerate()
@@ -264,8 +365,7 @@ fn apply_closure(
         .map(|(index, (_, expr))| (index, *expr))
         .collect();
     let mut positional = positional.into_iter();
-    let mut remaining: Vec<(SymId, ValueId)> = Vec::new();
-    for (sym, default) in unnamed_formals {
+    for (sym, default) in pre_unmatched {
         if let Some((index, expr)) = positional.next() {
             used_args[index] = true;
             bindings.push((sym, expr));
@@ -288,6 +388,28 @@ fn apply_closure(
             new_promise(heap, default, frame)
         };
         env::define(heap, frame, sym, binding).map_err(|_| RSignal::Error(EvalError::UnsupportedForm("frame define")))?;
+    }
+
+    // Dots capture: every argument matching left unconsumed joins the
+    /// pairlist as a promise in the caller's environment, tags preserved
+    /// exactly as GNU — forwarding and introspection both read this.
+    if dots_position.is_some() {
+        let mut dots = ValueId::NIL;
+        let cells: Vec<(usize, Option<SymId>, ValueId)> = arg_list
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| !used_args[*index])
+            .map(|(index, (name, expr))| (index, *name, *expr))
+            .collect();
+        for (_, name, expr) in cells.iter().rev() {
+            let promise = new_promise(heap, *expr, caller_env);
+            let tag = match name {
+                Some(sym) => heap.alloc(RObject::Symbol { name: *sym, value: ValueId::NIL, internal: ValueId::NIL }),
+                None => ValueId::NIL,
+            };
+            dots = heap.alloc(RObject::Pairlist { car: promise, cdr: dots, tag });
+        }
+        env::define(heap, frame, dots_sym, dots).map_err(|_| RSignal::Error(EvalError::UnsupportedForm("dots define")))?;
     }
 
     // The closure boundary absorbs a `return` signal — exactly one frame
@@ -819,4 +941,65 @@ mod tests {
             other => panic!("expected TRUE, got {other:?}"),
         }
     }
+}
+
+/// Parse `..N` symbol names into their 1-based dots position.
+fn parse_dotdot_index(label: &str) -> Option<usize> {
+    let digits = label.strip_prefix("..")?;
+    if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    digits.parse().ok()
+}
+
+/// Force the Nth dots element visible from an environment — the shared
+/// core of `..N`, `...elt`, and forwarding exactly as GNU's promise chain.
+pub(crate) fn dots_elt(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    env_id: ValueId,
+    index: usize,
+) -> Option<ValueId> {
+    let dots_sym = interner.intern_symbol("...");
+    let (_, binding) = env::lookup(heap, env_id, dots_sym)?;
+    let mut cursor = binding.value;
+    let mut position = 1usize;
+    for _ in 0..MAX_LIST_LENGTH {
+        match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, .. }) => {
+                if position == index {
+                    return force_if_promise(heap, interner, *car).ok();
+                }
+                position += 1;
+                if *cdr == ValueId::NIL {
+                    return None;
+                }
+                cursor = *cdr;
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
+/// Read the raw dots pairlist visible from an environment — forwarding
+/// splices these cells exactly as GNU's promise-preserving expansion.
+pub(crate) fn dots_cells(heap: &Heap, interner: &mut SymbolInterner, env_id: ValueId) -> Option<Vec<(ValueId, ValueId)>> {
+    let dots_sym = interner.intern_symbol("...");
+    let (_, binding) = env::lookup(heap, env_id, dots_sym)?;
+    let mut cells = Vec::new();
+    let mut cursor = binding.value;
+    for _ in 0..MAX_LIST_LENGTH {
+        match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => {
+                cells.push((*car, *tag));
+                if *cdr == ValueId::NIL {
+                    return Some(cells);
+                }
+                cursor = *cdr;
+            }
+            _ => return Some(cells),
+        }
+    }
+    Some(cells)
 }
