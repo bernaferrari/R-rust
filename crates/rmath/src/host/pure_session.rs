@@ -1317,6 +1317,51 @@ cat(grconvertX(0:1, "user", "device"), grconvertY(0:1, "user", "device"), "\n")
     }
 
     #[test]
+    fn graphics_axis_emit_line_ticks_and_labels() {
+        use r_graphics_engine::{DrawOperation, PathCommand};
+        let mut session = PureSession::new();
+        session.eval("plot.new(); plot.window(c(0,1), c(0,1)); axis(1)");
+        let ops = session.session.heap.graphics.scene().operations();
+        let paths: Vec<_> = ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOperation::Path(path) => Some(path),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(paths.len(), 1, "one axis path");
+        // usr (0,1) pretty-ticks at 0,.2,...,1 — the axis line plus
+        /// six two-segment ticks exactly.
+        let moves = paths[0]
+            .commands
+            .iter()
+            .filter(|c| matches!(c, PathCommand::MoveTo(_, _)))
+            .count();
+        assert_eq!(moves, 7, "axis line plus six ticks");
+        let labels = ops
+            .iter()
+            .filter(|op| matches!(op, DrawOperation::Text { .. }))
+            .count();
+        assert_eq!(labels, 6, "six tick labels");
+        // Explicit at= positions win exactly as GAxis.
+        let mut session = PureSession::new();
+        session.eval("plot.new(); plot.window(c(0,1), c(0,1)); axis(2, at=c(0.25, 0.75))");
+        let labels: Vec<String> = session
+            .session
+            .heap
+            .graphics
+            .scene()
+            .operations()
+            .iter()
+            .filter_map(|op| match op {
+                DrawOperation::Text { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(labels, vec!["0.25", "0.75"], "explicit ticks labeled");
+    }
+
+    #[test]
     fn data_loads_datasets_into_the_calling_environment() {
         let mut session = PureSession::new();
         let result = session.eval("data(iris)");
