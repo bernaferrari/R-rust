@@ -17,7 +17,6 @@ use crate::error::*;
 use crate::special::bd0::ebd0;
 use crate::special::gamma::{lgammafn, lgammafn1p, log1pmx};
 use crate::special::stirlerr::stirlerr;
-use crate::state::with_required_current_instance;
 use crate::utils::*;
 use libm::{exp, expm1, fabs, floor, log, log1p, pow, sqrt};
 
@@ -848,13 +847,6 @@ impl Default for GammaState {
             c: 0.0,
         }
     }
-}
-
-fn with_gamma_state<F, R>(f: F) -> R
-where
-    F: FnOnce(&mut GammaState) -> R,
-{
-    with_required_current_instance(|instance| f(&mut instance.gamma_state))
 }
 
 #[must_use]

@@ -7,7 +7,6 @@ use crate::constants::*;
 use crate::dpq::*;
 use crate::error::*;
 use crate::special::choose::{choose, lchoose};
-use crate::state::with_required_current_instance;
 use crate::utils::*;
 use libm::*;
 use std::collections::HashMap;
@@ -21,13 +20,6 @@ const DBL_EPSILON: f64 = 2.220446049250313e-16;
 // w[i][j] is a Vec<f64> of size (c+1) where c = m*n/2 (when i,j are swapped to i<=j).
 // A value of -1.0 means "not yet computed".
 // We store a HashMap keyed by (i, j) pairs.
-fn with_wilcox_cache<F, R>(f: F) -> R
-where
-    F: FnOnce(&mut HashMap<(i32, i32), Vec<f64>>) -> R,
-{
-    with_required_current_instance(|instance| f(&mut instance.wilcox_cache))
-}
-
 /// cwilcox: count the number of choices with statistic = k
 /// This counts the number of subsets of size n from {1, ..., m+n}
 /// whose Wilcoxon rank sum statistic equals k.

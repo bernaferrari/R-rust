@@ -9,7 +9,6 @@
 use crate::constants::*;
 use crate::dpq::*;
 use crate::error::*;
-use crate::state::with_required_current_instance;
 use crate::utils::{fmax2, fmin2};
 use libm::{exp, expm1, fabs, log, log1p, pow, sqrt, trunc};
 
@@ -954,13 +953,6 @@ impl Default for BetaState {
             k2: 0.0,
         }
     }
-}
-
-fn with_beta_state<F, R>(f: F) -> R
-where
-    F: FnOnce(&mut BetaState) -> R,
-{
-    with_required_current_instance(|instance| f(&mut instance.beta_state))
 }
 
 const EXPMAX: f64 = (DBL_MAX_EXP as f64) * M_LN2; // = log(DBL_MAX)

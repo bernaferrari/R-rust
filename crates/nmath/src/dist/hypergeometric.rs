@@ -13,7 +13,6 @@ use crate::dist::binomial::dbinom_raw;
 use crate::dpq::*;
 use crate::error::*;
 use crate::special::gamma::lgammafn;
-use crate::state::with_required_current_instance;
 use crate::utils::*;
 use libm::*;
 
@@ -307,13 +306,6 @@ impl RhyperState {
             p3: 0.0,
         }
     }
-}
-
-fn with_rhyper_state<F, R>(f: F) -> R
-where
-    F: FnOnce(&mut RhyperState) -> R,
-{
-    with_required_current_instance(|instance| f(&mut instance.hyper_state))
 }
 
 #[must_use]

@@ -187,7 +187,6 @@ pub mod state;
 pub mod utils;
 
 #[cfg(test)]
-pub(crate) mod test_session;
 
 pub use rng::RngState;
-pub use state::{MathState, detach_state, install_state, with_state_or};
+pub use state::MathState;

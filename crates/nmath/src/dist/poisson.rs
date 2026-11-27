@@ -17,7 +17,6 @@ use crate::error::*;
 use crate::special::bd0::ebd0;
 use crate::special::gamma::lgammafn;
 use crate::special::stirlerr::stirlerr;
-use crate::state::with_required_current_instance;
 use crate::utils::*;
 use libm::*;
 
@@ -333,13 +332,6 @@ impl RpoisState {
             muprev2: 0.0,
         }
     }
-}
-
-fn with_rpois_state<F, R>(f: F) -> R
-where
-    F: FnOnce(&mut RpoisState) -> R,
-{
-    with_required_current_instance(|instance| f(&mut instance.pois_state))
 }
 
 #[must_use]

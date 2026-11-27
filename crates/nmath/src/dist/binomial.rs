@@ -13,7 +13,6 @@ use crate::dpq::*;
 use crate::error::*;
 use crate::special::bd0::bd0;
 use crate::special::stirlerr::stirlerr;
-use crate::state::with_required_current_instance;
 use crate::utils::*;
 use libm::*;
 
@@ -372,13 +371,6 @@ impl RbinomState {
             m: 0,
         }
     }
-}
-
-fn with_rbinom_state<F, R>(f: F) -> R
-where
-    F: FnOnce(&mut RbinomState) -> R,
-{
-    with_required_current_instance(|instance| f(&mut instance.binom_state))
 }
 
 #[must_use]

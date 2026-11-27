@@ -210,7 +210,6 @@ mod tests {
     /// with the same Marsaglia-MultiCarry stream, seed (1234, 5678).
     #[test]
     fn weibull_shape_zero_random_is_degenerate() {
-        let _session = crate::test_session::TestSession::new();
         let mut rng_state = crate::rng::RngState(1234, 5678);
         let got: Vec<f64> = (0..12).map(|_| rweibull_inner(&mut || rng_state.unif(), 0.0, 1.0)).collect();
         let inf = f64::INFINITY;
