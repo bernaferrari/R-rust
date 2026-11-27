@@ -349,7 +349,7 @@ fn match_single_node(node: &Node, chars: &[char], pos: usize) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::regex_search;
+    use crate::regex::regex_search;
 
     #[test]
     fn regex_core_surface() {

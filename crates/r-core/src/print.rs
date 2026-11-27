@@ -7,10 +7,10 @@
 //! `%g` exponent window, integral reals without a decimal point, element
 //! separators and the `[1]` positional prefix.
 
-use super::heap::Heap;
-use super::id::ValueId;
-use super::intern::SymbolInterner;
-use super::object::{RObject, NA_INTEGER, NA_REAL_BITS};
+use crate::heap::Heap;
+use crate::id::ValueId;
+use crate::intern::SymbolInterner;
+use crate::object::{RObject, NA_INTEGER, NA_REAL_BITS};
 
 /// Format a real scalar exactly as R's 7-significant-digit default.
 /// NA is the dedicated bit pattern; NaN (a different payload) prints as
@@ -95,9 +95,9 @@ fn trim_fixed(v: f64, decimals: usize) -> String {
 /// One complex element's display text — real part, explicit imaginary
 /// sign, magnitude, trailing i exactly as GNU's complex printing; an NA
 /// in either part renders the whole element NA.
-pub fn format_complex(z: crate::value::object::RComplex) -> String {
-    if z.r.to_bits() == crate::value::object::NA_REAL_BITS
-        || z.i.to_bits() == crate::value::object::NA_REAL_BITS
+pub fn format_complex(z: crate::object::RComplex) -> String {
+    if z.r.to_bits() == crate::object::NA_REAL_BITS
+        || z.i.to_bits() == crate::object::NA_REAL_BITS
     {
         return "NA".to_string();
     }
@@ -187,8 +187,8 @@ fn format_element(heap: &Heap, interner: &SymbolInterner, value: &RObject, index
 /// them.
 /// table class membership exactly as the factor helper.
 fn is_table(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
-    match super::primitives::get_attrib(heap, interner, value, "class") {
-        Some(class_id) => super::primitives::string_vec_pub(heap, interner, class_id)
+    match crate::attrib::get_attrib(heap, interner, value, "class") {
+        Some(class_id) => crate::attrib::string_vec_pub(heap, interner, class_id)
             .iter()
             .any(|c| c == "table"),
         None => false,
@@ -199,11 +199,11 @@ fn is_table(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
 /// Render the attribute chain as GNU's attr(,"name") blocks — insertion
 /// order, each value formatted inline exactly as print.default does.
 fn format_attributes(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String {
-    let attrib = heap.get(value).map(|slot| slot.attrib).unwrap_or(crate::value::id::ValueId::NIL);
+    let attrib = heap.get(value).map(|slot| slot.attrib).unwrap_or(crate::id::ValueId::NIL);
     let mut out = String::new();
     let mut cursor = attrib;
     for _ in 0..1000 {
-        if cursor == crate::value::id::ValueId::NIL {
+        if cursor == crate::id::ValueId::NIL {
             break;
         }
         match heap.object(cursor) {
@@ -257,8 +257,8 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     if matches!(object, RObject::Real(_) | RObject::Integer(_) | RObject::String(_))
         && is_summary_default(heap, interner, value)
     {
-        let headers: Vec<String> = match super::primitives::get_attrib(heap, interner, value, "names") {
-            Some(n) => super::primitives::string_vec_pub(heap, interner, n),
+        let headers: Vec<String> = match crate::attrib::get_attrib(heap, interner, value, "names") {
+            Some(n) => crate::attrib::string_vec_pub(heap, interner, n),
             None => Vec::new(),
         };
         // Numeric cells format as a uniform-decimal group exactly as GNU's
@@ -292,7 +292,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
                     .iter()
                     .map(|v| {
                         if v.is_nan() {
-                            if v.to_bits() == crate::value::object::NA_REAL_BITS {
+                            if v.to_bits() == crate::object::NA_REAL_BITS {
                                 "NA".to_string()
                             } else {
                                 "NaN".to_string()
@@ -312,7 +312,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
             RObject::Integer(vals) => vals
                 .iter()
                 .map(|v| {
-                    if *v == crate::value::object::NA_INTEGER {
+                    if *v == crate::object::NA_INTEGER {
                         "NA".to_string()
                     } else {
                         v.to_string()
@@ -339,16 +339,16 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
             RObject::Integer(vals) => vals.clone(),
             _ => Vec::new(),
         };
-        let categories: Vec<String> = match super::primitives::get_attrib(heap, interner, value, "dimnames")
+        let categories: Vec<String> = match crate::attrib::get_attrib(heap, interner, value, "dimnames")
             .and_then(|dn| match heap.object(dn) {
                 Some(RObject::List(items)) => items.first().copied(),
                 _ => None,
             })
-            .map(|cats| super::primitives::string_vec_pub(heap, interner, cats))
+            .map(|cats| crate::attrib::string_vec_pub(heap, interner, cats))
         {
             Some(c) if !c.is_empty() => c,
-            _ => match super::primitives::get_attrib(heap, interner, value, "names") {
-                Some(n) => super::primitives::string_vec_pub(heap, interner, n),
+            _ => match crate::attrib::get_attrib(heap, interner, value, "names") {
+                Some(n) => crate::attrib::string_vec_pub(heap, interner, n),
                 None => Vec::new(),
             },
         };
@@ -368,15 +368,15 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     // POSIXct printing: classed epoch seconds display as quoted datetimes
     /// carrying the tzone suffix exactly as print.POSIXct.
     if matches!(object, RObject::Real(_) | RObject::Integer(_))
-        && super::primitives::is_posixct_classed(heap, interner, value)
+        && crate::attrib::is_posixct_classed(heap, interner, value)
     {
         let secs: Vec<f64> = match object {
             RObject::Real(vals) => vals.clone(),
             RObject::Integer(vals) => vals
                 .iter()
                 .map(|&v| {
-                    if v == crate::value::object::NA_INTEGER {
-                        f64::from_bits(crate::value::object::NA_REAL_BITS)
+                    if v == crate::object::NA_INTEGER {
+                        f64::from_bits(crate::object::NA_REAL_BITS)
                     } else {
                         v as f64
                     }
@@ -387,7 +387,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         if secs.is_empty() {
             return "POSIXct of length 0".to_string();
         }
-        let tz = super::primitives::get_attrib(heap, interner, value, "tzone")
+        let tz = crate::attrib::get_attrib(heap, interner, value, "tzone")
             .and_then(|id| match heap.object(id) {
                 Some(RObject::String(vals)) if !vals.is_empty() => {
                     Some(interner.string_text(vals[0]).to_string())
@@ -408,7 +408,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
                 if s.is_nan() {
                     "NA".to_string()
                 } else {
-                    let full = super::civil::format_iso_datetime(s as i64);
+                    let full = crate::civil::format_iso_datetime(s as i64);
                     let rendered = if all_midnight && full.ends_with(" 00:00:00") {
                         full[..10].to_string()
                     } else {
@@ -431,15 +431,15 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     /// exactly as print.Date — a character-vector rendering of the civil
     /// dates.
     if matches!(object, RObject::Real(_) | RObject::Integer(_))
-        && super::primitives::is_date_classed(heap, interner, value)
+        && crate::attrib::is_date_classed(heap, interner, value)
     {
         let days: Vec<f64> = match object {
             RObject::Real(vals) => vals.clone(),
             RObject::Integer(vals) => vals
                 .iter()
                 .map(|&v| {
-                    if v == crate::value::object::NA_INTEGER {
-                        f64::from_bits(crate::value::object::NA_REAL_BITS)
+                    if v == crate::object::NA_INTEGER {
+                        f64::from_bits(crate::object::NA_REAL_BITS)
                     } else {
                         v as f64
                     }
@@ -453,7 +453,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
                 if d.is_nan() {
                     "NA".to_string()
                 } else {
-                    format!("\"{}\"", super::civil::format_iso(d as i64))
+                    format!("\"{}\"", crate::civil::format_iso(d as i64))
                 }
             })
             .collect();
@@ -478,7 +478,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
             _ => Vec::new(),
         };
         let first = nums.first().copied().unwrap_or(0.0);
-        let unit = super::primitives::get_attrib(heap, interner, value, "units")
+        let unit = crate::attrib::get_attrib(heap, interner, value, "units")
             .and_then(|id| match heap.object(id) {
                 Some(RObject::String(vals)) if !vals.is_empty() => {
                     Some(interner.string_text(vals[0]).to_string())
@@ -517,7 +517,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
             // prints the flat element count shape for scalarness checks.
             // Named elements print under `$name` headers; unnamed ones keep
             /// the positional [[i]] form — GNU's mixed-header rule.
-            let names = super::primitives::get_attrib(heap, interner, value, "names");
+            let names = crate::attrib::get_attrib(heap, interner, value, "names");
             let names_vec: Option<Vec<String>> = names.and_then(|id| match heap.object(id) {
                 Some(RObject::String(values)) => Some(
                     values
@@ -548,7 +548,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
             // Named environments print their name exactly as GNU's
             /// <environment: R_GlobalEnv> — the name rides the attribute
             /// chain in the new world.
-            let name = super::primitives::get_attrib(heap, interner, value, "name")
+            let name = crate::attrib::get_attrib(heap, interner, value, "name")
                 .and_then(|id| match heap.object(id) {
                     Some(RObject::String(values)) if !values.is_empty() => {
                         Some(interner.string_text(values[0]).to_string())
@@ -565,7 +565,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     if length == 0 {
         // GNU prefixes "named" when the empty vector carries a names
         // attribute exactly as print.default's empty-shape rendering.
-        let named = super::primitives::get_attrib(heap, interner, value, "names").is_some();
+        let named = crate::attrib::get_attrib(heap, interner, value, "names").is_some();
         let prefix = if named { "named " } else { "" };
         let base = match object {
             RObject::Real(_) => format!("{prefix}numeric(0)"),
@@ -654,7 +654,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     // GNU named-vector layout: the names print as a header row over the
     /// values, each column right-justified to the wider of name and value,
     /// with no [1] tags — the two-row reading is the tell.
-    let names_id = super::primitives::get_attrib(heap, interner, value, "names");
+    let names_id = crate::attrib::get_attrib(heap, interner, value, "names");
     let names_vec: Option<Vec<String>> = names_id.and_then(|id| match heap.object(id) {
         Some(RObject::String(values)) if values.len() == length => Some(
             values
@@ -753,7 +753,7 @@ fn format_attribute_blocks(heap: &Heap, interner: &SymbolInterner, value: ValueI
 
 /// The dim attribute of an object as integer extents, when present.
 fn dim_attribute(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Option<Vec<i32>> {
-    let dim_id = super::primitives::get_attrib(heap, interner, value, "dim")?;
+    let dim_id = crate::attrib::get_attrib(heap, interner, value, "dim")?;
     match heap.object(dim_id) {
         Some(RObject::Integer(values)) => Some(values.clone()),
         Some(RObject::Real(values)) => Some(values.iter().map(|v| *v as i32).collect()),
@@ -878,7 +878,7 @@ fn dimnames_of(
     interner: &SymbolInterner,
     value: ValueId,
 ) -> (Option<Vec<String>>, Option<Vec<String>>) {
-    let id = match super::primitives::get_attrib(heap, interner, value, "dimnames") {
+    let id = match crate::attrib::get_attrib(heap, interner, value, "dimnames") {
         Some(v) => v,
         None => return (None, None),
     };
@@ -905,7 +905,7 @@ fn dimnames_of(
 
 /// The class attribute holds data.frame — the object shape test.
 fn is_data_frame(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
-    match super::primitives::get_attrib(heap, interner, value, "class") {
+    match crate::attrib::get_attrib(heap, interner, value, "class") {
         Some(id) => match heap.object(id) {
             Some(RObject::String(values)) => values
                 .iter()
@@ -941,7 +941,7 @@ fn format_data_frame(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> 
         Some(RObject::List(items)) => items.clone(),
         _ => return "<data.frame>".to_string(),
     };
-    let col_names: Vec<String> = match super::primitives::get_attrib(heap, interner, value, "names") {
+    let col_names: Vec<String> = match crate::attrib::get_attrib(heap, interner, value, "names") {
         Some(id) => match heap.object(id) {
             Some(RObject::String(values)) => values
                 .iter()
@@ -951,7 +951,7 @@ fn format_data_frame(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> 
         },
         None => Vec::new(),
     };
-    let row_names: Vec<String> = match super::primitives::get_attrib(heap, interner, value, "row.names") {
+    let row_names: Vec<String> = match crate::attrib::get_attrib(heap, interner, value, "row.names") {
         Some(id) => match heap.object(id) {
             Some(RObject::String(values)) => values
                 .iter()
@@ -1015,7 +1015,7 @@ fn format_data_frame(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> 
 }
 
 fn is_difftime(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
-    super::primitives::get_attrib(heap, interner, value, "class")
+    crate::attrib::get_attrib(heap, interner, value, "class")
         .and_then(|id| match heap.object(id) {
             Some(RObject::String(vals)) => Some(vals.iter().any(|v| interner.string_text(*v) == "difftime")),
             _ => None,
@@ -1024,7 +1024,7 @@ fn is_difftime(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
 }
 
 fn is_summary_default(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
-    super::primitives::get_attrib(heap, interner, value, "class")
+    crate::attrib::get_attrib(heap, interner, value, "class")
         .and_then(|id| match heap.object(id) {
             Some(RObject::String(vals)) => Some(vals.iter().any(|v| interner.string_text(*v) == "summaryDefault")),
             _ => None,
@@ -1033,7 +1033,7 @@ fn is_summary_default(heap: &Heap, interner: &SymbolInterner, value: ValueId) ->
 }
 
 fn is_factor(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
-    match super::primitives::get_attrib(heap, interner, value, "class") {
+    match crate::attrib::get_attrib(heap, interner, value, "class") {
         Some(id) => match heap.object(id) {
             Some(RObject::String(values)) => values
                 .iter()
@@ -1051,7 +1051,7 @@ fn format_factor(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Stri
         Some(RObject::Integer(values)) => values.clone(),
         _ => return "<factor>".to_string(),
     };
-    let levels: Vec<String> = match super::primitives::get_attrib(heap, interner, value, "levels") {
+    let levels: Vec<String> = match crate::attrib::get_attrib(heap, interner, value, "levels") {
         Some(id) => match heap.object(id) {
             Some(RObject::String(values)) => values
                 .iter()
@@ -1064,7 +1064,7 @@ fn format_factor(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Stri
     let labels: Vec<String> = codes
         .iter()
         .map(|c| {
-            if *c == crate::value::object::NA_INTEGER {
+            if *c == crate::object::NA_INTEGER {
                 "NA".to_string()
             } else {
                 levels
@@ -1099,7 +1099,7 @@ pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String
     if let Some(class_text) = s4_class_of(heap, interner, value) {
         if let Some(RObject::List(items)) = heap.object(value) {
             let items = items.clone();
-            let slot_names: Vec<String> = crate::value::primitives::attrib_names(heap, interner, value);
+            let slot_names: Vec<String> = crate::attrib::attrib_names(heap, interner, value);
             let mut parts: Vec<String> = Vec::new();
             for (index, item) in items.iter().enumerate() {
                 let name = slot_names.get(index).cloned().unwrap_or_default();
@@ -1180,7 +1180,7 @@ pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String
                 .map(|(i, v)| {
                     // Tagged arguments render name = value exactly as GNU's
                     /// deparse of a call object.
-                    let value_text = if *v == crate::value::id::ValueId::MISSING {
+                    let value_text = if *v == crate::id::ValueId::MISSING {
                         String::new()
                     } else {
                         deparse(heap, interner, *v)
@@ -1195,14 +1195,14 @@ pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String
         }
         Some(RObject::Real(vals)) if vals.len() == 1 => format_real(vals[0]),
         Some(RObject::Integer(vals)) if vals.len() == 1 => {
-            if vals[0] == crate::value::object::NA_INTEGER {
+            if vals[0] == crate::object::NA_INTEGER {
                 "NA_integer_".to_string()
             } else {
                 format!("{}L", vals[0])
             }
         }
         Some(RObject::Logical(vals)) if vals.len() == 1 => {
-            if vals[0] == crate::value::object::NA_INTEGER {
+            if vals[0] == crate::object::NA_INTEGER {
                 "NA".to_string()
             } else if vals[0] != 0 {
                 "TRUE".to_string()
@@ -1225,7 +1225,7 @@ pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String
             let parts: Vec<String> = vals
                 .iter()
                 .map(|&v| {
-                    if v == crate::value::object::NA_INTEGER {
+                    if v == crate::object::NA_INTEGER {
                         "NA_integer_".to_string()
                     } else {
                         format!("{}L", v)
@@ -1238,7 +1238,7 @@ pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String
             let parts: Vec<String> = vals
                 .iter()
                 .map(|&v| {
-                    if v == crate::value::object::NA_INTEGER {
+                    if v == crate::object::NA_INTEGER {
                         "NA".to_string()
                     } else if v != 0 {
                         "TRUE".to_string()
@@ -1263,7 +1263,7 @@ pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String
 /// The object's class when it names a registered S4 class — the slice's
 /// S4-bit reading exactly as the isS4 predicate computes it.
 fn s4_class_of(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Option<String> {
-    let attrib = crate::value::primitives::get_attrib_public(heap, interner, value, "class")?;
+    let attrib = crate::attrib::get_attrib_public(heap, interner, value, "class")?;
     if let Some(RObject::String(vals)) = heap.object(attrib) {
         for v in vals.iter() {
             let text = interner.string_text(*v).to_string();

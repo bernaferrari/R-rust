@@ -7,6 +7,11 @@
 //! the canonical registry arrives with the builtin migration and replaces
 //! this module's table.
 
+// Attribute machinery lives in r-core's object model exactly as the DAG
+// requires — re-exported here so the registry's existing paths resolve.
+pub use r_core::attrib::{attrib_names, get_attrib, get_attrib_public, is_date_classed, is_posixct_classed, string_vec_pub};
+use r_core::attrib::string_vec;
+
 use super::eval::{eval, force_if_promise, EvalError, EvalResult, RSignal};
 use super::heap::Heap;
 use super::id::ValueId;
@@ -11093,48 +11098,14 @@ fn vector_constructor(
     Ok(heap.alloc(body))
 }
 
-/// Read one named attribute off an object's slot attribute chain — the
-/// pairlist walk every attribute access shares. Attribute chains are
-/// pairlist nodes whose tags are the attribute name symbols.
-/// Cross-module attribute access for the deparser — same reading as the
-/// internal getter.
-pub fn get_attrib_public(heap: &Heap, interner: &SymbolInterner, value: ValueId, name: &str) -> Option<ValueId> {
-    get_attrib(heap, interner, value, name)
-}
 
-/// The names attribute as plain strings — slot ordering for the S4
-/// deparser exactly as the attribute carries it.
-pub fn attrib_names(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<String> {
-    get_attrib(heap, interner, value, "names")
-        .map(|id| string_vec(heap, interner, id))
-        .unwrap_or_default()
-}
 
-pub(crate) fn get_attrib(
-    heap: &Heap,
-    interner: &SymbolInterner,
-    obj: ValueId,
-    attr_name: &str,
-) -> Option<ValueId> {
-    let mut cursor = heap.get(obj)?.attrib;
-    for _ in 0..100_000 {
-        if cursor == ValueId::NIL {
-            return None;
-        }
-        match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => {
-                if let Some(RObject::Symbol { name, .. }) = heap.object(*tag) {
-                    if interner.symbol_name(*name) == attr_name {
-                        return Some(*car);
-                    }
-                }
-                cursor = *cdr;
-            }
-            _ => return None,
-        }
-    }
-    None
-}
+
+
+
+
+
+
 
 /// Copy an object with one attribute replaced (or prepended when absent).
 /// R's copy-on-write discipline: the original object is never mutated —
@@ -13813,20 +13784,11 @@ fn string_operand(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Opt
     }
 }
 
-/// print.rs reaches the same extraction through this crate-visible alias.
-pub(crate) fn string_vec_pub(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<String> {
-    string_vec(heap, interner, value)
-}
 
-fn string_vec(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<String> {
-    match heap.object(value) {
-        Some(RObject::String(values)) => values
-            .iter()
-            .map(|v| interner.string_text(*v).to_string())
-            .collect(),
-        _ => Vec::new(),
-    }
-}
+
+
+
+
 
 
 /// The (nrow, ncol) of a data.frame-classed list, when classed.
@@ -19931,15 +19893,8 @@ fn array_primitive(
     Ok(result)
 }
 
-/// Whether the object carries the Date class.
-pub(crate) fn is_date_classed(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
-    get_attrib(heap, interner, value, "class")
-        .and_then(|id| match heap.object(id) {
-            Some(RObject::String(vals)) => Some(vals.iter().any(|v| interner.string_text(*v) == "Date")),
-            _ => None,
-        })
-        .unwrap_or(false)
-}
+
+
 
 /// Numeric payload of a vector as reals — integer input widens exactly.
 fn numeric_vector(heap: &Heap, value: ValueId) -> Vec<f64> {
@@ -19959,16 +19914,8 @@ fn numeric_vector(heap: &Heap, value: ValueId) -> Vec<f64> {
     }
 }
 
-/// Whether the object carries the POSIXct class (first of the two-element
-/// POSIXct/POSIXt class vector exactly as GNU).
-pub(crate) fn is_posixct_classed(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
-    get_attrib(heap, interner, value, "class")
-        .and_then(|id| match heap.object(id) {
-            Some(RObject::String(vals)) => Some(vals.iter().any(|v| interner.string_text(*v) == "POSIXct")),
-            _ => None,
-        })
-        .unwrap_or(false)
-}
+
+
 
 /// Whether the object carries the difftime class.
 pub(crate) fn is_difftime_classed(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {

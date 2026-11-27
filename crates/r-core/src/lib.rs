@@ -9,6 +9,8 @@
 //! (docs/pure-rust-foundation-plan.md section 2.1) — the first extraction
 //! of the rmath monolith split (rport-c2v5f.15).
 
+pub mod attrib;
+pub mod civil;
 pub mod env;
 pub mod eval;
 pub mod gc;
@@ -18,10 +20,14 @@ pub mod id;
 pub mod intern;
 pub mod object;
 pub mod parser;
+pub mod print;
+pub mod regex;
+pub mod rbg1;
 pub mod path_policy;
 pub mod rng;
 pub mod roots;
 pub mod support;
+pub mod vfile;
 
 pub use heap::Heap;
 pub use id::ValueId;

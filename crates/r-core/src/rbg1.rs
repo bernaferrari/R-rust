@@ -16,10 +16,10 @@
 //! index 0 is the canonical nil object. The root object is index 1 — the
 //! writer interns it first.
 
-use super::heap::Heap;
-use super::id::ValueId;
-use super::intern::{InternedStr, SymbolInterner};
-use super::object::{EnvFrame, RComplex, RObject};
+use crate::heap::Heap;
+use crate::id::ValueId;
+use crate::intern::{InternedStr, SymbolInterner};
+use crate::object::{EnvFrame, RComplex, RObject};
 
 const MAGIC: &[u8; 4] = b"RBG1";
 const FORMAT_VERSION: u32 = 1;
@@ -238,7 +238,7 @@ pub fn decode_rds(
 
 /// Materialize a payload graph — the framing-stripped form the lazy-load
 /// database reader shares.
-pub(crate) fn decode_payload(
+pub fn decode_payload(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
     payload: &[u8],

@@ -21,16 +21,17 @@ pub mod parser { pub use r_core::parser::*; }
 pub mod env { pub use r_core::env::*; }
 pub mod support { pub use r_core::support::*; }
 pub mod eval { pub use r_core::eval::*; }
+pub mod print { pub use r_core::print::*; }
+pub mod regex { pub use r_core::regex::*; }
+pub mod civil { pub use r_core::civil::*; }
+pub mod rbg1 { pub use r_core::rbg1::*; }
+pub mod vfile { pub use r_core::vfile::*; }
+pub mod attrib { pub use r_core::attrib::*; }
 pub mod eval_tests;
 pub mod primitives;
-pub mod print;
-pub mod regex;
-pub mod rbg1;
 pub mod datasets;
-pub mod civil;
 pub mod conformance_sweep;
 pub mod session;
-pub mod vfile;
 
 pub use heap::Heap;
 pub use id::ValueId;

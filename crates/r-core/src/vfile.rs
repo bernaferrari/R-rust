@@ -7,7 +7,7 @@
 //! path-policy gate. One helper pair means file primitives never
 //! choose between three concerns at every call site.
 
-use crate::value::heap::Heap;
+use crate::heap::Heap;
 use std::io;
 
 /// Read one path exactly as the facade's contract: virtual bytes when
@@ -23,7 +23,7 @@ pub fn read_file(heap: &Heap, path: &str) -> io::Result<Vec<u8>> {
             "browser file not found",
         ));
     }
-    match crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), path) {
+    match crate::path_policy::resolve_host_path(heap.path_policy.as_ref(), path) {
         Some(host) => std::fs::read(&host),
         None => Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
@@ -40,7 +40,7 @@ pub fn write_file(heap: &mut Heap, path: &str, bytes: &[u8]) -> io::Result<()> {
         heap.browser_files.insert(path.to_string(), bytes.to_vec());
         return Ok(());
     }
-    match crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), path) {
+    match crate::path_policy::resolve_host_path(heap.path_policy.as_ref(), path) {
         Some(host) => std::fs::write(&host, bytes),
         None => Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
@@ -58,7 +58,7 @@ pub fn file_exists(heap: &Heap, path: &str) -> bool {
     if heap.browser_files_enabled {
         return false;
     }
-    match crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), path) {
+    match crate::path_policy::resolve_host_path(heap.path_policy.as_ref(), path) {
         Some(host) => std::path::Path::new(&host).exists(),
         None => false,
     }
@@ -76,7 +76,7 @@ pub fn remove_file(heap: &mut Heap, path: &str) -> io::Result<()> {
             "browser file not found",
         ));
     }
-    match crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), path) {
+    match crate::path_policy::resolve_host_path(heap.path_policy.as_ref(), path) {
         Some(host) => std::fs::remove_file(&host),
         None => Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
