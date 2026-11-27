@@ -87,6 +87,11 @@ pub struct Heap {
     /// output state lives with the runtime state for the migration slice;
     /// the console/connection subsystem migration owns the final shape.
     pub output: String,
+    /// Output diversion: while a sink file is active every emitted byte
+    /// lands there instead of the capture buffer, exactly as GNU's sink().
+    pub sink_file: Option<std::fs::File>,
+    /// Sink depth counter backing sink.number().
+    pub sink_depth: i32,
     /// Session options as insertion-ordered name/value pairs — GNU's
     /// options list in miniature; reads fall back to width's default.
     pub options: Vec<(String, ValueId)>,
@@ -106,6 +111,17 @@ impl Heap {
     }
 
     /// Allocate a new object and return its handle.
+    /// Emit output bytes: diverted to the sink file while one is active,
+    /// the capture buffer otherwise — GNU's sink() diversion point.
+    pub fn emit(&mut self, text: &str) {
+        if let Some(file) = &mut self.sink_file {
+            use std::io::Write;
+            let _ = file.write_all(text.as_bytes());
+        } else {
+            self.output.push_str(text);
+        }
+    }
+
     pub fn alloc(&mut self, body: RObject) -> ValueId {
         self.allocations_since_gc += 1;
         self.payload_bytes += payload_estimate(&body);

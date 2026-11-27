@@ -76,8 +76,8 @@ impl Session {
             /// stdout does — both append to the one output buffer.
             if self.heap.visible {
                 let text = super::print::format_value(&self.heap, &self.interner, value);
-                self.heap.output.push_str(&text);
-                self.heap.output.push('\n');
+                self.heap.emit(&text);
+                self.heap.emit("\n");
             }
             // Deferred warnings flush at end-of-task exactly as GNU's
             // REPL — after the visible result prints.
@@ -86,7 +86,7 @@ impl Session {
                 if pending.len() == 1 {
                     self.heap.output.push_str("Warning message:\n");
                     self.heap.output.push_str(&pending[0]);
-                    self.heap.output.push('\n');
+                    self.heap.emit("\n");
                 } else {
                     self.heap.output.push_str("Warning messages:\n");
                     for (i, text) in pending.iter().enumerate() {
