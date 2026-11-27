@@ -1331,6 +1331,11 @@ mod tests {
     #[test]
     fn arena_stats_report_live_occupancy() {
         let mut session = PureSession::new();
+        // GC timing is workload-dependent — the R-level bootstrap's parse
+        /// trees collect during the first evaluation whenever they cross
+        /// the threshold — so the baseline measures after a priming
+        /// evaluation exactly as the growth measurement does.
+        session.eval("0");
         let before = session.arena_stats();
         assert!(before.active_nodes > 0, "bootstrap allocates");
         session.eval("x <- rep(1, 1000)");
