@@ -1302,6 +1302,21 @@ cat(length(pretty(numeric(0))), "\n", sep="")
     }
 
     #[test]
+    fn grconvert_matches_the_margin_oracle() {
+        // GNU's exact capture: 160x120 raster, one-line margins, exact
+        /// axis styles — user corners hit the margin edges in device
+        /// units exactly as the pinned output.
+        let mut session = PureSession::new();
+        session.session.heap.graphics.set_device_size(160.0, 120.0);
+        let out = session.eval(r#"
+par(mar=rep(1,4), xaxs="i", yaxs="i")
+plot.new(); plot.window(c(0,1), c(0,1))
+cat(grconvertX(0:1, "user", "device"), grconvertY(0:1, "user", "device"), "\n")
+"#);
+        assert_eq!(out.stdout, "14.4 145.6 14.4 105.6 \n", "margin oracle");
+    }
+
+    #[test]
     fn data_loads_datasets_into_the_calling_environment() {
         let mut session = PureSession::new();
         let result = session.eval("data(iris)");
