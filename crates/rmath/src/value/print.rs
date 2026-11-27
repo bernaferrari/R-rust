@@ -1023,6 +1023,25 @@ fn format_factor(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Stri
 /// comma-space-separated arguments, missing arguments print empty, and
 /// atomic literals carry their literal form.
 pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String {
+    // S4 objects deparse as their constructing new() call exactly as GNU —
+    /// class name first, slots in definition order with deparsed values.
+    if let Some(class_text) = s4_class_of(heap, interner, value) {
+        if let Some(RObject::List(items)) = heap.object(value) {
+            let items = items.clone();
+            let slot_names: Vec<String> = crate::value::primitives::attrib_names(heap, interner, value);
+            let mut parts: Vec<String> = Vec::new();
+            for (index, item) in items.iter().enumerate() {
+                let name = slot_names.get(index).cloned().unwrap_or_default();
+                let value_text = deparse(heap, interner, *item);
+                if name.is_empty() {
+                    parts.push(value_text);
+                } else {
+                    parts.push(format!("{} = {}", name, value_text));
+                }
+            }
+            return format!("new(\"{}\"{}{})", class_text, if parts.is_empty() { "" } else { ", " }, parts.join(", "));
+        }
+    }
     match heap.object(value) {
         Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
         Some(RObject::Language { car, cdr, .. }) => {
@@ -1158,4 +1177,19 @@ pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String
         }
         _ => "?".to_string(),
     }
+}
+
+/// The object's class when it names a registered S4 class — the slice's
+/// S4-bit reading exactly as the isS4 predicate computes it.
+fn s4_class_of(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Option<String> {
+    let attrib = crate::value::primitives::get_attrib_public(heap, interner, value, "class")?;
+    if let Some(RObject::String(vals)) = heap.object(attrib) {
+        for v in vals.iter() {
+            let text = interner.string_text(*v).to_string();
+            if heap.s4_classes.contains_key(&text) {
+                return Some(text);
+            }
+        }
+    }
+    None
 }
