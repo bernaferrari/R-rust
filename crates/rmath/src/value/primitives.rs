@@ -509,6 +509,25 @@ pub mod primitive_ids {
     pub const QNBINOM: u32 = 491;
     pub const PWEIBULL: u32 = 492;
     pub const QWEIBULL: u32 = 493;
+    pub const RANGE_FN: u32 = 494;
+    pub const PMIN: u32 = 495;
+    pub const PMAX: u32 = 496;
+    pub const PMATCH: u32 = 497;
+    pub const PROP_TABLE: u32 = 498;
+    pub const ROW_FN: u32 = 499;
+    pub const COL_FN: u32 = 500;
+    pub const RELEVEL: u32 = 501;
+    pub const SEARCHPATHS: u32 = 502;
+    pub const PATH_EXPAND: u32 = 503;
+    pub const PCRE_CONFIG: u32 = 504;
+    pub const RAWTOCHAR: u32 = 505;
+    pub const QHYPER: u32 = 506;
+    pub const PTUKEY: u32 = 507;
+    pub const QPOIS: u32 = 508;
+    pub const QBINOM: u32 = 509;
+    pub const DUNIF: u32 = 510;
+    pub const PUNIF: u32 = 511;
+    pub const QUNIF: u32 = 512;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
     /// Directory construction and listing.
     pub const DIR_CREATE: u32 = 153;
@@ -539,7 +558,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN, SUMMARY_FN, MATRIX_MULT, CROSSPROD, TCROSSPROD, MAXCOL, IDIV, NROW_FN, NCOL_FN, SYS_GETPID, OLSONNAMES, IQR_FN, SYS_CHMOD, FILE_INFO, SYS_GETLOCALE, SYS_SETLOCALE, NZCHAR, AT_OP, AT_ASSIGN, SYS_INFO, SYS_TIME, SYS_DATE, SYS_WHICH, FLOOR, CEILING, TRUNC, ROUND, SIGNIF, EXPM1, LOG1P, ACOSH, ASINH, ATANH, COSPI, SINPI, TANPI, ANYNA, SYS_LOCALECONV, AGREP, AGREPL, APPLY, AS_ENVIRONMENT, AS_CALL, ENC2NATIVE, ENC2UTF8, SEARCH_FN, AS_FACTOR, AS_ORDERED, ADDNA, APERM, ADDMARGINS, DOT_SUBSET, DOT_SUBSET2, ASPLIT, ATTACH, DETACH, POS_TO_ENV, DOT_CLASS2, GC_TIME, AVE, BACKSOLVE, BQUOTE, CALL_FN, CHAR_TO_RAW, CHARMATCH, CUMSUM, CUMPROD, CUMMIN, CUMMAX, COMMENT_FN, COMMENT_ASSIGN, COMPLETE_CASES, COLSUMS, ROWSUMS, COLMEANS, ROWMEANS, DCAUCHY, DCHISQ, DEXP, CUT, DATE_FN, CAPABILITIES, BY_FN, BROWSER_FN, DGAMMA, DGEOM, DNBINOM, DIFF, DIAG, DO_CALL, DWEIBULL, DROP_FN, DROPLEVELS, DUPLICATED, ANYDUPLICATED, DIR_EXISTS, FILE_CREATE, FILE_ACCESS, ENVIRONMENT_ASSIGN, FORCEANDCALL, DECLARE, PRIMTRACE, PRIMUNTRACE, STANDARDGENERIC, DMULTINOM, DOTS_LENGTH, DOTS_NAMES, DOTS_ELT, IS_DATA_FRAME, FILE_APPEND, FILE_LINK, FILE_SYMLINK, SYS_READLINK, FILE_SIZE, FILE_MTIME, GL, HEAD_FN, TAIL_FN, INTERACTION, GCINFO, GCTORTURE, GCTORTURE2, IS_FINITE, IS_INFINITE, IS_NAN, IS_VECTOR, IS_LOADED, L10N_INFO, CSTACK_INFO, EXTSOFTVERSION, LIST_FILES, MEMORY_PROFILE, ENV_IS_LOCKED, LOCK_BINDING, BINDING_IS_LOCKED, UNLOCK_BINDING, LOCK_ENVIRONMENT, MAKE_ACTIVE_BINDING, BINDING_IS_ACTIVE, SYS_UMASK, NORMALIZE_PATH, OLDCLASS, OLDCLASS_ASSIGN, IS_OBJECT, PAIRLIST_CTOR, AS_PAIRLIST, OUTER, ON_EXIT, IS_S4_TEST, NARGS, SYS_NFRAME, SYS_CALL, SYS_FRAME, SYS_FUNCTION, PARENT_FRAME, IS_FUNCTION, METHODS, PAR, LAYOUT, FORMAT_DF, LIB_PATHS, FIND_PACKAGE, SYSTEM_FILE, FORMAT_INFO, PCAUCHY, QCAUCHY, PCHISQ, QCHISQ, PEXP, QEXP, PGAMMA, QGAMMA, PGEOM, QGEOM, PNBINOM, QNBINOM, PWEIBULL, QWEIBULL};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN, SUMMARY_FN, MATRIX_MULT, CROSSPROD, TCROSSPROD, MAXCOL, IDIV, NROW_FN, NCOL_FN, SYS_GETPID, OLSONNAMES, IQR_FN, SYS_CHMOD, FILE_INFO, SYS_GETLOCALE, SYS_SETLOCALE, NZCHAR, AT_OP, AT_ASSIGN, SYS_INFO, SYS_TIME, SYS_DATE, SYS_WHICH, FLOOR, CEILING, TRUNC, ROUND, SIGNIF, EXPM1, LOG1P, ACOSH, ASINH, ATANH, COSPI, SINPI, TANPI, ANYNA, SYS_LOCALECONV, AGREP, AGREPL, APPLY, AS_ENVIRONMENT, AS_CALL, ENC2NATIVE, ENC2UTF8, SEARCH_FN, AS_FACTOR, AS_ORDERED, ADDNA, APERM, ADDMARGINS, DOT_SUBSET, DOT_SUBSET2, ASPLIT, ATTACH, DETACH, POS_TO_ENV, DOT_CLASS2, GC_TIME, AVE, BACKSOLVE, BQUOTE, CALL_FN, CHAR_TO_RAW, CHARMATCH, CUMSUM, CUMPROD, CUMMIN, CUMMAX, COMMENT_FN, COMMENT_ASSIGN, COMPLETE_CASES, COLSUMS, ROWSUMS, COLMEANS, ROWMEANS, DCAUCHY, DCHISQ, DEXP, CUT, DATE_FN, CAPABILITIES, BY_FN, BROWSER_FN, DGAMMA, DGEOM, DNBINOM, DIFF, DIAG, DO_CALL, DWEIBULL, DROP_FN, DROPLEVELS, DUPLICATED, ANYDUPLICATED, DIR_EXISTS, FILE_CREATE, FILE_ACCESS, ENVIRONMENT_ASSIGN, FORCEANDCALL, DECLARE, PRIMTRACE, PRIMUNTRACE, STANDARDGENERIC, DMULTINOM, DOTS_LENGTH, DOTS_NAMES, DOTS_ELT, IS_DATA_FRAME, FILE_APPEND, FILE_LINK, FILE_SYMLINK, SYS_READLINK, FILE_SIZE, FILE_MTIME, GL, HEAD_FN, TAIL_FN, INTERACTION, GCINFO, GCTORTURE, GCTORTURE2, IS_FINITE, IS_INFINITE, IS_NAN, IS_VECTOR, IS_LOADED, L10N_INFO, CSTACK_INFO, EXTSOFTVERSION, LIST_FILES, MEMORY_PROFILE, ENV_IS_LOCKED, LOCK_BINDING, BINDING_IS_LOCKED, UNLOCK_BINDING, LOCK_ENVIRONMENT, MAKE_ACTIVE_BINDING, BINDING_IS_ACTIVE, SYS_UMASK, NORMALIZE_PATH, OLDCLASS, OLDCLASS_ASSIGN, IS_OBJECT, PAIRLIST_CTOR, AS_PAIRLIST, OUTER, ON_EXIT, IS_S4_TEST, NARGS, SYS_NFRAME, SYS_CALL, SYS_FRAME, SYS_FUNCTION, PARENT_FRAME, IS_FUNCTION, METHODS, PAR, LAYOUT, FORMAT_DF, LIB_PATHS, FIND_PACKAGE, SYSTEM_FILE, FORMAT_INFO, PCAUCHY, QCAUCHY, PCHISQ, QCHISQ, PEXP, QEXP, PGAMMA, QGAMMA, PGEOM, QGEOM, PNBINOM, QNBINOM, PWEIBULL, QWEIBULL, RANGE_FN, PMIN, PMAX, PMATCH, PROP_TABLE, ROW_FN, COL_FN, RELEVEL, SEARCHPATHS, PATH_EXPAND, PCRE_CONFIG, RAWTOCHAR, QHYPER, PTUKEY, QPOIS, QBINOM, DUNIF, PUNIF, QUNIF};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -5900,7 +5919,30 @@ fn call_primitive_inner(
             Ok(heap.alloc(RObject::Logical(vec![is as i32])))
         }
         SIN | COS | SINH | COSH | TANH_F => trig_unary(heap, interner, id.0, args, caller_env),
-        DNORM | PNORM | QNORM | DPOIS | PPOIS | DBINOM | PBINOM | PBETA | DBETA | QBETA | DT | PT | QT | DF | PF | QF | DCAUCHY | DCHISQ | DEXP | PCAUCHY | QCAUCHY | PCHISQ | QCHISQ | PEXP | QEXP | PGAMMA | QGAMMA | PGEOM | QGEOM | PNBINOM | QNBINOM | PWEIBULL | QWEIBULL => dpq_primitive(heap, interner, id.0, args, caller_env),
+        DNORM | PNORM | QNORM | DPOIS | PPOIS | DBINOM | PBINOM | PBETA | DBETA | QBETA | DT | PT | QT | DF | PF | QF | DCAUCHY | DCHISQ | DEXP | PCAUCHY | QCAUCHY | PCHISQ | QCHISQ | PEXP | QEXP | PGAMMA | QGAMMA | PGEOM | QGEOM | PNBINOM | QNBINOM | PWEIBULL | QWEIBULL | QPOIS | QBINOM | DUNIF | PUNIF | QUNIF => dpq_primitive(heap, interner, id.0, args, caller_env),
+        RANGE_FN => range_primitive(heap, interner, args, caller_env),
+        PMIN | PMAX => pminmax_primitive(heap, interner, id.0, args, caller_env),
+        PMATCH => pmatch_primitive(heap, interner, args, caller_env),
+        PROP_TABLE => prop_table_primitive(heap, interner, args, caller_env),
+        ROW_FN | COL_FN => rowcol_primitive(heap, interner, id.0, args, caller_env),
+        RELEVEL => relevel_primitive(heap, interner, args, caller_env),
+        SEARCHPATHS => {
+            let genv = {
+                let sym = interner.intern_symbol(".GlobalEnv");
+                match super::env::lookup(heap, caller_env, sym) {
+                    Some((_, binding)) => binding.value,
+                    None => caller_env,
+                }
+            };
+            let names = search_path_names(heap, interner, genv);
+            let interned: Vec<_> = names.iter().map(|n| interner.intern_string(n)).collect();
+            Ok(heap.alloc(RObject::String(interned)))
+        }
+        PATH_EXPAND => path_expand_primitive(heap, interner, args, caller_env),
+        PCRE_CONFIG => pcre_config_primitive(heap, interner),
+        RAWTOCHAR => rawtochar_primitive(heap, interner, args, caller_env),
+        QHYPER => qhyper_primitive(heap, interner, args, caller_env),
+        PTUKEY => ptukey_primitive(heap, interner, args, caller_env),
         COMPLEX_CTOR => complex_ctor(heap, interner, args, caller_env),
         AS_COMPLEX => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
@@ -7571,7 +7613,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "<<-", "return", "while", "repeat", "for", "break", "next", "function", "c", "[",
         "length", ":", "(", "&", "|", "!", "&&", "||", "sum", "prod", "min", "max", "sqrt",
         "exp", "log", "abs", "^", "[[", "list", "paste", "paste0", "nchar", "print", "[<-",
-        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom", "message", "missing", "parent.env", "order", "rank", "ordered", "is.ordered", "is.factor", "na.omit", "na.exclude", "pbeta", "dbeta", "qbeta", "find", "UseMethod", "NextMethod", "getS3method", "emptyenv", "as.integer", "as.numeric", "as.double", "stopifnot", "sequence", "rep.int", "rep_len", "dt", "pt", "qt", "sample", "sample.int", "builtins", "regexec", "df", "pf", "qf", "substr", "file", "isOpen", "close", "flush", "writeChar", "readChar", "union", "intersect", "setdiff", "setequal", "table", "setClass", "new", "is", "slot", "slotNames", "unname", "which.min", "which.max", "withVisible", "system", "writeBin", "readBin", "url", "dim<-", "storage.mode<-", "as.list", "body", "summary", "%*%", "crossprod", "tcrossprod", "max.col", "%/%", "NROW", "NCOL", "Sys.getpid", "OlsonNames", "IQR", "Sys.chmod", "file.info", "Sys.getlocale", "Sys.setlocale", "nzchar", "@", "@<-", "Sys.info", "Sys.time", "Sys.Date", "Sys.which", "floor", "ceiling", "trunc", "round", "signif", "expm1", "log1p", "acosh", "asinh", "atanh", "cospi", "sinpi", "tanpi", "anyNA", "Sys.localeconv", "agrep", "agrepl", "apply", "as.environment", "as.call", "enc2native", "enc2utf8", "search", "as.factor", "as.ordered", "addNA", "aperm", "addmargins", ".subset", ".subset2", "asplit", "attach", "detach", "pos.to.env", ".class2", "gc.time", "ave", "backsolve", "bquote", "call", "charToRaw", "charmatch", "cumsum", "cumprod", "cummin", "cummax", "comment", "comment<-", "complete.cases", "colSums", "rowSums", "colMeans", "rowMeans", "dcauchy", "dchisq", "dexp", "cut", "date", "capabilities", "by", "browser", "bzfile", "gzfile", "dgamma", "dgeom", "dnbinom", "diff", "diag", "do.call", "dweibull", "drop", "droplevels", "duplicated", "anyDuplicated", "dir.exists", "file.create", "file.access", "environment<-", "forceAndCall", "declare", ".primTrace", ".primUntrace", "standardGeneric", "dmultinom", "...length", "...names", "...elt", "is.data.frame", "file.append", "file.link", "file.symlink", "Sys.readlink", "file.size", "file.mtime", "gl", "head", "tail", "interaction", "gcinfo", "gctorture", "gctorture2", "is.finite", "is.infinite", "is.nan", "is.vector", "is.loaded", "l10n_info", "Cstack_info", "extSoftVersion", "list.files", "memory.profile", "environmentIsLocked", "lockBinding", "bindingIsLocked", "unlockBinding", "lockEnvironment", "makeActiveBinding", "bindingIsActive", "Sys.umask", "normalizePath", "oldClass", "oldClass<-", "is.object", "pairlist", "as.pairlist", "outer", "on.exit", "isS4", "nargs", "sys.nframe", "sys.call", "sys.frame", "sys.function", "parent.frame", "is.function", "methods", "par", "layout", "format.data.frame", ".libPaths", "find.package", "system.file", "format.info", "pcauchy", "qcauchy", "pchisq", "qchisq", "pexp", "qexp", "pgamma", "qgamma", "pgeom", "qgeom", "pnbinom", "qnbinom", "pweibull", "qweibull",
+        "numeric", "integer", "logical", "names", "names<-", "$", "lapply", "sapply", "unlist", "seq", "seq_len", "rep", "mean", "var", "sd", "median", "is.na", "sort", "rev", "unique", "which", "any", "all", "ifelse", "%%", "stop", "%in%", "match", "new.env", "exists", "ls", "$<-", "cat", "invisible", "typeof", "structure", "assign", "get", "character", "tempfile", "writeLines", "readLines", "file.exists", "file.remove", "file.copy", "file.rename", "suppressWarnings", "as.logical", "attr", "attr<-", "attributes", "attributes<-", "is.null", "length<-", "file.path", "data.frame", "aggregate", "factor", "levels", "levels<-", "unclass", "tempdir", "sprintf", "Sys.setenv", "Sys.getenv", "Sys.unsetenv", "unlink", "dir.create", "list.dirs", "basename", ".Internal", ".Primitive", "warning", "gettext", "ngettext", "bindtextdomain", "geterrmessage", "seterrmessage", "interruptsSuspended", "is.primitive", "isTRUE", "save", "load", "rm", "as.vector", "as.character", "setNames", "identical", "globalenv", "baseenv", "environmentName", "environment", "R.Version", "getRversion", "is.list", "array", "is.array", "as.Date", "weekdays", "months", "quarters", "format", "is.unsorted", "toString", "capture.output", "row.names", "row.names<-", "tapply", "vapply", "as.POSIXct", "proc.time", "quote", "~", "is.call", "is.environment", "xtabs", "sin", "cos", "sinh", "cosh", "tanh", "complex", "as.complex", "Re", "Im", "Mod", "Arg", "Conj", "is.complex", "as.raw", "is.raw", "mode", "storage.mode", "expression", "raw", "vector", "identity", "parse", "eval", "deparse1", "deparse", "dput", "dget", "inherits", "dirname", "gregexpr", "gsub", "sub", "formals", "options", "getOption", "cbind", "rbind", "is.numeric", "is.integer", "is.double", "is.logical", "is.character", "substitute", "tsp", "tsp<-", "printDeferredWarnings", "grepl", "grep", "regexpr", "dimnames", "dimnames<-", "class", "class<-", "rownames", "rownames<-", "colnames", "colnames<-", "tryCatch", "conditionMessage", "matrix", "dim", "nrow", "ncol", "dnorm", "pnorm", "qnorm", "dpois", "ppois", "dbinom", "pbinom", "message", "missing", "parent.env", "order", "rank", "ordered", "is.ordered", "is.factor", "na.omit", "na.exclude", "pbeta", "dbeta", "qbeta", "find", "UseMethod", "NextMethod", "getS3method", "emptyenv", "as.integer", "as.numeric", "as.double", "stopifnot", "sequence", "rep.int", "rep_len", "dt", "pt", "qt", "sample", "sample.int", "builtins", "regexec", "df", "pf", "qf", "substr", "file", "isOpen", "close", "flush", "writeChar", "readChar", "union", "intersect", "setdiff", "setequal", "table", "setClass", "new", "is", "slot", "slotNames", "unname", "which.min", "which.max", "withVisible", "system", "writeBin", "readBin", "url", "dim<-", "storage.mode<-", "as.list", "body", "summary", "%*%", "crossprod", "tcrossprod", "max.col", "%/%", "NROW", "NCOL", "Sys.getpid", "OlsonNames", "IQR", "Sys.chmod", "file.info", "Sys.getlocale", "Sys.setlocale", "nzchar", "@", "@<-", "Sys.info", "Sys.time", "Sys.Date", "Sys.which", "floor", "ceiling", "trunc", "round", "signif", "expm1", "log1p", "acosh", "asinh", "atanh", "cospi", "sinpi", "tanpi", "anyNA", "Sys.localeconv", "agrep", "agrepl", "apply", "as.environment", "as.call", "enc2native", "enc2utf8", "search", "as.factor", "as.ordered", "addNA", "aperm", "addmargins", ".subset", ".subset2", "asplit", "attach", "detach", "pos.to.env", ".class2", "gc.time", "ave", "backsolve", "bquote", "call", "charToRaw", "charmatch", "cumsum", "cumprod", "cummin", "cummax", "comment", "comment<-", "complete.cases", "colSums", "rowSums", "colMeans", "rowMeans", "dcauchy", "dchisq", "dexp", "cut", "date", "capabilities", "by", "browser", "bzfile", "gzfile", "dgamma", "dgeom", "dnbinom", "diff", "diag", "do.call", "dweibull", "drop", "droplevels", "duplicated", "anyDuplicated", "dir.exists", "file.create", "file.access", "environment<-", "forceAndCall", "declare", ".primTrace", ".primUntrace", "standardGeneric", "dmultinom", "...length", "...names", "...elt", "is.data.frame", "file.append", "file.link", "file.symlink", "Sys.readlink", "file.size", "file.mtime", "gl", "head", "tail", "interaction", "gcinfo", "gctorture", "gctorture2", "is.finite", "is.infinite", "is.nan", "is.vector", "is.loaded", "l10n_info", "Cstack_info", "extSoftVersion", "list.files", "memory.profile", "environmentIsLocked", "lockBinding", "bindingIsLocked", "unlockBinding", "lockEnvironment", "makeActiveBinding", "bindingIsActive", "Sys.umask", "normalizePath", "oldClass", "oldClass<-", "is.object", "pairlist", "as.pairlist", "outer", "on.exit", "isS4", "nargs", "sys.nframe", "sys.call", "sys.frame", "sys.function", "parent.frame", "is.function", "methods", "par", "layout", "format.data.frame", ".libPaths", "find.package", "system.file", "format.info", "pcauchy", "qcauchy", "pchisq", "qchisq", "pexp", "qexp", "pgamma", "qgamma", "pgeom", "qgeom", "pnbinom", "qnbinom", "pweibull", "qweibull", "range", "pmin", "pmax", "pmatch", "prop.table", "row", "col", "relevel", "searchpaths", "path.expand", "pcre_config", "rawToChar", "qhyper", "ptukey", "qpois", "qbinom", "dunif", "punif", "qunif",
     ]
 }
 
@@ -7756,6 +7798,25 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "qnbinom" => Some(QNBINOM),
         "pweibull" => Some(PWEIBULL),
         "qweibull" => Some(QWEIBULL),
+        "range" => Some(RANGE_FN),
+        "pmin" => Some(PMIN),
+        "pmax" => Some(PMAX),
+        "pmatch" => Some(PMATCH),
+        "prop.table" => Some(PROP_TABLE),
+        "row" => Some(ROW_FN),
+        "col" => Some(COL_FN),
+        "relevel" => Some(RELEVEL),
+        "searchpaths" => Some(SEARCHPATHS),
+        "path.expand" => Some(PATH_EXPAND),
+        "pcre_config" => Some(PCRE_CONFIG),
+        "rawToChar" => Some(RAWTOCHAR),
+        "qhyper" => Some(QHYPER),
+        "ptukey" => Some(PTUKEY),
+        "qpois" => Some(QPOIS),
+        "qbinom" => Some(QBINOM),
+        "dunif" => Some(DUNIF),
+        "punif" => Some(PUNIF),
+        "qunif" => Some(QUNIF),
         // bzfile/gzfile share the raw-byte connection machinery — GNU pipes
         // through the codec, but within-R observable behavior (write/read
         // roundtrips, append semantics) is identical; real compression is
@@ -15366,6 +15427,9 @@ fn dpq_primitive(
         DGEOM | PGEOM | QGEOM => ("prob", f64::NAN, "", 0.0),
         DNBINOM | PNBINOM | QNBINOM => ("size", f64::NAN, "prob", f64::NAN),
         DWEIBULL | PWEIBULL | QWEIBULL => ("shape", f64::NAN, "scale", 1.0),
+        QPOIS => ("lambda", f64::NAN, "", 0.0),
+        QBINOM => ("size", f64::NAN, "prob", f64::NAN),
+        DUNIF | PUNIF | QUNIF => ("min", 0.0, "max", 1.0),
         _ => unreachable!(),
     };
     let param1 = real_arg(p1n, 1, p1d)?;
@@ -15420,6 +15484,11 @@ fn dpq_primitive(
                 DWEIBULL => crate::nmath::dist::weibull::dweibull_inner(x, param1, param2, log_flag),
                 PWEIBULL => crate::nmath::dist::weibull::pweibull_inner(x, param1, param2, lower_flag, log_flag),
                 QWEIBULL => crate::nmath::dist::weibull::qweibull_inner(x, param1, param2, lower_flag, log_flag),
+                QPOIS => crate::nmath::dist::poisson::qpois_inner(x, param1, lower_flag, log_flag),
+                QBINOM => crate::nmath::dist::binomial::qbinom_inner(x, param1, param2, lower_flag, log_flag),
+                DUNIF => crate::nmath::dist::uniform::dunif_inner(x, param1, param2, log_flag),
+                PUNIF => crate::nmath::dist::uniform::punif_inner(x, param1, param2, lower_flag, log_flag),
+                QUNIF => crate::nmath::dist::uniform::qunif_inner(x, param1, param2, lower_flag, log_flag),
                 _ => unreachable!(),
             }
         })
@@ -15428,6 +15497,629 @@ fn dpq_primitive(
 }
 
 
+
+
+/// GNU's argument binding for fixed-formals primitives: named arguments
+/// claim their exact formal slots first, unnamed arguments fill the open
+/// slots in call order. Slots left open read as None.
+fn bind_formals(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+    formals: &[&str],
+) -> Result<Vec<Option<ValueId>>, RSignal> {
+    let mut slots: Vec<Option<ValueId>> = vec![None; formals.len()];
+    let mut pending: Vec<(Option<String>, ValueId)> = Vec::new();
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        if car == ValueId::MISSING {
+            if cdr == ValueId::NIL {
+                break;
+            }
+            cursor = cdr;
+            continue;
+        }
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        pending.push((tag_name, force_if_promise(heap, interner, evaluated)?));
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    // Exact-name pass first, then positional fill of open slots.
+    let mut positional: Vec<ValueId> = Vec::new();
+    for (tag, value) in pending {
+        match tag.as_deref().and_then(|n| formals.iter().position(|f| *f == n)) {
+            Some(slot) if slots[slot].is_none() => slots[slot] = Some(value),
+            Some(_) => {}
+            None => positional.push(value),
+        }
+    }
+    let mut iter = positional.into_iter();
+    for slot in slots.iter_mut() {
+        if slot.is_none() {
+            if let Some(v) = iter.next() {
+                *slot = Some(v);
+            }
+        }
+    }
+    Ok(slots)
+}
+
+/// Lenient positional collection: up to `max` arguments in call order,
+/// named or not — the caller interprets positions. GNU's exact matching
+/// of trailing named flags rides along positionally here because every
+/// consumer reads trailing slots with their own defaults.
+fn eval_args_up_to(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+    max: usize,
+) -> Result<Vec<ValueId>, RSignal> {
+    let mut operands = Vec::new();
+    let mut cursor = args;
+    while operands.len() < max {
+        let (car, cdr) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, .. }) => (*car, *cdr),
+            _ => break,
+        };
+        if car == ValueId::MISSING {
+            break;
+        }
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        operands.push(force_if_promise(heap, interner, evaluated)?);
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    Ok(operands)
+}
+
+/// Variadic argument collection shared by range/pmin/pmax: every unlabeled
+/// argument is an input, the tagged na.rm strips NA positions.
+fn collect_variadic_inputs(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> Result<(Vec<ValueId>, bool), RSignal> {
+    let mut inputs: Vec<ValueId> = Vec::new();
+    let mut na_rm = false;
+    let mut cursor = args;
+    loop {
+        let (car, cdr, tag) = match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        let evaluated = eval(heap, interner, car, caller_env)?;
+        let value = force_if_promise(heap, interner, evaluated)?;
+        let tag_name = match heap.object(tag) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
+        };
+        if tag_name.as_deref() == Some("na.rm") {
+            na_rm = matches!(
+                heap.object(value),
+                Some(RObject::Logical(v)) if !v.is_empty() && v[0] != 0 && v[0] != crate::value::object::NA_INTEGER
+            );
+        } else {
+            inputs.push(value);
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor = cdr;
+    }
+    Ok((inputs, na_rm))
+}
+
+/// range(...) — min and max of the concatenated inputs as a two-element
+/// vector, integer-typed for integer inputs exactly as GNU.
+fn range_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let (inputs, na_rm) = collect_variadic_inputs(heap, interner, args, caller_env)?;
+    if inputs.is_empty() {
+        return Err(EvalError::TypeError("range requires input").into());
+    }
+    let combined = concat_vectors(heap, &inputs).map_err(RSignal::from)?;
+    if let Some(RObject::Integer(values)) | Some(RObject::Logical(values)) = heap.object(combined) {
+        let mut values = values.clone();
+        if values.iter().any(|v| *v == crate::value::object::NA_INTEGER) {
+            if !na_rm {
+                return Ok(heap.alloc(RObject::Integer(vec![
+                    crate::value::object::NA_INTEGER,
+                    crate::value::object::NA_INTEGER,
+                ])));
+            }
+            values.retain(|v| *v != crate::value::object::NA_INTEGER);
+        }
+        let lo = values.iter().copied().fold(i32::MAX, i32::min);
+        let hi = values.iter().copied().fold(i32::MIN, i32::max);
+        return Ok(heap.alloc(RObject::Integer(vec![lo, hi])));
+    }
+    let mut values = reals_of_value(heap, combined).map_err(RSignal::from)?;
+    if values.iter().any(|v| v.is_nan()) {
+        if !na_rm {
+            let na = f64::from_bits(crate::value::object::NA_REAL_BITS);
+            return Ok(heap.alloc(RObject::Real(vec![na, na])));
+        }
+        values.retain(|v| !v.is_nan());
+    }
+    let lo = values.iter().copied().fold(f64::INFINITY, f64::min);
+    let hi = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    Ok(heap.alloc(RObject::Real(vec![lo, hi])))
+}
+
+/// pmin/pmax — elementwise extrema across the input vectors with recycling.
+/// NA poisons a position unless na.rm strips it; integer inputs stay integer.
+fn pminmax_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    op: u32,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let (inputs, na_rm) = collect_variadic_inputs(heap, interner, args, caller_env)?;
+    if inputs.is_empty() {
+        return Err(EvalError::TypeError("pmin/pmax require input").into());
+    }
+    let want_min = op == PMIN;
+    let all_int = inputs.iter().all(|v| {
+        matches!(heap.object(*v), Some(RObject::Integer(_)) | Some(RObject::Logical(_)))
+    });
+    let columns: Vec<Vec<f64>> = inputs
+        .iter()
+        .map(|v| numeric_vector(heap, *v))
+        .collect();
+    let int_columns: Vec<Vec<i32>> = if all_int {
+        inputs
+            .iter()
+            .map(|v| match heap.object(*v) {
+                Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals.clone(),
+                _ => Vec::new(),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let len = columns.iter().map(|c| c.len()).max().unwrap_or(0);
+    if len == 0 {
+        return Ok(heap.alloc(RObject::Real(Vec::new())));
+    }
+    if all_int {
+        let mut out = Vec::with_capacity(len);
+        for i in 0..len {
+            let mut acc: Option<i32> = None;
+            let mut saw_na = false;
+            for col in &int_columns {
+                let v = col[i % col.len().max(1)];
+                if v == crate::value::object::NA_INTEGER {
+                    if !na_rm {
+                        saw_na = true;
+                        break;
+                    }
+                    continue;
+                }
+                acc = Some(match acc {
+                    None => v,
+                    Some(a) if want_min => a.min(v),
+                    Some(a) => a.max(v),
+                });
+            }
+            out.push(if saw_na || acc.is_none() {
+                crate::value::object::NA_INTEGER
+            } else {
+                acc.unwrap()
+            });
+        }
+        return Ok(heap.alloc(RObject::Integer(out)));
+    }
+    let mut out = Vec::with_capacity(len);
+    for i in 0..len {
+        let mut acc: Option<f64> = None;
+        let mut saw_na = false;
+        for col in &columns {
+            let v = col[i % col.len().max(1)];
+            if v.is_nan() {
+                if !na_rm {
+                    saw_na = true;
+                    break;
+                }
+                continue;
+            }
+            acc = Some(match acc {
+                None => v,
+                Some(a) if want_min => a.min(v),
+                Some(a) => a.max(v),
+            });
+        }
+        out.push(if saw_na || acc.is_none() {
+            f64::from_bits(crate::value::object::NA_REAL_BITS)
+        } else {
+            acc.unwrap()
+        });
+    }
+    Ok(heap.alloc(RObject::Real(out)))
+}
+
+/// pmatch(x, table, nomatch, duplicates.ok) — GNU's two-pass partial string
+/// matching: exact matches consume table positions in x-order first, then
+/// unique prefix matches claim the rest. Empty x strings never match at
+/// all — not even the empty table entry — while NA matches NA exactly.
+fn pmatch_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let bound = bind_formals(heap, interner, args, caller_env, &["x", "table", "nomatch", "duplicates.ok"])?;
+    let get = |i: usize| bound.get(i).copied().flatten();
+    let positional: Vec<ValueId> = (0..4).filter_map(get).collect();
+    let x_slot = bound[0];
+    let table_slot = bound[1];
+    let nomatch_slot = bound[2];
+    let dup_slot = bound[3];
+    let x_vals = match x_slot {
+        Some(v) => strings_of_value(heap, interner, v).map_err(RSignal::from)?,
+        None => return Err(EvalError::TypeError("pmatch requires x").into()),
+    };
+    let table_vals = match table_slot {
+        Some(v) => strings_of_value(heap, interner, v).map_err(RSignal::from)?,
+        None => return Err(EvalError::TypeError("pmatch requires table").into()),
+    };
+    let _ = positional;
+    let nomatch: i32 = nomatch_slot
+        .and_then(|v| first_real(heap, v).ok())
+        .map(|v| v as i32)
+        .unwrap_or(crate::value::object::NA_INTEGER);
+    let duplicates_ok = dup_slot
+        .and_then(|v| logical_or_na(heap, v))
+        .unwrap_or(false);
+    let xs: Vec<String> = x_vals.iter().map(|s| interner.string_text(*s).to_string()).collect();
+    let table: Vec<String> = table_vals.iter().map(|s| interner.string_text(*s).to_string()).collect();
+    let mut used = vec![false; table.len()];
+    let mut result = vec![nomatch; xs.len()];
+    let mut unmatched: Vec<usize> = Vec::new();
+    // Exact pass — NA matches NA, empty never matches.
+    for (i, x) in xs.iter().enumerate() {
+        if x.is_empty() {
+            unmatched.push(i);
+            continue;
+        }
+        let x_is_na = x == "NA" || x == "\0NA";
+        let mut hit = None;
+        for (j, entry) in table.iter().enumerate() {
+            if used[j] && !duplicates_ok {
+                continue;
+            }
+            let entry_is_na = entry == "NA" || entry == "\0NA";
+            if x_is_na && entry_is_na {
+                hit = Some(j);
+                break;
+            }
+            if !x_is_na && !entry_is_na && x == entry {
+                hit = Some(j);
+                break;
+            }
+        }
+        if let Some(j) = hit {
+            result[i] = j as i32 + 1;
+            used[j] = true;
+        } else {
+            unmatched.push(i);
+        }
+    }
+    // Partial pass — unique non-empty prefix claims the position.
+    for i in unmatched {
+        let x = &xs[i];
+        if x.is_empty() || x == "NA" || x == "\0NA" {
+            continue;
+        }
+        let mut hits: Vec<usize> = Vec::new();
+        for (j, entry) in table.iter().enumerate() {
+            if used[j] && !duplicates_ok {
+                continue;
+            }
+            if entry == "NA" || entry == "\0NA" {
+                continue;
+            }
+            if entry.starts_with(x.as_str()) {
+                hits.push(j);
+            }
+        }
+        if hits.len() == 1 {
+            result[i] = hits[0] as i32 + 1;
+            used[hits[0]] = true;
+        }
+    }
+    Ok(heap.alloc(RObject::Integer(result)))
+}
+
+/// prop.table(x, margin) — x divided by its margin sums. The default sums
+/// everything; margin 1 divides by row sums, margin 2 by column sums.
+fn prop_table_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let bound = bind_formals(heap, interner, args, caller_env, &["x", "margin"])?;
+    let x = bound[0].ok_or(EvalError::TypeError("prop.table requires x"))?;
+    let values = numeric_vector(heap, x);
+    let dims: Vec<i32> = get_attrib(heap, interner, x, "dim")
+        .and_then(|d| match heap.object(d) {
+            Some(RObject::Integer(v)) => Some(v.clone()),
+            _ => None,
+        })
+        .unwrap_or_default();
+    let margin: Option<i32> = bound[1]
+        .filter(|v| !matches!(heap.object(*v), Some(RObject::Nil) | None))
+        .and_then(|v| first_real(heap, v).ok())
+        .map(|v| v as i32);
+    let total: f64 = values.iter().sum();
+    let mut divisors = vec![total; values.len()];
+    if let (Some(m), 2) = (margin, dims.len()) {
+        let nrow = dims[0] as usize;
+        let ncol = dims[1] as usize;
+        if m == 1 {
+            // Row sums — rows are strided by 1 in column-major order.
+            for r in 0..nrow {
+                let mut s = 0.0;
+                for c in 0..ncol {
+                    s += values[r + c * nrow];
+                }
+                for c in 0..ncol {
+                    divisors[r + c * nrow] = s;
+                }
+            }
+        } else if m == 2 {
+            for c in 0..ncol {
+                let mut s = 0.0;
+                for r in 0..nrow {
+                    s += values[r + c * nrow];
+                }
+                for r in 0..nrow {
+                    divisors[r + c * nrow] = s;
+                }
+            }
+        }
+    }
+    let out: Vec<f64> = values
+        .iter()
+        .zip(divisors.iter())
+        .map(|(v, d)| if *d == 0.0 { f64::NAN } else { v / d })
+        .collect();
+    let mut result = heap.alloc(RObject::Real(out));
+    if !dims.is_empty() {
+        let dims_obj = heap.alloc(RObject::Integer(dims));
+        result = copy_with_attrib(heap, interner, result, "dim", dims_obj).map_err(RSignal::from)?;
+    }
+    if let Some(dn) = get_attrib(heap, interner, x, "dimnames") {
+        result = copy_with_attrib(heap, interner, result, "dimnames", dn).map_err(RSignal::from)?;
+    }
+    Ok(result)
+}
+
+/// row/col — the index matrices: row(x)[i,j] = i, col(x)[i,j] = j over the
+/// input's dimensions, carrying the dim attribute exactly as GNU.
+fn rowcol_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    op: u32,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let positional = eval_args_up_to(heap, interner, args, caller_env, 1)?;
+    let x = positional.first().copied().ok_or(EvalError::TypeError("row/col require x"))?;
+    let dims: Vec<i32> = get_attrib(heap, interner, x, "dim")
+        .and_then(|d| match heap.object(d) {
+            Some(RObject::Integer(v)) => Some(v.clone()),
+            _ => None,
+        })
+        .ok_or(EvalError::TypeError("a matrix-like object is required"))
+        .map_err(RSignal::from)?;
+    let nrow = dims[0] as usize;
+    let ncol = if dims.len() > 1 { dims[1] as usize } else { 1 };
+    let mut out = Vec::with_capacity(nrow * ncol);
+    for c in 0..ncol {
+        for r in 0..nrow {
+            out.push(if op == ROW_FN { r as i32 + 1 } else { c as i32 + 1 });
+        }
+    }
+    let result = heap.alloc(RObject::Integer(out));
+    let dims_obj = heap.alloc(RObject::Integer(dims));
+    let with_dim = copy_with_attrib(heap, interner, result, "dim", dims_obj).map_err(RSignal::from)?;
+    if let Some(dn) = get_attrib(heap, interner, x, "dimnames") {
+        return copy_with_attrib(heap, interner, with_dim, "dimnames", dn).map_err(RSignal::from);
+    }
+    Ok(with_dim)
+}
+
+/// relevel(factor, ref) — moves the reference level to the front of the
+/// levels vector and recodes the data positions to the new ordering.
+fn relevel_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let positional = eval_args_up_to(heap, interner, args, caller_env, 2)?;
+    let f = positional.first().copied().ok_or(EvalError::TypeError("relevel requires a factor"))?;
+    let refv = positional.get(1).copied().ok_or(EvalError::TypeError("relevel requires ref"))?;
+    let levels_id = get_attrib(heap, interner, f, "levels")
+        .ok_or(EvalError::TypeError("relevel requires a factor"))
+        .map_err(RSignal::from)?;
+    let levels = string_vec(heap, interner, levels_id);
+    let ref_index: usize = match heap.object(refv) {
+        Some(RObject::String(_)) => {
+            let label = string_operand(heap, interner, refv).unwrap_or_default();
+            levels.iter().position(|l| *l == label).ok_or(EvalError::TypeError("'ref' must be an existing level")).map_err(RSignal::from)?
+        }
+        _ => {
+            let n = first_real(heap, refv).map_err(RSignal::from)? as usize;
+            if n < 1 || n > levels.len() {
+                return Err(EvalError::TypeError("'ref' must be an existing level").into());
+            }
+            n - 1
+        }
+    };
+    // New ordering: ref first, the rest in their original relative order.
+    let mut new_order: Vec<usize> = vec![ref_index];
+    new_order.extend((0..levels.len()).filter(|i| *i != ref_index));
+    // Recode: old code c (1-based into old levels) becomes position in new order.
+    let mut recode = vec![0i32; levels.len() + 1];
+    for (new_pos, old_idx) in new_order.iter().enumerate() {
+        recode[old_idx + 1] = new_pos as i32 + 1;
+    }
+    let codes = match heap.object(f) {
+        Some(RObject::Integer(v)) => v.clone(),
+        _ => return Err(EvalError::TypeError("relevel requires a factor").into()),
+    };
+    let new_codes: Vec<i32> = codes
+        .iter()
+        .map(|&c| {
+            if c == crate::value::object::NA_INTEGER || c < 1 {
+                crate::value::object::NA_INTEGER
+            } else {
+                recode[c as usize]
+            }
+        })
+        .collect();
+    let new_levels: Vec<String> = new_order.iter().map(|i| levels[*i].clone()).collect();
+    let interned: Vec<_> = new_levels.iter().map(|l| interner.intern_string(l)).collect();
+    let levels_obj = heap.alloc(RObject::String(interned));
+    let mut result = heap.alloc(RObject::Integer(new_codes));
+    result = copy_with_attrib(heap, interner, result, "levels", levels_obj).map_err(RSignal::from)?;
+    if let Some(classv) = get_attrib(heap, interner, f, "class") {
+        result = copy_with_attrib(heap, interner, result, "class", classv).map_err(RSignal::from)?;
+    }
+    if let Some(names) = get_attrib(heap, interner, f, "names") {
+        result = copy_with_attrib(heap, interner, result, "names", names).map_err(RSignal::from)?;
+    }
+    Ok(result)
+}
+
+/// path.expand — tilde expansion against the HOME environment variable,
+/// vectorized over the input exactly as GNU.
+fn path_expand_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let positional = eval_args(heap, interner, args, caller_env, 1)?;
+    let x = positional.first().copied().ok_or(EvalError::TypeError("path.expand requires input"))?;
+    let vals = strings_of_value(heap, interner, x).map_err(RSignal::from)?;
+    let home = std::env::var("HOME").unwrap_or_default();
+    let expanded: Vec<_> = vals
+        .iter()
+        .map(|s| {
+            let text = interner.string_text(*s);
+            let out = if text == "~" {
+                home.clone()
+            } else if let Some(rest) = text.strip_prefix("~/") {
+                format!("{}/{}", home, rest)
+            } else {
+                text.to_string()
+            };
+            interner.intern_string(&out)
+        })
+        .collect();
+    Ok(heap.alloc(RObject::String(expanded)))
+}
+
+/// pcre_config — the fixed capability quadruple. The new world's regex
+/// engine is Unicode-correct throughout, JIT-less, and stack-safe.
+fn pcre_config_primitive(heap: &mut Heap, interner: &mut SymbolInterner) -> EvalResult {
+    let vals = heap.alloc(RObject::Logical(vec![1, 1, 0, 1]));
+    let names: Vec<_> = ["UTF-8", "Unicode properties", "JIT", "stack"]
+        .iter()
+        .map(|n| interner.intern_string(n))
+        .collect();
+    let names_obj = heap.alloc(RObject::String(names));
+    copy_with_attrib(heap, interner, vals, "names", names_obj).map_err(RSignal::from)
+}
+
+/// rawToChar — raw bytes reinterpreted as a single character string.
+fn rawtochar_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let positional = eval_args(heap, interner, args, caller_env, 1)?;
+    let x = positional.first().copied().ok_or(EvalError::TypeError("rawToChar requires input"))?;
+    let bytes = match heap.object(x) {
+        Some(RObject::Raw(b)) => b.clone(),
+        _ => return Err(EvalError::TypeError("rawToChar requires a raw vector").into()),
+    };
+    let text: String = bytes.iter().map(|b| *b as char).collect();
+    let interned = interner.intern_string(&text);
+    Ok(heap.alloc(RObject::String(vec![interned])))
+}
+
+/// qhyper(p, m, n, k) — three-parameter hypergeometric quantile, outside
+/// the two-parameter dpq machinery.
+fn qhyper_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let bound = bind_formals(heap, interner, args, caller_env, &["x", "m", "n", "k", "lower.tail", "log.p"])?;
+    let positional: Vec<ValueId> = bound.iter().map(|s| s.unwrap_or(ValueId::NIL)).collect();
+    let x = bound[0].ok_or(EvalError::TypeError("qhyper requires input"))?;
+    let xs = numeric_vector(heap, x);
+    let m = positional.get(1).and_then(|v| first_real(heap, *v).ok()).unwrap_or(f64::NAN);
+    let n = positional.get(2).and_then(|v| first_real(heap, *v).ok()).unwrap_or(f64::NAN);
+    let k = positional.get(3).and_then(|v| first_real(heap, *v).ok()).unwrap_or(f64::NAN);
+    let lower = positional.get(4).and_then(|v| logical_or_na(heap, *v)).unwrap_or(true);
+    let logp = positional.get(5).and_then(|v| logical_or_na(heap, *v)).unwrap_or(false);
+    let out: Vec<f64> = xs
+        .iter()
+        .map(|&v| crate::nmath::dist::hypergeometric::qhyper_inner(v, m, n, k, lower, logp))
+        .collect();
+    Ok(heap.alloc(RObject::Real(out)))
+}
+
+/// ptukey(q, nmeans, df, nranges) — the studentized range CDF; the core
+/// takes nranges ahead of nmeans, inverted at this boundary.
+fn ptukey_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let bound = bind_formals(heap, interner, args, caller_env, &["q", "nmeans", "df", "nranges", "lower.tail", "log.p"])?;
+    let positional: Vec<ValueId> = bound.iter().map(|s| s.unwrap_or(ValueId::NIL)).collect();
+    let x = bound[0].ok_or(EvalError::TypeError("ptukey requires input"))?;
+    let xs = numeric_vector(heap, x);
+    let nmeans = positional.get(1).and_then(|v| first_real(heap, *v).ok()).unwrap_or(f64::NAN);
+    let df = positional.get(2).and_then(|v| first_real(heap, *v).ok()).unwrap_or(f64::NAN);
+    let nranges = positional.get(3).and_then(|v| first_real(heap, *v).ok()).unwrap_or(1.0);
+    let lower = positional.get(4).and_then(|v| logical_or_na(heap, *v)).unwrap_or(true);
+    let logp = positional.get(5).and_then(|v| logical_or_na(heap, *v)).unwrap_or(false);
+    let out: Vec<f64> = xs
+        .iter()
+        .map(|&v| crate::nmath::dist::tukey::ptukey_inner(v, nranges, nmeans, df, lower, logp))
+        .collect();
+    Ok(heap.alloc(RObject::Real(out)))
+}
 
 /// find(x, mode, numeric) — the two-element search path the new world
 /// models exactly as GNU's user-first ordering: position 1 ".GlobalEnv",
