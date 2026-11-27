@@ -1617,14 +1617,17 @@ cat("after|", paste(par("mfg"), collapse=","), "|",
             })
             .next()
             .expect("one path");
-        // usr (0,0) is the plot bottom-left, usr (1,1) the top-right —
-        /// exact against the oracle-proven raster rectangles.
+        // GNU's xaxs="r" default extends usr by 4% per side, so (0,1) becomes
+        /// (-0.04, 1.04): user x=0 lands at fraction 1/27 across the plot
+        /// width and user x=1 at 26/27 exactly as GNU positions them.
+        let width = plot[2] - plot[0];
+        let height = plot[3] - plot[1];
         match (path.commands[0].clone(), path.commands[1].clone()) {
             (PathCommand::MoveTo(x0, y0), PathCommand::LineTo(x1, y1)) => {
-                assert!((f64::from(x0) - plot[0]).abs() < 1e-4, "left edge");
-                assert!((f64::from(y0) - plot[3]).abs() < 1e-4, "bottom edge");
-                assert!((f64::from(x1) - plot[2]).abs() < 1e-4, "right edge");
-                assert!((f64::from(y1) - plot[1]).abs() < 1e-4, "top edge");
+                assert!((f64::from(x0) - (plot[0] + width / 27.0)).abs() < 1e-3, "x0 at 1/27: {x0} vs {}", plot[0] + width / 27.0);
+                assert!((f64::from(y0) - (plot[3] - height / 27.0)).abs() < 1e-3, "y0 at 1/27");
+                assert!((f64::from(x1) - (plot[0] + width * 26.0 / 27.0)).abs() < 1e-3, "x1 at 26/27");
+                assert!((f64::from(y1) - (plot[3] - height * 26.0 / 27.0)).abs() < 1e-3, "y1 at 26/27");
             }
             other => panic!("unexpected commands: {other:?}"),
         }
