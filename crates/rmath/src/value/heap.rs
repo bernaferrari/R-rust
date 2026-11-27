@@ -124,6 +124,16 @@ pub struct Heap {
     pub eval_depth: usize,
     /// The configured depth ceiling; zero selects the GNU default.
     pub max_eval_depth: usize,
+    /// The host-configured output byte budget — emission past the
+    /// cap drops silently, the memory protection exactly as the
+    /// facade's output limit. Sink writes bypass: they never
+    /// accumulate in memory.
+    pub output_byte_cap: Option<usize>,
+    /// Cumulative bytes emitted this evaluation — the cap measures the
+    /// eval's total output, not the drained buffer's momentary length,
+    /// exactly as the facade's per-eval limit contract needs. The session
+    /// resets the counter at each eval boundary.
+    pub output_bytes_emitted: usize,
     /// The host-configured memory ceiling in payload bytes, polled
     /// alongside cancellation and the deadline — allocation pressure
     /// past the cap unwinds evaluation exactly as the facade's arena
@@ -171,9 +181,30 @@ impl Heap {
         if let Some(file) = &mut self.sink_file {
             use std::io::Write;
             let _ = file.write_all(text.as_bytes());
-        } else {
-            self.output.push_str(text);
+            return;
         }
+        // The output cap drops emission past the budget — evaluation
+        // continues exactly as the facade's limit contract; the buffer
+        // simply stops growing, the memory protection the embedder needs.
+        if let Some(cap) = self.output_byte_cap {
+            if self.output_bytes_emitted >= cap {
+                return;
+            }
+            let remaining = cap - self.output_bytes_emitted;
+            if text.len() > remaining {
+                // Truncate at a character boundary — the budget is bytes,
+                // the buffer is UTF-8.
+                let mut end = remaining.min(text.len());
+                while end > 0 && !text.is_char_boundary(end) {
+                    end -= 1;
+                }
+                self.output.push_str(&text[..end]);
+                self.output_bytes_emitted += end;
+                return;
+            }
+        }
+        self.output_bytes_emitted += text.len();
+        self.output.push_str(text);
     }
 
     pub fn alloc(&mut self, body: RObject) -> ValueId {

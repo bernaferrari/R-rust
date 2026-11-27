@@ -119,6 +119,7 @@ impl Session {
     /// and both streams interleave chronologically in `output`. The first
     /// error aborts the remaining script with output-so-far preserved.
     pub fn eval_full(&mut self, source: &str) -> FullEval {
+        self.heap.output_bytes_emitted = 0;
         let mut full = FullEval::default();
         let expressions = match parse_native_expressions(source, &mut self.heap, &mut self.interner) {
             Ok(expressions) => expressions,

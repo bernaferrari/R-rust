@@ -18,8 +18,49 @@ use super::values::RValue;
 
 /// A host session whose evaluation runs entirely on the new-world heap —
 /// no SEXP, no slab allocator, no panic-based control flow.
+/// Admission check over the owned snapshot — the facade's cost model
+/// exactly: per-element formatting overhead, depth-capped, occurrences
+/// counted rather than unique objects since export expands sharing.
+fn admit_rvalue(value: &RValue, limit: usize) -> Result<(), String> {
+    fn cost_of(value: &RValue) -> (usize, Vec<&RValue>) {
+        let (len, children): (usize, Vec<&RValue>) = match value {
+            RValue::List(items) => (items.len().max(1), items.iter().collect()),
+            RValue::StringVector(items) => (items.len().max(1), Vec::new()),
+            RValue::IntegerVector(items) => (items.len().max(1), Vec::new()),
+            RValue::RealVector(items) => (items.len().max(1), Vec::new()),
+            RValue::LogicalVector(items) => (items.len().max(1), Vec::new()),
+            RValue::RawVector(items) => (items.len().max(1), Vec::new()),
+            RValue::ComplexVector(items) => (items.len().max(1), Vec::new()),
+            RValue::Attributed { value: base, metadata } => {
+                let mut children: Vec<&RValue> =
+                    metadata.attributes.iter().map(|attr| &attr.value).collect();
+                children.push(base);
+                (2, children)
+            }
+            _ => (1, Vec::new()),
+        };
+        (len.saturating_mul(64).saturating_add(128), children)
+    }
+    let mut remaining = limit;
+    let mut pending: Vec<(&RValue, usize)> = vec![(value, 0)];
+    while let Some((value, depth)) = pending.pop() {
+        if depth > 64 {
+            return Err("result nesting exceeds export limit (64)".to_string());
+        }
+        let (cost, children) = cost_of(value);
+        remaining = remaining
+            .checked_sub(cost)
+            .ok_or_else(|| "result exceeds export budget".to_string())?;
+        for child in children {
+            pending.push((child, depth + 1));
+        }
+    }
+    Ok(())
+}
+
 pub struct PureSession {
     session: Session,
+    result_limit: Option<usize>,
 }
 
 impl Default for PureSession {
@@ -32,6 +73,7 @@ impl PureSession {
     pub fn new() -> Self {
         PureSession {
             session: Session::new(),
+            result_limit: None,
         }
     }
 
@@ -42,7 +84,19 @@ impl PureSession {
         let full = self.session.eval_full(code);
         let typed = match (&full.error, full.value) {
             (Some(message), _) => RValue::Error(message.clone()),
-            (None, Some(value)) => snapshot_value(&self.session.heap, &self.session.interner, value),
+            (None, Some(value)) => {
+                let snapshot = snapshot_value(&self.session.heap, &self.session.interner, value);
+                // The export budget admits or rejects exactly as the
+                // facade's admission check — a over-budget result answers
+                // an error rather than a partial value.
+                match self.result_limit {
+                    Some(limit) => match admit_rvalue(&snapshot, limit) {
+                        Ok(()) => snapshot,
+                        Err(message) => RValue::Error(message),
+                    },
+                    None => snapshot,
+                }
+            }
             (None, None) => RValue::Null,
         };
         let value = typed.numeric_scalar_value();
@@ -159,6 +213,19 @@ impl PureSession {
     /// facade's memory usage surface reports them.
     pub fn heap_live_nodes(&self) -> usize {
         self.session.heap.live_count()
+    }
+
+    /// The output byte budget — emission past the cap drops silently
+    /// exactly as the facade's output limit contract.
+    pub fn set_output_limit(&mut self, max_bytes: Option<usize>) {
+        self.session.heap.output_byte_cap = max_bytes;
+    }
+
+    /// The result export budget — the typed snapshot's measured cost must
+    /// fit, else the evaluation answers an error exactly as the facade's
+    /// admission check.
+    pub fn set_result_limit(&mut self, max_bytes: Option<usize>) {
+        self.result_limit = max_bytes;
     }
 
     /// The host memory ceiling in payload bytes — allocation pressure
@@ -630,6 +697,38 @@ mod tests {
         let result = session.eval_output("sum(1:100)");
         assert!(result.is_ok(), "err: {:?}", result.err());
         session.set_memory_cap_bytes(None);
+    }
+
+    #[test]
+    fn output_cap_truncates_runaway_emission() {
+        let mut session = PureSession::new();
+        session.set_output_limit(Some(256));
+        // Each iteration emits well past 256 bytes combined — the buffer
+        // stops growing exactly as the facade's output limit contracts.
+        let result = session.eval("for (i in 1:100) cat('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\\n')");
+        assert!(result.stdout.len() <= 256, "len: {}", result.stdout.len());
+        assert!(!result.stdout.is_empty());
+    }
+
+    #[test]
+    fn result_budget_rejects_oversized_exports() {
+        let mut session = PureSession::new();
+        session.set_result_limit(Some(512));
+        let result = session.eval("1:1000");
+        match result.typed {
+            RValue::Error(message) => {
+                assert!(message.contains("export budget"), "message: {message}");
+            }
+            other => panic!("expected budget error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn result_budget_admits_fitting_exports() {
+        let mut session = PureSession::new();
+        session.set_result_limit(Some(1024 * 1024));
+        let result = session.eval("1:10");
+        assert!(matches!(result.typed, RValue::IntegerVector(_)), "typed: {:?}", result.typed);
     }
 
     #[test]
