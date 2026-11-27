@@ -20,6 +20,7 @@ pub mod regex;
 pub mod rbg1;
 pub mod civil;
 pub mod roots;
+pub mod parser;
 
 pub use heap::Heap;
 pub use id::ValueId;

@@ -2311,28 +2311,42 @@ print(array(1:4, c(2, 2), dimnames = list(c(\"r1\", \"r2\"), c(\"c1\", \"c2\")))
                 Ok(s) => s,
                 Err(_) => continue,
             };
-            let expressions: Vec<_> = session.with_active(|| {
-                crate::eval::parser::parse_active_expressions(&source).unwrap_or_default()
-            });
-            if expressions.is_empty() {
-                parse_skip += 1;
-                continue;
-            }
-
+            // Native-parse mode: the new world's own parser produces heap
+            /// objects directly, eliminating the SEXP parse + bridge import
+            /// pipeline — the structural cutover `.11` migration builds on.
+            let native_parse = std::env::var("RPORT_NATIVE_PARSE").is_ok();
             let mut heap = Heap::new();
             let mut interner = SymbolInterner::new();
-            let mut bridge = ValueBridge::new();
-            let imported: Vec<ValueId> = expressions
-                .iter()
-                .filter_map(|expr| bridge.import(&mut heap, &mut interner, expr).ok())
-                .collect();
-            if imported.len() != expressions.len() {
-                failure_reasons
-                    .entry("import failure".to_string())
-                    .or_default()
-                    .push(name.clone());
-                continue;
-            }
+            let imported: Vec<ValueId> = if native_parse {
+                match crate::value::parser::parse_native_expressions(&source, &mut heap, &mut interner) {
+                    Ok(exprs) if !exprs.is_empty() => exprs,
+                    _ => {
+                        parse_skip += 1;
+                        continue;
+                    }
+                }
+            } else {
+                let expressions: Vec<_> = session.with_active(|| {
+                    crate::eval::parser::parse_active_expressions(&source).unwrap_or_default()
+                });
+                if expressions.is_empty() {
+                    parse_skip += 1;
+                    continue;
+                }
+                let mut bridge = ValueBridge::new();
+                let imported: Vec<ValueId> = expressions
+                    .iter()
+                    .filter_map(|expr| bridge.import(&mut heap, &mut interner, expr).ok())
+                    .collect();
+                if imported.len() != expressions.len() {
+                    failure_reasons
+                        .entry("import failure".to_string())
+                        .or_default()
+                        .push(name.clone());
+                    continue;
+                }
+                imported
+            };
             let env_id = bootstrap_env(&mut heap, &mut interner);
             let mut new_error = None;
             for expr in &imported {
