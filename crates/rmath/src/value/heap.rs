@@ -147,6 +147,10 @@ pub struct Heap {
     /// past the cap unwinds evaluation exactly as the facade's arena
         /// limit does.
     pub memory_cap_bytes: Option<usize>,
+    /// The host-configured ceiling on live arena objects, polled
+    /// alongside the byte cap exactly as the facade's max_arena_nodes
+    /// bounds the old world's arena occupancy.
+    pub node_cap: Option<usize>,
     /// The host-configured execution deadline, polled alongside
     /// cancellation at eval entry exactly as the time limit needs.
     pub eval_deadline: Option<std::time::Instant>,

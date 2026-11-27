@@ -58,6 +58,31 @@ fn admit_rvalue(value: &RValue, limit: usize) -> Result<(), String> {
     Ok(())
 }
 
+/// The arena occupancy snapshot exactly as the facade's ArenaStats —
+/// the two measures every embedder budget reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PureArenaStats {
+    pub active_nodes: u64,
+    pub retained_bytes: u64,
+}
+
+/// The runtime identity exactly as the facade's RuntimeInfo.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PureRuntimeInfo {
+    pub is_active: bool,
+    pub library_paths: Vec<String>,
+    pub temp_dir: String,
+}
+
+/// The configured resource ceilings exactly as the facade's
+/// ResourceLimits — unset ceilings read as None, unbounded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PureResourceLimits {
+    pub max_eval_depth: u64,
+    pub max_alloc_bytes: Option<u64>,
+    pub max_arena_nodes: Option<u64>,
+}
+
 pub struct PureSession {
     session: Session,
     result_limit: Option<usize>,
@@ -236,6 +261,45 @@ impl PureSession {
     }
 
     /// Current heap payload bytes — the occupancy measure the cap polls.
+    /// The arena occupancy snapshot the facade's arena_stats exposes —
+    /// live objects and payload bytes, the two measures embedders
+    /// budget against.
+    pub fn arena_stats(&self) -> PureArenaStats {
+        PureArenaStats {
+            active_nodes: self.session.heap.live_count() as u64,
+            retained_bytes: self.session.heap.payload_bytes() as u64,
+        }
+    }
+
+    /// The runtime identity surface the facade's runtime_info exposes:
+    /// whether evaluation is live, the library search roots and the
+    /// scratch directory. The pure world carries no library roots yet —
+    /// the packages arc owns that surface.
+    pub fn runtime_info(&self) -> PureRuntimeInfo {
+        PureRuntimeInfo {
+            is_active: true,
+            library_paths: Vec::new(),
+            temp_dir: std::env::temp_dir().to_string_lossy().to_string(),
+        }
+    }
+
+    /// The configured resource ceilings exactly as the facade's
+    /// resource_limits reports them — the embedder reads back what it
+    /// configured.
+    pub fn resource_limits(&self) -> PureResourceLimits {
+        PureResourceLimits {
+            max_eval_depth: self.session.heap.max_eval_depth as u64,
+            max_alloc_bytes: self.session.heap.memory_cap_bytes.map(|v| v as u64),
+            max_arena_nodes: self.session.heap.node_cap.map(|v| v as u64),
+        }
+    }
+
+    /// The node ceiling rides the same cooperative poll as the byte
+    /// cap exactly as the facade's arena-node budget.
+    pub fn set_node_cap(&mut self, cap: Option<usize>) {
+        self.session.heap.node_cap = cap;
+    }
+
     pub fn payload_bytes(&self) -> usize {
         self.session.heap.payload_bytes()
     }
@@ -729,6 +793,54 @@ mod tests {
         session.set_result_limit(Some(1024 * 1024));
         let result = session.eval("1:10");
         assert!(matches!(result.typed, RValue::IntegerVector(_)), "typed: {:?}", result.typed);
+    }
+
+    #[test]
+    fn arena_stats_report_live_occupancy() {
+        let mut session = PureSession::new();
+        let before = session.arena_stats();
+        assert!(before.active_nodes > 0, "bootstrap allocates");
+        session.eval("x <- rep(1, 1000)");
+        let after = session.arena_stats();
+        assert!(
+            after.retained_bytes > before.retained_bytes,
+            "allocation grows occupancy: {before:?} -> {after:?}"
+        );
+    }
+
+    #[test]
+    fn runtime_info_reports_active_session() {
+        let session = PureSession::new();
+        let info = session.runtime_info();
+        assert!(info.is_active);
+        assert!(info.library_paths.is_empty());
+        assert!(!info.temp_dir.is_empty());
+    }
+
+    #[test]
+    fn node_cap_limits_allocation() {
+        let mut session = PureSession::new();
+        let baseline = session.arena_stats().active_nodes as usize;
+        // The ceiling just past bootstraps occupancy admits small
+        // evaluation; tight loops allocating fresh objects exceed it.
+        session.set_node_cap(Some(baseline + 50));
+        session.eval("1 + 1");
+        let result = session.eval("for (i in 1:1000) x <- list(i, i, i)");
+        assert!(
+            matches!(result.typed, RValue::Error { .. }),
+            "typed: {:?}",
+            result.typed
+        );
+    }
+
+    #[test]
+    fn resource_limits_read_back_configuration() {
+        let mut session = PureSession::new();
+        session.set_memory_cap_bytes(Some(64 * 1024 * 1024));
+        session.set_node_cap(Some(500_000));
+        let limits = session.resource_limits();
+        assert_eq!(limits.max_alloc_bytes, Some(64 * 1024 * 1024));
+        assert_eq!(limits.max_arena_nodes, Some(500_000));
     }
 
     #[test]

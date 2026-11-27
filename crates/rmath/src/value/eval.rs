@@ -121,6 +121,13 @@ pub fn eval(
             )));
         }
     }
+    if let Some(cap) = heap.node_cap {
+        if heap.live_count() > cap {
+            return Err(RSignal::from(EvalError::Condition(
+                "arena node limit exceeded".to_string(),
+            )));
+        }
+    }
     heap.eval_depth += 1;
     let result = eval_node(heap, interner, expr, env_id);
     heap.eval_depth -= 1;
