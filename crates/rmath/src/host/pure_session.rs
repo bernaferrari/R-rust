@@ -252,6 +252,57 @@ impl PureSession {
         self.session.heap.browser_files.remove(path).is_some()
     }
 
+    /// Construct an integer scalar result without evaluation — the
+    /// facade's eval_integer exactly: direct typed construction for host
+    /// callers that already hold the value.
+    pub fn eval_integer(&mut self, value: i32) -> RResult {
+        let typed = RValue::Integer(Some(value));
+        RResult {
+            value: value as f64,
+            typed,
+            output: String::new(),
+            stdout: String::new(),
+            stderr: String::new(),
+        }
+    }
+
+    /// Construct a real scalar result without evaluation.
+    pub fn eval_real(&mut self, value: f64) -> RResult {
+        RResult {
+            value,
+            typed: RValue::Real(Some(value)),
+            output: String::new(),
+            stdout: String::new(),
+            stderr: String::new(),
+        }
+    }
+
+    /// Construct an integer vector result without evaluation.
+    pub fn eval_int_vector(&mut self, values: &[i32]) -> RResult {
+        let typed = RValue::IntegerVector(values.iter().map(|v| Some(*v)).collect());
+        let scalar = values.first().copied().unwrap_or(0) as f64;
+        RResult {
+            value: scalar,
+            typed,
+            output: String::new(),
+            stdout: String::new(),
+            stderr: String::new(),
+        }
+    }
+
+    /// Construct a real vector result without evaluation.
+    pub fn eval_real_vector(&mut self, values: &[f64]) -> RResult {
+        let typed = RValue::RealVector(values.iter().map(|v| Some(*v)).collect());
+        let scalar = values.first().copied().unwrap_or(0.0);
+        RResult {
+            value: scalar,
+            typed,
+            output: String::new(),
+            stdout: String::new(),
+            stderr: String::new(),
+        }
+    }
+
     /// Process-capability opt-in — a no-op in the pure world, where the
     /// capability surface has no legacy process state to unlock.
     pub fn enable_host_process_capabilities(&mut self) {}
