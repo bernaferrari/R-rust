@@ -251,6 +251,19 @@ pub fn bootstrap_env(heap: &mut Heap, interner: &mut SymbolInterner) -> ValueId 
     let pi_val = heap.alloc(RObject::Real(vec![std::f64::consts::PI]));
     let sym = interner.intern_symbol("pi");
     env::define(heap, base, sym, pi_val).expect("pi");
+    // letters and LETTERS — GNU's base constants exactly.
+    let lower: Vec<_> = (b'a'..=b'z')
+        .map(|c| interner.intern_string(&(c as char).to_string()))
+        .collect();
+    let letters_val = heap.alloc(RObject::String(lower));
+    let sym = interner.intern_symbol("letters");
+    env::define(heap, base, sym, letters_val).expect("letters");
+    let upper: Vec<_> = (b'A'..=b'Z')
+        .map(|c| interner.intern_string(&(c as char).to_string()))
+        .collect();
+    let upper_val = heap.alloc(RObject::String(upper));
+    let sym = interner.intern_symbol("LETTERS");
+    env::define(heap, base, sym, upper_val).expect("LETTERS");
     // .GlobalEnv resolves to the user environment itself — the global
     /// exactly as GNU's top-level reference.
     let user = env::new_environment(heap, base);
