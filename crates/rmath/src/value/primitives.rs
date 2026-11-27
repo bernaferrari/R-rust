@@ -1259,11 +1259,16 @@ fn call_primitive_inner(
         UNLINK => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             for path in string_vec(heap, interner, operands[0]) {
-                let p = std::path::Path::new(&path);
-                if p.is_dir() {
-                    let _ = std::fs::remove_dir_all(p);
-                } else {
-                    let _ = std::fs::remove_file(p);
+                if let Some(host) = crate::value::path_policy::resolve_host_path(
+                    heap.path_policy.as_ref(),
+                    &path,
+                ) {
+                    let p = std::path::Path::new(&host);
+                    if p.is_dir() {
+                        let _ = std::fs::remove_dir_all(p);
+                    } else {
+                        let _ = std::fs::remove_file(p);
+                    }
                 }
             }
             Ok(heap.alloc(RObject::Integer(vec![0])))
@@ -1299,10 +1304,21 @@ fn call_primitive_inner(
             }
             let mut created = true;
             for path in string_vec(heap, interner, path_arg) {
-                let result = if recursive {
-                    std::fs::create_dir_all(&path)
-                } else {
-                    std::fs::create_dir(&path)
+                let result = match crate::value::path_policy::resolve_host_path(
+                    heap.path_policy.as_ref(),
+                    &path,
+                ) {
+                    Some(host) => {
+                        if recursive {
+                            std::fs::create_dir_all(&host)
+                        } else {
+                            std::fs::create_dir(&host)
+                        }
+                    }
+                    None => Err(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "path refused",
+                    )),
                 };
                 if result.is_err() {
                     created = false;
@@ -23767,6 +23783,8 @@ fn file_primitive(
 /// `url()` — identical open semantics either way. GNU classes every
 /// connection with its flavor riding in front of "connection".
 fn open_file_connection(heap: &mut Heap, interner: &mut SymbolInterner, path: String, mode: String, flavor: &str) -> EvalResult {
+    let path = crate::value::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path)
+        .ok_or_else(|| RSignal::from(EvalError::Condition(format!("cannot open the connection to '{path}'"))))?;
     let readable = mode.starts_with('r');
     let read_buf = if readable {
         std::fs::read(&path).unwrap_or_default()
