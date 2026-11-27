@@ -664,6 +664,7 @@ pub mod primitive_ids {
     pub const ADJUSTCOLOR: u32 = 655;
     pub const ARROWS_FN: u32 = 656;
     pub const RGB2HSV: u32 = 657;
+    pub const HIST: u32 = 658;
     pub const GRCONVERTX: u32 = 564;
     pub const GRCONVERTY: u32 = 565;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
@@ -696,7 +697,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN, SUMMARY_FN, MATRIX_MULT, CROSSPROD, TCROSSPROD, MAXCOL, IDIV, NROW_FN, NCOL_FN, SYS_GETPID, OLSONNAMES, IQR_FN, SYS_CHMOD, FILE_INFO, SYS_GETLOCALE, SYS_SETLOCALE, NZCHAR, AT_OP, AT_ASSIGN, SYS_INFO, SYS_TIME, SYS_DATE, SYS_WHICH, FLOOR, CEILING, TRUNC, ROUND, SIGNIF, EXPM1, LOG1P, ACOSH, ASINH, ATANH, COSPI, SINPI, TANPI, ANYNA, SYS_LOCALECONV, AGREP, AGREPL, APPLY, AS_ENVIRONMENT, AS_CALL, ENC2NATIVE, ENC2UTF8, SEARCH_FN, AS_FACTOR, AS_ORDERED, ADDNA, APERM, ADDMARGINS, DOT_SUBSET, DOT_SUBSET2, ASPLIT, ATTACH, DETACH, POS_TO_ENV, DOT_CLASS2, GC_TIME, AVE, BACKSOLVE, BQUOTE, CALL_FN, CHAR_TO_RAW, CHARMATCH, CUMSUM, CUMPROD, CUMMIN, CUMMAX, COMMENT_FN, COMMENT_ASSIGN, COMPLETE_CASES, COLSUMS, ROWSUMS, COLMEANS, ROWMEANS, DCAUCHY, DCHISQ, DEXP, CUT, DATE_FN, CAPABILITIES, BY_FN, BROWSER_FN, DGAMMA, DGEOM, DNBINOM, DIFF, DIAG, DO_CALL, DWEIBULL, DROP_FN, DROPLEVELS, DUPLICATED, ANYDUPLICATED, DIR_EXISTS, FILE_CREATE, FILE_ACCESS, ENVIRONMENT_ASSIGN, FORCEANDCALL, DECLARE, PRIMTRACE, PRIMUNTRACE, STANDARDGENERIC, DMULTINOM, DOTS_LENGTH, DOTS_NAMES, DOTS_ELT, IS_DATA_FRAME, FILE_APPEND, FILE_LINK, FILE_SYMLINK, SYS_READLINK, FILE_SIZE, FILE_MTIME, GL, HEAD_FN, TAIL_FN, INTERACTION, GCINFO, GCTORTURE, GCTORTURE2, IS_FINITE, IS_INFINITE, IS_NAN, IS_VECTOR, IS_LOADED, L10N_INFO, CSTACK_INFO, EXTSOFTVERSION, LIST_FILES, MEMORY_PROFILE, ENV_IS_LOCKED, LOCK_BINDING, BINDING_IS_LOCKED, UNLOCK_BINDING, LOCK_ENVIRONMENT, MAKE_ACTIVE_BINDING, BINDING_IS_ACTIVE, SYS_UMASK, NORMALIZE_PATH, OLDCLASS, OLDCLASS_ASSIGN, IS_OBJECT, PAIRLIST_CTOR, AS_PAIRLIST, OUTER, ON_EXIT, IS_S4_TEST, NARGS, SYS_NFRAME, SYS_CALL, SYS_FRAME, SYS_FUNCTION, PARENT_FRAME, IS_FUNCTION, METHODS, PAR, LAYOUT, FORMAT_DF, LIB_PATHS, FIND_PACKAGE, SYSTEM_FILE, FORMAT_INFO, PCAUCHY, QCAUCHY, PCHISQ, QCHISQ, PEXP, QEXP, PGAMMA, QGAMMA, PGEOM, QGEOM, PNBINOM, QNBINOM, PWEIBULL, QWEIBULL, RANGE_FN, PMIN, PMAX, PMATCH, PROP_TABLE, ROW_FN, COL_FN, RELEVEL, SEARCHPATHS, PATH_EXPAND, PCRE_CONFIG, RAWTOCHAR, QHYPER, PTUKEY, QPOIS, QBINOM, DUNIF, PUNIF, QUNIF, SIGN, SEQ_ALONG, SEQ_INT, SCAN, SINGLE, SINK, SINK_NUMBER, SORT_LIST, SOURCE, SYS_SOURCE, SPLIT, SWITCH, SUPPRESS_MESSAGES, STRWRAP, XTFRM, CACHE_CLASS, STARTSWITH, ENDSWITH, TOUPPER, TOLOWER, CHARTR, TRIMWS, TABULATE, SYSTEM2, WITH, LENGTHS, WRITE_TABLE, WRITE_CSV2, READ_FWF, SAVE_RDS, READ_RDS, WITH_RESTARTS, INVOKE_RESTART, TRY_INVOKE_RESTART, FIND_RESTART, COMPUTE_RESTARTS, IS_RESTART, RESTART_DESCRIPTION, WITH_CALLING_HANDLERS, NS_GET, NS_GET3, LIBRARY, REQUIRE, DATA_FN, PLOT_NEW, PLOT_WINDOW, LINES_FN, RECT_FN, POINTS_FN, TEXT_FN, PRETTY_FN, GRCONVERTX, GRCONVERTY, AXIS_FN, BOX_FN, PLOT_FN, TITLE_FN, SEGMENTS_FN, ABLINE_FN, POLYGON_FN, LOG10, LOG2, TAN, ASIN, ACOS, ATAN, ATAN2, GAMMAFN, LGAMMAFN, DIGAMMA, TRIGAMMA, FACTORIAL, LFACTORIAL, BETA, LBETA, CHOOSE, LCHOOSE, STRSPLIT, TRANSPOSE, IS_MATRIX, AS_MATRIX, SET_SEED, RUNIF, RNORM, FILTER_FN, REDUCE_FN, MAPPLY, VAR_COV, COR_FN, QUANTILE, MAD, WEIGHTED_MEAN, MAP_FN, NEGATE, EXPAND_GRID, FINDINTERVAL, MAKE_NAMES, MAKE_UNIQUE, RBINOM, RPOIS, RGAMMA, REXP, RBETA, RCHISQ, RT, RF_DIST, RLNORM, RLOGIS, RCAUCHY, RGEOM, RWEIBULL, RNBINOM, RHYPER, SUBSET_DF, TRANSFORM, WITHIN, AS_DATA_FRAME, MERGE_DF, ABBREVIATE, FORMATC, RGB_FN, MTEXT, HSV_FN, RAINBOW, HEAT_COLORS, TERRAIN_COLORS, TOPO_COLORS, CM_COLORS, GRAY_FN, GREY_FN, COLORS_FN, COLOURS_FN, COL2RGB, PALETTE_FN, HCL_FN, ADJUSTCOLOR, ARROWS_FN, RGB2HSV};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN, SUMMARY_FN, MATRIX_MULT, CROSSPROD, TCROSSPROD, MAXCOL, IDIV, NROW_FN, NCOL_FN, SYS_GETPID, OLSONNAMES, IQR_FN, SYS_CHMOD, FILE_INFO, SYS_GETLOCALE, SYS_SETLOCALE, NZCHAR, AT_OP, AT_ASSIGN, SYS_INFO, SYS_TIME, SYS_DATE, SYS_WHICH, FLOOR, CEILING, TRUNC, ROUND, SIGNIF, EXPM1, LOG1P, ACOSH, ASINH, ATANH, COSPI, SINPI, TANPI, ANYNA, SYS_LOCALECONV, AGREP, AGREPL, APPLY, AS_ENVIRONMENT, AS_CALL, ENC2NATIVE, ENC2UTF8, SEARCH_FN, AS_FACTOR, AS_ORDERED, ADDNA, APERM, ADDMARGINS, DOT_SUBSET, DOT_SUBSET2, ASPLIT, ATTACH, DETACH, POS_TO_ENV, DOT_CLASS2, GC_TIME, AVE, BACKSOLVE, BQUOTE, CALL_FN, CHAR_TO_RAW, CHARMATCH, CUMSUM, CUMPROD, CUMMIN, CUMMAX, COMMENT_FN, COMMENT_ASSIGN, COMPLETE_CASES, COLSUMS, ROWSUMS, COLMEANS, ROWMEANS, DCAUCHY, DCHISQ, DEXP, CUT, DATE_FN, CAPABILITIES, BY_FN, BROWSER_FN, DGAMMA, DGEOM, DNBINOM, DIFF, DIAG, DO_CALL, DWEIBULL, DROP_FN, DROPLEVELS, DUPLICATED, ANYDUPLICATED, DIR_EXISTS, FILE_CREATE, FILE_ACCESS, ENVIRONMENT_ASSIGN, FORCEANDCALL, DECLARE, PRIMTRACE, PRIMUNTRACE, STANDARDGENERIC, DMULTINOM, DOTS_LENGTH, DOTS_NAMES, DOTS_ELT, IS_DATA_FRAME, FILE_APPEND, FILE_LINK, FILE_SYMLINK, SYS_READLINK, FILE_SIZE, FILE_MTIME, GL, HEAD_FN, TAIL_FN, INTERACTION, GCINFO, GCTORTURE, GCTORTURE2, IS_FINITE, IS_INFINITE, IS_NAN, IS_VECTOR, IS_LOADED, L10N_INFO, CSTACK_INFO, EXTSOFTVERSION, LIST_FILES, MEMORY_PROFILE, ENV_IS_LOCKED, LOCK_BINDING, BINDING_IS_LOCKED, UNLOCK_BINDING, LOCK_ENVIRONMENT, MAKE_ACTIVE_BINDING, BINDING_IS_ACTIVE, SYS_UMASK, NORMALIZE_PATH, OLDCLASS, OLDCLASS_ASSIGN, IS_OBJECT, PAIRLIST_CTOR, AS_PAIRLIST, OUTER, ON_EXIT, IS_S4_TEST, NARGS, SYS_NFRAME, SYS_CALL, SYS_FRAME, SYS_FUNCTION, PARENT_FRAME, IS_FUNCTION, METHODS, PAR, LAYOUT, FORMAT_DF, LIB_PATHS, FIND_PACKAGE, SYSTEM_FILE, FORMAT_INFO, PCAUCHY, QCAUCHY, PCHISQ, QCHISQ, PEXP, QEXP, PGAMMA, QGAMMA, PGEOM, QGEOM, PNBINOM, QNBINOM, PWEIBULL, QWEIBULL, RANGE_FN, PMIN, PMAX, PMATCH, PROP_TABLE, ROW_FN, COL_FN, RELEVEL, SEARCHPATHS, PATH_EXPAND, PCRE_CONFIG, RAWTOCHAR, QHYPER, PTUKEY, QPOIS, QBINOM, DUNIF, PUNIF, QUNIF, SIGN, SEQ_ALONG, SEQ_INT, SCAN, SINGLE, SINK, SINK_NUMBER, SORT_LIST, SOURCE, SYS_SOURCE, SPLIT, SWITCH, SUPPRESS_MESSAGES, STRWRAP, XTFRM, CACHE_CLASS, STARTSWITH, ENDSWITH, TOUPPER, TOLOWER, CHARTR, TRIMWS, TABULATE, SYSTEM2, WITH, LENGTHS, WRITE_TABLE, WRITE_CSV2, READ_FWF, SAVE_RDS, READ_RDS, WITH_RESTARTS, INVOKE_RESTART, TRY_INVOKE_RESTART, FIND_RESTART, COMPUTE_RESTARTS, IS_RESTART, RESTART_DESCRIPTION, WITH_CALLING_HANDLERS, NS_GET, NS_GET3, LIBRARY, REQUIRE, DATA_FN, PLOT_NEW, PLOT_WINDOW, LINES_FN, RECT_FN, POINTS_FN, TEXT_FN, PRETTY_FN, GRCONVERTX, GRCONVERTY, AXIS_FN, BOX_FN, PLOT_FN, TITLE_FN, SEGMENTS_FN, ABLINE_FN, POLYGON_FN, LOG10, LOG2, TAN, ASIN, ACOS, ATAN, ATAN2, GAMMAFN, LGAMMAFN, DIGAMMA, TRIGAMMA, FACTORIAL, LFACTORIAL, BETA, LBETA, CHOOSE, LCHOOSE, STRSPLIT, TRANSPOSE, IS_MATRIX, AS_MATRIX, SET_SEED, RUNIF, RNORM, FILTER_FN, REDUCE_FN, MAPPLY, VAR_COV, COR_FN, QUANTILE, MAD, WEIGHTED_MEAN, MAP_FN, NEGATE, EXPAND_GRID, FINDINTERVAL, MAKE_NAMES, MAKE_UNIQUE, RBINOM, RPOIS, RGAMMA, REXP, RBETA, RCHISQ, RT, RF_DIST, RLNORM, RLOGIS, RCAUCHY, RGEOM, RWEIBULL, RNBINOM, RHYPER, SUBSET_DF, TRANSFORM, WITHIN, AS_DATA_FRAME, MERGE_DF, ABBREVIATE, FORMATC, RGB_FN, MTEXT, HSV_FN, RAINBOW, HEAT_COLORS, TERRAIN_COLORS, TOPO_COLORS, CM_COLORS, GRAY_FN, GREY_FN, COLORS_FN, COLOURS_FN, COL2RGB, PALETTE_FN, HCL_FN, ADJUSTCOLOR, ARROWS_FN, RGB2HSV, HIST};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -718,7 +719,7 @@ pub(crate) fn call_primitive(
     // Braces and parens propagate the final inner visibility exactly as
     /// GNU — `{ invisible(1) }` returns invisibly — so they join .Internal
     /// and eval in the propagation exceptions.
-    if result.is_ok() && id.0 != INTERNAL && id.0 != EVAL_FN && id.0 != BRACE && id.0 != PAREN && id.0 != SUPPRESS_WARNINGS && id.0 != USEMETHOD && id.0 != NEXTMETHOD && id.0 != SYSTEM && id.0 != OPTIONS_FN && id.0 != WITH_RESTARTS && id.0 != WITH_CALLING_HANDLERS && id.0 != PAR && id.0 != PALETTE_FN && id.0 != TRYCATCH {
+    if result.is_ok() && id.0 != INTERNAL && id.0 != EVAL_FN && id.0 != BRACE && id.0 != PAREN && id.0 != SUPPRESS_WARNINGS && id.0 != USEMETHOD && id.0 != NEXTMETHOD && id.0 != SYSTEM && id.0 != OPTIONS_FN && id.0 != WITH_RESTARTS && id.0 != WITH_CALLING_HANDLERS && id.0 != PAR && id.0 != PALETTE_FN && id.0 != HIST && id.0 != TRYCATCH {
         heap.visible = !matches!(
             id.0,
             ASSIGN | SUPERASSIGN | PRINT | CAT | INVISIBLE | WHILE | REPEAT | FOR
@@ -6146,6 +6147,7 @@ fn call_primitive_inner(
         ADJUSTCOLOR => adjustcolor_primitive(heap, interner, args, caller_env),
         ARROWS_FN => arrows_primitive(heap, interner, args, caller_env),
         RGB2HSV => rgb2hsv_primitive(heap, interner, args, caller_env),
+        HIST => hist_primitive(heap, interner, args, caller_env),
         DNORM | PNORM | QNORM | DPOIS | PPOIS | DBINOM | PBINOM | PBETA | DBETA | QBETA | DT | PT | QT | DF | PF | QF | DCAUCHY | DCHISQ | DEXP | PCAUCHY | QCAUCHY | PCHISQ | QCHISQ | PEXP | QEXP | PGAMMA | QGAMMA | PGEOM | QGEOM | PNBINOM | QNBINOM | PWEIBULL | QWEIBULL | QPOIS | QBINOM | DUNIF | PUNIF | QUNIF => dpq_primitive(heap, interner, id.0, args, caller_env),
         WITH_RESTARTS => with_restarts_primitive(heap, interner, args, caller_env),
         INVOKE_RESTART => invoke_restart_primitive(heap, interner, args, caller_env, false),
@@ -7938,7 +7940,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "abbreviate", "formatC", "rgb", "mtext", "hsv", "rainbow",
         "heat.colors", "terrain.colors", "topo.colors", "cm.colors", "gray", "grey",
         "colors", "colours", "col2rgb", "palette", "hcl", "adjustcolor",
-        "arrows", "rgb2hsv",
+        "arrows", "rgb2hsv", "hist",
     ]
 }
 
@@ -8278,6 +8280,7 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "adjustcolor" => Some(ADJUSTCOLOR),
         "arrows" => Some(ARROWS_FN),
         "rgb2hsv" => Some(RGB2HSV),
+        "hist" => Some(HIST),
         "grconvertX" => Some(GRCONVERTX),
         "grconvertY" => Some(GRCONVERTY),
         // bzfile/gzfile share the raw-byte connection machinery — GNU pipes
@@ -16904,6 +16907,244 @@ fn arrows_primitive(
         }));
     }
     Ok(ValueId::NIL)
+}
+
+/// hist(x, breaks, freq, probability, include.lowest, right, fuzz, plot)
+/// — GNU's hist.default data path exactly: Sturges through pretty with
+/// min.n=1, the diddle fuzz adjustment, boundary binning, densities
+/// over un-fuzzed widths — then the plot.histogram composition for
+/// plot=TRUE.
+fn hist_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    // xname captures the raw expression exactly as deparse1(substitute).
+    let raw_first = match heap.object(args) {
+        Some(RObject::Pairlist { car, .. }) => *car,
+        _ => ValueId::NIL,
+    };
+    let slots = eval_matched_args(heap, interner, args, caller_env,
+        &["x", "breaks", "freq", "probability", "include.lowest", "right", "fuzz", "density",
+          "angle", "col", "border", "main", "xlim", "ylim", "xlab", "ylab", "axes", "plot", "labels", "nclass"])?;
+    let xname = if raw_first != ValueId::NIL {
+        super::print::deparse(heap, interner, raw_first)
+    } else {
+        "x".to_string()
+    };
+    let input = slots[0].unwrap_or(ValueId::NIL);
+    let xs: Vec<f64> = reals_of_value(heap, input)
+        .map_err(RSignal::from)?
+        .into_iter()
+        .filter(|x| x.is_finite())
+        .collect();
+    let n = xs.len();
+    if n == 0 {
+        return Err(EvalError::TypeError("invalid length(x)").into());
+    }
+    let xlo = xs.iter().copied().fold(f64::INFINITY, f64::min);
+    let xhi = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    // Break resolution exactly as GNU: explicit vector, scalar count
+    /// through pretty with min.n=1, or the Sturges default.
+    let mut use_br = false;
+    let mut breaks: Vec<f64> = match slots[1] {
+        Some(b) => {
+            let spec = reals_of_value(heap, b).unwrap_or_default();
+            if spec.len() > 1 {
+                use_br = true;
+                let mut sorted = spec;
+                sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                sorted
+            } else if spec.len() == 1 {
+                let count = spec[0] as i32;
+                let result = crate::value::graphics::pretty::r_pretty(
+                    xlo, xhi, count, 1, 0.75, 1.5, 0.5 + 1.5 * 1.5, 2f64.powi(-20), 0,
+                );
+                let ndiv = result.ndiv;
+                (0..=ndiv.max(0) as usize).map(|i| {
+                    let t = i as f64 / ndiv.max(1) as f64;
+                    result.lo * (1.0 - t) + result.up * t
+                }).collect()
+            } else {
+                Vec::new()
+            }
+        }
+        None => Vec::new(),
+    };
+    if breaks.is_empty() {
+        // Sturges exactly as nclass.Sturges — ceiling(log2(n) + 1).
+        let sturges = ((n as f64).log2() + 1.0).ceil() as i32;
+        let result = crate::value::graphics::pretty::r_pretty(
+            xlo, xhi, sturges, 1, 0.75, 1.5, 0.5 + 1.5 * 1.5, 2f64.powi(-20), 0,
+        );
+        let ndiv = result.ndiv;
+        breaks = (0..=ndiv.max(0) as usize).map(|i| {
+            let t = i as f64 / ndiv.max(1) as f64;
+            result.lo * (1.0 - t) + result.up * t
+        }).collect();
+    }
+    let nb = breaks.len() as i32;
+    if nb <= 1 {
+        return Err(EvalError::TypeError("invalid breakpoints").into());
+    }
+    let h: Vec<f64> = breaks.windows(2).map(|w| w[1] - w[0]).collect();
+    let h_mean = h.iter().sum::<f64>() / h.len() as f64;
+    let h_min = h.iter().copied().fold(f64::INFINITY, f64::min);
+    let h_max = h.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let equidist = !use_br || (h_max - h_min) < 1e-7 * h_mean;
+    // freq resolution exactly as GNU: default follows equidist unless
+    /// probability overrides.
+    let freq1 = match slots[2] {
+        Some(f) => matches!(heap.object(f), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) != 0),
+        None => match slots[3] {
+            Some(prob) => !matches!(heap.object(prob), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) != 0),
+            None => equidist,
+        },
+    };
+    let include_lowest = slots[4]
+        .map(|v| matches!(heap.object(v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) != 0))
+        .unwrap_or(true);
+    let right = slots[5]
+        .map(|v| matches!(heap.object(v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) != 0))
+        .unwrap_or(true);
+    let fuzz_arg = slots[6].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(1e-7);
+    // The diddle exactly as GNU: median width for many bins, range
+    /// for few, smallest positive otherwise.
+    let mut sorted_h = h.clone();
+    sorted_h.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median_h = sorted_h[sorted_h.len() / 2];
+    let diddle_base = if nb > 5 {
+        median_h
+    } else if nb <= 3 {
+        xhi - xlo
+    } else {
+        h.iter().copied().filter(|&w| w > 0.0).fold(f64::INFINITY, f64::min)
+    };
+    let diddle = fuzz_arg * diddle_base;
+    // Fuzz directions exactly as GNU's include.lowest interplay.
+    let mut fuzzybreaks: Vec<f64> = Vec::new();
+    if right {
+        for (i, b) in breaks.iter().enumerate() {
+            if i == 0 {
+                fuzzybreaks.push(b + if include_lowest { -diddle } else { diddle });
+            } else {
+                fuzzybreaks.push(b + diddle);
+            }
+        }
+    } else {
+        for (i, b) in breaks.iter().enumerate() {
+            if i == breaks.len() - 1 {
+                fuzzybreaks.push(b + if include_lowest { diddle } else { -diddle });
+            } else {
+                fuzzybreaks.push(b - diddle);
+            }
+        }
+    }
+    // BinCount exactly as GNU: right-closed bins with the lowest
+    /// boundary inclusive when include.lowest.
+    let bin_count = breaks.len() - 1;
+    let mut counts: Vec<i32> = vec![0; bin_count];
+    for &x in &xs {
+        for i in 0..bin_count {
+            let inside = if right {
+                let lower_ok = if i == 0 && include_lowest {
+                    x >= fuzzybreaks[0]
+                } else {
+                    x > fuzzybreaks[i]
+                };
+                lower_ok && x <= fuzzybreaks[i + 1]
+            } else {
+                let upper_ok = if i == bin_count - 1 && include_lowest {
+                    x <= fuzzybreaks[bin_count]
+                } else {
+                    x < fuzzybreaks[i + 1]
+                };
+                x >= fuzzybreaks[i] && upper_ok
+            };
+            if inside {
+                counts[i] += 1;
+                break;
+            }
+        }
+    }
+    let density: Vec<f64> = counts.iter().enumerate().map(|(i, &c)| c as f64 / (n as f64 * h[i])).collect();
+    let mids: Vec<f64> = (0..bin_count).map(|i| 0.5 * (breaks[i] + breaks[i + 1])).collect();
+    // The histogram object exactly as GNU's structure(): named list,
+    /// class attribute.
+    let heights: Vec<f64> = if freq1 {
+        counts.iter().map(|&c| c as f64).collect()
+    } else {
+        density.clone()
+    };
+    let do_plot = slots[17]
+        .map(|v| matches!(heap.object(v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) != 0))
+        .unwrap_or(true);
+    if do_plot {
+        // plot.histogram composition exactly: plot.new, window over
+        /// range(breaks) x range(y, 0), title, axes, then the bars.
+        let main_text = format!("Histogram of {}", xname);
+        let ylab_text = if freq1 { "Frequency" } else { "Density" };
+        let ymax = heights.iter().copied().fold(0.0f64, f64::max);
+        let xlim = heap.alloc(RObject::Real(vec![breaks[0], breaks[breaks.len() - 1]]));
+        let ylim = heap.alloc(RObject::Real(vec![0.0, ymax]));
+        let cell = |v: ValueId, rest: ValueId, heap: &mut Heap| {
+            heap.alloc(RObject::Pairlist { car: v, cdr: rest, tag: ValueId::NIL })
+        };
+        plot_new_primitive(heap, interner, ValueId::NIL, caller_env)?;
+        let win_args = {
+            let second = cell(ylim, ValueId::NIL, heap);
+            cell(xlim, second, heap)
+        };
+        plot_window_primitive(heap, interner, win_args, caller_env)?;
+        // title(main, xlab=xname, ylab)
+        let main_obj = heap.alloc(RObject::String(vec![interner.intern_string(&main_text)]));
+        let xlab_obj = heap.alloc(RObject::String(vec![interner.intern_string(&xname)]));
+        let ylab_obj = heap.alloc(RObject::String(vec![interner.intern_string(ylab_text)]));
+        let title_args = {
+            let ylab_cell = cell(ylab_obj, ValueId::NIL, heap);
+            let xlab_cell = cell(xlab_obj, ylab_cell, heap);
+            cell(main_obj, xlab_cell, heap)
+        };
+        title_primitive(heap, interner, title_args, caller_env)?;
+        // axis(1), axis(2)
+        let one = heap.alloc(RObject::Real(vec![1.0]));
+        let two = heap.alloc(RObject::Real(vec![2.0]));
+        let axis1_args = cell(one, ValueId::NIL, heap);
+        axis_primitive(heap, interner, axis1_args, caller_env)?;
+        let axis2_args = cell(two, ValueId::NIL, heap);
+        axis_primitive(heap, interner, axis2_args, caller_env)?;
+        // rect(breaks[-nB], 0, breaks[-1], y, col="lightgray")
+        let xleft = heap.alloc(RObject::Real(breaks[..bin_count].to_vec()));
+        let ybottom = heap.alloc(RObject::Real(vec![0.0]));
+        let xright = heap.alloc(RObject::Real(breaks[1..].to_vec()));
+        let ytop = heap.alloc(RObject::Real(heights.clone()));
+        let rect_args = {
+            let col_obj = heap.alloc(RObject::String(vec![interner.intern_string("lightgray")]));
+            let col_cell = cell(col_obj, ValueId::NIL, heap);
+            let ytop_cell = cell(ytop, col_cell, heap);
+            let xright_cell = cell(xright, ytop_cell, heap);
+            let ybot_cell = cell(ybottom, xright_cell, heap);
+            cell(xleft, ybot_cell, heap)
+        };
+        rect_primitive(heap, interner, rect_args, caller_env)?;
+    }
+    // Build the result list with names and class exactly as GNU.
+    let breaks_obj = heap.alloc(RObject::Real(breaks.clone()));
+    let counts_obj = heap.alloc(RObject::Integer(counts.clone()));
+    let density_obj = heap.alloc(RObject::Real(density));
+    let mids_obj = heap.alloc(RObject::Real(mids));
+    let xname_obj = heap.alloc(RObject::String(vec![interner.intern_string(&xname)]));
+    let equidist_obj = heap.alloc(RObject::Logical(vec![if equidist { 1 } else { 0 }]));
+    let list = heap.alloc(RObject::List(vec![breaks_obj, counts_obj, density_obj, mids_obj, xname_obj, equidist_obj]));
+    let names_vec: Vec<super::intern::InternedStr> = ["breaks", "counts", "density", "mids", "xname", "equidist"]
+        .iter().map(|n| interner.intern_string(n)).collect();
+    let names_obj = heap.alloc(RObject::String(names_vec));
+    let mut result = copy_with_attrib(heap, interner, list, "names", names_obj).map_err(RSignal::from)?;
+    let class_obj = heap.alloc(RObject::String(vec![interner.intern_string("histogram")]));
+    result = copy_with_attrib(heap, interner, result, "class", class_obj).map_err(RSignal::from)?;
+    heap.visible = !do_plot;
+    Ok(result)
 }
 
 /// segments(x0, y0, x1, y1) — GNU's lockstep-recycled segment paths
