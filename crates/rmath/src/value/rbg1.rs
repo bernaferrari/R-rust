@@ -310,6 +310,29 @@ pub fn encode_save(
 }
 
 /// Decode a save file into name+object pairs, allocating into the heap.
+/// Single-object encoding — GNU's .rds shape in RBG1 terms: the magic
+/// header then one object graph, no binding frame.
+pub fn encode_rds(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<u8> {
+    let mut out = Vec::new();
+    out.extend_from_slice(MAGIC);
+    encode_object(heap, interner, value, &mut out);
+    out
+}
+
+/// Decode the single-object RDS form.
+pub fn decode_rds(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    bytes: &[u8],
+    default_env: ValueId,
+) -> Option<ValueId> {
+    if bytes.get(0..4)? != MAGIC {
+        return None;
+    }
+    let mut pos = 4usize;
+    decode_object(heap, interner, bytes, &mut pos, default_env)
+}
+
 pub fn decode_save(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
