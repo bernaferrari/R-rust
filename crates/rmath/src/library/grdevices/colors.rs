@@ -148,7 +148,7 @@ mod numeric_tests;
 
 mod builtins;
 mod converters;
-mod names_table;
+pub(crate) mod names_table;
 mod numeric;
 mod palette;
 

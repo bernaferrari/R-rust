@@ -71,6 +71,9 @@ pub struct Heap {
     pub graphics: crate::value::graphics::GraphicsParState,
     /// The session-owned Mersenne stream — see value/rng.rs.
     pub rng: crate::value::rng::PureRng,
+    /// The color palette exactly as GNU's per-device state — palette()
+    /// reads and replaces it, empty falling back to the R 4.x default.
+    pub palette: Vec<String>,
     /// The closure context stack GNU's sys.* family reads — one entry per
     /// active closure application, innermost last.
     pub contexts: Vec<crate::value::eval::ContextFrame>,
@@ -186,6 +189,16 @@ impl Heap {
             next_gc_threshold: 1024,
             visible: true,
             umask_state: 0o022,
+            palette: vec![
+                "black".to_string(),
+                "#DF536B".to_string(),
+                "#61D04F".to_string(),
+                "#2297E6".to_string(),
+                "#28E2E5".to_string(),
+                "#CD0BBC".to_string(),
+                "#F5C710".to_string(),
+                "gray62".to_string(),
+            ],
             ..Heap::default()
         }
     }
