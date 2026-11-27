@@ -437,11 +437,20 @@ pub fn bootstrap_env(heap: &mut Heap, interner: &mut SymbolInterner) -> ValueId 
 fn populate_rlevel_namespaces(heap: &mut Heap, interner: &mut SymbolInterner) {
     use super::eval::eval;
     use super::parser::parse_native_expressions;
+    // Base functions install into the base environment itself exactly as
+    // GNU's base R sources do; package functions install into their
+    // namespace environments.
     const SOURCES: &[(&str, &str)] = &[
+        ("base", include_str!("assets/rlevel/base.R")),
         ("utils", include_str!("assets/rlevel/utils.R")),
     ];
     for &(package, source) in SOURCES {
-        let Some(namespace) = heap.package_registry.get(package).copied() else {
+        let target = if package == "base" {
+            heap.base_env_id
+        } else {
+            heap.package_registry.get(package).copied()
+        };
+        let Some(namespace) = target else {
             continue;
         };
         let Ok(expressions) = parse_native_expressions(source, heap, interner) else {
