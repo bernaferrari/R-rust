@@ -643,6 +643,7 @@ pub mod primitive_ids {
     pub const TRANSFORM: u32 = 634;
     pub const WITHIN: u32 = 635;
     pub const AS_DATA_FRAME: u32 = 636;
+    pub const MERGE_DF: u32 = 637;
     pub const GRCONVERTX: u32 = 564;
     pub const GRCONVERTY: u32 = 565;
     pub const PRINT_DEFERRED_WARNINGS: u32 = 167;
@@ -675,7 +676,7 @@ pub mod primitive_ids {
 }
 
 use crate::value::object::BuiltinId;
-use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN, SUMMARY_FN, MATRIX_MULT, CROSSPROD, TCROSSPROD, MAXCOL, IDIV, NROW_FN, NCOL_FN, SYS_GETPID, OLSONNAMES, IQR_FN, SYS_CHMOD, FILE_INFO, SYS_GETLOCALE, SYS_SETLOCALE, NZCHAR, AT_OP, AT_ASSIGN, SYS_INFO, SYS_TIME, SYS_DATE, SYS_WHICH, FLOOR, CEILING, TRUNC, ROUND, SIGNIF, EXPM1, LOG1P, ACOSH, ASINH, ATANH, COSPI, SINPI, TANPI, ANYNA, SYS_LOCALECONV, AGREP, AGREPL, APPLY, AS_ENVIRONMENT, AS_CALL, ENC2NATIVE, ENC2UTF8, SEARCH_FN, AS_FACTOR, AS_ORDERED, ADDNA, APERM, ADDMARGINS, DOT_SUBSET, DOT_SUBSET2, ASPLIT, ATTACH, DETACH, POS_TO_ENV, DOT_CLASS2, GC_TIME, AVE, BACKSOLVE, BQUOTE, CALL_FN, CHAR_TO_RAW, CHARMATCH, CUMSUM, CUMPROD, CUMMIN, CUMMAX, COMMENT_FN, COMMENT_ASSIGN, COMPLETE_CASES, COLSUMS, ROWSUMS, COLMEANS, ROWMEANS, DCAUCHY, DCHISQ, DEXP, CUT, DATE_FN, CAPABILITIES, BY_FN, BROWSER_FN, DGAMMA, DGEOM, DNBINOM, DIFF, DIAG, DO_CALL, DWEIBULL, DROP_FN, DROPLEVELS, DUPLICATED, ANYDUPLICATED, DIR_EXISTS, FILE_CREATE, FILE_ACCESS, ENVIRONMENT_ASSIGN, FORCEANDCALL, DECLARE, PRIMTRACE, PRIMUNTRACE, STANDARDGENERIC, DMULTINOM, DOTS_LENGTH, DOTS_NAMES, DOTS_ELT, IS_DATA_FRAME, FILE_APPEND, FILE_LINK, FILE_SYMLINK, SYS_READLINK, FILE_SIZE, FILE_MTIME, GL, HEAD_FN, TAIL_FN, INTERACTION, GCINFO, GCTORTURE, GCTORTURE2, IS_FINITE, IS_INFINITE, IS_NAN, IS_VECTOR, IS_LOADED, L10N_INFO, CSTACK_INFO, EXTSOFTVERSION, LIST_FILES, MEMORY_PROFILE, ENV_IS_LOCKED, LOCK_BINDING, BINDING_IS_LOCKED, UNLOCK_BINDING, LOCK_ENVIRONMENT, MAKE_ACTIVE_BINDING, BINDING_IS_ACTIVE, SYS_UMASK, NORMALIZE_PATH, OLDCLASS, OLDCLASS_ASSIGN, IS_OBJECT, PAIRLIST_CTOR, AS_PAIRLIST, OUTER, ON_EXIT, IS_S4_TEST, NARGS, SYS_NFRAME, SYS_CALL, SYS_FRAME, SYS_FUNCTION, PARENT_FRAME, IS_FUNCTION, METHODS, PAR, LAYOUT, FORMAT_DF, LIB_PATHS, FIND_PACKAGE, SYSTEM_FILE, FORMAT_INFO, PCAUCHY, QCAUCHY, PCHISQ, QCHISQ, PEXP, QEXP, PGAMMA, QGAMMA, PGEOM, QGEOM, PNBINOM, QNBINOM, PWEIBULL, QWEIBULL, RANGE_FN, PMIN, PMAX, PMATCH, PROP_TABLE, ROW_FN, COL_FN, RELEVEL, SEARCHPATHS, PATH_EXPAND, PCRE_CONFIG, RAWTOCHAR, QHYPER, PTUKEY, QPOIS, QBINOM, DUNIF, PUNIF, QUNIF, SIGN, SEQ_ALONG, SEQ_INT, SCAN, SINGLE, SINK, SINK_NUMBER, SORT_LIST, SOURCE, SYS_SOURCE, SPLIT, SWITCH, SUPPRESS_MESSAGES, STRWRAP, XTFRM, CACHE_CLASS, STARTSWITH, ENDSWITH, TOUPPER, TOLOWER, CHARTR, TRIMWS, TABULATE, SYSTEM2, WITH, LENGTHS, WRITE_TABLE, WRITE_CSV2, READ_FWF, SAVE_RDS, READ_RDS, WITH_RESTARTS, INVOKE_RESTART, TRY_INVOKE_RESTART, FIND_RESTART, COMPUTE_RESTARTS, IS_RESTART, RESTART_DESCRIPTION, WITH_CALLING_HANDLERS, NS_GET, NS_GET3, LIBRARY, REQUIRE, DATA_FN, PLOT_NEW, PLOT_WINDOW, LINES_FN, RECT_FN, POINTS_FN, TEXT_FN, PRETTY_FN, GRCONVERTX, GRCONVERTY, AXIS_FN, BOX_FN, PLOT_FN, TITLE_FN, SEGMENTS_FN, ABLINE_FN, POLYGON_FN, LOG10, LOG2, TAN, ASIN, ACOS, ATAN, ATAN2, GAMMAFN, LGAMMAFN, DIGAMMA, TRIGAMMA, FACTORIAL, LFACTORIAL, BETA, LBETA, CHOOSE, LCHOOSE, STRSPLIT, TRANSPOSE, IS_MATRIX, AS_MATRIX, SET_SEED, RUNIF, RNORM, FILTER_FN, REDUCE_FN, MAPPLY, VAR_COV, COR_FN, QUANTILE, MAD, WEIGHTED_MEAN, MAP_FN, NEGATE, EXPAND_GRID, FINDINTERVAL, MAKE_NAMES, MAKE_UNIQUE, RBINOM, RPOIS, RGAMMA, REXP, RBETA, RCHISQ, RT, RF_DIST, RLNORM, RLOGIS, RCAUCHY, RGEOM, RWEIBULL, RNBINOM, RHYPER, SUBSET_DF, TRANSFORM, WITHIN, AS_DATA_FRAME};
+use primitive_ids::{ABS, ADD, AND, ASSIGN, BRACE, BREAK, COLON, CONCAT, DIV, EQ, EXP, EXTRACT, FOR, FUNCTION, GE, GT, IF, LE, LENGTH, LIST, LOG, LT, MAX, MIN, MUL, MOD, NCHAR, NE, NEXT, NOT, OR, PAREN, PASTE, PASTE0, POW, PRINT, PROD, REPEAT, RETURN, SHORT_AND, SHORT_OR, SQRT, SUB, SUBSET, SUBSET_ASSIGN, SUM, SUPERASSIGN, NUMERIC, INTEGER_CTOR, LOGICAL_CTOR, NAMES, NAMES_ASSIGN, DOLLAR, LAPPLY, SAPPLY, UNLIST, SEQ, SEQ_LEN, REP, MEAN, VAR, SD, MEDIAN, IS_NA, SORT, REV, UNIQUE, WHICH, ANY, ALL, IFELSE, STOP, IN, MATCH, NEW_ENV, EXISTS, LS, DOLLAR_ASSIGN, CAT, INVISIBLE, MATRIX, DIM, NROW, NCOL, TRYCATCH, CONDITION_MESSAGE, TYPEOF, STRUCTURE, ASSIGN_FN, GET, CHARACTER_CTOR, TEMPFILE, WRITELINES, READLINES, FILE_EXISTS, FILE_REMOVE, FILE_COPY, FILE_RENAME, SUPPRESS_WARNINGS, AS_LOGICAL, ATTR, ATTR_ASSIGN, ATTRIBUTES, ATTRIBUTES_ASSIGN, IS_NULL, LENGTH_ASSIGN, FILE_PATH, DATA_FRAME, AGGREGATE, FACTOR, LEVELS, LEVELS_ASSIGN, UNCLASS, TEMPDIR, SPRINTF, SYS_SETENV, SYS_GETENV, SYS_UNSETENV, UNLINK, INTERNAL, PRIMITIVE_FN, WARNING, GETTEXT, NGETTEXT, BINDTEXTDOMAIN, GETERRMESSAGE, SETERRMESSAGE, INTERRUPTS_SUSPENDED, IS_PRIMITIVE, IS_TRUE, SAVE, LOAD, RM, AS_VECTOR, AS_CHARACTER, TSP, TSP_ASSIGN, SETNAMES, IDENTICAL, GLOBALENV, BASEENV, ENVIRONMENT_NAME, ENVIRONMENT, R_VERSION_FN, GET_RVERSION, IS_LIST, ARRAY, IS_ARRAY, AS_DATE, WEEKDAYS, MONTHS, QUARTERS, FORMAT, IS_UNSORTED, TOSTRING, CAPTURE_OUTPUT, ROW_NAMES, ROW_NAMES_SET, TAPPLY, VAPPLY, AS_POSIXCT, PROC_TIME, QUOTE, TILDE, IS_CALL, IS_ENVIRONMENT, XTABS, SIN, COS, SINH, COSH, TANH_F, COMPLEX_CTOR, AS_COMPLEX, RE_C, IM_C, MOD_C, ARG_C, CONJ_C, IS_COMPLEX, AS_RAW, IS_RAW, MODE_FN, STORAGE_MODE, EXPRESSION_FN, RAW_CTOR, VECTOR_FN, IDENTITY_FN, PARSE_FN, EVAL_FN, DEPARSE1, DPUT, DGET, INHERITS, DIRNAME, GREGEXPR, GSUB, SUB_FN, FORMALS, OPTIONS_FN, GET_OPTION, CBIND, RBIND, IS_NUMERIC_FN, IS_INTEGER_FN, IS_DOUBLE_FN, IS_LOGICAL_FN, IS_CHARACTER_FN, SUBSTITUTE_FN, PRINT_DEFERRED_WARNINGS, DIR_CREATE, LIST_DIRS, BASENAME, GREPL, GREP, REGEXPR, DIMNAMES, DIMNAMES_ASSIGN, CLASS, CLASS_ASSIGN, ROWNAMES, ROWNAMES_ASSIGN, COLNAMES, COLNAMES_ASSIGN, WHILE, DNORM, PNORM, QNORM, DPOIS, PPOIS, DBINOM, PBINOM, MESSAGE_FN, MISSING_FN, PARENT_ENV, ORDER_FN, RANK_FN, ORDERED_FN, IS_ORDERED, IS_FACTOR, NA_OMIT, NA_EXCLUDE, PBETA, DBETA, QBETA, FIND_FN, USEMETHOD, NEXTMETHOD, GETS3METHOD, EMPTYENV, AS_INTEGER, AS_NUMERIC, STOPIFNOT, SEQUENCE, REP_INT, REP_LEN, DT, PT, QT, SAMPLE, SAMPLE_INT, BUILTINS, REGEXEC, DF, PF, QF, SUBSTR, FILE_FN, ISOPEN, CLOSE_FN, FLUSH_FN, WRITECHAR, READCHAR, UNION, INTERSECT, SETDIFF, SETEQUAL, TABLE, SETCLASS, NEW_S4, IS_S4, SLOT, SLOTNAMES, UNNAME, WHICH_MIN, WHICH_MAX, WITHVISIBLE, SYSTEM, WRITEBIN, READBIN, URL_FN, DIM_ASSIGN, STORAGE_MODE_ASSIGN, AS_LIST, BODY_FN, SUMMARY_FN, MATRIX_MULT, CROSSPROD, TCROSSPROD, MAXCOL, IDIV, NROW_FN, NCOL_FN, SYS_GETPID, OLSONNAMES, IQR_FN, SYS_CHMOD, FILE_INFO, SYS_GETLOCALE, SYS_SETLOCALE, NZCHAR, AT_OP, AT_ASSIGN, SYS_INFO, SYS_TIME, SYS_DATE, SYS_WHICH, FLOOR, CEILING, TRUNC, ROUND, SIGNIF, EXPM1, LOG1P, ACOSH, ASINH, ATANH, COSPI, SINPI, TANPI, ANYNA, SYS_LOCALECONV, AGREP, AGREPL, APPLY, AS_ENVIRONMENT, AS_CALL, ENC2NATIVE, ENC2UTF8, SEARCH_FN, AS_FACTOR, AS_ORDERED, ADDNA, APERM, ADDMARGINS, DOT_SUBSET, DOT_SUBSET2, ASPLIT, ATTACH, DETACH, POS_TO_ENV, DOT_CLASS2, GC_TIME, AVE, BACKSOLVE, BQUOTE, CALL_FN, CHAR_TO_RAW, CHARMATCH, CUMSUM, CUMPROD, CUMMIN, CUMMAX, COMMENT_FN, COMMENT_ASSIGN, COMPLETE_CASES, COLSUMS, ROWSUMS, COLMEANS, ROWMEANS, DCAUCHY, DCHISQ, DEXP, CUT, DATE_FN, CAPABILITIES, BY_FN, BROWSER_FN, DGAMMA, DGEOM, DNBINOM, DIFF, DIAG, DO_CALL, DWEIBULL, DROP_FN, DROPLEVELS, DUPLICATED, ANYDUPLICATED, DIR_EXISTS, FILE_CREATE, FILE_ACCESS, ENVIRONMENT_ASSIGN, FORCEANDCALL, DECLARE, PRIMTRACE, PRIMUNTRACE, STANDARDGENERIC, DMULTINOM, DOTS_LENGTH, DOTS_NAMES, DOTS_ELT, IS_DATA_FRAME, FILE_APPEND, FILE_LINK, FILE_SYMLINK, SYS_READLINK, FILE_SIZE, FILE_MTIME, GL, HEAD_FN, TAIL_FN, INTERACTION, GCINFO, GCTORTURE, GCTORTURE2, IS_FINITE, IS_INFINITE, IS_NAN, IS_VECTOR, IS_LOADED, L10N_INFO, CSTACK_INFO, EXTSOFTVERSION, LIST_FILES, MEMORY_PROFILE, ENV_IS_LOCKED, LOCK_BINDING, BINDING_IS_LOCKED, UNLOCK_BINDING, LOCK_ENVIRONMENT, MAKE_ACTIVE_BINDING, BINDING_IS_ACTIVE, SYS_UMASK, NORMALIZE_PATH, OLDCLASS, OLDCLASS_ASSIGN, IS_OBJECT, PAIRLIST_CTOR, AS_PAIRLIST, OUTER, ON_EXIT, IS_S4_TEST, NARGS, SYS_NFRAME, SYS_CALL, SYS_FRAME, SYS_FUNCTION, PARENT_FRAME, IS_FUNCTION, METHODS, PAR, LAYOUT, FORMAT_DF, LIB_PATHS, FIND_PACKAGE, SYSTEM_FILE, FORMAT_INFO, PCAUCHY, QCAUCHY, PCHISQ, QCHISQ, PEXP, QEXP, PGAMMA, QGAMMA, PGEOM, QGEOM, PNBINOM, QNBINOM, PWEIBULL, QWEIBULL, RANGE_FN, PMIN, PMAX, PMATCH, PROP_TABLE, ROW_FN, COL_FN, RELEVEL, SEARCHPATHS, PATH_EXPAND, PCRE_CONFIG, RAWTOCHAR, QHYPER, PTUKEY, QPOIS, QBINOM, DUNIF, PUNIF, QUNIF, SIGN, SEQ_ALONG, SEQ_INT, SCAN, SINGLE, SINK, SINK_NUMBER, SORT_LIST, SOURCE, SYS_SOURCE, SPLIT, SWITCH, SUPPRESS_MESSAGES, STRWRAP, XTFRM, CACHE_CLASS, STARTSWITH, ENDSWITH, TOUPPER, TOLOWER, CHARTR, TRIMWS, TABULATE, SYSTEM2, WITH, LENGTHS, WRITE_TABLE, WRITE_CSV2, READ_FWF, SAVE_RDS, READ_RDS, WITH_RESTARTS, INVOKE_RESTART, TRY_INVOKE_RESTART, FIND_RESTART, COMPUTE_RESTARTS, IS_RESTART, RESTART_DESCRIPTION, WITH_CALLING_HANDLERS, NS_GET, NS_GET3, LIBRARY, REQUIRE, DATA_FN, PLOT_NEW, PLOT_WINDOW, LINES_FN, RECT_FN, POINTS_FN, TEXT_FN, PRETTY_FN, GRCONVERTX, GRCONVERTY, AXIS_FN, BOX_FN, PLOT_FN, TITLE_FN, SEGMENTS_FN, ABLINE_FN, POLYGON_FN, LOG10, LOG2, TAN, ASIN, ACOS, ATAN, ATAN2, GAMMAFN, LGAMMAFN, DIGAMMA, TRIGAMMA, FACTORIAL, LFACTORIAL, BETA, LBETA, CHOOSE, LCHOOSE, STRSPLIT, TRANSPOSE, IS_MATRIX, AS_MATRIX, SET_SEED, RUNIF, RNORM, FILTER_FN, REDUCE_FN, MAPPLY, VAR_COV, COR_FN, QUANTILE, MAD, WEIGHTED_MEAN, MAP_FN, NEGATE, EXPAND_GRID, FINDINTERVAL, MAKE_NAMES, MAKE_UNIQUE, RBINOM, RPOIS, RGAMMA, REXP, RBETA, RCHISQ, RT, RF_DIST, RLNORM, RLOGIS, RCAUCHY, RGEOM, RWEIBULL, RNBINOM, RHYPER, SUBSET_DF, TRANSFORM, WITHIN, AS_DATA_FRAME, MERGE_DF};
 
 /// Invoke a primitive with an unevaluated argument pairlist in the caller's
 /// environment — the same contract GNU primitives receive. The visibility
@@ -6106,6 +6107,7 @@ fn call_primitive_inner(
         TRANSFORM => transform_primitive(heap, interner, args, caller_env),
         WITHIN => within_primitive(heap, interner, args, caller_env),
         AS_DATA_FRAME => as_data_frame_primitive(heap, interner, args, caller_env),
+        MERGE_DF => merge_primitive(heap, interner, args, caller_env),
         DNORM | PNORM | QNORM | DPOIS | PPOIS | DBINOM | PBINOM | PBETA | DBETA | QBETA | DT | PT | QT | DF | PF | QF | DCAUCHY | DCHISQ | DEXP | PCAUCHY | QCAUCHY | PCHISQ | QCHISQ | PEXP | QEXP | PGAMMA | QGAMMA | PGEOM | QGEOM | PNBINOM | QNBINOM | PWEIBULL | QWEIBULL | QPOIS | QBINOM | DUNIF | PUNIF | QUNIF => dpq_primitive(heap, interner, id.0, args, caller_env),
         WITH_RESTARTS => with_restarts_primitive(heap, interner, args, caller_env),
         INVOKE_RESTART => invoke_restart_primitive(heap, interner, args, caller_env, false),
@@ -7894,7 +7896,7 @@ pub fn primitive_names() -> &'static [&'static str] {
         "Map", "expand.grid", "findInterval", "make.names", "make.unique",
         "rbinom", "rpois", "rgamma", "rexp", "rbeta", "rchisq", "rt", "rf",
         "rlnorm", "rlogis", "rcauchy", "rgeom", "rweibull", "rnbinom", "rhyper",
-        "subset", "transform", "within", "as.data.frame",
+        "subset", "transform", "within", "as.data.frame", "merge",
     ]
 }
 
@@ -8213,6 +8215,7 @@ pub fn primitive_id_for_name(name: &str) -> Option<u32> {
         "transform" => Some(TRANSFORM),
         "within" => Some(WITHIN),
         "as.data.frame" => Some(AS_DATA_FRAME),
+        "merge" => Some(MERGE_DF),
         "grconvertX" => Some(GRCONVERTX),
         "grconvertY" => Some(GRCONVERTY),
         // bzfile/gzfile share the raw-byte connection machinery — GNU pipes
@@ -9218,7 +9221,10 @@ fn data_frame_matrix_subset(
 /// use exactly as the object model represents NA_character_.
 fn interner_na_string(heap: &mut Heap, interner: &mut SymbolInterner) -> super::intern::InternedStr {
     let _ = heap;
-    interner.intern_string("NA")
+    // The NUL-prefixed sentinel is the codebase's NA_character_
+    /// representation exactly as GNU's NA_STRING — plain "NA" would be
+    /// indistinguishable from the literal string.
+    interner.intern_string("\0NA")
 }
 
 fn matrix_subset(
@@ -20296,6 +20302,309 @@ fn as_data_frame_primitive(
         return build_data_frame(heap, interner, vec![x], vec![column_name]);
     }
     build_data_frame(heap, interner, Vec::new(), Vec::new())
+}
+
+/// Encode one key element canonically: numerics compare by double
+/// value exactly as R's == (1L == 1), strings byte-exactly, NA as a
+/// shared sentinel so NA keys match NA keys exactly as merge's
+/// interaction machinery.
+fn merge_key_encode(heap: &Heap, interner: &SymbolInterner, column: ValueId, row: usize) -> String {
+    match heap.object(column) {
+        Some(RObject::Real(values)) => {
+            let v = values[row];
+            if v.is_nan() { "N".to_string() } else { format!("R{}", crate::value::print::format_real(v)) }
+        }
+        Some(RObject::Integer(values)) => {
+            let v = values[row];
+            if v == crate::value::object::NA_INTEGER { "N".to_string() } else { format!("R{}", crate::value::print::format_real(v as f64)) }
+        }
+        Some(RObject::Logical(values)) => {
+            let v = values[row];
+            if v == crate::value::object::NA_INTEGER { "N".to_string() } else { format!("R{}", v as f64) }
+        }
+        Some(RObject::String(values)) => {
+            let text = interner.string_text(values[row]);
+            if text == "NA" { "N".to_string() } else { format!("S{}", text) }
+        }
+        _ => "U".to_string(),
+    }
+}
+
+/// merge(x, y, by, all.x, all.y, sort) — GNU's equi-join exactly:
+/// common columns form the natural join, by overrides, matches expand
+/// cartesian on duplicate keys, outer joins pad with NA, sort=TRUE
+/// orders by the key columns with NA last, and the output carries join
+/// columns first exactly as merge.data.frame.
+fn merge_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let positional = eval_matched_args(heap, interner, args, caller_env,
+        &["x", "y", "by", "by.x", "by.y", "all", "all.x", "all.y", "sort", "suffixes"])?;
+    let x = positional.get(0).copied().flatten().unwrap_or(ValueId::NIL);
+    let y = positional.get(1).copied().flatten().unwrap_or(ValueId::NIL);
+    if x == ValueId::NIL || y == ValueId::NIL {
+        return Err(EvalError::TypeError("merge requires two data frames").into());
+    }
+    let x_names: Vec<String> = get_attrib(heap, interner, x, "names")
+        .map(|id| string_vec(heap, interner, id)).unwrap_or_default();
+    let y_names: Vec<String> = get_attrib(heap, interner, y, "names")
+        .map(|id| string_vec(heap, interner, id)).unwrap_or_default();
+    let x_columns = match heap.object(x) { Some(RObject::List(items)) => items.clone(), _ => Vec::new() };
+    let y_columns = match heap.object(y) { Some(RObject::List(items)) => items.clone(), _ => Vec::new() };
+    // Resolve the join column names: explicit `by` scalar/vector or the
+    /// natural intersection exactly as GNU.
+    let by_arg = positional.get(2).copied().flatten();
+    let by_names: Vec<String> = match by_arg {
+        Some(obj) if obj != ValueId::NIL => string_vec(heap, interner, obj),
+        _ => x_names.iter().filter(|n| y_names.contains(n)).cloned().collect(),
+    };
+    if by_names.is_empty() {
+        return Err(EvalError::TypeError("merge: no common columns for natural join").into());
+    }
+    let truth_of = |heap: &Heap, value: Option<ValueId>| -> Option<bool> {
+        value.and_then(|v| match heap.object(v) {
+            Some(RObject::Logical(vals)) => vals.first().map(|&x| x != 0 && x != crate::value::object::NA_INTEGER),
+            _ => None,
+        })
+    };
+    let all_flag = truth_of(heap, positional.get(5).copied().flatten()).unwrap_or(false);
+    let all_x = truth_of(heap, positional.get(6).copied().flatten()).unwrap_or(all_flag);
+    let all_y = truth_of(heap, positional.get(7).copied().flatten()).unwrap_or(all_flag);
+    let sort_flag = truth_of(heap, positional.get(8).copied().flatten()).unwrap_or(true);
+    let x_nrow = data_frame_shape(heap, interner, x).map(|s| s.0).unwrap_or(0);
+    let y_nrow = data_frame_shape(heap, interner, y).map(|s| s.0).unwrap_or(0);
+    // Key strings per row.
+    let key_of = |columns: &[ValueId], names: &[String], row: usize| -> String {
+        let parts: Vec<String> = by_names.iter().map(|key| {
+            let index = names.iter().position(|n| n == key).unwrap_or(0);
+            merge_key_encode(heap, interner, columns[index], row)
+        }).collect();
+        parts.join("\u{1}")
+    };
+    let x_keys: Vec<String> = (0..x_nrow).map(|r| key_of(&x_columns, &x_names, r)).collect();
+    let y_keys: Vec<String> = (0..y_nrow).map(|r| key_of(&y_columns, &y_names, r)).collect();
+    // Pairing: cartesian expansion on duplicate keys exactly as GNU,
+    /// x-row-major within each x row's matches.
+    let mut pairs: Vec<(Option<usize>, Option<usize>)> = Vec::new();
+    for xi in 0..x_nrow {
+        let mut matched = false;
+        for yi in 0..y_nrow {
+            if x_keys[xi] == y_keys[yi] {
+                pairs.push((Some(xi), Some(yi)));
+                matched = true;
+            }
+        }
+        if !matched && all_x {
+            pairs.push((Some(xi), None));
+        }
+    }
+    if all_y {
+        for yi in 0..y_nrow {
+            if !x_keys.iter().any(|k| k == &y_keys[yi]) {
+                pairs.push((None, Some(yi)));
+            }
+        }
+    }
+    // sort=TRUE orders by key columns — numeric keys numerically,
+    /// character byte-wise, NA last exactly as order().
+    if sort_flag {
+        let key_text = |pair: &(Option<usize>, Option<usize>)| -> String {
+            match pair.0 {
+                Some(xi) => x_keys[xi].clone(),
+                None => y_keys[pair.1.unwrap()].clone(),
+            }
+        };
+        pairs.sort_by(|a, b| {
+            let ka = key_text(a);
+            let kb = key_text(b);
+            // NA sorts after everything exactly as GNU's order na.last.
+            let a_na = ka.starts_with('N');
+            let b_na = kb.starts_with('N');
+            if a_na != b_na { return if a_na { std::cmp::Ordering::Greater } else { std::cmp::Ordering::Less }; }
+            // Numeric keys compare numerically through their encoded value.
+            let a_num = ka.strip_prefix('R').and_then(|s| s.parse::<f64>().ok());
+            let b_num = kb.strip_prefix('R').and_then(|s| s.parse::<f64>().ok());
+            match (a_num, b_num) {
+                (Some(av), Some(bv)) => av.partial_cmp(&bv).unwrap_or(std::cmp::Ordering::Equal),
+                _ => ka.cmp(&kb),
+            }
+        });
+    }
+    // Output assembly: join columns first, then x-only, then y-only —
+    /// values NA-filled on outer rows exactly as GNU's rbind machinery.
+    let column_value_at = |heap: &mut Heap, interner: &mut SymbolInterner, column: ValueId, row: Option<usize>| -> ValueId {
+        match row {
+            Some(r) => extract_elements(heap, column, &[r]).map_err(|_| ()).unwrap_or(ValueId::NIL),
+            None => na_column_like(heap, interner, column, 1),
+        }
+    };
+    let total = pairs.len();
+    let mut out_columns: Vec<ValueId> = Vec::new();
+    let mut out_names: Vec<String> = Vec::new();
+    let emit_column = |heap: &mut Heap, interner: &mut SymbolInterner,
+                       x_columns: &[ValueId], y_columns: &[ValueId],
+                       x_index: Option<usize>, y_index: Option<usize>,
+                       pairs: &[(Option<usize>, Option<usize>)]| -> ValueId {
+        // Column type follows whichever frame supplies it; rows take x's
+        /// value when present and y's otherwise exactly as GNU.
+        let template = match x_index {
+            Some(i) => x_columns[i],
+            None => y_columns[y_index.unwrap()],
+        };
+        let mut pieces: Vec<ValueId> = Vec::new();
+        for pair in pairs {
+            let value = if x_index.is_some() {
+                match pair.0 {
+                    Some(xi) => column_value_at(heap, interner, template, Some(xi)),
+                    None => na_column_like(heap, interner, template, 1),
+                }
+            } else {
+                match pair.1 {
+                    Some(yi) => column_value_at(heap, interner, template, Some(yi)),
+                    None => na_column_like(heap, interner, template, 1),
+                }
+            };
+            pieces.push(value);
+        }
+        concat_columns(heap, interner, template, &pieces)
+    };
+    // Join columns coalesce: x supplies matched rows, y supplies the
+    /// outer rows exactly as GNU's key carrying.
+    for key in &by_names {
+        let xi = x_names.iter().position(|n| n == key).unwrap_or(0);
+        let yi = y_names.iter().position(|n| n == key).unwrap_or(0);
+        let template = x_columns[xi];
+        let mut pieces: Vec<ValueId> = Vec::new();
+        for pair in &pairs {
+            let value = match pair.0 {
+                Some(xrow) => column_value_at(heap, interner, template, Some(xrow)),
+                None => {
+                    let yrow = pair.1.unwrap_or(0);
+                    let yvalue = column_value_at(heap, interner, y_columns[yi], Some(yrow));
+                    // The y value adopts x's column type exactly as GNU's
+                    /// common-type coercion — integer keys widening to
+                    /// real when x's key is real.
+                    coerce_column_piece(heap, interner, template, yvalue)
+                }
+            };
+            pieces.push(value);
+        }
+        let column = concat_columns(heap, interner, template, &pieces);
+        out_columns.push(column);
+        out_names.push(key.clone());
+    }
+    for (index, name) in x_names.iter().enumerate() {
+        if by_names.contains(name) { continue; }
+        let column = emit_column(heap, interner, &x_columns, &y_columns, Some(index), None, &pairs);
+        out_columns.push(column);
+        let suffix = if y_names.contains(name) { format!("{}.x", name) } else { name.clone() };
+        out_names.push(suffix);
+    }
+    for (index, name) in y_names.iter().enumerate() {
+        if by_names.contains(name) { continue; }
+        let column = emit_column(heap, interner, &x_columns, &y_columns, None, Some(index), &pairs);
+        out_columns.push(column);
+        let suffix = if x_names.contains(name) { format!("{}.y", name) } else { name.clone() };
+        out_names.push(suffix);
+    }
+    let _ = total;
+    build_data_frame(heap, interner, out_columns, out_names)
+}
+
+/// Build a length-n column of NA exactly like the template's type.
+fn na_column_like(heap: &mut Heap, interner: &mut SymbolInterner, template: ValueId, n: usize) -> ValueId {
+    match heap.object(template) {
+        Some(RObject::Real(_)) => heap.alloc(RObject::Real(vec![f64::from_bits(crate::value::object::NA_REAL_BITS); n])),
+        Some(RObject::Integer(_)) => heap.alloc(RObject::Integer(vec![crate::value::object::NA_INTEGER; n])),
+        Some(RObject::Logical(_)) => heap.alloc(RObject::Logical(vec![crate::value::object::NA_INTEGER; n])),
+        Some(RObject::String(_)) => {
+            let na = interner_na_string(heap, interner);
+            heap.alloc(RObject::String(vec![na; n]))
+        }
+        _ => heap.alloc(RObject::Logical(vec![crate::value::object::NA_INTEGER; n])),
+    }
+}
+
+/// Coerce one single-row piece toward the template column's type
+/// exactly as GNU's common-type coercion in joins.
+fn coerce_column_piece(heap: &mut Heap, interner: &mut SymbolInterner, template: ValueId, piece: ValueId) -> ValueId {
+    let same_type = std::mem::discriminant(heap.object(template).unwrap_or(&RObject::Nil))
+        == std::mem::discriminant(heap.object(piece).unwrap_or(&RObject::Nil));
+    if same_type {
+        return piece;
+    }
+    match (heap.object(template).cloned(), heap.object(piece).cloned()) {
+        (Some(RObject::Real(_)), Some(RObject::Integer(values))) => {
+            let converted: Vec<f64> = values.iter()
+                .map(|&v| if v == crate::value::object::NA_INTEGER { f64::from_bits(crate::value::object::NA_REAL_BITS) } else { v as f64 })
+                .collect();
+            heap.alloc(RObject::Real(converted))
+        }
+        (Some(RObject::Integer(_)), Some(RObject::Real(values))) => {
+            let converted: Vec<i32> = values.iter()
+                .map(|&v| if v.to_bits() == crate::value::object::NA_REAL_BITS || v.is_nan() { crate::value::object::NA_INTEGER } else { v as i32 })
+                .collect();
+            heap.alloc(RObject::Integer(converted))
+        }
+        (Some(RObject::String(_)), Some(other)) => {
+            // Character key columns stringify exactly as GNU's coercion.
+            let text = match other {
+                RObject::Real(values) => values.iter().map(|&v| crate::value::print::format_real(v)).collect::<Vec<_>>().join(""),
+                RObject::Integer(values) => values.iter().map(|&v| v.to_string()).collect::<Vec<_>>().join(""),
+                _ => String::new(),
+            };
+            let interned = interner.intern_string(&text);
+            heap.alloc(RObject::String(vec![interned]))
+        }
+        _ => piece,
+    }
+}
+
+/// Concatenate single-row pieces into one column preserving the
+/// template's type exactly as unlist-c row binding.
+fn concat_columns(heap: &mut Heap, interner: &mut SymbolInterner, template: ValueId, pieces: &[ValueId]) -> ValueId {
+    let _ = interner;
+    match heap.object(template) {
+        Some(RObject::Real(_)) => {
+            let mut out = Vec::new();
+            for piece in pieces {
+                if let Some(RObject::Real(values)) = heap.object(*piece) { out.extend(values.iter()); }
+                else if let Some(RObject::Integer(values)) = heap.object(*piece) {
+                    out.extend(values.iter().map(|&v| if v == crate::value::object::NA_INTEGER { f64::NAN } else { v as f64 }));
+                }
+            }
+            heap.alloc(RObject::Real(out))
+        }
+        Some(RObject::Integer(_)) => {
+            let mut out = Vec::new();
+            for piece in pieces {
+                match heap.object(*piece) {
+                    Some(RObject::Integer(values)) => out.extend(values.iter()),
+                    Some(RObject::Real(values)) => out.extend(values.iter().map(|&v| if v.is_nan() { crate::value::object::NA_INTEGER } else { v as i32 })),
+                    _ => {}
+                }
+            }
+            heap.alloc(RObject::Integer(out))
+        }
+        Some(RObject::Logical(_)) => {
+            let mut out = Vec::new();
+            for piece in pieces {
+                if let Some(RObject::Logical(values)) = heap.object(*piece) { out.extend(values.iter()); }
+            }
+            heap.alloc(RObject::Logical(out))
+        }
+        Some(RObject::String(_)) => {
+            let mut out = Vec::new();
+            for piece in pieces {
+                if let Some(RObject::String(values)) = heap.object(*piece) { out.extend(values.iter()); }
+            }
+            heap.alloc(RObject::String(out))
+        }
+        _ => ValueId::NIL,
+    }
 }
 
 /// GNU's weighted sampling exactly as random.c: FixupProb validation and

@@ -868,7 +868,10 @@ fn format_cell(heap: &Heap, interner: &SymbolInterner, column: &RObject, index: 
         RObject::String(values) => {
             let text = interner.string_text(values[index]);
             if text == "\0NA" {
-                "NA".to_string()
+                // Frame cells render character NA bracketed exactly as
+                /// GNU's format.char — distinct from the bare NA of
+                /// matrix and vector printing.
+                "<NA>".to_string()
             } else {
                 text.to_string()
             }
