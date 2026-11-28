@@ -48,7 +48,7 @@ pub fn call_primitive(
     // Braces and parens propagate the final inner visibility exactly as
     /// GNU — `{ invisible(1) }` returns invisibly — so they join .Internal
     /// and eval in the propagation exceptions.
-    if result.is_ok() && id.0 != INTERNAL && id.0 != EVAL_FN && id.0 != LOCAL_FN && id.0 != BRACE && id.0 != PAREN && id.0 != SUPPRESS_WARNINGS && id.0 != USEMETHOD && id.0 != NEXTMETHOD && id.0 != SYSTEM && id.0 != OPTIONS_FN && id.0 != WITH_RESTARTS && id.0 != WITH_CALLING_HANDLERS && id.0 != PAR && id.0 != PALETTE_FN && id.0 != HIST && id.0 != BARPLOT && id.0 != BOXPLOT && id.0 != CURVE_FN && id.0 != MATPLOT && id.0 != SVG_FN && id.0 != PNG_FN && id.0 != DEV_OFF && id.0 != PIE_FN && id.0 != STRIPCHART && id.0 != DOTCHART && id.0 != DENSITY_FN && id.0 != GRID_FN && id.0 != RUG_FN && id.0 != TRYCATCH {
+    if result.is_ok() && id.0 != INTERNAL && id.0 != EVAL_FN && id.0 != LOCAL_FN && id.0 != BRACE && id.0 != PAREN && id.0 != SUPPRESS_WARNINGS && id.0 != USEMETHOD && id.0 != NEXTMETHOD && id.0 != PLOT_FN && id.0 != SYSTEM && id.0 != OPTIONS_FN && id.0 != WITH_RESTARTS && id.0 != WITH_CALLING_HANDLERS && id.0 != PAR && id.0 != PALETTE_FN && id.0 != HIST && id.0 != BARPLOT && id.0 != BOXPLOT && id.0 != CURVE_FN && id.0 != MATPLOT && id.0 != SVG_FN && id.0 != PNG_FN && id.0 != DEV_OFF && id.0 != PIE_FN && id.0 != STRIPCHART && id.0 != DOTCHART && id.0 != DENSITY_FN && id.0 != GRID_FN && id.0 != RUG_FN && id.0 != TRYCATCH {
         heap.visible = !matches!(
             id.0,
             ASSIGN | SUPERASSIGN | PRINT | CAT | INVISIBLE | WHILE | REPEAT | FOR
@@ -56,7 +56,7 @@ pub fn call_primitive(
                 | SYS_SETENV | SYS_UNSETENV | UNLINK | DIR_CREATE | SAVE | RM | DPUT
                 | WARNING | MESSAGE_FN | CLOSE_FN | FLUSH_FN | WRITECHAR | SETCLASS | STOPIFNOT
                 | WRITEBIN | ATTACH | DETACH | LOCK_BINDING | UNLOCK_BINDING | LOCK_ENVIRONMENT
-                | MAKE_ACTIVE_BINDING | ON_EXIT | LAYOUT | LIB_PATHS | SINK | SOURCE | SYS_SOURCE | SUPPRESS_MESSAGES | WRITE_TABLE | WRITE_CSV2 | SAVE_RDS | DATA_FN | PLOT_NEW | PLOT_WINDOW | LINES_FN | RECT_FN | POINTS_FN | TEXT_FN | AXIS_FN | BOX_FN | PLOT_FN | TITLE_FN | SEGMENTS_FN | ABLINE_FN | POLYGON_FN | ARROWS_FN | STEM | SET_SEED | LIBRARY | REQUIRE | RNGKIND
+                | MAKE_ACTIVE_BINDING | ON_EXIT | LAYOUT | LIB_PATHS | SINK | SOURCE | SYS_SOURCE | SUPPRESS_MESSAGES | WRITE_TABLE | WRITE_CSV2 | SAVE_RDS | DATA_FN | PLOT_NEW | PLOT_WINDOW | LINES_FN | RECT_FN | POINTS_FN | TEXT_FN | AXIS_FN | BOX_FN | TITLE_FN | SEGMENTS_FN | ABLINE_FN | POLYGON_FN | ARROWS_FN | STEM | SET_SEED | LIBRARY | REQUIRE | RNGKIND
         );
     }
     result
@@ -4687,7 +4687,7 @@ pub fn call_primitive_inner(
         PRETTY_FN => pretty_primitive(heap, interner, args, caller_env),
         AXIS_FN => axis_primitive(heap, interner, args, caller_env),
         BOX_FN => box_primitive(heap, interner, args, caller_env),
-        PLOT_FN => plot_primitive(heap, interner, args, caller_env),
+        PLOT_FN => plot_generic(heap, interner, args, caller_env),
         TITLE_FN => title_primitive(heap, interner, args, caller_env),
         SEGMENTS_FN => segments_primitive(heap, interner, args, caller_env),
         ABLINE_FN => abline_primitive(heap, interner, args, caller_env),
@@ -17759,6 +17759,45 @@ pub fn first_frame_value(heap: &Heap, env: ValueId) -> Option<ValueId> {
         }
         _ => None,
     }
+}
+
+
+/// plot(x, ...) as GNU arranges it — a generic: classed objects route to
+/// plot.<class> through the method-lookup chain exactly as UseMethod does,
+/// and only the default fallthrough reaches the drawing primitive. The
+/// method's own visibility governs the result exactly as GNU's dispatch.
+pub fn plot_generic(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    // The object evaluates once — exactly as UseMethod's dispatch argument.
+    let raw = raw_args(heap, args);
+    if let Some(expr) = raw.first() {
+        let v = eval(heap, interner, *expr, caller_env)?;
+        let object = force_if_promise(heap, interner, v)?;
+        let classes = class_vector(heap, interner, object);
+        for class in &classes {
+            let sym = interner.intern_symbol(&format!("plot.{class}"));
+            // plot.default is the primitive itself — looking it up would
+            // recurse, exactly why GNU's default lives outside the chain.
+            if class != "default" {
+                if let Some((_, binding)) = r_core::env::lookup(heap, caller_env, sym) {
+                    let method = force_if_promise(heap, interner, binding.value)?;
+                    let remaining: Vec<String> = Vec::new();
+                    heap.s3_dispatch.push(("plot".to_string(), object, remaining));
+                    let result = s3_apply(heap, interner, method, object, caller_env);
+                    heap.s3_dispatch.pop();
+                    return result;
+                }
+            }
+        }
+    }
+    // The default drawing path is plot.default exactly — invisible NULL.
+    let result = plot_primitive(heap, interner, args, caller_env)?;
+    heap.visible = false;
+    Ok(result)
 }
 
 /// UseMethod(generic, object) — walk the object's class vector for
