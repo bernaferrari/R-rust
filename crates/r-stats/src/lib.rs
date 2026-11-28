@@ -21,6 +21,9 @@ use r_core::object::RObject;
 /// Density/distribution family over nmath's pure-Rust cores — GNU's exact
 /// positional+named argument resolution with scalar parameter defaults,
 /// vectorized over the first argument exactly as GNU's DPQ dispatch.
+pub mod linpack;
+pub mod loessf;
+
 pub fn dpq_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
