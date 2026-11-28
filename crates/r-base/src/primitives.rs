@@ -686,7 +686,12 @@ pub fn call_primitive_inner(
                 }
                 cursor = cdr;
             }
-            let roots = string_vec(heap, interner, path_arg);
+            // GNU's default path is the working directory exactly as the
+            // usage line arranges — an absent argument still enumerates.
+            let mut roots = string_vec(heap, interner, path_arg);
+            if roots.is_empty() {
+                roots.push(".".to_string());
+            }
             let mut out: Vec<r_core::intern::InternedStr> = Vec::new();
             for root in &roots {
                 // GNU's recursive listing leads with the root itself —
@@ -699,6 +704,47 @@ pub fn call_primitive_inner(
                 // The echoed root line keeps the user-facing text exactly as
                 // GNU; descent walks the resolved host path, denial mirroring
                 // the unreadable-directory empty listing.
+                // Implied directories enumerate from key structure exactly
+                // as the flat store arranges — every ancestor segment of
+                // every key beneath the root is a directory that exists.
+                if heap.browser_files_enabled {
+                    let root_trimmed = root.trim_end_matches('/');
+                    let root_prefix = if root_trimmed == "." || root_trimmed.is_empty() {
+                        String::new()
+                    } else {
+                        format!("{root_trimmed}/")
+                    };
+                    let mut keys: Vec<String> = heap.browser_files.keys().cloned().collect();
+                    keys.sort();
+                    let mut implied: Vec<String> = Vec::new();
+                    for key in &keys {
+                        if !root_prefix.is_empty() && !key.starts_with(&root_prefix) {
+                            continue;
+                        }
+                        let remainder = &key[root_prefix.len()..];
+                        let segments: Vec<&str> = remainder.split('/').collect();
+                        let mut acc = String::new();
+                        for seg in &segments[..segments.len().saturating_sub(1)] {
+                            if !acc.is_empty() { acc.push('/'); }
+                            acc.push_str(seg);
+                            if !implied.contains(&acc) {
+                                implied.push(acc.clone());
+                                if !recursive {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    for rel in implied {
+                        let text = if full_names {
+                            if root_trimmed == "." { format!("./{rel}") } else { format!("{root_trimmed}/{rel}") }
+                        } else {
+                            rel
+                        };
+                        out.push(interner.intern_string(&text));
+                    }
+                    continue;
+                }
                 let host_root = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), root);
                 let mut stack: Vec<(String, String)> = match host_root {
                     Some(host) => vec![(host, String::new())],
@@ -1375,16 +1421,23 @@ pub fn call_primitive_inner(
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
-                    let ok = r_core::path_policy::resolve_host_path(
-                        heap.path_policy.as_ref(),
-                        path,
-                    )
-                    .and_then(|host| {
-                        std::fs::metadata(&host)
-                            .map(|_| std::fs::set_permissions(&host, std::fs::Permissions::from_mode(mode)).is_ok())
-                            .ok()
-                    })
-                    .unwrap_or(false);
+                    let ok = if heap.browser_files_enabled {
+                        // Permission bits have no meaning over a keyspace
+                        // — the operation answers exactly the existence
+                        // GNU keys it on, nothing more.
+                        r_core::vfile::file_exists(heap, path)
+                    } else {
+                        r_core::path_policy::resolve_host_path(
+                            heap.path_policy.as_ref(),
+                            path,
+                        )
+                        .and_then(|host| {
+                            std::fs::metadata(&host)
+                                .map(|_| std::fs::set_permissions(&host, std::fs::Permissions::from_mode(mode)).is_ok())
+                                .ok()
+                        })
+                        .unwrap_or(false)
+                    };
                     out.push(ok as i32);
                 }
                 #[cfg(not(unix))]
@@ -6170,9 +6223,7 @@ pub fn call_primitive_inner(
                     _ => String::new(),
                 };
                 if !path.is_empty() {
-                    r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path)
-                        .map(|host| std::fs::write(&host, format!("{text}\n")))
-                        .unwrap_or_else(|| Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "path refused")))
+                    r_core::vfile::write_file(heap, &path, format!("{text}\n").as_bytes())
                         .map_err(|e| RSignal::from(EvalError::TypeError(Box::leak(format!("cannot open file: {e}").into_boxed_str()))))?;
                     heap.visible = false;
                     return Ok(operands[0]);
@@ -6193,8 +6244,12 @@ pub fn call_primitive_inner(
                 }
                 _ => return Err(EvalError::TypeError("dget requires a file path").into()),
             };
-            let source = std::fs::read_to_string(&path)
+            // The central contract owns the read exactly as every file
+            // primitive arranges — virtual bytes, enabled-mode misses,
+            // the gated host otherwise.
+            let bytes = r_core::vfile::read_file(heap, &path)
                 .map_err(|e| RSignal::from(EvalError::TypeError(Box::leak(format!("cannot open file: {e}").into_boxed_str()))))?;
+            let source = String::from_utf8_lossy(&bytes).to_string();
             let parsed = parse_source(heap, interner, &source)?;
             let items = match heap.object(parsed) {
                 Some(RObject::Expression(items)) => items.clone(),
@@ -13016,16 +13071,12 @@ pub fn file_remove_primitive(
         let v = eval(heap, interner, *expr, caller_env)?;
         paths.extend(string_vec(heap, interner, v));
     }
-    let policy = heap.path_policy.clone();
-    let out: Vec<i32> = paths
-        .iter()
-        .map(|p| {
-            match r_core::path_policy::resolve_host_path(policy.as_ref(), p) {
-                Some(host) if std::fs::remove_file(&host).is_ok() => 1,
-                _ => 0,
-            }
-        })
-        .collect();
+    let mut out: Vec<i32> = Vec::new();
+    for p in &paths {
+        // The central contract owns removal exactly as unlink arranges.
+        let removed = r_core::vfile::remove_file(heap, p).is_ok();
+        out.push(if removed { 1 } else { 0 });
+    }
     Ok(heap.alloc(RObject::Logical(out)))
 }
 
