@@ -9109,6 +9109,55 @@ pub fn colon_primitive(
     caller_env: ValueId,
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 2)?;
+    // GNU's factor interaction exactly as `?.` arranges: colon between
+    // factors crosses them — the first factor's levels varying slowest,
+    // pair names joined through the colon separator, NA codes poisoning.
+    if is_factor(heap, interner, operands[0]) && is_factor(heap, interner, operands[1]) {
+        let codes_of = |v: ValueId| -> Vec<i32> {
+            match heap.object(v) {
+                Some(RObject::Integer(vals)) => vals.clone(),
+                _ => Vec::new(),
+            }
+        };
+        let levels_of = |v: ValueId| -> Vec<String> {
+            match get_attrib(heap, interner, v, "levels") {
+                Some(id) => match heap.object(id) {
+                    Some(RObject::String(vals)) => vals.iter().map(|x| interner.string_text(*x).to_string()).collect(),
+                    _ => Vec::new(),
+                },
+                None => Vec::new(),
+            }
+        };
+        let acodes = codes_of(operands[0]);
+        let bcodes = codes_of(operands[1]);
+        let alevels = levels_of(operands[0]);
+        let blevels = levels_of(operands[1]);
+        let nb = blevels.len() as i32;
+        if !acodes.is_empty() && !bcodes.is_empty() && nb > 0 {
+            let n = acodes.len().max(bcodes.len());
+            let mut out = Vec::with_capacity(n);
+            for i in 0..n {
+                let a = acodes[i % acodes.len()];
+                let b = bcodes[i % bcodes.len()];
+                if a == r_core::object::NA_INTEGER || b == r_core::object::NA_INTEGER {
+                    out.push(r_core::object::NA_INTEGER);
+                } else {
+                    out.push((a - 1) * nb + b);
+                }
+            }
+            let mut level_texts = Vec::new();
+            for al in &alevels {
+                for bl in &blevels {
+                    level_texts.push(interner.intern_string(&format!("{}:{}", al, bl)));
+                }
+            }
+            let result = heap.alloc(RObject::Integer(out));
+            let levels_vec = heap.alloc(RObject::String(level_texts));
+            let result = copy_with_attrib(heap, interner, result, "levels", levels_vec).map_err(RSignal::from)?;
+            let class_vec = heap.alloc(RObject::String(vec![interner.intern_string("factor")]));
+            return copy_with_attrib(heap, interner, result, "class", class_vec).map_err(RSignal::from);
+        }
+    }
     let numeric = |value: ValueId| -> Result<(f64, bool), RSignal> {
         match heap.object(value) {
             Some(RObject::Integer(v)) if !v.is_empty() => Ok((v[0] as f64, true)),
@@ -23266,9 +23315,19 @@ pub fn bind_primitive(
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
             _ => None,
         };
+        // GNU's deparse naming exactly: untagged operands take their
+        // column or row name from the expression itself — a plain symbol
+        // answers its name precisely as cbind's label contract arranges.
+        let effective_tag = match (&tag_name, heap.object(car)) {
+            (None, Some(RObject::Symbol { name, .. })) => {
+                let text = interner.symbol_name(*name).to_string();
+                if text.is_empty() { None } else { Some(text) }
+            }
+            _ => tag_name,
+        };
         let value = eval(heap, interner, car, caller_env)?;
         operands.push(force_if_promise(heap, interner, value)?);
-        tags.push(tag_name);
+        tags.push(effective_tag);
         cursor = next;
     }
     if operands.is_empty() {

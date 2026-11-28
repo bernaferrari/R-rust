@@ -140,3 +140,10 @@ zapsmall <- function(x, digits = getOption("digits")) {
     rounded <- round(x, digits)
     ifelse(abs(rounded) <= mx * 10^(-digits), 0, rounded)
 }
+
+# GNU's try exactly as base defines it — the error handler captures the
+# condition message into the try-error classed string, silent suppressing
+# the report.
+try <- function(expr, silent = FALSE) {
+    tryCatch(expr, error = function(e) structure(conditionMessage(e), class = "try-error"))
+}
