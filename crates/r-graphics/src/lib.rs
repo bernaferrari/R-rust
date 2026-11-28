@@ -963,7 +963,7 @@ pub fn axis_primitive(
     let mut label_positions = Vec::new();
     for value in &at {
         if horizontal {
-            let u = if side == 1 { *value } else { *value };
+            let u = *value;
             let v = if side == 1 { usr[2] } else { usr[3] };
             let (dx, dy) = heap.graphics.user_to_device(u, v);
             commands.push(PathCommand::MoveTo(dx, dy));
@@ -3479,7 +3479,7 @@ pub fn barplot_primitive(
         plot_window_primitive(heap, interner, win_args, caller_env)?;
         // Bars: stacked series accumulate; beside rows sit at their own
         // positions exactly as GNU's per-series loop.
-        let col_default = if vector_input { "grey" } else { "grey" };
+        let col_default = "grey";
         for r in 0..nrow {
             let mut base = vec![0.0f64; ncol];
             if r > 0 && !beside {
@@ -3509,13 +3509,7 @@ pub fn barplot_primitive(
     }
     // Midpoints returned invisibly exactly as GNU — beside matrices
     // shape them back to rows.
-    let out: Vec<f64> = if beside && !vector_input {
-        wm
-    } else if beside {
-        wm
-    } else {
-        wm
-    };
+    let out: Vec<f64> = wm;
     let result = heap.alloc(RObject::Real(out));
     heap.visible = false;
     Ok(result)

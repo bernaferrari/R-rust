@@ -10,7 +10,7 @@
 // Attribute machinery lives in r-core's object model exactly as the DAG
 // requires — re-exported here so the registry's existing paths resolve.
 pub use r_stats::*;
-use r_core::prim::pairlist_parts;
+use r_core::prim::{pairlist_car_cdr, pairlist_parts};
 use r_graphics::*;
 pub use r_core::attrib::{attrib_names, get_attrib, get_attrib_public, is_date_classed, is_posixct_classed, string_vec_pub};
 pub use r_core::prim::*;
@@ -3989,15 +3989,11 @@ pub fn call_primitive_inner(
                 }
                 let mut items = Vec::new();
                 let mut cursor = dn_list;
-                loop {
-                    match heap.object(cursor) {
-                        Some(RObject::Pairlist { car, cdr, .. }) => {
-                            items.push(*car);
-                            if *cdr == ValueId::NIL { break; }
-                            cursor = *cdr;
-                        }
-                        _ => break,
-                    }
+                while let Some(RObject::Pairlist { car, cdr, .. }) = heap.object(cursor) {
+                    let (car, cdr) = (*car, *cdr);
+                    items.push(car);
+                    if cdr == ValueId::NIL { break; }
+                    cursor = cdr;
                 }
                 let list_obj = heap.alloc(RObject::List(items));
                 return copy_with_attrib(heap, interner, with_dim, "dimnames", list_obj).map_err(RSignal::from);
@@ -4822,11 +4818,8 @@ pub fn call_primitive_inner(
             // Walking the enclosure chain to its end reaches base exactly
             // as GNU's baseenv — the last environment before empty.
             let mut cursor = caller_env;
-            loop {
-                let enclosure = match heap.object(cursor) {
-                    Some(RObject::Environment { enclos, .. }) => *enclos,
-                    _ => break,
-                };
+            while let Some(RObject::Environment { enclos, .. }) = heap.object(cursor) {
+                let enclosure = *enclos;
                 if enclosure == ValueId::EMPTY_ENV || enclosure == ValueId::NIL {
                     break;
                 }
@@ -6923,7 +6916,7 @@ pub fn propagate_attributes(
 
 
 
-enum Numeric {
+pub enum Numeric {
     Integer(Vec<i32>),
     Real(Vec<f64>),
 }
@@ -7097,17 +7090,13 @@ pub fn sequence_elements(heap: &mut Heap, seq: ValueId) -> Result<Vec<ValueId>, 
         Some(RObject::Pairlist { .. }) => {
             let mut out = Vec::new();
             let mut cursor = seq;
-            loop {
-                match heap.object(cursor) {
-                    Some(RObject::Pairlist { car, cdr, .. }) => {
-                        out.push(*car);
-                        if *cdr == ValueId::NIL {
-                            break;
-                        }
-                        cursor = *cdr;
-                    }
-                    _ => break,
+            while let Some(RObject::Pairlist { car, cdr, .. }) = heap.object(cursor) {
+                let (car, cdr) = (*car, *cdr);
+                out.push(car);
+                if cdr == ValueId::NIL {
+                    break;
                 }
+                cursor = cdr;
             }
             return Ok(out);
         }
@@ -11015,13 +11004,13 @@ pub fn seq_datetime(
     } else if let Some(to_id) = to {
         let to_v = first_real(heap, to_id).map_err(RSignal::from)?;
         let forward = to_v >= from_v;
-        let mut k: i64 = if forward { 0 } else { 0 };
+        let mut k: i64 = 0;
         for _ in 0..100_000_000 {
             let v = step(from_v, k);
             if forward && v > to_v { break; }
             if !forward && v < to_v { break; }
             out.push(v);
-            k += if mult >= 0 { 1 } else { 1 };
+            k += 1;
             // Safety: mult sign determines direction; when negative the
             // fixed/civil steps already walk backwards.
             if mult < 0 && forward { break; }
@@ -13126,11 +13115,7 @@ pub fn file_path_primitive(
     // each component vector contributes its i-th element to the i-th path.
     let mut columns: Vec<Vec<String>> = Vec::new();
     let mut cursor = args;
-    loop {
-        let (car, cdr) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, .. }) => (*car, *cdr),
-            _ => break,
-        };
+    while let Some((car, cdr)) = pairlist_car_cdr(heap, cursor) {
         let evaluated = eval(heap, interner, car, caller_env)?;
         let value = force_if_promise(heap, interner, evaluated)?;
         columns.push(string_vec(heap, interner, value));
@@ -13638,7 +13623,7 @@ pub fn factor_primitive(
 }
 
 /// One conversion spec parsed out of a sprintf format string.
-struct ConvSpec {
+pub struct ConvSpec {
     zero_pad: bool,
     plus: bool,
     minus: bool,
@@ -16304,11 +16289,7 @@ pub fn with_primitive(
     // The expression must NOT evaluate here — read the raw pairlist.
     let mut entries: Vec<ValueId> = Vec::new();
     let mut cursor = args;
-    loop {
-        let (car, cdr) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, .. }) => (*car, *cdr),
-            _ => break,
-        };
+    while let Some((car, cdr)) = pairlist_car_cdr(heap, cursor) {
         entries.push(car);
         if cdr == ValueId::NIL {
             break;
@@ -20332,7 +20313,7 @@ pub fn ordered_primitive(
 
 /// Keys for ordering — numeric and character vectors both participate
 /// exactly as GNU's radix order admits them.
-enum OrderKey {
+pub enum OrderKey {
     Real(f64),
     Text(String),
     Na,
@@ -22808,22 +22789,18 @@ pub fn iteration_names(heap: &Heap, interner: &SymbolInterner, x: ValueId) -> Ve
     if matches!(heap.object(x), Some(RObject::Pairlist { .. })) {
         let mut out = Vec::new();
         let mut cursor = x;
-        loop {
-            match heap.object(cursor) {
-                Some(RObject::Pairlist { cdr, tag, .. }) => {
-                    match heap.object(*tag) {
-                        Some(RObject::Symbol { name, .. }) => {
-                            out.push(interner.symbol_name(*name).to_string());
-                        }
-                        _ => out.push(String::new()),
-                    }
-                    if *cdr == ValueId::NIL {
-                        break;
-                    }
-                    cursor = *cdr;
+        while let Some(RObject::Pairlist { cdr, tag, .. }) = heap.object(cursor) {
+            let (cdr, tag) = (*cdr, *tag);
+            match heap.object(tag) {
+                Some(RObject::Symbol { name, .. }) => {
+                    out.push(interner.symbol_name(*name).to_string());
                 }
-                _ => break,
+                _ => out.push(String::new()),
             }
+            if cdr == ValueId::NIL {
+                break;
+            }
+            cursor = cdr;
         }
         return out;
     }

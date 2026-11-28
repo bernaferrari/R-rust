@@ -797,7 +797,7 @@ pub fn sample_primitive(
     if !population.is_empty() {
         // Integer population path — sample.int and the numeric shortcut.
         let n = population.len();
-        let k = size.unwrap_or(if replace { n } else { n });
+        let k = size.unwrap_or(n);
         if !replace && k > n {
             return Err(RSignal::Error(EvalError::Condition(
                 "cannot take a sample larger than the population when 'replace = FALSE'".to_string(),

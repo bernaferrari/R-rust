@@ -297,28 +297,32 @@ pub fn decode_payload(
             }
             T_LGL => {
                 let mut items = Vec::with_capacity(node.len as usize);
-                for chunk in node.data.chunks_exact(4) {
-                    items.push(i32::from_le_bytes(chunk.try_into().ok()?));
+                let (chunks, _) = node.data.as_chunks::<4>();
+                for chunk in chunks {
+                    items.push(i32::from_le_bytes(*chunk));
                 }
                 heap.alloc(RObject::Logical(items))
             }
             T_INT => {
                 let mut items = Vec::with_capacity(node.len as usize);
-                for chunk in node.data.chunks_exact(4) {
-                    items.push(i32::from_le_bytes(chunk.try_into().ok()?));
+                let (chunks, _) = node.data.as_chunks::<4>();
+                for chunk in chunks {
+                    items.push(i32::from_le_bytes(*chunk));
                 }
                 heap.alloc(RObject::Integer(items))
             }
             T_REAL => {
                 let mut items = Vec::with_capacity(node.len as usize);
-                for chunk in node.data.chunks_exact(8) {
-                    items.push(f64::from_bits(u64::from_le_bytes(chunk.try_into().ok()?)));
+                let (chunks, _) = node.data.as_chunks::<8>();
+                for chunk in chunks {
+                    items.push(f64::from_bits(u64::from_le_bytes(*chunk)));
                 }
                 heap.alloc(RObject::Real(items))
             }
             T_CPLX => {
                 let mut items = Vec::with_capacity(node.len as usize);
-                for chunk in node.data.chunks_exact(16) {
+                let (chunks, _) = node.data.as_chunks::<16>();
+                for chunk in chunks {
                     let r = f64::from_bits(u64::from_le_bytes(chunk[..8].try_into().ok()?));
                     let i = f64::from_bits(u64::from_le_bytes(chunk[8..].try_into().ok()?));
                     items.push(RComplex { r, i });

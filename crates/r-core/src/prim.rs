@@ -438,3 +438,11 @@ pub fn pairlist_parts(heap: &Heap, value: crate::id::ValueId) -> Option<(crate::
         _ => None,
     }
 }
+/// The (car, cdr) half of the pairlist-walking idiom exactly as
+/// pairlist_parts shapes the triple — owned copies end the borrow.
+pub fn pairlist_car_cdr(heap: &Heap, value: crate::id::ValueId) -> Option<(crate::id::ValueId, crate::id::ValueId)> {
+    match heap.object(value) {
+        Some(crate::object::RObject::Pairlist { car, cdr, .. }) => Some((*car, *cdr)),
+        _ => None,
+    }
+}
