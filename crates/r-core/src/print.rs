@@ -210,7 +210,7 @@ fn format_attributes(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> 
         match heap.object(cursor) {
             Some(RObject::Pairlist { car, cdr, tag }) => {
                 let name = match heap.object(*tag) {
-                    Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+                    Some(RObject::Symbol { name, .. }) => deparse_name(interner.symbol_name(*name)),
                     _ => String::new(),
                 };
                 if !name.is_empty() && name != "names" {
@@ -1078,6 +1078,45 @@ fn format_factor(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Stri
 /// print.language — infix operators render infix, calls parenthesize
 /// comma-space-separated arguments, missing arguments print empty, and
 /// atomic literals carry their literal form.
+/// GNU's syntactic-name test exactly as make.names' inverse: letters,
+/// digits, dot and underscore, never leading with a digit or a digit
+/// after an initial dot, and never a reserved word.
+fn is_syntactic_name(text: &str) -> bool {
+    const RESERVED: &[&str] = &[
+        "if", "else", "repeat", "while", "function", "for", "in", "next", "break",
+        "TRUE", "FALSE", "NULL", "Inf", "NaN", "NA", "NA_integer_", "NA_real_",
+        "NA_complex_", "NA_character_",
+    ];
+    if text.is_empty() || RESERVED.contains(&text) {
+        return false;
+    }
+    let mut chars = text.chars();
+    let first = chars.next().unwrap();
+    if !(first.is_ascii_alphabetic() || first == '.') {
+        return false;
+    }
+    if first == '.' {
+        if let Some(second) = chars.next() {
+            if second.is_ascii_digit() {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+    text.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_')
+}
+
+/// Deparse a name exactly as GNU: syntactic names render bare,
+/// non-syntactic names backtick-quote.
+fn deparse_name(text: &str) -> String {
+    if is_syntactic_name(text) {
+        text.to_string()
+    } else {
+        format!("`{}`", text)
+    }
+}
+
 pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String {
     // S4 objects deparse as their constructing new() call exactly as GNU —
     // class name first, slots in definition order with deparsed values.
@@ -1169,7 +1208,7 @@ pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String
                         deparse(heap, interner, *v)
                     };
                     match item_tags.get(i).cloned().flatten() {
-                        Some(tag) => format!("{tag} = {value_text}"),
+                        Some(tag) => format!("{} = {}", deparse_name(&tag), value_text),
                         None => value_text,
                     }
                 })

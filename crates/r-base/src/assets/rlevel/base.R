@@ -668,3 +668,6 @@ data.class <- function(x) {
     sizeof.pointer = 8L,
     sizeof.time_t = 8L
 )
+
+# GNU's symbol coercion exactly as the primitive's string-to-name conversion.
+as.symbol <- as.name
