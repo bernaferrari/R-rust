@@ -2524,6 +2524,30 @@ pub fn png_primitive(
     Ok(ValueId::NIL)
 }
 
+/// pdf() — opens the vector document device exactly as GNU's pdf
+/// device, the scene flushing as a PDF 1.4 document at dev.off.
+pub fn pdf_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let slots = eval_matched_args(heap, interner, args, caller_env,
+        &["file", "width", "height", "family", "title", "fonts", "pointsize", "bg", "fg"])?;
+    let filename = slots[0]
+        .and_then(|v| string_operand(heap, interner, v))
+        .unwrap_or_else(|| "Rplots.pdf".to_string());
+    // GNU's page geometry in inches at 72 points exactly as the device
+    // contract pins — the defaults are the 7x7 inch device square.
+    let width = slots[1].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(7.0) * 72.0;
+    let height = slots[2].and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(7.0) * 72.0;
+    heap.graphics.set_device_size(width, height);
+    heap.graphics.device_file = Some(filename);
+    heap.graphics.device_kind = r_core::graphics::state::DeviceKind::Pdf;
+    heap.visible = false;
+    Ok(ValueId::NIL)
+}
+
 /// dev.off() — flushes the scene to the device file exactly as GNU's
 /// close-then-write, returning the closed device number invisibly.
 pub fn dev_off_primitive(
@@ -2544,6 +2568,16 @@ pub fn dev_off_primitive(
                 let png_bytes = render_scene_png(heap.graphics.scene())
                     .ok_or(EvalError::TypeError("png rasterization failed"))?;
                 if r_core::vfile::write_file(heap, &filename, &png_bytes).is_err() {
+                    return Err(EvalError::TypeError("cannot open device file").into());
+                }
+            }
+            r_core::graphics::state::DeviceKind::Pdf => {
+                let scene = heap.graphics.scene().clone();
+                let mut bytes: Vec<u8> = Vec::new();
+                if r_graphics_engine::write_pdf(&[scene], &mut bytes).is_err() {
+                    return Err(EvalError::TypeError("pdf serialization failed").into());
+                }
+                if r_core::vfile::write_file(heap, &filename, &bytes).is_err() {
                     return Err(EvalError::TypeError("cannot open device file").into());
                 }
             }

@@ -52,6 +52,7 @@ pub struct GraphicsParState {
 pub enum DeviceKind {
     Svg,
     Png,
+    Pdf,
 }
 
 /// The validated figure transition exactly as the old world's

@@ -11,6 +11,7 @@ pub const RLEVEL_SOURCES: &[(&str, &str)] = &[
     ("base", include_str!("assets/rlevel/base.R")),
     ("utils", include_str!("assets/rlevel/utils.R")),
     ("compiler", include_str!("assets/rlevel/compiler.R")),
+    ("tools", include_str!("assets/rlevel/tools.R")),
 ];
 
 /// The pinned baked-package export manifests, gzipped rds exactly as
