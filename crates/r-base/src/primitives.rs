@@ -568,17 +568,19 @@ pub fn call_primitive_inner(
         UNLINK => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             for path in string_vec(heap, interner, operands[0]) {
-                if let Some(host) = r_core::path_policy::resolve_host_path(
-                    heap.path_policy.as_ref(),
-                    &path,
-                ) {
-                    let p = std::path::Path::new(&host);
-                    if p.is_dir() {
-                        let _ = std::fs::remove_dir_all(p);
-                    } else {
-                        let _ = std::fs::remove_file(p);
+                // The central contract owns removal exactly as the write
+                // path arranges — virtual entries drop, enabled mode
+                // never escapes to the host. Host directories keep their
+                // recursive removal where the host is reachable at all.
+                let virtual_hit = heap.browser_files.contains_key(&path);
+                let _ = r_core::vfile::remove_file(heap, &path);
+                if !virtual_hit && !heap.browser_files_enabled
+                    && let Some(host) = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path) {
+                        let p = std::path::Path::new(&host);
+                        if p.is_dir() {
+                            let _ = std::fs::remove_dir_all(p);
+                        }
                     }
-                }
             }
             Ok(heap.alloc(RObject::Integer(vec![0])))
         }
@@ -913,18 +915,17 @@ pub fn call_primitive_inner(
                                     }
                                     let delete = ops.get(3).map(|v| matches!(heap.object(*v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) == 1)).unwrap_or(false);
                                     for path in &files {
-                                        if let Some(content) = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), path)
-                                            .and_then(|host| std::fs::read_to_string(host).ok()) {
+                                        if let Ok(bytes) = r_core::vfile::read_file(heap, path) {
+                                            let content = String::from_utf8_lossy(&bytes).to_string();
                                             heap.emit(&content);
                                             if !content.ends_with('\n') {
                                                 heap.emit("\n");
                                             }
                                             heap.emit("\n");
                                         }
-                                        if delete
-                                            && let Some(host) = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), path) {
-                                                let _ = std::fs::remove_file(host);
-                                            }
+                                        if delete {
+                                            let _ = r_core::vfile::remove_file(heap, path);
+                                        }
                                     }
                                     heap.visible = false;
                                     return Ok(ValueId::NIL);
@@ -3007,16 +3008,26 @@ pub fn call_primitive_inner(
                     out.push(interner.intern_string("\0NA"));
                     continue;
                 }
-                match r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), path)
-                    .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::PermissionDenied, "path refused"))
-                    .and_then(|host| std::fs::canonicalize(&host)) {
-                    Ok(resolved) => {
+                if heap.browser_files.contains_key(path) {
+                    // The flat virtual store is its own canonical form —
+                    // no symlink resolution exists inside it.
+                    out.push(interner.intern_string(path));
+                    continue;
+                }
+                let host_resolution = if heap.browser_files_enabled {
+                    None
+                } else {
+                    r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), path)
+                        .and_then(|host| std::fs::canonicalize(&host).ok())
+                };
+                match host_resolution {
+                    Some(resolved) => {
                         let text = resolved.to_string_lossy().to_string();
                         // macOS canonicalize surfaces the /private prefix —
                         // GNU's realpath does the same, so it rides through.
                         out.push(interner.intern_string(&text));
                     }
-                    Err(_) => {
+                    None => {
                         if must_work {
                             return Err(EvalError::Condition(format!(
                                 "path[1]=\"{}\": No such file or directory", path
@@ -4160,6 +4171,15 @@ pub fn call_primitive_inner(
             let out: Vec<i32> = paths
                 .iter()
                 .map(|p| {
+                    // Existence and creation both ride the central contract
+                    // — virtual entries create in the store exactly as the
+                    // write path arranges, enabled mode never escapes.
+                    if heap.browser_files_enabled || heap.browser_files.contains_key(p) {
+                        if r_core::vfile::file_exists(heap, p) {
+                            return 0;
+                        }
+                        return if r_core::vfile::write_file(heap, p, &[]).is_ok() { 1 } else { 0 };
+                    }
                     let host = r_core::path_policy::resolve_host_path(
                         heap.path_policy.as_ref(),
                         p,
