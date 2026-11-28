@@ -1148,10 +1148,26 @@ fn deparse_wrap_cutoff(flat: &str) -> String {
     let mut in_string = false;
     let chars: Vec<char> = flat.chars().collect();
     let mut i = 0usize;
+    // GNU's indentation discipline exactly as deparse.c arranges: a
+    // break inside a call's argument list — linebreak() in args2buff —
+    // indents the continuation one level of four spaces, while a break
+    // inside a vector's c() construction — writeline() in vec2buff —
+    // carries no indentation of its own. The paren stack tracks the
+    // innermost enclosing construction to tell the two commas apart.
+    let mut paren_stack: Vec<bool> = Vec::new(); // true when the opener is c(
     while i < chars.len() {
         let c = chars[i];
         if c == '"' {
             in_string = !in_string;
+        }
+        if !in_string && c == '(' {
+            // The construction is c( exactly when the identifier
+            // immediately before the paren is the bare letter c.
+            let before: String = out.chars().rev().take_while(|ch| ch.is_alphanumeric() || *ch == '.' || *ch == '_').collect();
+            let before: String = before.chars().rev().collect();
+            paren_stack.push(before == "c");
+        } else if !in_string && c == ')' {
+            paren_stack.pop();
         }
         out.push(c);
         width += 1;
@@ -1163,7 +1179,13 @@ fn deparse_wrap_cutoff(flat: &str) -> String {
                 i += 1;
             }
             out.push('\n');
-            width = 0;
+            let in_vector = paren_stack.last().copied().unwrap_or(false);
+            if in_vector {
+                width = 0;
+            } else {
+                out.push_str("    ");
+                width = 4;
+            }
         }
         i += 1;
     }
@@ -1297,6 +1319,28 @@ fn deparse_base(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Strin
                     parts.push(format!("{} = {}", name, value_text));
                 }
             }
+            // GNU's .Data discipline exactly: a class containing list
+            // carries its payload as the object's own elements, rendered
+            // back through the .Data pseudo-slot as a list() call.
+            let contains_list = {
+                let mut current = Some(class_text.clone());
+                let mut found = false;
+                while let Some(name) = current {
+                    if name == "list" {
+                        found = true;
+                        break;
+                    }
+                    current = match heap.s4_classes.get(&name) {
+                        Some((_, parent)) => parent.clone(),
+                        None => None,
+                    };
+                }
+                found
+            };
+            if contains_list && !items.is_empty() && slot_names.iter().all(|n| n.is_empty()) {
+                let element_text: Vec<String> = items.iter().map(|item| deparse(heap, interner, *item)).collect();
+                parts = vec![format!(".Data = list({})", element_text.join(", "))];
+            }
             return format!("new(\"{}\"{}{})", class_text, if parts.is_empty() { "" } else { ", " }, parts.join(", "));
         }
     match heap.object(value) {
@@ -1399,6 +1443,15 @@ fn deparse_base(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Strin
             let text = interner.string_text(vals[0]);
             format!("\"{}\"", text)
         }
+        // Zero-length atomic vectors deparse through their typed
+        // constructor exactly as GNU — integer(0), numeric(0) — the
+        // roundtrip reconstructing the precise type.
+        Some(RObject::Real(vals)) if vals.is_empty() => "numeric(0)".to_string(),
+        Some(RObject::Integer(vals)) if vals.is_empty() => "integer(0)".to_string(),
+        Some(RObject::Logical(vals)) if vals.is_empty() => "logical(0)".to_string(),
+        Some(RObject::String(vals)) if vals.is_empty() => "character(0)".to_string(),
+        Some(RObject::Complex(vals)) if vals.is_empty() => "complex(0)".to_string(),
+        Some(RObject::Raw(vals)) if vals.is_empty() => "raw(0)".to_string(),
         Some(RObject::Nil) => "NULL".to_string(),
         // The NIL sentinel itself — parse produces it for the NULL literal
         // exactly as GNU's R_NilValue deparses.

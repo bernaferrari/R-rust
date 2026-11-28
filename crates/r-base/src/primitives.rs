@@ -22464,6 +22464,7 @@ pub fn new_s4_primitive(
     let mut class_name = String::new();
     let mut supplied: Vec<(String, ValueId)> = Vec::new();
     let mut positional = 0usize;
+    let mut data_positional: Option<ValueId> = None;
     let mut cursor = args;
     while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         positional += 1;
@@ -22478,6 +22479,8 @@ pub fn new_s4_primitive(
             None => {
                 if positional == 1 {
                     class_name = string_operand(heap, interner, v).unwrap_or_default();
+                } else if positional == 2 {
+                    data_positional = Some(v);
                 }
             }
         }
@@ -22503,6 +22506,19 @@ pub fn new_s4_primitive(
         };
         items.push(value);
         names.push(slot_name.clone());
+    }
+    // GNU's .Data discipline exactly: a class containing list spreads
+    // its data payload as the object's own elements — supplied either
+    // as the second positional argument or the named .Data slot —
+    // the slot machinery yielding to the payload when both exist.
+    if s4_inherits(heap, &class_name, "list") {
+        let payload = supplied.iter().find(|(n, _)| n == ".Data").map(|(_, v)| *v).or(data_positional);
+        if let Some(payload_id) = payload {
+            if let Some(RObject::List(elements)) = heap.object(payload_id) {
+                items = elements.clone();
+                names = Vec::new();
+            }
+        }
     }
     let mut result = heap.alloc(RObject::List(items));
     let names_obj = heap.alloc(RObject::String(names.iter().map(|n| interner.intern_string(n)).collect()));
