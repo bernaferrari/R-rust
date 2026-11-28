@@ -2857,8 +2857,13 @@ pub fn call_primitive_inner(
         }
         HEAD_FN | TAIL_FN => {
             // First/last n elements with names sliced in parallel exactly
-            // as GNU's vector and list forms.
-            let operands = eval_args(heap, interner, args, caller_env, 2)?;
+            // as GNU's vector and list forms — n defaults to 6 exactly as
+            // the usage line arranges, so the argument count is one or two.
+            let operands = eval_args(heap, interner, args, caller_env, 2)
+                .unwrap_or_else(|_| eval_args(heap, interner, args, caller_env, 1).unwrap_or_default());
+            if operands.is_empty() {
+                return Err(EvalError::TypeError("head/tail require an object").into());
+            }
             let x = operands[0];
             let n = match operands.get(1) {
                 Some(v) => first_real(heap, *v).map_err(RSignal::from)? as i64,
@@ -20255,10 +20260,34 @@ pub fn is_s4_primitive(
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 2)?;
     let target = string_operand(heap, interner, operands[1]).unwrap_or_default();
-    let classes: Vec<String> = match get_attrib(heap, interner, operands[0], "class") {
+    let mut classes: Vec<String> = match get_attrib(heap, interner, operands[0], "class") {
         Some(c) => string_vec(heap, interner, c),
         None => Vec::new(),
     };
+    // GNU's implicit class answers for objects without the attribute
+    // exactly as the class documentation arranges — integer extends
+    // numeric, double is numeric, every other atomic type is its own
+    // typeof, and matrix/array precede the element type.
+    if classes.is_empty() {
+        let element_classes: Vec<&str> = match heap.object(operands[0]) {
+            Some(RObject::Integer(_)) => vec!["integer", "numeric"],
+            Some(RObject::Real(_)) => vec!["numeric"],
+            Some(RObject::Logical(_)) => vec!["logical"],
+            Some(RObject::String(_)) => vec!["character"],
+            Some(RObject::Complex(_)) => vec!["complex"],
+            Some(RObject::Raw(_)) => vec!["raw"],
+            Some(RObject::List(_)) => vec!["list"],
+            Some(RObject::Closure { .. }) | Some(RObject::Primitive(_)) => vec!["function"],
+            Some(RObject::Environment { .. }) => vec!["environment"],
+            _ => Vec::new(),
+        };
+        let has_dim = get_attrib(heap, interner, operands[0], "dim").is_some();
+        if has_dim {
+            classes.push("matrix".to_string());
+            classes.push("array".to_string());
+        }
+        classes.extend(element_classes.iter().map(|c| c.to_string()));
+    }
     let hit = classes.iter().any(|c| c == &target || s4_inherits(heap, c, &target));
     Ok(heap.alloc(RObject::Logical(vec![hit as i32])))
 }
