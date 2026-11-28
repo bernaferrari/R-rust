@@ -477,7 +477,19 @@ fn populate_rlevel_namespaces(heap: &mut Heap, interner: &mut SymbolInterner) {
         let target = if package == "base" {
             heap.base_env_id
         } else {
-            heap.package_registry.get(package).copied()
+            // Packages outside the baked-export set — compiler carries no
+            // baked manifest — still install their namespace exactly as
+            // GNU's load registration does: fresh frame enclosing base,
+            // registered under the package name so :: resolution finds it.
+            match heap.package_registry.get(package).copied() {
+                some @ Some(_) => some,
+                None => {
+                    let Some(base) = heap.base_env_id else { continue };
+                    let namespace = r_core::env::new_environment(heap, base);
+                    heap.package_registry.insert(package.to_string(), namespace);
+                    Some(namespace)
+                }
+            }
         };
         let Some(namespace) = target else {
             continue;
