@@ -179,12 +179,18 @@ impl Session {
                 let pending = std::mem::take(&mut self.heap.pending_warnings);
                 if pending.len() == 1 {
                     self.heap.output.push_str("Warning message:\n");
-                    self.heap.output.push_str(&pending[0]);
+                    match &pending[0].1 {
+                        Some(call) => self.heap.output.push_str(&format!("In {} : {}", call, pending[0].0)),
+                        None => self.heap.output.push_str(&pending[0].0),
+                    }
                     self.heap.emit("\n");
                 } else {
                     self.heap.output.push_str("Warning messages:\n");
-                    for (i, text) in pending.iter().enumerate() {
-                        self.heap.output.push_str(&format!("{}: {}\n", i + 1, text));
+                    for (i, (text, call)) in pending.iter().enumerate() {
+                        match call {
+                            Some(c) => self.heap.output.push_str(&format!("{}: In {} : {}\n", i + 1, c, text)),
+                            None => self.heap.output.push_str(&format!("{}: {}\n", i + 1, text)),
+                        }
                     }
                 }
             }
@@ -269,12 +275,18 @@ impl Session {
                         let mut block = String::new();
                         if pending.len() == 1 {
                             block.push_str("Warning message:\n");
-                            block.push_str(&pending[0]);
+                            match &pending[0].1 {
+                                Some(call) => block.push_str(&format!("In {} : {}", call, pending[0].0)),
+                                None => block.push_str(&pending[0].0),
+                            }
                             block.push('\n');
                         } else {
                             block.push_str("Warning messages:\n");
-                            for (i, text) in pending.iter().enumerate() {
-                                block.push_str(&format!("{}: {}\n", i + 1, text));
+                            for (i, (text, call)) in pending.iter().enumerate() {
+                                match call {
+                                    Some(c) => block.push_str(&format!("{}: In {} : {}\n", i + 1, c, text)),
+                                    None => block.push_str(&format!("{}: {}\n", i + 1, text)),
+                                }
                             }
                         }
                         full.stderr.push_str(&block);

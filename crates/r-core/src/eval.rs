@@ -450,8 +450,15 @@ fn call(
             Some(RObject::Symbol { name, .. }) if interner.symbol_name(*name) == ".Internal"
         )
     );
+    // findCall's closure discipline exactly: only closure activations are
+    // function contexts on GNU's stack — primitive invocations claim
+    // nothing, so an error raised by primitive code attributes to the
+    // innermost enclosing closure exactly as stop() inside a function
+    // answers the function's call rather than stop's own.
+    let closure_callee = matches!(heap.object(callee), Some(RObject::Closure { .. }));
     if let Err(RSignal::Error(_)) = &result
         && heap.error_call == ValueId::NIL
+        && closure_callee
         && !internal_frame {
             heap.error_call = call_expr;
         }

@@ -1098,7 +1098,7 @@ pub fn call_primitive_inner(
                                     let ops = eval_args(heap, interner, inner_args, caller_env, 1)?;
                                     let text = string_operand(heap, interner, ops[0]).unwrap_or_default();
                                     if !heap.warn_suppressed {
-                                        heap.pending_warnings.push(text);
+                                        heap.pending_warnings.push((text, None));
                                     }
                                     heap.visible = false;
                                     return Ok(ValueId::NIL);
@@ -14630,7 +14630,32 @@ pub fn trycatch_primitive(
         Some(e) => *e,
         None => return Err(EvalError::TypeError("tryCatch requires an expression").into()),
     };
-    match eval(heap, interner, expr, caller_env) {
+    // Exiting warning registration exactly as GNU's .addCondHands
+    // arranges: a warning handler entered here catches warnings raised
+    // anywhere inside the expression, the outcome unwinding through the
+    // restart channel. The registration pops on every exit path.
+    let warning_entry = match named.iter().find(|(n, _)| n == "warning").map(|(_, e)| *e) {
+        Some(handler_expr) => {
+            let handler_value = eval(heap, interner, handler_expr, caller_env)?;
+            let id = heap.next_restart_id.max(1);
+            heap.next_restart_id = id + 1;
+            heap.exiting_warning_handlers.push((id, handler_value, heap.contexts.len()));
+            Some(id)
+        }
+        None => None,
+    };
+    let expr_result = eval(heap, interner, expr, caller_env);
+    if let Some(id) = warning_entry
+        && let Some(pos) = heap.exiting_warning_handlers.iter().position(|(eid, _, _)| *eid == id) {
+            heap.exiting_warning_handlers.remove(pos);
+        }
+    match expr_result {
+        Err(RSignal::RestartInvoke { id, mut args }) if warning_entry == Some(id) => {
+            // The exiting warning handler's outcome answers as the
+            // tryCatch value exactly as GNU's jump into the handler
+            // continuation arranges.
+            Ok(args.pop().unwrap_or(ValueId::NIL))
+        }
         Ok(value) => Ok(value),
         Err(RSignal::Error(error)) => {
             let handler_expr = match named.iter().find(|(n, _)| n == "error").map(|(_, e)| *e) {
@@ -14654,6 +14679,46 @@ pub fn trycatch_primitive(
             let message_str = heap.alloc(RObject::String(vec![interner.intern_string(&message)]));
             let raising_call = heap.error_call;
             heap.error_call = ValueId::NIL;
+            // GNU's doTryCatch attribution exactly: an error raised by
+            // primitive code directly inside the expression — no user
+            // closure claiming it on the unwind — carries the doTryCatch
+            // invocation as its call, exactly as findCall arranges inside
+            // GNU's tryCatchOne machinery where doTryCatch is the
+            // innermost closure frame.
+            let raising_call = if raising_call == ValueId::NIL {
+                let sym = |heap: &mut Heap, interner: &mut SymbolInterner, text: &str| {
+                    let id = interner.intern_symbol(text);
+                    heap.alloc(RObject::Symbol { name: id, value: ValueId::NIL, internal: ValueId::NIL })
+                };
+                let mut node = |heap: &mut Heap, car, cdr| heap.alloc(RObject::Pairlist {
+                    car,
+                    cdr,
+                    tag: ValueId::NIL,
+                });
+                let do_sym = sym(heap, interner, "doTryCatch");
+                let return_sym = sym(heap, interner, "return");
+                let expr_sym = sym(heap, interner, "expr");
+                let name_sym = sym(heap, interner, "name");
+                let parentenv_sym = sym(heap, interner, "parentenv");
+                let handler_sym = sym(heap, interner, "handler");
+                let return_tail = node(heap, expr_sym, ValueId::NIL);
+                let return_call = heap.alloc(RObject::Language {
+                    car: return_sym,
+                    cdr: return_tail,
+                    tag: ValueId::NIL,
+                });
+                let a4 = node(heap, handler_sym, ValueId::NIL);
+                let a3 = node(heap, parentenv_sym, a4);
+                let a2 = node(heap, name_sym, a3);
+                let a1 = node(heap, return_call, a2);
+                heap.alloc(RObject::Language {
+                    car: do_sym,
+                    cdr: a1,
+                    tag: ValueId::NIL,
+                })
+            } else {
+                raising_call
+            };
             let condition = heap.alloc(RObject::List(vec![message_str, raising_call]));
             let names_vec = heap.alloc(RObject::String(vec![
                 interner.intern_string("message"),
@@ -18510,10 +18575,98 @@ pub fn signal_warning(
     if warn_level >= 2.0 {
         return Err(EvalError::Condition(text.to_string()).into());
     }
+    // Exiting warning handlers exactly as GNU's exiting entries: the
+    // handler invokes with the condition and the outcome unwinds to the
+    // owning tryCatch frame through the restart channel, abandoning the
+    // expression exactly as the exiting jump arranges. The warning never
+    // defers or prints.
+    if let Some((exit_id, handler, reg_depth)) = heap.exiting_warning_handlers.last().copied() {
+        // Attribution exactly as findCall arranges: a closure activation
+        // inside the guarded expression answers its own call; primitive
+        // code directly inside answers the doTryCatch synthesis.
+        let call = if heap.contexts.len() > reg_depth {
+            heap.contexts.last().map(|ctx| ctx.call).unwrap_or(ValueId::NIL)
+        } else {
+            synthesize_dotrycatch_call(heap, interner)
+        };
+        let condition = build_simple_condition(heap, interner, text, call, &["simpleWarning", "warning", "condition"])?;
+        let result = invoke_condition_handler(heap, interner, handler, condition, caller_env)?;
+        heap.exiting_warning_handlers.pop();
+        return Err(RSignal::RestartInvoke { id: exit_id, args: vec![result] });
+    }
     if warn_level >= 0.0 {
-        heap.pending_warnings.push(text.to_string());
+        // Deferred attribution exactly as PrintWarnings arranges — the
+        // innermost closure frame's call deparsed once, rendering as the
+        // `In f() :` prefix at end-of-task.
+        let attribution = heap.contexts.last().and_then(|ctx| {
+            if ctx.call == ValueId::NIL { None } else {
+                Some(r_core::print::deparse(heap, interner, ctx.call))
+            }
+        });
+        heap.pending_warnings.push((text.to_string(), attribution));
     }
     Ok(())
+}
+
+/// The doTryCatch invocation synthesis exactly as GNU's tryCatchOne frame
+/// arranges — primitive-raised conditions inside the guarded expression
+/// attribute to the innermost closure frame GNU would have had.
+fn synthesize_dotrycatch_call(heap: &mut Heap, interner: &mut SymbolInterner) -> ValueId {
+    let sym = |heap: &mut Heap, interner: &mut SymbolInterner, text: &str| {
+        let id = interner.intern_symbol(text);
+        heap.alloc(RObject::Symbol { name: id, value: ValueId::NIL, internal: ValueId::NIL })
+    };
+    let do_sym = sym(heap, interner, "doTryCatch");
+    let return_sym = sym(heap, interner, "return");
+    let expr_sym = sym(heap, interner, "expr");
+    let name_sym = sym(heap, interner, "name");
+    let parentenv_sym = sym(heap, interner, "parentenv");
+    let handler_sym = sym(heap, interner, "handler");
+    let return_tail = heap.alloc(RObject::Pairlist { car: expr_sym, cdr: ValueId::NIL, tag: ValueId::NIL });
+    let return_call = heap.alloc(RObject::Language { car: return_sym, cdr: return_tail, tag: ValueId::NIL });
+    let a4 = heap.alloc(RObject::Pairlist { car: handler_sym, cdr: ValueId::NIL, tag: ValueId::NIL });
+    let a3 = heap.alloc(RObject::Pairlist { car: parentenv_sym, cdr: a4, tag: ValueId::NIL });
+    let a2 = heap.alloc(RObject::Pairlist { car: name_sym, cdr: a3, tag: ValueId::NIL });
+    let a1 = heap.alloc(RObject::Pairlist { car: return_call, cdr: a2, tag: ValueId::NIL });
+    heap.alloc(RObject::Language { car: do_sym, cdr: a1, tag: ValueId::NIL })
+}
+
+/// Build a simple condition object exactly as simpleError/simpleWarning
+/// arrange — message and call slots in a named list, classed along the
+/// inheritance chain.
+fn build_simple_condition(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    text: &str,
+    call: ValueId,
+    classes: &[&str],
+) -> Result<ValueId, RSignal> {
+    let message_obj = heap.alloc(RObject::String(vec![interner.intern_string(text)]));
+    let condition = heap.alloc(RObject::List(vec![message_obj, call]));
+    let names: Vec<_> = ["message", "call"].iter().map(|n| interner.intern_string(n)).collect();
+    let names_obj = heap.alloc(RObject::String(names));
+    let condition = copy_with_attrib(heap, interner, condition, "names", names_obj)?;
+    let class_ids: Vec<_> = classes.iter().map(|c| interner.intern_string(c)).collect();
+    let class_obj = heap.alloc(RObject::String(class_ids));
+    Ok(copy_with_attrib(heap, interner, condition, "class", class_obj)?)
+}
+
+/// Invoke a condition handler closure with the condition exactly as
+/// tryCatchOne's value[[3L]](cond) application arranges.
+fn invoke_condition_handler(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    handler: ValueId,
+    condition: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let handler = force_if_promise(heap, interner, handler)?;
+    let (formals, body, closure_env) = match heap.object(handler) {
+        Some(RObject::Closure { formals, body, env }) => (*formals, *body, *env),
+        _ => return Err(EvalError::TypeError("condition handler must be a closure").into()),
+    };
+    let arg_node = heap.alloc(RObject::Pairlist { car: condition, cdr: ValueId::NIL, tag: ValueId::NIL });
+    r_core::eval::apply_closure_public(heap, interner, formals, body, closure_env, arg_node, caller_env)
 }
 
 /// GNU's .Deprecated discipline: the deprecation warning signals through
@@ -18547,7 +18700,12 @@ pub fn signal_deprecated_warning(
     if heap.warn_suppressed {
         return Ok(());
     }
-    heap.pending_warnings.push(text.to_string());
+    let attribution = heap.contexts.last().and_then(|ctx| {
+        if ctx.call == ValueId::NIL { None } else {
+            Some(r_core::print::deparse(heap, interner, ctx.call))
+        }
+    });
+    heap.pending_warnings.push((text.to_string(), attribution));
     Ok(())
 }
 

@@ -406,7 +406,12 @@ fn format_element(_heap: &Heap, interner: &SymbolInterner, value: &RObject, inde
             } else {
                 // GNU escapes embedded quotes and backslashes inside the
                 // surrounding quotes exactly as print.c does.
-                let escaped = text.replace('\\', "\\\\").replace('"', "\\\"");
+                let escaped = text
+                    .replace('\\', "\\\\")
+                    .replace('"', "\\\"")
+                    .replace('\n', "\\n")
+                    .replace('\t', "\\t")
+                    .replace('\r', "\\r");
                 format!("\"{}\"", escaped)
             }
         }

@@ -91,7 +91,28 @@ zapsmall <- function(x, digits = getOption("digits")) {
 # condition message into the try-error classed string, silent suppressing
 # the report.
 try <- function(expr, silent = FALSE) {
-    tryCatch(expr, error = function(e) structure(conditionMessage(e), class = "try-error"))
+    tryCatch(expr, error = function(e) {
+        call <- conditionCall(e)
+        if (!is.null(call)) {
+            ## GNU's patch exactly: a doTryCatch attribution reads the
+            ## user-visible try invocation instead — the implementation
+            ## frames of tryCatch collapse into the primitive here, so the
+            ## frame walk answers the try call at the shallowest negative
+            ## index reaching past the handler and the tryCatch boundary.
+            if (identical(call[[1L]], quote(doTryCatch)))
+                call <- sys.call(-2L)
+            dcall <- deparse(call)[1L]
+            prefix <- paste("Error in", dcall, ": ")
+            sm <- strsplit(conditionMessage(e), "\n")[[1L]]
+            w <- 14L + nchar(dcall, type = "w") + nchar(sm[1L], type = "w")
+            if (is.na(w))
+                w <- 14L + nchar(dcall, type = "b") + nchar(sm[1L], type = "b")
+            if (!is.na(w) && w > 75L)
+                prefix <- paste0(prefix, "\n  ")
+        } else prefix <- "Error : "
+        msg <- paste0(prefix, conditionMessage(e), "\n")
+        invisible(structure(msg, class = "try-error", condition = e))
+    })
 }
 
 # GNU's AsIs identity exactly as base defines it — the class wrapper

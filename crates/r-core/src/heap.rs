@@ -80,7 +80,7 @@ pub struct Heap {
     pub err_message: String,
     /// Deferred warning texts — GNU's end-of-task warning queue. The harness
     /// drains this into `Warning message:` blocks after each top-level task.
-    pub pending_warnings: Vec<String>,
+    pub pending_warnings: Vec<(String, Option<String>)>,
     /// suppressWarnings dynamic state — warnings raised while true are dropped.
     pub warn_suppressed: bool,
     /// gcinfo reporting state — the primitive returns the PRIOR value exactly as GNU.
@@ -234,6 +234,9 @@ pub struct Heap {
     /// The calling-handler chain — withCallingHandlers frames consult at
     /// signal time without unwinding exactly as GNU.
     pub calling_handlers: Vec<CallingHandlerEntry>,
+    /// tryCatch exiting warning handlers — (restart-id, handler closure,
+    /// context depth at registration) exactly as GNU's exiting entries arrange.
+    pub exiting_warning_handlers: Vec<(u64, crate::id::ValueId, usize)>,
     /// Fresh restart identity source.
     pub next_restart_id: u64,
     /// Message suppression depth — suppressMessages increments while its
