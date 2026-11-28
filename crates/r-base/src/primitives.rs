@@ -9756,6 +9756,14 @@ pub fn subset_impl(
             .collect();
         return build_data_frame(heap, interner, selected, selected_names);
     }
+    // Language objects index through their pairlist decomposition
+    // exactly as GNU — the head and argument cars answering as list
+    // elements, the result a plain list of the selection.
+    if matches!(heap.object(source), Some(RObject::Language { .. })) {
+        let elements = language_elements(heap, source);
+        let list_form = heap.alloc(RObject::List(elements));
+        return subset_impl(heap, interner, list_form, index);
+    }
     let source_length = vector_length(heap, source)
         .ok_or(EvalError::TypeError("subscript requires a vector"))
         .map_err(RSignal::from)?;
@@ -11217,6 +11225,63 @@ pub fn subset_replace(
     replace_typed!(Integer, r_core::object::NA_INTEGER);
     replace_typed!(Real, f64::from_bits(r_core::object::NA_REAL_BITS));
     replace_typed!(Raw, 0u8);
+    // Language replacement exactly as GNU's pairlist writing arranges —
+    // the object decomposes, the replacement flows through the list
+    // machinery, and the result rebuilds into the call shape.
+    if matches!(heap.object(object), Some(RObject::Language { .. })) {
+        let elements = language_elements(heap, object);
+        let list_form = heap.alloc(RObject::List(elements));
+        let integer_positions: Vec<i32> = positions.iter().map(|p| *p as i32 + 1).collect();
+        let rewritten = heap.alloc(RObject::Integer(integer_positions));
+        let replaced = subset_replace(heap, interner, list_form, rewritten, value)?;
+        if let Some(RObject::List(items)) = heap.object(replaced).cloned() {
+            return Ok(language_rebuild(heap, &items));
+        }
+        return Ok(replaced);
+    }
+    // List replacement exactly as GNU: positions replace or extend
+    // elements, NULL padding the gaps, the value coercing through
+    // as.list semantics — atomic vectors distributing their elements,
+    // length-one values recycling across the positions.
+    if let Some(RObject::List(target)) = heap.object(object).cloned() {
+        let elements: Vec<ValueId> = match heap.object(value) {
+            Some(RObject::List(items)) => items.clone(),
+            _ => {
+                let vlen = vector_length(heap, value).unwrap_or(0);
+                if vlen == 0 {
+                    Vec::new()
+                } else if vlen == 1 {
+                    vec![value]
+                } else {
+                    let mut parts = Vec::with_capacity(vlen);
+                    for i in 0..vlen {
+                        parts.push(extract_elements(heap, value, &[i]).map_err(|_e| EvalError::TypeError("element extract"))?);
+                    }
+                    parts
+                }
+            }
+        };
+        if !elements.is_empty() {
+            let mut out = target.clone();
+            let required = positions.iter().max().map(|m| m + 1).unwrap_or(0);
+            while out.len() < required {
+                out.push(ValueId::NIL);
+            }
+            for (n, pos) in positions.iter().enumerate() {
+                out[*pos] = elements[n % elements.len()];
+            }
+            let result = heap.alloc(RObject::List(out));
+            if let Some(entries) = &source_name_entries {
+                let mut name_texts: Vec<r_core::intern::InternedStr> = entries.clone();
+                while name_texts.len() < required {
+                    name_texts.push(interner.intern_string(""));
+                }
+                let names_vec = heap.alloc(RObject::String(name_texts));
+                return copy_with_attrib(heap, interner, result, "names", names_vec).map_err(|_e| EvalError::TypeError("names attach"));
+            }
+            return Ok(result);
+        }
+    }
     // Integer object with real value: GNU widens the whole vector to real.
     Err(EvalError::TypeError("replacement type mismatch"))
 }
@@ -25376,4 +25441,40 @@ pub fn unify_slice_elements(heap: &mut Heap, interner: &mut SymbolInterner, elem
         }
         _ => heap.alloc(RObject::Logical(Vec::new())),
     }
+}
+
+/// Decompose a language object into its element list exactly as GNU's
+/// pairlist reading arranges — the head at position one, the argument
+/// cars following in order.
+pub fn language_elements(heap: &Heap, value: ValueId) -> Vec<ValueId> {
+    let mut out = Vec::new();
+    if let Some(RObject::Language { car, cdr, .. }) = heap.object(value) {
+        out.push(*car);
+        let mut cursor = *cdr;
+        for _ in 0..1000 {
+            if cursor == ValueId::NIL { break; }
+            match heap.object(cursor) {
+                Some(RObject::Pairlist { car, cdr, .. }) => {
+                    out.push(*car);
+                    cursor = *cdr;
+                }
+                _ => break,
+            }
+        }
+    }
+    out
+}
+
+/// Rebuild a language object from its element list exactly as the
+/// decomposition inverts — the first element the head, the rest the
+/// argument chain.
+pub fn language_rebuild(heap: &mut Heap, elements: &[ValueId]) -> ValueId {
+    if elements.is_empty() {
+        return ValueId::NIL;
+    }
+    let mut chain = ValueId::NIL;
+    for item in elements[1..].iter().rev() {
+        chain = heap.alloc(RObject::Pairlist { car: *item, cdr: chain, tag: ValueId::NIL });
+    }
+    heap.alloc(RObject::Language { car: elements[0], cdr: chain, tag: ValueId::NIL })
 }
