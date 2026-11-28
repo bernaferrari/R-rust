@@ -16008,8 +16008,22 @@ pub fn read_fwf_primitive(
         Some(RObject::Real(v)) => v.iter().map(|x| *x as i32).collect(),
         _ => return Err(EvalError::TypeError("widths must be numeric").into()),
     };
-    let content = std::fs::read_to_string(&path)
-        .map_err(|e| RSignal::from(EvalError::Condition(format!("cannot open file: {e}"))))?;
+    // Empty widths fail inside GNU's R-level implementation exactly as the
+    // rep_len call there reports — the error carries that frame's call, so
+    // the parsed form of GNU's internal invocation installs ahead of the
+    // raise exactly as the error_call attachment contract arranges.
+    if widths.is_empty() {
+        if let Ok(exprs) = r_core::parser::parse_native_expressions("rep_len(sep, length(first) - 1L)", heap, interner) {
+            if let Some(call_expr) = exprs.first() {
+                heap.error_call = *call_expr;
+            }
+        }
+        return Err(RSignal::Error(EvalError::Condition("invalid 'length.out' value".to_string())));
+    }
+    let content = r_core::vfile::read_file(heap, &path)
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .ok_or_else(|| RSignal::from(EvalError::Condition("cannot open file: No such file or directory (os error 2)".to_string())))?;
     let lines: Vec<&str> = content.lines().filter(|l| !l.is_empty()).collect();
     // Column extraction per line — negative widths skip, zero reads nothing.
     let column_count = widths.iter().filter(|w| **w >= 0).count();
@@ -16081,8 +16095,12 @@ pub fn read_fwf_primitive(
         .collect();
     let names_obj = heap.alloc(RObject::String(names));
     let with_names = copy_with_attrib(heap, interner, result, "names", names_obj).map_err(RSignal::from)?;
-    let rownames: Vec<i32> = (1..=lines.len() as i32).collect();
-    let rownames_obj = heap.alloc(RObject::Integer(rownames));
+    // Character row names exactly as data.frame()'s own construction —
+    // identical() against user-built frames compares the same shape.
+    let rownames: Vec<_> = (1..=lines.len())
+        .map(|i| interner.intern_string(&i.to_string()))
+        .collect();
+    let rownames_obj = heap.alloc(RObject::String(rownames));
     let with_rows = copy_with_attrib(heap, interner, with_names, "row.names", rownames_obj).map_err(RSignal::from)?;
     let class_obj = heap.alloc(RObject::String(vec![interner.intern_string("data.frame")]));
     copy_with_attrib(heap, interner, with_rows, "class", class_obj).map_err(RSignal::from)
@@ -18004,13 +18022,41 @@ pub fn rep_len_primitive(
             Ok(heap.alloc(RObject::Complex(out)))
         }
         Some(RObject::List(vals)) => {
+            // Empty input pads with NULL exactly as GNU — length.out NULL
+            // elements, not a zero-length answer.
             if vals.is_empty() {
-                return Ok(heap.alloc(RObject::List(Vec::new())));
+                return Ok(heap.alloc(RObject::List(vec![ValueId::NIL; target])));
             }
             let out: Vec<ValueId> = (0..target).map(|i| vals[i % vals.len()]).collect();
             Ok(heap.alloc(RObject::List(out)))
         }
-        _ => Ok(heap.alloc(RObject::Integer(Vec::new()))),
+        Some(RObject::Expression(vals)) => {
+            // Expressions pad with NULL and recycle exactly as lists do —
+            // GNU's expression vector shares the replication lattice.
+            if vals.is_empty() {
+                return Ok(heap.alloc(RObject::Expression(vec![ValueId::NIL; target])));
+            }
+            let out: Vec<ValueId> = (0..target).map(|i| vals[i % vals.len()]).collect();
+            Ok(heap.alloc(RObject::Expression(out)))
+        }
+        // NULL and non-vector admissions exactly as GNU's replicate.c —
+        // NULL cannot replicate to nonzero length, environments and other
+        // non-vector forms reject outright.
+        None => {
+            if target == 0 {
+                Ok(heap.alloc(RObject::Integer(Vec::new())))
+            } else {
+                Err(EvalError::Condition("cannot replicate NULL to a non-zero length".to_string()).into())
+            }
+        }
+        Some(RObject::Nil) => {
+            if target == 0 {
+                Ok(heap.alloc(RObject::Integer(Vec::new())))
+            } else {
+                Err(EvalError::Condition("cannot replicate NULL to a non-zero length".to_string()).into())
+            }
+        }
+        Some(_) => Err(EvalError::Condition("attempt to replicate non-vector".to_string()).into()),
     }
 }
 

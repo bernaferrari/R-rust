@@ -1198,6 +1198,9 @@ pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String
             format!("\"{}\"", text)
         }
         Some(RObject::Nil) => "NULL".to_string(),
+        // The NIL sentinel itself — parse produces it for the NULL literal
+        // exactly as GNU's R_NilValue deparses.
+        None => "NULL".to_string(),
         // Multi-element atomic vectors deparse to their c() construction
         // exactly as GNU — each element rendering through the scalar forms.
         Some(RObject::Real(vals)) if !vals.is_empty() => {
