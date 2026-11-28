@@ -21,6 +21,55 @@ evalq <- function(expr, envir = parent.frame(), enclos = NULL) eval(expr, envir)
 # GNU's trivial type predicates and operators exactly as base defines
 # them — the atomic lattice is the seven scalar types, recursive is
 # everything structural, and the null-coalescing infix is base's own.
+# GNU's isotonic regression exactly as stats: the pool-adjacent-violators
+# algorithm fitting the non-decreasing least-squares sequence — blocks
+# merging whenever the ordering violates, the cumulative sum carrying the
+# observed values in x-order exactly as the step-plot construction needs.
+isoreg <- function(x, y = NULL) {
+    if (is.null(y)) {
+        y <- x
+        x <- seq_along(y)
+    }
+    ord <- order(x)
+    x <- x[ord]
+    y <- y[ord]
+    n <- length(y)
+    # PAVA: every observation starts as its own block; adjacent blocks
+    # merge while the left mean exceeds the right — the fitted value of
+    # every member answering its block mean.
+    block_sum <- numeric(0)
+    block_count <- integer(0)
+    block_of <- integer(n)
+    for (i in seq_len(n)) {
+        block_sum <- c(block_sum, y[i])
+        block_count <- c(block_count, 1L)
+        k <- length(block_sum)
+        block_of[i] <- k
+        while (length(block_sum) > 1) {
+            k <- length(block_sum)
+            left_mean <- block_sum[k - 1] / block_count[k - 1]
+            right_mean <- block_sum[k] / block_count[k]
+            if (left_mean <= right_mean) break
+            block_sum[k - 1] <- block_sum[k - 1] + block_sum[k]
+            block_count[k - 1] <- block_count[k - 1] + block_count[k]
+            block_sum <- block_sum[-k]
+            block_count <- block_count[-k]
+            block_of[block_of == k] <- k - 1L
+            block_of[block_of > k] <- block_of[block_of > k] - 1L
+        }
+    }
+    yf <- numeric(n)
+    for (i in seq_len(n)) {
+        b <- block_of[i]
+        yf[i] <- block_sum[b] / block_count[b]
+    }
+    # The knot indices mark the last position of every block exactly as
+    # GNU's iKnots — the step boundaries of the fitted function.
+    iKnots <- cumsum(block_count)
+    yc <- c(0, cumsum(y))
+    structure(list(x = x, y = y, yf = yf, yc = yc, iKnots = iKnots), class = "isoreg")
+}
+
 # GNU's defunct discipline exactly: plclust errors through .Defunct's
 # three-line message — the function name, the replacement, and the help
 # pointer — as stats arranged before removal.
