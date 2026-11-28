@@ -45,8 +45,29 @@ fn emit_warning(message: &str) {
 }
 
 #[cfg(not(test))]
+thread_local! {
+    static WARNING_QUEUE: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[cfg(not(test))]
 fn emit_warning(message: &str) {
-    eprint!("{message}");
+    WARNING_QUEUE.with(|queue| queue.borrow_mut().push(message.to_string()));
+}
+
+/// Drain this thread's queued mathlib warnings, leaving the queue empty.
+///
+/// The host runtime drains after each primitive evaluation and re-signals
+/// every message through R's condition machinery, so mathlib warnings
+/// become catchable, deferred R warnings exactly as integrated libRmath.
+#[cfg(not(test))]
+pub fn drain_warnings() -> Vec<String> {
+    WARNING_QUEUE.with(|queue| std::mem::take(&mut *queue.borrow_mut()))
+}
+
+/// Test builds never queue: the capture hook or stderr observes warnings.
+#[cfg(test)]
+pub fn drain_warnings() -> Vec<String> {
+    Vec::new()
 }
 
 /// `MATHLIB_WARNING(_("non-integer %s = %f"), which, value)` — dpq.h's

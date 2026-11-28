@@ -46,6 +46,16 @@ pub fn call_primitive(
     caller_env: ValueId,
 ) -> EvalResult {
     let result = call_primitive_inner(heap, interner, id, args, caller_env);
+    // Mathlib warnings queue inside r-math during evaluation; drain and
+    // re-signal each through GNU's warning machinery while the dynamic
+    // extent still holds the caller's condition handlers.
+    let drained = r_math::error::drain_warnings();
+    if result.is_ok() {
+        for text in drained {
+            let clean = text.trim_end_matches('\n').to_string();
+            signal_warning(heap, interner, &clean, caller_env)?;
+        }
+    }
     // .Internal propagates the inner evaluation's visibility exactly —
     // the central discipline must not override what the wrapped call set.
     // eval propagates the evaluated expression's own visibility exactly
@@ -1077,10 +1087,7 @@ pub fn call_primitive_inner(
                                             }
                                         }
                                     }
-                                    fire_calling_handlers(heap, interner, "warning", &message, caller_env)?;
-                                    if !heap.warn_suppressed {
-                                        heap.pending_warnings.push(message.clone());
-                                    }
+                                    signal_warning(heap, interner, &message, caller_env)?;
                                     heap.visible = false;
                                     let text = interner.intern_string(&message);
                                     return Ok(heap.alloc(RObject::String(vec![text])));
@@ -1156,10 +1163,7 @@ pub fn call_primitive_inner(
                         message.push_str(&text);
                     }
             }
-            fire_calling_handlers(heap, interner, "warning", &message, caller_env)?;
-            if !heap.warn_suppressed {
-                heap.pending_warnings.push(message);
-            }
+            signal_warning(heap, interner, &message, caller_env)?;
             heap.visible = false;
             Ok(ValueId::NIL)
         }
@@ -17782,7 +17786,9 @@ pub fn with_calling_handlers_primitive(
     }
     let expr = entries[0].1;
     let depth_before = heap.calling_handlers.len();
-    for (tag, car) in entries.iter().skip(1) {
+    // GNU pushes reversed so the innermost-first signal walk fires the
+    // frame's handlers in forward argument order exactly as do_addCondHands.
+    for (tag, car) in entries.iter().skip(1).rev() {
         let Some(class) = tag else { continue };
         let handler_evaluated = eval(heap, interner, *car, caller_env)?;
         let handler = force_if_promise(heap, interner, handler_evaluated)?;
@@ -17802,6 +17808,48 @@ pub fn with_calling_handlers_primitive(
 /// Fire the calling handlers registered for a condition class — the
 /// condition object carries the message and the class chain exactly as
 /// GNU's simpleWarning/simpleMessage records.
+/// GNU's warning() default-action semantics in one place: the signal is
+/// guarded by a muffleWarning restart, class-inherited calling handlers
+/// fire first, and an un-muffled warning escalates to an error when
+/// options(warn) >= 2, defers into the pending buffer otherwise — exactly
+/// as GNU's end-of-task warning collection.
+pub fn signal_warning(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    text: &str,
+    caller_env: ValueId,
+) -> Result<(), RSignal> {
+    let id = heap.next_restart_id.max(1);
+    heap.next_restart_id = id + 1;
+    let object = build_restart_object(heap, interner, "muffleWarning", ValueId::NIL);
+    let depth = heap.restart_stack.len();
+    heap.restart_stack.push(r_core::heap::RestartEntry {
+        id,
+        handler: ValueId::NIL,
+        object,
+    });
+    let fired = fire_calling_handlers(heap, interner, "warning", text, caller_env);
+    heap.restart_stack.truncate(depth);
+    match fired {
+        Err(RSignal::RestartInvoke { id: invoked, .. }) if invoked == id => return Ok(()),
+        Err(other) => return Err(other),
+        Ok(()) => {}
+    }
+    if heap.warn_suppressed {
+        return Ok(());
+    }
+    let warn_level = lookup_option(heap, interner, "warn")
+        .and_then(|v| first_real(heap, v).ok())
+        .unwrap_or(0.0);
+    if warn_level >= 2.0 {
+        return Err(EvalError::Condition(text.to_string()).into());
+    }
+    if warn_level >= 0.0 {
+        heap.pending_warnings.push(text.to_string());
+    }
+    Ok(())
+}
+
 pub fn fire_calling_handlers(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
@@ -17809,11 +17857,15 @@ pub fn fire_calling_handlers(
     text: &str,
     caller_env: ValueId,
 ) -> Result<(), RSignal> {
+    // Class inheritance exactly as GNU: a simpleWarning answers handlers
+    // registered for simpleWarning, warning, or condition alike.
+    let simple = format!("simple{}", if class == "warning" { "Warning" } else { "Message" });
+    let inheritable = [simple.as_str(), class, "condition"];
     let matching: Vec<ValueId> = heap
         .calling_handlers
         .iter()
         .rev()
-        .filter(|entry| interner.string_text(entry.class_name) == class)
+        .filter(|entry| inheritable.contains(&interner.string_text(entry.class_name)))
         .map(|entry| entry.handler)
         .collect();
     if matching.is_empty() {
@@ -17825,7 +17877,6 @@ pub fn fire_calling_handlers(
     let names: Vec<_> = ["message", "call"].iter().map(|n| interner.intern_string(n)).collect();
     let names_obj = heap.alloc(RObject::String(names));
     let condition = copy_with_attrib(heap, interner, condition, "names", names_obj)?;
-    let simple = format!("simple{}", if class == "warning" { "Warning" } else { "Message" });
     let classes: Vec<_> = [simple.as_str(), class, "condition"]
         .iter()
         .map(|c| interner.intern_string(c))
