@@ -2231,6 +2231,7 @@ pub fn curve_primitive(
     let mut to_v: Option<ValueId> = None;
     let mut n_v: Option<ValueId> = None;
     let mut xname_v: Option<ValueId> = None;
+    let mut add_v: Option<ValueId> = None;
     let mut positional_index = 0usize;
     {
         let mut cursor = match heap.object(args) {
@@ -2249,11 +2250,13 @@ pub fn curve_primitive(
                 Some("to") => to_v = Some(evaluated),
                 Some("n") => n_v = Some(evaluated),
                 Some("xname") => xname_v = Some(evaluated),
+                Some("add") => add_v = Some(evaluated),
                 _ => {
                     match positional_index {
                         0 => from_v = Some(evaluated),
                         1 => to_v = Some(evaluated),
                         2 => n_v = Some(evaluated),
+                        3 => add_v = Some(evaluated),
                         _ => {}
                     }
                     positional_index += 1;
@@ -2265,8 +2268,30 @@ pub fn curve_primitive(
             cursor = cdr;
         }
     }
-    let from = from_v.and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(0.0);
-    let to = to_v.and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(1.0);
+    // GNU's addF <- identical(add, FALSE) inverted: NA is *not* FALSE,
+    // so add = NA enters adding mode exactly as TRUE does — the
+    // regression curve(cos, add = NA) encodes since R 2.14.0.
+    let adding = match add_v {
+        None => false,
+        Some(v) => match heap.object(v) {
+            Some(RObject::Logical(vals)) => {
+                !(vals.len() == 1 && vals[0] == 0)
+            }
+            _ => true,
+        },
+    };
+    // Adding mode reads missing from/to off the existing plot's usr
+    // exactly as GNU; a fresh curve defaults 0 and 1.
+    let usr_now = match heap.graphics.query("usr") {
+        Some(r_core::graphics::layout::ParValue::Real(vals)) if vals.len() >= 2 => {
+            Some((vals[0], vals[1]))
+        }
+        _ => None,
+    };
+    let from = from_v.and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied())
+        .unwrap_or(if adding { usr_now.map(|u| u.0).unwrap_or(0.0) } else { 0.0 });
+    let to = to_v.and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied())
+        .unwrap_or(if adding { usr_now.map(|u| u.1).unwrap_or(1.0) } else { 1.0 });
     let n = n_v.and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(101.0) as usize;
     let xname = match xname_v.and_then(|v| heap.object(v).cloned()) {
         Some(RObject::String(vals)) => interner.string_text(vals[0]).to_string(),
@@ -2316,9 +2341,10 @@ pub fn curve_primitive(
     if ys.len() != xs.len() {
         return Err(EvalError::TypeError("'expr' did not evaluate to an object of length 'n'").into());
     }
-    // Rendering: plot type="l" over the computed ranges.
-    let add = false;
-    if !add {
+    // Rendering: adding mode draws lines over the existing window
+    // exactly as GNU — plot.new and plot.window never run, so usr
+    // and the axis state survive untouched.
+    if !adding {
         let cell = |v: ValueId, rest: ValueId, heap: &mut Heap| {
             heap.alloc(RObject::Pairlist { car: v, cdr: rest, tag: ValueId::NIL })
         };

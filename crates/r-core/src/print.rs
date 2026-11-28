@@ -1121,7 +1121,156 @@ fn deparse_name(text: &str) -> String {
     }
 }
 
+thread_local! {
+    static DEPARSE_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// GNU's width.cutoff line breaking exactly as deparse.c arranges:
+/// tokens accumulate until the line passes the cutoff — default 60
+/// exactly as deparse's width.cutoff — then the next comma boundary
+/// emits its space and breaks. Continuation lines carry no indent.
+fn deparse_wrap_cutoff(flat: &str) -> String {
+    if flat.len() <= 60 {
+        return flat.to_string();
+    }
+    let mut out = String::with_capacity(flat.len() + 8);
+    let mut width = 0usize;
+    let mut in_string = false;
+    let chars: Vec<char> = flat.chars().collect();
+    let mut i = 0usize;
+    while i < chars.len() {
+        let c = chars[i];
+        if c == '"' {
+            in_string = !in_string;
+        }
+        out.push(c);
+        width += 1;
+        if !in_string && c == ',' && width >= 60 {
+            // The comma's trailing space writes before the break exactly
+            // as GNU — the golden lines end in that space.
+            if i + 1 < chars.len() && chars[i + 1] == ' ' {
+                out.push(' ');
+                i += 1;
+            }
+            out.push('\n');
+            width = 0;
+        }
+        i += 1;
+    }
+    out
+}
+
+/// GNU's deparse discipline for attributed objects: names alone inline
+/// into the c() construction as `name = value` entries; any further
+/// attribute wraps the data rendering in structure() with every
+/// attribute deparsed in chain order exactly as deparse.c arranges.
 pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String {
+    let depth = DEPARSE_DEPTH.with(|d| d.get());
+    DEPARSE_DEPTH.with(|d| d.set(depth + 1));
+    let flat = deparse_attributed(heap, interner, value);
+    DEPARSE_DEPTH.with(|d| d.set(depth));
+    if depth == 0 {
+        deparse_wrap_cutoff(&flat)
+    } else {
+        flat
+    }
+}
+
+fn deparse_attributed(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String {
+    let attrib = heap.get(value).map(|slot| slot.attrib).unwrap_or(crate::id::ValueId::NIL);
+    // Collect the chain in insertion order — (name, value) pairs.
+    let mut entries: Vec<(String, crate::id::ValueId)> = Vec::new();
+    let mut cursor = attrib;
+    for _ in 0..1000 {
+        if cursor == crate::id::ValueId::NIL {
+            break;
+        }
+        match heap.object(cursor) {
+            Some(RObject::Pairlist { car, cdr, tag }) => {
+                if let Some(RObject::Symbol { name, .. }) = heap.object(*tag) {
+                    entries.push((interner.symbol_name(*name).to_string(), *car));
+                }
+                cursor = *cdr;
+            }
+            _ => break,
+        }
+    }
+    let atomic = matches!(
+        heap.object(value),
+        Some(RObject::Real(_))
+            | Some(RObject::Integer(_))
+            | Some(RObject::Logical(_))
+            | Some(RObject::String(_))
+            | Some(RObject::Complex(_))
+            | Some(RObject::Raw(_))
+            | Some(RObject::List(_))
+    );
+    // S4 objects own their rendering entirely — the new() construction
+    // already accounts for class and slots, so the generic attribute
+    // wrap never applies exactly as GNU's object-aware deparse arranges.
+    if !atomic || entries.is_empty() || s4_class_of(heap, interner, value).is_some() {
+        return deparse_base(heap, interner, value);
+    }
+    // Names-only chains inline into the c() construction exactly as
+    // GNU — length-one vectors still render through c() with the name.
+    let only_names = entries.iter().all(|(n, _)| n == "names");
+    if only_names {
+        let names: Vec<String> = match heap.object(entries[0].1) {
+            Some(RObject::String(vals)) => vals.iter().map(|v| interner.string_text(*v).to_string()).collect(),
+            _ => Vec::new(),
+        };
+        let elems = deparse_elements(heap, interner, value);
+        if !elems.is_empty() && elems.len() == names.len() {
+            let parts: Vec<String> = elems
+                .iter()
+                .zip(names.iter())
+                .map(|(v, n)| {
+                    if n == "NA" || n.is_empty() {
+                        v.clone()
+                    } else if n.chars().all(|c| c.is_alphanumeric() || c == '.' || c == '_')
+                        && !n.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false)
+                    {
+                        format!("{n} = {v}")
+                    } else {
+                        format!("`{n}` = {v}")
+                    }
+                })
+                .collect();
+            return format!("c({})", parts.join(", "));
+        }
+        return deparse_base(heap, interner, value);
+    }
+    // The structure() wrap: base rendering first, attributes following
+    // in chain order — names among them exactly as GNU when mixed with
+    // dimensional or class attributes.
+    let base = deparse_base(heap, interner, value);
+    let mut parts: Vec<String> = vec![base];
+    for (name, attr_value) in &entries {
+        let rendered = deparse(heap, interner, *attr_value);
+        parts.push(format!("{name} = {rendered}"));
+    }
+    format!("structure({})", parts.join(", "))
+}
+
+/// Element-wise deparse of an atomic vector for the named-inline
+/// construction — scalar renderings exactly as GNU's c() entries.
+fn deparse_elements(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Vec<String> {
+    match heap.object(value) {
+        Some(RObject::Real(vals)) => vals.iter().map(|v| format_real(*v)).collect(),
+        Some(RObject::Integer(vals)) => vals
+            .iter()
+            .map(|&v| if v == crate::object::NA_INTEGER { "NA_integer_".to_string() } else { format!("{v}L") })
+            .collect(),
+        Some(RObject::Logical(vals)) => vals
+            .iter()
+            .map(|&v| if v == crate::object::NA_INTEGER { "NA".to_string() } else if v != 0 { "TRUE".to_string() } else { "FALSE".to_string() })
+            .collect(),
+        Some(RObject::String(vals)) => vals.iter().map(|v| format!("\"{}\"", interner.string_text(*v))).collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn deparse_base(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String {
     // S4 objects deparse as their constructing new() call exactly as GNU —
     // class name first, slots in definition order with deparsed values.
     if let Some(class_text) = s4_class_of(heap, interner, value)
@@ -1251,17 +1400,28 @@ pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String
             format!("c({})", parts.join(", "))
         }
         Some(RObject::Integer(vals)) if !vals.is_empty() => {
-            let parts: Vec<String> = vals
-                .iter()
-                .map(|&v| {
-                    if v == crate::object::NA_INTEGER {
-                        "NA_integer_".to_string()
-                    } else {
-                        format!("{}L", v)
-                    }
-                })
-                .collect();
-            format!("c({})", parts.join(", "))
+            // GNU's consecutive-sequence compaction exactly: integer
+            // vectors stepping by one deparse through the colon
+            // construction — dim = 2:3 rather than c(2L, 3L).
+            let consecutive = vals.len() >= 2
+                && vals.iter().all(|&v| v != crate::object::NA_INTEGER)
+                && vals.windows(2).all(|w| w[1] - w[0] == 1 || w[1] - w[0] == -1)
+                && vals.windows(2).map(|w| w[1] - w[0]).collect::<std::collections::HashSet<_>>().len() == 1;
+            if consecutive {
+                format!("{}:{}", vals[0], vals[vals.len() - 1])
+            } else {
+                let parts: Vec<String> = vals
+                    .iter()
+                    .map(|&v| {
+                        if v == crate::object::NA_INTEGER {
+                            "NA_integer_".to_string()
+                        } else {
+                            format!("{}L", v)
+                        }
+                    })
+                    .collect();
+                format!("c({})", parts.join(", "))
+            }
         }
         Some(RObject::Logical(vals)) if !vals.is_empty() => {
             let parts: Vec<String> = vals
@@ -1284,6 +1444,28 @@ pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String
                 .map(|v| format!("\"{}\"", interner.string_text(*v)))
                 .collect();
             format!("c({})", parts.join(", "))
+        }
+        // Generic vectors deparse through their list() construction
+        // exactly as GNU — each element deparsed comma-separated, NULL
+        // rendering bare, names attaching as `name = value` entries.
+        Some(RObject::List(items)) => {
+            let items = items.clone();
+            let names: Vec<String> = match crate::attrib::get_attrib(heap, interner, value, "names") {
+                Some(n) => crate::attrib::string_vec_pub(heap, interner, n),
+                None => Vec::new(),
+            };
+            let parts: Vec<String> = items
+                .iter()
+                .enumerate()
+                .map(|(index, item)| {
+                    let body = deparse(heap, interner, *item);
+                    match names.get(index) {
+                        Some(n) if !n.is_empty() => format!("{n} = {body}"),
+                        _ => body,
+                    }
+                })
+                .collect();
+            format!("list({})", parts.join(", "))
         }
         _ => "?".to_string(),
     }

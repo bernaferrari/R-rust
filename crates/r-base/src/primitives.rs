@@ -3400,12 +3400,15 @@ pub fn call_primitive_inner(
             Ok(chain)
         }
         OUTER => {
-            // outer(x, y, FUN) exactly as GNU: FUN defaults to "*",
-            // resolves as a string-named function or a function value,
-            // and applies pair-by-pair — the [i,j] entry in column-major
-            // layout with dimensions c(length(x), length(y)). Dispatching
-            // through ordinary evaluation keeps operators, primitives,
-            // and closures uniform exactly as GNU's per-pair calls.
+            // outer(x, y, FUN) exactly as GNU base/R/outer.R:
+            //   X <- as.array(X); Y <- as.array(Y)
+            //   FUN "*" special-cases to the matrix product as.vector(X)
+            //   %*% t(as.vector(Y)) — multiplication always lifting to
+            //   real exactly as %*% arranges; every other FUN evaluates
+            //   ONCE over rep(X, each=nY) and rep(Y, times=nX), never
+            //   pair-by-pair. dims concatenate c(dX, dY); dimnames
+            //   concatenate the inputs' dimnames lists when either
+            //   carries any, NULL-padding the absent side.
             let operands = eval_args_up_to(heap, interner, args, caller_env, 3)?;
             if operands.len() < 2 {
                 return Err(EvalError::TypeError("outer requires x and y").into());
@@ -3421,97 +3424,161 @@ pub fn call_primitive_inner(
                 },
                 None => Some("*".to_string()),
             };
-            // GNU forwards the trailing arguments into every FUN call
-            // exactly as ordinary call evaluation arranges — the raw
-            // pairlist tail carries both values and tags intact.
-            let mut tail: Vec<(ValueId, ValueId)> = Vec::new();
-            let mut tcursor = args;
-            for skip in 0..1000usize {
-                if tcursor == ValueId::NIL { break; }
-                let (car, tag, next) = match heap.object(tcursor) {
-                    Some(RObject::Pairlist { car, tag, cdr, .. }) => (*car, *tag, *cdr),
-                    _ => break,
-                };
-                if skip >= 3 {
-                    tail.push((car, tag));
+            // dim inputs: bare vectors read as their length exactly as
+            // as.array arranges the one-dimensional dim vector.
+            let dim_vec_of = |heap: &Heap, interner: &SymbolInterner, v: ValueId, len: usize| -> Vec<i32> {
+                match get_attrib(heap, interner, v, "dim") {
+                    Some(d) => match heap.object(d) {
+                        Some(RObject::Integer(vals)) => vals.clone(),
+                        Some(RObject::Real(vals)) => vals.iter().map(|x| *x as i32).collect(),
+                        _ => vec![len as i32],
+                    },
+                    None => vec![len as i32],
                 }
-                tcursor = next;
-            }
-            let scalar_at = |heap: &mut Heap, v: ValueId, i: usize| -> Result<ValueId, RSignal> {
-                extract_elements(heap, v, &[i]).map_err(RSignal::from)
             };
-            let mut out: Vec<ValueId> = Vec::with_capacity(xlen * ylen);
-            for j in 0..ylen {
-                for i in 0..xlen {
-                    let xi = scalar_at(heap, xv, i)?;
-                    let yj = scalar_at(heap, yv, j)?;
-                    let mut tail_end = ValueId::NIL;
-                    for (car, tag) in tail.iter().rev() {
-                        tail_end = heap.alloc(RObject::Pairlist { car: *car, cdr: tail_end, tag: *tag });
+            let dx = dim_vec_of(heap, interner, xv, xlen);
+            let dy = dim_vec_of(heap, interner, yv, ylen);
+
+            let unified = if fun_name.as_deref() == Some("*") {
+                // The matrix-product fast path: numeric lifting exactly
+                // as %*% — integer inputs multiply in floating point.
+                let xs = reals_of_value(heap, xv).map_err(RSignal::from)?;
+                let ys = reals_of_value(heap, yv).map_err(RSignal::from)?;
+                let mut vals: Vec<f64> = Vec::with_capacity(xlen * ylen);
+                for j in 0..ylen {
+                    for i in 0..xlen {
+                        vals.push(xs[i] * ys[j]);
                     }
-                    let pair = heap.alloc(RObject::Pairlist { car: yj, cdr: tail_end, tag: ValueId::NIL });
-                    let chain = heap.alloc(RObject::Pairlist { car: xi, cdr: pair, tag: ValueId::NIL });
-                    let applied = match &fun_name {
-                        Some(name) => {
-                            let sym = interner.intern_symbol(name);
-                            let head = heap.alloc(RObject::Symbol { name: sym, value: ValueId::UNBOUND, internal: ValueId::NIL });
-                            heap.alloc(RObject::Language { car: head, cdr: chain, tag: ValueId::NIL })
-                        }
-                        None => {
-                            // A function value applies directly exactly as
-                            // the head position resolves it.
-                            let fval = operands.get(2).copied().unwrap_or(ValueId::NIL);
-                            heap.alloc(RObject::Language { car: fval, cdr: chain, tag: ValueId::NIL })
-                        }
-                    };
-                    let result = eval(heap, interner, applied, caller_env)?;
-                    out.push(force_if_promise(heap, interner, result)?);
                 }
-            }
-            // The pair results concatenate at the highest type rank the
-            // lattice arranges — exactly as c() unification — then carry
-            // the outer dimensions.
-            let rank_of = |heap: &Heap, v: ValueId| -> u32 {
-                match heap.object(v) {
-                    Some(RObject::Logical(_)) => 1,
-                    Some(RObject::Integer(_)) => 2,
-                    Some(RObject::Real(_)) => 3,
-                    Some(RObject::Complex(_)) => 4,
-                    Some(RObject::String(_)) => 5,
-                    _ => 6,
-                }
-            };
-            let top = out.iter().map(|v| rank_of(heap, *v)).max().unwrap_or(3);
-            let unified = if top == 5 || top == 6 {
-                let mut vals: Vec<r_core::intern::InternedStr> = Vec::with_capacity(out.len());
-                for v in &out {
-                    let ss = strings_of_value(heap, interner, *v).map_err(RSignal::from)?;
-                    vals.push(ss.first().copied().unwrap_or_else(|| interner.intern_string("")));
-                }
-                heap.alloc(RObject::String(vals))
-            } else if top == 4 {
-                let mut vals: Vec<r_core::object::RComplex> = Vec::with_capacity(out.len());
-                for v in &out {
-                    let cx = as_complex_vec(heap, interner, *v).map_err(RSignal::from)?;
-                    vals.push(cx.first().copied().unwrap_or(r_core::object::RComplex { r: 0.0, i: 0.0 }));
-                }
-                heap.alloc(RObject::Complex(vals))
+                heap.alloc(RObject::Real(vals))
             } else {
-                let mut vals: Vec<f64> = Vec::with_capacity(out.len());
-                for v in &out {
-                    let rs = reals_of_value(heap, *v).unwrap_or_default();
-                    vals.push(rs.first().copied().unwrap_or(0.0));
+                // GNU forwards the trailing arguments into the single
+                // FUN call exactly as ordinary call evaluation arranges.
+                let mut tail: Vec<(ValueId, ValueId)> = Vec::new();
+                let mut tcursor = args;
+                for skip in 0..1000usize {
+                    if tcursor == ValueId::NIL { break; }
+                    let (car, tag, next) = match heap.object(tcursor) {
+                        Some(RObject::Pairlist { car, tag, cdr, .. }) => (*car, *tag, *cdr),
+                        _ => break,
+                    };
+                    if skip >= 3 {
+                        tail.push((car, tag));
+                    }
+                    tcursor = next;
                 }
-                if top == 2 && out.iter().all(|v| matches!(heap.object(*v), Some(RObject::Integer(_)))) {
-                    heap.alloc(RObject::Integer(vals.iter().map(|x| *x as i32).collect()))
-                } else if top == 1 && out.iter().all(|v| matches!(heap.object(*v), Some(RObject::Logical(_)))) {
-                    heap.alloc(RObject::Logical(vals.iter().map(|x| *x as i32).collect()))
+                // rep(X, each = nY) and rep(Y, times = nX) exactly as
+                // GNU's vectorized arrangement — X varies slowest.
+                let rep_each = |heap: &mut Heap, v: ValueId, each: usize| -> Result<ValueId, RSignal> {
+                    let n = vector_length(heap, v).unwrap_or(0);
+                    let mut idx: Vec<usize> = Vec::with_capacity(n * each);
+                    for i in 0..n {
+                        for _ in 0..each {
+                            idx.push(i);
+                        }
+                    }
+                    extract_elements(heap, v, &idx).map_err(RSignal::from)
+                };
+                let rep_times = |heap: &mut Heap, v: ValueId, times: usize| -> Result<ValueId, RSignal> {
+                    let n = vector_length(heap, v).unwrap_or(0);
+                    let mut idx: Vec<usize> = Vec::with_capacity(n * times);
+                    for _ in 0..times {
+                        for i in 0..n {
+                            idx.push(i);
+                        }
+                    }
+                    extract_elements(heap, v, &idx).map_err(RSignal::from)
+                };
+                let big_x = rep_each(heap, xv, ylen)?;
+                let big_y = rep_times(heap, yv, xlen)?;
+                // GNU's match.fun error exactly: a string naming no
+                // function reports the mode-qualified lookup failure.
+                if let Some(name) = &fun_name {
+                    // match.fun's get(ENFUN) exactly: evaluate the symbol
+                    // through ordinary resolution — primitives answer
+                    // their function cell, closures their binding — and
+                    // only a non-function result draws GNU's mode error.
+                    let sym = interner.intern_symbol(name);
+                    let sym_obj = heap.alloc(RObject::Symbol { name: sym, value: ValueId::UNBOUND, internal: ValueId::NIL });
+                    let resolved = eval(heap, interner, sym_obj, caller_env).ok()
+                        .and_then(|v| force_if_promise(heap, interner, v).ok());
+                    let is_fun = match resolved {
+                        Some(v) => matches!(
+                            heap.object(v),
+                            Some(RObject::Closure { .. }) | Some(RObject::Primitive(_))
+                        ),
+                        None => false,
+                    };
+                    if !is_fun {
+                        return Err(EvalError::TypeError(
+                            Box::leak(format!("object '{name}' of mode 'function' was not found").into_boxed_str())
+                        ).into());
+                    }
+                }
+                let mut tail_end = ValueId::NIL;
+                for (car, tag) in tail.iter().rev() {
+                    tail_end = heap.alloc(RObject::Pairlist { car: *car, cdr: tail_end, tag: *tag });
+                }
+                let pair = heap.alloc(RObject::Pairlist { car: big_y, cdr: tail_end, tag: ValueId::NIL });
+                let chain = heap.alloc(RObject::Pairlist { car: big_x, cdr: pair, tag: ValueId::NIL });
+                let applied = match &fun_name {
+                    Some(name) => {
+                        let sym = interner.intern_symbol(name);
+                        let head = heap.alloc(RObject::Symbol { name: sym, value: ValueId::UNBOUND, internal: ValueId::NIL });
+                        heap.alloc(RObject::Language { car: head, cdr: chain, tag: ValueId::NIL })
+                    }
+                    None => {
+                        let fval = operands.get(2).copied().unwrap_or(ValueId::NIL);
+                        heap.alloc(RObject::Language { car: fval, cdr: chain, tag: ValueId::NIL })
+                    }
+                };
+                let result = eval(heap, interner, applied, caller_env)?;
+                force_if_promise(heap, interner, result)?
+            };
+            // dims concatenate c(dX, dY) exactly as GNU's array generalization.
+            let mut full_dim: Vec<i32> = dx.clone();
+            full_dim.extend(dy.iter().copied());
+            let dim = heap.alloc(RObject::Integer(full_dim));
+            let with_dim = copy_with_attrib(heap, interner, unified, "dim", dim).map_err(RSignal::from)?;
+            // dimnames concatenate the inputs' dimnames-or-names lists
+            // exactly as GNU: vector names read as the single margin's
+            // dimnames entry, either side absent padding NULL.
+            let names_or_dimnames = |heap: &Heap, interner: &SymbolInterner, v: ValueId, ndim: usize| -> Option<Vec<ValueId>> {
+                if let Some(dn) = get_attrib(heap, interner, v, "dimnames") {
+                    if let Some(RObject::List(parts)) = heap.object(dn).cloned() {
+                        let mut out = parts;
+                        while out.len() < ndim {
+                            out.push(ValueId::NIL);
+                        }
+                        return Some(out);
+                    }
+                }
+                if ndim == 1 {
+                    if let Some(nm) = get_attrib(heap, interner, v, "names") {
+                        return Some(vec![nm]);
+                    }
+                    None
                 } else {
-                    heap.alloc(RObject::Real(vals))
+                    None
                 }
             };
-            let dim = heap.alloc(RObject::Integer(vec![xlen as i32, ylen as i32]));
-            copy_with_attrib(heap, interner, unified, "dim", dim).map_err(RSignal::from)
+            let nx = names_or_dimnames(heap, interner, xv, dx.len());
+            let ny = names_or_dimnames(heap, interner, yv, dy.len());
+            if nx.is_some() || ny.is_some() {
+                let mut entries: Vec<ValueId> = Vec::new();
+                match &nx {
+                    Some(parts) => entries.extend(parts.iter().copied()),
+                    None => for _ in 0..dx.len() { entries.push(ValueId::NIL); },
+                }
+                match &ny {
+                    Some(parts) => entries.extend(parts.iter().copied()),
+                    None => for _ in 0..dy.len() { entries.push(ValueId::NIL); },
+                }
+                let dn = heap.alloc(RObject::List(entries));
+                copy_with_attrib(heap, interner, with_dim, "dimnames", dn).map_err(RSignal::from)
+            } else {
+                Ok(with_dim)
+            }
         }
         ON_EXIT => {
             // GNU's exit-handler registration: the expression stays
