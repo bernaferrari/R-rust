@@ -63,7 +63,7 @@ pub fn call_primitive(
     // Braces and parens propagate the final inner visibility exactly as
     // GNU — `{ invisible(1) }` returns invisibly — so they join .Internal
     // and eval in the propagation exceptions.
-    if result.is_ok() && id.0 != INTERNAL && id.0 != EVAL_FN && id.0 != LOCAL_FN && id.0 != BRACE && id.0 != PAREN && id.0 != SUPPRESS_WARNINGS && id.0 != USEMETHOD && id.0 != NEXTMETHOD && id.0 != PLOT_FN && id.0 != SYSTEM && id.0 != OPTIONS_FN && id.0 != WITH_RESTARTS && id.0 != WITH_CALLING_HANDLERS && id.0 != PAR && id.0 != PALETTE_FN && id.0 != HIST && id.0 != BARPLOT && id.0 != BOXPLOT && id.0 != CURVE_FN && id.0 != MATPLOT && id.0 != SVG_FN && id.0 != PNG_FN && id.0 != PDF_FN && id.0 != DEV_OFF && id.0 != PIE_FN && id.0 != STRIPCHART && id.0 != DOTCHART && id.0 != DENSITY_FN && id.0 != GRID_FN && id.0 != RUG_FN && id.0 != TRYCATCH {
+    if result.is_ok() && id.0 != INTERNAL && id.0 != EVAL_FN && id.0 != LOCAL_FN && id.0 != BRACE && id.0 != PAREN && id.0 != IF && id.0 != SUPPRESS_WARNINGS && id.0 != USEMETHOD && id.0 != NEXTMETHOD && id.0 != PLOT_FN && id.0 != SYSTEM && id.0 != OPTIONS_FN && id.0 != WITH_RESTARTS && id.0 != WITH_CALLING_HANDLERS && id.0 != PAR && id.0 != PALETTE_FN && id.0 != HIST && id.0 != BARPLOT && id.0 != BOXPLOT && id.0 != CURVE_FN && id.0 != MATPLOT && id.0 != SVG_FN && id.0 != PNG_FN && id.0 != PDF_FN && id.0 != DEV_OFF && id.0 != PIE_FN && id.0 != STRIPCHART && id.0 != DOTCHART && id.0 != DENSITY_FN && id.0 != GRID_FN && id.0 != RUG_FN && id.0 != TRYCATCH {
         heap.visible = !matches!(
             id.0,
             ASSIGN | SUPERASSIGN | PRINT | CAT | INVISIBLE | WHILE | REPEAT | FOR
