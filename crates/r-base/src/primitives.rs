@@ -3613,7 +3613,70 @@ pub fn call_primitive_inner(
                     out.insert(0, ".".to_string());
                 }
             };
-            scan_dir_entries(&root, "", &mut out, 0, all_files, recursive, include_dirs, &matches_pattern);
+            // The flat virtual keyspace enumerates by prefix exactly as
+            // the store's shape arranges: directories are implied by key
+            // structure rather than existing as entries, direct children
+            // are first segments, recursive descent is the full remainder.
+            if heap.browser_files_enabled {
+                let root_trimmed = root.trim_end_matches('/');
+                let root_prefix = if root_trimmed == "." || root_trimmed.is_empty() {
+                    String::new()
+                } else {
+                    format!("{root_trimmed}/")
+                };
+                let mut keys: Vec<String> = heap.browser_files.keys().cloned().collect();
+                keys.sort();
+                let mut seen_dirs: Vec<String> = Vec::new();
+                for key in &keys {
+                    if !root_prefix.is_empty() && !key.starts_with(&root_prefix) {
+                        continue;
+                    }
+                    if root_prefix.is_empty() && key.starts_with('/') {
+                        continue;
+                    }
+                    let remainder = &key[root_prefix.len()..];
+                    if remainder.is_empty() {
+                        continue;
+                    }
+                    if recursive {
+                        // Every key below the root lists with its basename
+                        // pattern-matched exactly as GNU; implied ancestor
+                        // directories list when include.dirs asks.
+                        let basename = remainder.rsplit('/').next().unwrap_or(remainder);
+                        let hidden = basename.starts_with('.');
+                        if (!hidden || all_files) && matches_pattern(basename) {
+                            out.push(remainder.to_string());
+                        }
+                        if include_dirs && remainder.contains('/') {
+                            let mut acc = String::new();
+                            let segments: Vec<&str> = remainder.split('/').collect();
+                            for seg in &segments[..segments.len() - 1] {
+                                if !acc.is_empty() { acc.push('/'); }
+                                acc.push_str(seg);
+                                if !seen_dirs.contains(&acc) {
+                                    seen_dirs.push(acc.clone());
+                                }
+                            }
+                        }
+                    } else {
+                        let first = remainder.split('/').next().unwrap_or(remainder);
+                        let hidden = first.starts_with('.');
+                        if (!hidden || all_files) && matches_pattern(first) && !out.contains(&first.to_string()) {
+                            out.push(first.to_string());
+                        }
+                    }
+                }
+                if recursive && include_dirs {
+                    for dir in seen_dirs {
+                        let basename = dir.rsplit('/').next().unwrap_or(&dir);
+                        if matches_pattern(basename) && !out.contains(&dir) {
+                            out.push(dir);
+                        }
+                    }
+                }
+            } else {
+                scan_dir_entries(&root, "", &mut out, 0, all_files, recursive, include_dirs, &matches_pattern);
+            }
             scan_matches(&mut out);
             // GNU byte-sorts the entire result — dots, hidden, visible
             // in one ordering exactly as the oracle pins.
