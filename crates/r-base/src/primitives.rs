@@ -16285,12 +16285,26 @@ pub fn format_spec(
         }
         'f' => {
             let v = real_value(heap);
-            let decimals = spec.precision.unwrap_or(6);
-            let fixed = format!("{:.*}", decimals, v.abs());
-            finish(fixed, v < 0.0, spec)
+            // GNU's special values print as text regardless of the
+            // conversion — %f of Inf answering "Inf" exactly.
+            if v.is_nan() {
+                finish("NaN".to_string(), false, spec)
+            } else if v.is_infinite() {
+                finish("Inf".to_string(), v < 0.0, spec)
+            } else {
+                let decimals = spec.precision.unwrap_or(6);
+                let fixed = format!("{:.*}", decimals, v.abs());
+                finish(fixed, v < 0.0, spec)
+            }
         }
         'e' | 'E' => {
             let v = real_value(heap);
+            if v.is_nan() {
+                return finish("NaN".to_string(), false, spec);
+            }
+            if v.is_infinite() {
+                return finish("Inf".to_string(), v < 0.0, spec);
+            }
             let decimals = spec.precision.unwrap_or(6);
             let raw = format!("{:.*e}", decimals, v.abs());
             // Rust prints 1.23e3 — GNU wants 1.23e+03: signed, two digits.
@@ -16302,6 +16316,12 @@ pub fn format_spec(
         }
         'g' | 'G' => {
             let v = real_value(heap);
+            if v.is_nan() {
+                return finish("NaN".to_string(), false, spec);
+            }
+            if v.is_infinite() {
+                return finish("Inf".to_string(), v < 0.0, spec);
+            }
             let prec = spec.precision.unwrap_or(6).max(1);
             let abs = v.abs();
             let exp = if abs == 0.0 { 0 } else { abs.log10().floor() as i32 };
