@@ -782,3 +782,207 @@ simpleMessage <- function(msg, call = NULL)
               list(message = msg, call = call))
 
 substring <- function(text, first, last = 1000000L) substr(text, first, last)
+
+
+# GNU's dist exactly as distance.c arranges for the Euclidean default —
+# the lower-triangular rowwise packing classed "dist" with the Size
+# attribute hclust consumes.
+dist <- function(x, method = "euclidean", diag = FALSE, upper = FALSE, p = 2) {
+    x <- as.matrix(x)
+    n <- nrow(x)
+    d <- numeric(n * (n - 1) / 2)
+    k <- 1
+    for (i in 1:(n - 1)) {
+        for (j in (i + 1):n) {
+            d[k] <- sqrt(sum((x[i, ] - x[j, ])^2))
+            k <- k + 1
+        }
+    }
+    structure(d, class = "dist", Size = n, Diag = diag, Upper = upper)
+}
+
+# GNU's hclust exactly as the agglomerative construction arranges —
+# complete linkage by default, the merge table encoding leaves negative
+# and clusters by formation step, heights non-decreasing.
+hclust <- function(d, method = "complete", members = NULL) {
+    n <- attr(d, "Size")
+    if (is.null(n)) stop("invalid dissimilarities")
+    # Expand the packed lower triangle into a full matrix — rows and
+    # columns indexed by observation.
+    dm <- matrix(0, n, n)
+    k <- 1
+    for (i in 1:(n - 1)) {
+        for (j in (i + 1):n) {
+            dm[i, j] <- d[k]
+            dm[j, i] <- d[k]
+            k <- k + 1
+        }
+    }
+    # Agglomeration over live clusters exactly as the nearest-neighbor
+    # semantics arrange: each step merges the closest pair, the complete
+    # linkage answering the maximum pairwise distance.
+    merge <- matrix(0L, n - 1, 2)
+    height <- numeric(n - 1)
+    # Live clusters: a list of index vectors keyed by cluster id; negative
+    # singleton ids are leaves exactly as the merge encoding arranges.
+    clusters <- vector("list", 2 * n - 1)
+    for (i in 1:n) clusters[[i]] <- i
+    live <- 1:n
+    ndist <- list()
+    cdist <- function(a, b) {
+        # complete linkage — maximum pairwise over members
+        m <- 0
+        for (u in clusters[[a]]) for (v in clusters[[b]]) {
+            if (dm[u, v] > m) m <- dm[u, v]
+        }
+        m
+    }
+    for (step in 1:(n - 1)) {
+        # find the closest live pair
+        best <- Inf
+        bi <- 0; bj <- 0
+        for (ii in 1:(length(live) - 1)) {
+            for (jj in (ii + 1):length(live)) {
+                a <- live[ii]; b <- live[jj]
+                key <- paste(min(a, b), max(a, b))
+                dd <- ndist[[key]]
+                if (is.null(dd)) {
+                    dd <- cdist(a, b)
+                    ndist[[key]] <- dd
+                }
+                if (dd < best) {
+                    best <- dd; bi <- ii; bj <- jj
+                }
+            }
+        }
+        a <- live[bi]; b <- live[bj]
+        # merge encoding: singleton leaves negative, prior clusters positive
+        encode <- function(id) {
+            if (length(clusters[[id]]) == 1 && id <= n) -clusters[[id]][1]
+            else {
+                # cluster formed at step id - n
+                id - n
+            }
+        }
+        ea <- encode(a); eb <- encode(b)
+        # GNU arranges the smaller subtree first — leaves ordering by the
+        # merge scan exactly as the chain algorithm emits them.
+        if (ea > eb) { tmp <- ea; ea <- eb; eb <- tmp }
+        merge[step, 1] <- ea
+        merge[step, 2] <- eb
+        height[step] <- best
+        nid <- n + step
+        clusters[[nid]] <- c(clusters[[a]], clusters[[b]])
+        live <- live[-c(bi, bj)]
+        live <- c(live, nid)
+    }
+    structure(list(merge = merge, height = height, order = seq_len(n),
+                   labels = seq_len(n), method = method,
+                   call = quote(hclust()), dist.method = "euclidean"),
+              class = "hclust")
+}
+
+# GNU's as.dendrogram.hclust exactly as the recursive construction
+# arranges — leaves carry the observation index with leaf/label/height
+# attributes, nodes the members and midpoint.
+as.dendrogram <- function(object, ...) {
+    merge <- object$merge
+    n <- nrow(merge) + 1
+    build <- function(step) {
+        x <- merge[step, ]
+        kids <- list()
+        memb <- 0
+        for (v in x) {
+            if (v < 0) {
+                leaf <- -v
+                attr(leaf, "members") <- 1L
+                attr(leaf, "height") <- 0
+                attr(leaf, "leaf") <- TRUE
+                attr(leaf, "label") <- as.integer(-v)
+                kids <- c(kids, list(leaf))
+                memb <- memb + 1
+            } else {
+                sub <- build(v)
+                kids <- c(kids, list(sub))
+                memb <- memb + attr(sub, "members")
+            }
+        }
+        attr(kids, "members") <- memb
+        attr(kids, "height") <- object$height[step]
+        attr(kids, "midpoint") <- 0
+        class(kids) <- "dendrogram"
+        kids
+    }
+    build(n - 1)
+}
+
+# GNU's is.leaf exactly as the dendrogram attribute arranges.
+is.leaf <- function(x) isTRUE(attr(x, "leaf"))
+
+# GNU's order.dendrogram exactly — the leaf observation indices in
+# left-to-right traversal order.
+order.dendrogram <- function(x) {
+    out <- integer()
+    walk <- function(node) {
+        if (is.leaf(node)) return(as.integer(node[1]))
+        acc <- integer()
+        for (kid in node) acc <- c(acc, walk(kid))
+        acc
+    }
+    walk(x)
+}
+
+# GNU's reorder.dendrogram exactly — at every node the children arrange
+# ascending by the aggregated member weights, sum by default.
+reorder <- function(x, wts, ...) UseMethod("reorder")
+reorder.dendrogram <- function(x, wts, agglo.FUN = sum, ...) {
+    rec <- function(node) {
+        if (is.leaf(node)) {
+            attr(node, "value") <- wts[as.integer(node[1])]
+            return(node)
+        }
+        kids <- lapply(node, rec)
+        vals <- vapply(kids, function(k) attr(k, "value"), numeric(1))
+        ord <- order(vals)
+        kids <- kids[ord]
+        class(kids) <- "dendrogram"
+        for (a in names(attributes(node))) {
+            if (!(a %in% c("names", "class"))) attr(kids, a) <- attr(node, a)
+        }
+        class(kids) <- "dendrogram"
+        attr(kids, "value") <- agglo.FUN(vals[ord])
+        kids
+    }
+    rec(x)
+}
+
+# GNU's heatmap driver exactly for the default contract — dendrograms
+# computed and reordered by the mean weights, the indices answering the
+# reordered traversal, returned invisibly. The graphics arrangement is
+# outside the text-conformance surface.
+heatmap <- function(x, Rowv = NULL, Colv = NULL, distfun = dist,
+                    hclustfun = hclust, reorderfun = function(d, w) reorder(d, w),
+                    na.rm = TRUE, ...) {
+    if (!is.matrix(x)) x <- as.matrix(x)
+    nr <- nrow(x)
+    nc <- ncol(x)
+    if (isTRUE(Rowv) || is.null(Rowv)) Rowv <- rowMeans(x, na.rm = na.rm)
+    if (is.numeric(Rowv)) {
+        hcr <- hclustfun(distfun(x))
+        ddr <- as.dendrogram(hcr)
+        ddr <- reorderfun(ddr, Rowv)
+        rowInd <- order.dendrogram(ddr)
+    } else {
+        rowInd <- 1:nr
+    }
+    if (isTRUE(Colv) || is.null(Colv)) Colv <- colMeans(x, na.rm = na.rm)
+    if (is.numeric(Colv)) {
+        hcc <- hclustfun(distfun(t(x)))
+        ddc <- as.dendrogram(hcc)
+        ddc <- reorderfun(ddc, Colv)
+        colInd <- order.dendrogram(ddc)
+    } else {
+        colInd <- 1:nc
+    }
+    invisible(list(rowInd = rowInd, colInd = colInd))
+}
