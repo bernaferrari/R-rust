@@ -10,7 +10,7 @@
 use std::io::Write;
 use std::process::ExitCode;
 
-use rmath::android::{RSession, RValue};
+use r_runtime::host::pure_session::PureSession;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
@@ -49,23 +49,17 @@ fn main() -> ExitCode {
     }
 
 
-    let mut session = RSession::new();
-    session.enable_host_process_capabilities();
-    let result = session.eval_script(&code);
-
-
-    let mut stdout = std::io::stdout();
-    let _ = stdout.write_all(result.stdout.as_bytes());
-    let _ = stdout.flush();
-    let mut stderr = std::io::stderr();
-    let _ = stderr.write_all(result.stderr.as_bytes());
-    let _ = stderr.flush();
-
-    if let RValue::Error(message) = &result.typed {
-        if result.stderr.is_empty() {
-            eprintln!("Error: {message}");
+    let mut session = PureSession::new();
+    match session.eval_output(&code) {
+        Ok(output) => {
+            let mut stdout = std::io::stdout();
+            let _ = stdout.write_all(output.as_bytes());
+            let _ = stdout.flush();
+            ExitCode::SUCCESS
         }
-        return ExitCode::from(1);
+        Err(message) => {
+            eprintln!("Error: {message}");
+            ExitCode::from(1)
+        }
     }
-    ExitCode::SUCCESS
 }

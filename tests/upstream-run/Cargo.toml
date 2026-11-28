@@ -14,4 +14,4 @@ name = "rport-upstream-run"
 path = "src/main.rs"
 
 [dependencies]
-rmath = { path = "../../crates/rmath" }
+r-runtime = { path = "../../crates/r-runtime" }

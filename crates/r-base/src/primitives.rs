@@ -238,8 +238,75 @@ pub fn call_primitive_inner(
             which_primitive(heap, operands[0])
         }
         ANY | ALL => {
-            let operands = eval_args(heap, interner, args, caller_env, 1)?;
-            quantifier_primitive(heap, id.0, operands[0])
+            // GNU's contract is variadic exactly as the usage line
+            // arranges — any(..., na.rm = FALSE) concatenates every
+            // logical input, and na.rm strips missing values before the
+            // quantification rather than propagating them.
+            let mut inputs: Vec<ValueId> = Vec::new();
+            let mut na_rm = false;
+            let mut cursor = args;
+            while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
+                let tag_name = match heap.object(tag) {
+                    Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+                    _ => None,
+                };
+                let evaluated = eval(heap, interner, car, caller_env)?;
+                let v = force_if_promise(heap, interner, evaluated)?;
+                if tag_name.as_deref() == Some("na.rm") {
+                    na_rm = matches!(heap.object(v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) == 1);
+                } else {
+                    inputs.push(v);
+                }
+                if cdr == ValueId::NIL {
+                    break;
+                }
+                cursor = cdr;
+            }
+            // The inputs concatenate exactly as c() arranges — logicals
+            // and numerics alike reduce to their logical reading.
+            // GNU coerces exactly as the logical reading arranges —
+            // atomic vectors element-wise and list elements scalar by
+            // scalar, since do.call input lists are the variadic form's
+            // natural carrier.
+            let mut values: Vec<i32> = Vec::new();
+            let mut stack: Vec<ValueId> = inputs.clone();
+            while let Some(input) = stack.pop() {
+                match heap.object(input) {
+                    Some(RObject::Logical(vals)) => values.extend(vals.iter().copied()),
+                    Some(RObject::Integer(vals)) => values.extend(vals.iter().copied()),
+                    Some(RObject::Real(vals)) => values.extend(vals.iter().map(|x| {
+                        if x.is_nan() { r_core::object::NA_INTEGER } else { (*x != 0.0) as i32 }
+                    })),
+                    Some(RObject::List(items)) => {
+                        for item in items.iter().rev() {
+                            stack.push(*item);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if na_rm {
+                values.retain(|v| *v != r_core::object::NA_INTEGER);
+            }
+            let na = r_core::object::NA_INTEGER;
+            let result = if id.0 == ANY {
+                if values.iter().any(|v| *v == 1) {
+                    1
+                } else if values.iter().any(|v| *v == na) {
+                    na
+                } else {
+                    0
+                }
+            } else {
+                if values.iter().any(|v| *v == 0) {
+                    0
+                } else if values.iter().any(|v| *v == na) {
+                    na
+                } else {
+                    1
+                }
+            };
+            Ok(heap.alloc(RObject::Logical(vec![result])))
         }
         IFELSE => ifelse_primitive(heap, interner, args, caller_env),
         STOP => {
@@ -4437,7 +4504,21 @@ pub fn call_primitive_inner(
             if raw.len() < 2 {
                 return Err(EvalError::TypeError("do.call requires function and args").into());
             }
-            let fun = eval(heap, interner, raw[0], caller_env)?;
+            let fun_evaled = eval(heap, interner, raw[0], caller_env)?;
+            // GNU admits the function by name exactly as the usage line's
+            // "either a function or a non-empty character string" arranges
+            // — a string resolves through the calling scope's chain.
+            let fun = match heap.object(fun_evaled) {
+                Some(RObject::String(vals)) if !vals.is_empty() => {
+                    let name = interner.string_text(vals[0]).to_string();
+                    let sym = interner.intern_symbol(&name);
+                    match r_core::env::lookup(heap, caller_env, sym) {
+                        Some((_, binding)) => force_if_promise(heap, interner, binding.value)?,
+                        None => return Err(EvalError::TypeError("do.call requires a function").into()),
+                    }
+                }
+                _ => fun_evaled,
+            };
             let list_evaled = eval(heap, interner, raw[1], caller_env)?;
             let list_val = force_if_promise(heap, interner, list_evaled)?;
             let items: Vec<ValueId> = match heap.object(list_val) {
@@ -8533,12 +8614,23 @@ pub fn concat_primitive_inner(
         Real(Vec<f64>),
         Complex(Vec<r_core::object::RComplex>),
         String(Vec<r_core::intern::InternedStr>),
+        List(Vec<ValueId>),
     }
     let mut flattened = Vec::new();
     let mut operand_lengths = Vec::new();
+    let mut operand_meta: Vec<(Option<String>, Option<Vec<String>>)> = Vec::new();
     let mut rank = 0u8;
-    for operand in operands {
-        let flat = match heap.object(operand) {
+    for (operand, tag) in operands.iter().zip(tags.iter()) {
+        // GNU's names sources ride per operand: the element names the
+        // operand itself carries take precedence, with the call tag
+        // filling the unnamed remainder exactly as bind.c arranges.
+        let own_names = get_attrib(heap, interner, *operand, "names").map(|id| match heap.object(id) {
+            Some(RObject::String(vals)) => vals.iter().map(|v| {
+                if interner.string_text(*v) == "\0NA" { String::new() } else { interner.string_text(*v).to_string() }
+            }).collect::<Vec<_>>(),
+            _ => Vec::new(),
+        });
+        let flat = match heap.object(*operand) {
             Some(RObject::Nil) => continue,
             Some(RObject::Raw(values)) => {
                 operand_lengths.push(values.len());
@@ -8569,35 +8661,52 @@ pub fn concat_primitive_inner(
                 operand_lengths.push(values.len());
                 Flat::String(values.clone())
             }
+            // A list operand caps the hierarchy exactly as GNU's type
+            // lattice arranges — everything concatenates as list elements
+            // once any operand is recursive.
+            Some(RObject::List(items)) => {
+                rank = rank.max(6);
+                operand_lengths.push(items.len());
+                Flat::List(items.clone())
+            }
             _ => {
                 return Err(EvalError::TypeError("c() operands must be atomic vectors").into());
             }
         };
+        operand_meta.push((tag.clone(), own_names));
         flattened.push(flat);
     }
     if flattened.is_empty() {
         return Ok(ValueId::NIL);
     }
 
-    // GNU names expansion: each operand's tag repeats across its element
-    // count; untagged operands contribute empty strings. Any tag at all
-    // turns the names attribute on.
+    // GNU names expansion exactly as bind.c arranges: an operand's own
+    // names attribute answers element names first; the call tag fills
+    // unnamed elements — bare for length one, index-suffixed beyond —
+    // and the attribute materializes only when a non-empty name exists.
     let attach_names = |heap: &mut Heap, interner: &mut SymbolInterner, value: ValueId| -> Result<ValueId, RSignal> {
-        // NIL operands dropped above shift the tag alignment; the slice
-        // accepts the common all-present shape and drops names otherwise.
-        if tags.iter().all(|t| t.is_none()) {
-            return Ok(value);
-        }
-        if tags.len() != operand_lengths.len() {
-            return Ok(value);
-        }
-        let mut names = Vec::new();
-        for (tag, count) in tags.iter().zip(operand_lengths.iter()) {
-            for _ in 0..*count {
-                names.push(interner.intern_string(tag.as_deref().unwrap_or("")));
+        let mut names: Vec<String> = Vec::new();
+        for ((tag, own), count) in operand_meta.iter().zip(operand_lengths.iter()) {
+            for i in 0..*count {
+                let own_name = own.as_ref().and_then(|v| v.get(i)).cloned().unwrap_or_default();
+                if !own_name.is_empty() {
+                    names.push(own_name);
+                } else if let Some(tag) = tag.as_deref().filter(|t| !t.is_empty()) {
+                    if *count == 1 {
+                        names.push(tag.to_string());
+                    } else {
+                        names.push(format!("{}{}", tag, i + 1));
+                    }
+                } else {
+                    names.push(String::new());
+                }
             }
         }
-        let names_vec = heap.alloc(RObject::String(names));
+        if names.iter().all(|n| n.is_empty()) {
+            return Ok(value);
+        }
+        let interned = names.iter().map(|n| interner.intern_string(n)).collect();
+        let names_vec = heap.alloc(RObject::String(interned));
         copy_with_attrib(heap, interner, value, "names", names_vec).map_err(RSignal::from)
     };
 
@@ -8656,6 +8765,25 @@ pub fn concat_primitive_inner(
     }
 
     match rank {
+        6 => {
+            // Every operand contributes its elements exactly as GNU —
+            // lists pass through, atomic vectors unbox to scalar elements
+            // one at a time.
+            let mut out: Vec<ValueId> = Vec::new();
+            for flat in &flattened {
+                match flat {
+                    Flat::List(items) => out.extend(items.iter().copied()),
+                    Flat::Raw(vals) => out.extend(vals.iter().map(|v| heap.alloc(RObject::Raw(vec![*v])))),
+                    Flat::Logical(vals) => out.extend(vals.iter().map(|v| heap.alloc(RObject::Logical(vec![*v])))),
+                    Flat::Integer(vals) => out.extend(vals.iter().map(|v| heap.alloc(RObject::Integer(vec![*v])))),
+                    Flat::Real(vals) => out.extend(vals.iter().map(|v| heap.alloc(RObject::Real(vec![*v])))),
+                    Flat::Complex(vals) => out.extend(vals.iter().map(|v| heap.alloc(RObject::Complex(vec![*v])))),
+                    Flat::String(vals) => out.extend(vals.iter().map(|v| heap.alloc(RObject::String(vec![*v])))),
+                }
+            }
+            let value = heap.alloc(RObject::List(out));
+            attach_names(heap, interner, value)
+        }
         0 => {
             let mut out = Vec::new();
             for flat in &flattened {
@@ -8703,6 +8831,7 @@ pub fn concat_primitive_inner(
             let mut out = Vec::new();
             for flat in flattened {
                 match flat {
+                    Flat::List(_) => unreachable!("a list operand raises the rank past character"),
                     Flat::String(values) => out.extend(values),
                     Flat::Logical(values) => {
                         for v in values {
@@ -9754,6 +9883,13 @@ pub fn extract_primitive(
             };
             match names.iter().position(|n| n == &key) {
                 Some(pos) => (pos + 1) as i64,
+                // GNU's exact-name discipline: an absent key in a list
+                // answers NULL — the is.null probe every defensive
+                // extraction idiom keys on — while atomic vectors error
+                // exactly as their stricter contract arranges.
+                None if matches!(heap.object(operands[0]), Some(RObject::List(_))) => {
+                    return Ok(ValueId::NIL);
+                }
                 None => return Err(EvalError::TypeError("subscript out of bounds").into()),
             }
         }
