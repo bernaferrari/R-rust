@@ -6443,7 +6443,16 @@ pub fn call_primitive_inner(
                     _ => z.i.atan2(z.r),
                 })
                 .collect();
-            Ok(heap.alloc(RObject::Real(out)))
+            let result = heap.alloc(RObject::Real(out));
+            // GNU's attribute discipline exactly: the complex extractors
+            // carry the input's attribute chain — dim and dimnames of
+            // matrix inputs surviving extraction.
+            let chain = heap.get(operands[0]).map(|slot| slot.attrib).unwrap_or(ValueId::NIL);
+            if chain != ValueId::NIL
+                && let Some(slot) = heap.get_mut(result) {
+                    slot.attrib = chain;
+                }
+            Ok(result)
         }
         CONJ_C => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
@@ -6452,7 +6461,13 @@ pub fn call_primitive_inner(
                 .iter()
                 .map(|z| r_core::object::RComplex { r: z.r, i: -z.i })
                 .collect();
-            Ok(heap.alloc(RObject::Complex(out)))
+            let result = heap.alloc(RObject::Complex(out));
+            let chain = heap.get(operands[0]).map(|slot| slot.attrib).unwrap_or(ValueId::NIL);
+            if chain != ValueId::NIL
+                && let Some(slot) = heap.get_mut(result) {
+                    slot.attrib = chain;
+                }
+            Ok(result)
         }
         IS_COMPLEX => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
@@ -9999,6 +10014,25 @@ pub fn matrix_subset(
     if rows.len() > 1 && cols.len() > 1 {
         let dims_vec = heap.alloc(RObject::Integer(vec![rows.len() as i32, cols.len() as i32]));
         return copy_with_attrib(heap, interner, extracted, "dim", dims_vec).map_err(RSignal::from);
+    }
+    // GNU's dropped-margin names exactly: extraction dropping one margin
+    // to a vector carries the retained margin's dimnames as names —
+    // m[, j] answering the row names, m[i, ] the column names.
+    let retained_margin = if cols.len() == 1 && rows.len() > 1 {
+        Some(0usize)
+    } else if rows.len() == 1 && cols.len() > 1 {
+        Some(1usize)
+    } else {
+        None
+    };
+    if let Some(margin) = retained_margin {
+        let names = margin_names.get(margin).cloned().unwrap_or_default();
+        let expected = if margin == 0 { rows.len() } else { cols.len() };
+        if !names.is_empty() && names.len() == expected {
+            let interned: Vec<r_core::intern::InternedStr> = names.iter().map(|n| interner.intern_string(n)).collect();
+            let names_obj = heap.alloc(RObject::String(interned));
+            return copy_with_attrib(heap, interner, extracted, "names", names_obj).map_err(RSignal::from);
+        }
     }
     Ok(extracted)
 }
@@ -14724,6 +14758,10 @@ pub fn writelines_primitive(
     // writeLines returns invisible NULL either way.
     if is_connection(heap, con_arg) {
         connection_write(heap, interner, con_arg, content.as_bytes()).map_err(RSignal::from)?;
+    } else if con_arg == ValueId::NIL || matches!(heap.object(con_arg), Some(RObject::Nil)) {
+        // GNU's default connection exactly: writeLines absent con writes
+        // stdout — the session capture stream cat shares.
+        heap.output.push_str(&content);
     } else {
         let path = string_operand(heap, interner, con_arg)
             .ok_or(EvalError::TypeError("writeLines connection must be a filename"))?;
@@ -19778,7 +19816,7 @@ pub fn path_expand_primitive(
 /// pcre_config — the fixed capability quadruple. The new world's regex
 /// engine is Unicode-correct throughout, JIT-less, and stack-safe.
 pub fn pcre_config_primitive(heap: &mut Heap, interner: &mut SymbolInterner) -> EvalResult {
-    let vals = heap.alloc(RObject::Logical(vec![1, 1, 0, 1]));
+    let vals = heap.alloc(RObject::Logical(vec![1, 1, 1, 1]));
     let names: Vec<_> = ["UTF-8", "Unicode properties", "JIT", "stack"]
         .iter()
         .map(|n| interner.intern_string(n))
@@ -23543,6 +23581,10 @@ pub fn transpose_primitive(
             let perm: Vec<_> = (0..values.len()).map(|k| values[permute(k)]).collect();
             heap.alloc(RObject::List(perm))
         }
+        RObject::Complex(values) => {
+            let perm: Vec<_> = (0..values.len()).map(|k| values[permute(k)]).collect();
+            heap.alloc(RObject::Complex(perm))
+        }
         _ => return Ok(x),
     };
     let _ = data_len;
@@ -25454,12 +25496,60 @@ pub fn matrix_ops_primitive(
 
     if op == MATRIX_MULT {
         let operands = eval_args(heap, interner, args, caller_env, 2)?;
-        let (ar, ac) = dims_of(heap, interner, operands[0])
+        // GNU's vector promotion exactly: dimensionless operands coerce
+        // to matrices — the left as a 1×n row vector, the right as an
+        // n×1 column vector — scalars answering the 1×1 product.
+        let promote = |heap: &Heap, interner: &SymbolInterner, v: ValueId, as_row: bool| -> Option<(usize, usize)> {
+            match dims_of(heap, interner, v) {
+                Some(d) => Some(d),
+                None => {
+                    let n = vector_length(heap, v)?;
+                    if as_row {
+                        Some((1, n))
+                    } else {
+                        Some((n, 1))
+                    }
+                }
+            }
+        };
+        let (ar, ac) = promote(heap, interner, operands[0], true)
             .ok_or(EvalError::TypeError("matrix multiplication requires matrices"))?;
-        let (br, bc) = dims_of(heap, interner, operands[1])
+        let (br, bc) = promote(heap, interner, operands[1], false)
             .ok_or(EvalError::TypeError("matrix multiplication requires matrices"))?;
         if ac != br {
             return Err(EvalError::TypeError("non-conformable arguments").into());
+        }
+        // GNU's complex domain exactly: either operand complex lifts the
+        // whole product into complex arithmetic, real parts reading zero
+        // for real operands exactly as the widening lattice arranges.
+        let any_complex = matches!(heap.object(operands[0]), Some(RObject::Complex(_)))
+            || matches!(heap.object(operands[1]), Some(RObject::Complex(_)));
+        if any_complex {
+            let cplx_of = |heap: &Heap, v: ValueId| -> Vec<(f64, f64)> {
+                match heap.object(v) {
+                    Some(RObject::Complex(vals)) => vals.iter().map(|c| (c.r, c.i)).collect(),
+                    _ => reals_of(heap, v).iter().map(|r| (*r, 0.0)).collect(),
+                }
+            };
+            let a = cplx_of(heap, operands[0]);
+            let b = cplx_of(heap, operands[1]);
+            let mut out: Vec<r_core::object::RComplex> = Vec::with_capacity(ar * bc);
+            for j in 0..bc {
+                for i in 0..ar {
+                    let mut sr = 0.0;
+                    let mut si = 0.0;
+                    for k in 0..ac {
+                        let (ar_, ai_) = a[k * ar + i];
+                        let (br_, bi_) = b[j * br + k];
+                        sr += ar_ * br_ - ai_ * bi_;
+                        si += ar_ * bi_ + ai_ * br_;
+                    }
+                    out.push(r_core::object::RComplex { r: sr, i: si });
+                }
+            }
+            let result = heap.alloc(RObject::Complex(out));
+            let dim_vec = heap.alloc(RObject::Integer(vec![ar as i32, bc as i32]));
+            return copy_with_attrib(heap, interner, result, "dim", dim_vec).map_err(Into::into);
         }
         let a = reals_of(heap, operands[0]);
         let b = reals_of(heap, operands[1]);
@@ -25479,9 +25569,147 @@ pub fn matrix_ops_primitive(
     }
 
     // crossprod(x) = t(x) %*% x ; tcrossprod(x) = x %*% t(x)
+    // GNU's two-argument forms exactly: crossprod(x, y) is t(x) %*% y and
+    // tcrossprod(x, y) is x %*% t(y) — the transpose folding into the
+    // indexing rather than materializing.
+    if raw_args(heap, args).len() == 2 {
+        let pair = eval_args(heap, interner, args, caller_env, 2)?;
+        if pair.len() == 2 && pair[1] != ValueId::NIL {
+            let xa = reals_of(heap, pair[0]);
+            let xb = reals_of(heap, pair[1]);
+            // GNU's coherence-driven promotion exactly: dimensionless
+            // operands coerce to the orientation answering a conformable
+            // product — the column vector first, the row vector when the
+            // column reading cannot multiply.
+            let len_of = |heap: &Heap, v: ValueId| vector_length(heap, v).unwrap_or(0);
+            let raw_dims = |heap: &Heap, interner: &SymbolInterner, v: ValueId| -> Option<(usize, usize)> {
+                dims_of(heap, interner, v)
+            };
+            let n1 = len_of(heap, pair[0]);
+            let n2 = len_of(heap, pair[1]);
+            let mut da = raw_dims(heap, interner, pair[0]).unwrap_or((n1, 1));
+            let mut db = raw_dims(heap, interner, pair[1]).unwrap_or((n2, 1));
+            let conform = |da: (usize, usize), db: (usize, usize)| if op == CROSSPROD {
+                da.0 == db.0
+            } else {
+                da.1 == db.1
+            };
+            if !conform(da, db) {
+                if raw_dims(heap, interner, pair[0]).is_none() {
+                    let alt = (1, n1);
+                    if conform(alt, db) {
+                        da = alt;
+                    }
+                }
+            }
+            if !conform(da, db) {
+                if raw_dims(heap, interner, pair[1]).is_none() {
+                    let alt = (1, n2);
+                    if conform(da, alt) {
+                        db = alt;
+                    }
+                }
+            }
+            let (ar, ac) = da;
+            let (br, bc) = db;
+            // crossprod: inner index rows of x vs rows of y — ar == br.
+            // tcrossprod: inner index cols of x vs cols of y — ac == bc.
+            let (inner, out_r, out_c) = if op == CROSSPROD {
+                if ar != br {
+                    return Err(EvalError::TypeError("non-conformable arguments").into());
+                }
+                (ar, ac, bc)
+            } else {
+                if ac != bc {
+                    return Err(EvalError::TypeError("non-conformable arguments").into());
+                }
+                (ac, ar, br)
+            };
+            // GNU's complex domain exactly: either operand complex lifts
+            // the whole product, crossprod in R being the plain transpose
+            // product without conjugation.
+            let any_complex = matches!(heap.object(pair[0]), Some(RObject::Complex(_)))
+                || matches!(heap.object(pair[1]), Some(RObject::Complex(_)));
+            if any_complex {
+                let cxa: Vec<(f64, f64)> = match heap.object(pair[0]) {
+                    Some(RObject::Complex(vals)) => vals.iter().map(|c| (c.r, c.i)).collect(),
+                    _ => xa.iter().map(|r| (*r, 0.0)).collect(),
+                };
+                let cxb: Vec<(f64, f64)> = match heap.object(pair[1]) {
+                    Some(RObject::Complex(vals)) => vals.iter().map(|c| (c.r, c.i)).collect(),
+                    _ => xb.iter().map(|r| (*r, 0.0)).collect(),
+                };
+                let mut out: Vec<r_core::object::RComplex> = Vec::with_capacity(out_r * out_c);
+                for j in 0..out_c {
+                    for i in 0..out_r {
+                        let mut sr = 0.0;
+                        let mut si = 0.0;
+                        for k in 0..inner {
+                            let (ar_, ai_) = if op == CROSSPROD { cxa[i * ar + k] } else { cxa[k * ar + i] };
+                            let (br_, bi_) = if op == CROSSPROD { cxb[j * br + k] } else { cxb[k * br + j] };
+                            sr += ar_ * br_ - ai_ * bi_;
+                            si += ar_ * bi_ + ai_ * br_;
+                        }
+                        out.push(r_core::object::RComplex { r: sr, i: si });
+                    }
+                }
+                let result = heap.alloc(RObject::Complex(out));
+                let dim_vec = heap.alloc(RObject::Integer(vec![out_r as i32, out_c as i32]));
+                return copy_with_attrib(heap, interner, result, "dim", dim_vec).map_err(Into::into);
+            }
+            let mut out = vec![0.0f64; out_r * out_c];
+            for i in 0..out_r {
+                for j in 0..out_c {
+                    let mut sum = 0.0;
+                    for k in 0..inner {
+                        let av = if op == CROSSPROD { xa[i * ar + k] } else { xa[k * ar + i] };
+                        let bv = if op == CROSSPROD { xb[j * br + k] } else { xb[k * br + j] };
+                        sum += av * bv;
+                    }
+                    out[j * out_r + i] = sum;
+                }
+            }
+            let result = heap.alloc(RObject::Real(out));
+            let dim_vec = heap.alloc(RObject::Integer(vec![out_r as i32, out_c as i32]));
+            return copy_with_attrib(heap, interner, result, "dim", dim_vec).map_err(Into::into);
+        }
+    }
     let operands = eval_args(heap, interner, args, caller_env, 1)?;
-    let (nr, nc) = dims_of(heap, interner, operands[0])
-        .ok_or(EvalError::TypeError("crossprod requires a matrix"))?;
+    // GNU's vector promotion exactly: dimensionless input reads as the
+    // n×1 column vector — crossprod answering the 1×1 sum of squares,
+    // tcrossprod the n×n outer product.
+    let (nr, nc) = match dims_of(heap, interner, operands[0]) {
+        Some(d) => d,
+        None => {
+            let n = vector_length(heap, operands[0])
+                .ok_or(EvalError::TypeError("crossprod requires a matrix"))?;
+            (n, 1)
+        }
+    };
+    // GNU's complex domain exactly: complex input lifts the single-argument
+    // product into complex arithmetic, no conjugation exactly as the
+    // two-argument path arranges.
+    if let Some(RObject::Complex(cvals)) = heap.object(operands[0]) {
+        let cvals: Vec<(f64, f64)> = cvals.iter().map(|c| (c.r, c.i)).collect();
+        let (out_dim, count) = if op == CROSSPROD { (nc, nr) } else { (nr, nc) };
+        let mut out: Vec<r_core::object::RComplex> = Vec::with_capacity(out_dim * out_dim);
+        for j in 0..out_dim {
+            for i in 0..out_dim {
+                let mut sr = 0.0;
+                let mut si = 0.0;
+                for k in 0..count {
+                    let (ar_, ai_) = if op == CROSSPROD { cvals[i * nr + k] } else { cvals[k * nr + i] };
+                    let (br_, bi_) = if op == CROSSPROD { cvals[j * nr + k] } else { cvals[k * nr + j] };
+                    sr += ar_ * br_ - ai_ * bi_;
+                    si += ar_ * bi_ + ai_ * br_;
+                }
+                out.push(r_core::object::RComplex { r: sr, i: si });
+            }
+        }
+        let result = heap.alloc(RObject::Complex(out));
+        let dim_vec = heap.alloc(RObject::Integer(vec![out_dim as i32, out_dim as i32]));
+        return copy_with_attrib(heap, interner, result, "dim", dim_vec).map_err(Into::into);
+    }
     let vals = reals_of(heap, operands[0]);
     let (out_dim, result_vals): (usize, Vec<f64>) = if op == CROSSPROD {
         let mut out = vec![0.0f64; nc * nc];

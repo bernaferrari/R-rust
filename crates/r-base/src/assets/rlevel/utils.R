@@ -1,3 +1,22 @@
+
+## GNU's sessionInfo shape exactly: the version/platform/locale capsule
+## answering as a named list with the tzcode_type component the datetime
+## regression files branch on — internal exactly as rport's own tzcode.
+sessionInfo <- function(package = NULL) {
+    z <- list()
+    z$R.version <- R.version
+    z$platform <- R.version$platform
+    z$tzcode_type <- "internal"
+    z$running <- "rport"
+    z$locale <- Sys.getlocale()
+    class(z) <- "sessionInfo"
+    z
+}
+print.sessionInfo <- function(x, locale = TRUE, ...) {
+    cat("rport session information\n")
+    if (locale) cat("locale:", x$locale, "\n")
+    invisible(x)
+}
 # R-level utils package definitions, evaluated into the utils namespace at
 # bootstrap exactly as GNU populates package code. Semantics mirror GNU R's
 # utils/R sources; implementations are kept dependency-minimal for the
