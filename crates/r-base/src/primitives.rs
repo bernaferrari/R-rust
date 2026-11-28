@@ -4771,11 +4771,64 @@ pub fn call_primitive_inner(
             Ok(heap.alloc(RObject::Logical(out)))
         }
         DIFF => {
-            // Consecutive differences — GNU's lag-1 default exactly.
-            let operands = eval_args(heap, interner, args, caller_env, 1)?;
-            let xs = reals_of_value(heap, operands[0]).map_err(RSignal::from)?;
-            let out: Vec<f64> = xs.windows(2).map(|w| w[1] - w[0]).collect();
-            Ok(heap.alloc(RObject::Real(out)))
+            // GNU's diff(x, lag, differences): successive lagged differences
+            // with unique-prefix partial matching exactly as matchArgs.
+            let mut positional: Vec<ValueId> = Vec::new();
+            let mut named: Vec<(String, ValueId)> = Vec::new();
+            let mut cursor = args;
+            while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
+                let evaluated = eval(heap, interner, car, caller_env)?;
+                let value = force_if_promise(heap, interner, evaluated)?;
+                match heap.object(tag) {
+                    Some(RObject::Symbol { name, .. }) => {
+                        named.push((interner.symbol_name(*name).to_string(), value));
+                    }
+                    _ => positional.push(value),
+                }
+                if cdr == ValueId::NIL {
+                    break;
+                }
+                cursor = cdr;
+            }
+            let arg_of = |name: &str, position: usize| -> Option<ValueId> {
+                named
+                    .iter()
+                    .find(|(n, _)| n == name)
+                    .map(|(_, v)| *v)
+                    .or_else(|| {
+                        let partials: Vec<ValueId> = named
+                            .iter()
+                            .filter(|(n, _)| !n.is_empty() && name.starts_with(n.as_str()))
+                            .map(|(_, v)| *v)
+                            .collect();
+                        if partials.len() == 1 { Some(partials[0]) } else { None }
+                    })
+                    .or_else(|| positional.get(position).copied())
+            };
+            let x_value = arg_of("x", 0)
+                .ok_or(EvalError::TypeError("diff requires an input vector"))?;
+            let mut xs = reals_of_value(heap, x_value).map_err(RSignal::from)?;
+            let lag = match arg_of("lag", 1) {
+                Some(v) => first_real(heap, v).map_err(RSignal::from)? as usize,
+                None => 1,
+            }
+            .max(1);
+            let differences = match arg_of("differences", 2) {
+                Some(v) => first_real(heap, v).map_err(RSignal::from)? as usize,
+                None => 1,
+            };
+            for _ in 0..differences {
+                if xs.len() <= lag {
+                    xs.clear();
+                    break;
+                }
+                xs = xs[lag..]
+                    .iter()
+                    .zip(xs[..xs.len() - lag].iter())
+                    .map(|(a, b)| a - b)
+                    .collect();
+            }
+            Ok(heap.alloc(RObject::Real(xs)))
         }
         DIAG => {
             // diag(n) builds the n×n identity exactly as GNU's scalar form.

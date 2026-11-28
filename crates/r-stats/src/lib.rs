@@ -45,11 +45,25 @@ pub fn dpq_primitive(
         }
         cursor = cdr;
     }
+    // GNU's argument matching: exact first, then a unique partial prefix
+    // exactly as matchArgs formal resolution.
     let lookup = |name: &str, position: usize| -> Option<ValueId> {
         named
             .iter()
             .find(|(n, _)| n == name)
             .map(|(_, v)| *v)
+            .or_else(|| {
+                let partials: Vec<ValueId> = named
+                    .iter()
+                    .filter(|(n, _)| !n.is_empty() && name.starts_with(n.as_str()))
+                    .map(|(_, v)| *v)
+                    .collect();
+                if partials.len() == 1 {
+                    Some(partials[0])
+                } else {
+                    None
+                }
+            })
             .or_else(|| positional.get(position).copied())
     };
     let real_arg = |name: &str, position: usize, default: f64| -> Result<f64, RSignal> {
@@ -70,6 +84,15 @@ pub fn dpq_primitive(
         for name in names {
             if let Some(v) = named.iter().find(|(n, _)| n == name).map(|(_, v)| *v) {
                 return logical_of(heap, v);
+            }
+            // GNU's unique partial prefix matching over the formal's name.
+            let partials: Vec<ValueId> = named
+                .iter()
+                .filter(|(n, _)| !n.is_empty() && name.starts_with(n.as_str()))
+                .map(|(_, v)| *v)
+                .collect();
+            if partials.len() == 1 {
+                return logical_of(heap, partials[0]);
             }
         }
         if let Some(v) = positional.get(position)
