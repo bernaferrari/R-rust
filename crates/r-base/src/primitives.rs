@@ -20162,40 +20162,20 @@ pub fn scalar_usize(heap: &Heap, value: Option<&ValueId>, default: usize) -> usi
 
 
 
-/// gc() — trigger a collection exactly as GNU arranges: the stats matrix
-/// returns invisibly with Ncells/Vcells rows and used/trigger/max columns.
+/// gc() — request collection exactly as GNU arranges: reclamation defers
+/// to the statement boundary where the collector sees full root knowledge,
+/// the stats matrix returns invisibly with Ncells/Vcells rows.
 pub fn gc_primitive(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
-    args: ValueId,
-    caller_env: ValueId,
+    _args: ValueId,
+    _caller_env: ValueId,
 ) -> EvalResult {
-    // The in-flight evaluation's live values must survive — the root
-    // assembly mirrors the session-level collection pattern exactly.
-    let mut extra: Vec<ValueId> = vec![args, caller_env];
-    if let Some(id) = heap.base_env_id {
-        extra.push(id);
-    }
-    if let Some(id) = heap.global_env_id {
-        extra.push(id);
-    }
-    extra.extend(heap.package_registry.values().copied());
-    for (key, handlers) in &heap.exit_handlers {
-        extra.push(*key);
-        extra.extend(handlers.iter().copied());
-    }
-    extra.extend(heap.s3_dispatch.iter().map(|(_, method, _)| *method));
-    extra.extend(heap.debugged.iter().copied());
-    extra.extend(heap.retained_roots.roots());
-    let stack = r_core::roots::RootStack::new();
-    let table = r_core::roots::RootTable::default();
-    let roots = r_core::gc::RootSet {
-        stack: &stack,
-        table: &table,
-        extra: &extra,
-    };
-    let outcome = r_core::gc::collect(heap, &roots);
-    let used = (outcome.surviving as f64).max(0.0);
+    // Mid-evaluation collection is unsound — the evaluator's Rust-local
+    // temporaries are invisible to the tracer. The request flags here and
+    // the boundary maintenance collects exactly as pressure rounds do.
+    heap.gc_requested = true;
+    let used = heap.live_object_count() as f64;
     // GNU's matrix: rows Ncells/Vcells, columns used/(gc trigger)/max used.
     let stats = vec![
         used, used, // used column — the pure world counts objects, not cons cells

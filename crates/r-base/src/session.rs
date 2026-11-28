@@ -79,7 +79,8 @@ impl Session {
         // An error that reached the top level leaves no raising call
         // behind — the channel belongs to the error in flight only.
         self.heap.error_call = r_core::id::ValueId::NIL;
-        let pressured = self.heap.gc_pressure();
+        let pressured = self.heap.gc_pressure() || self.heap.gc_requested;
+        self.heap.gc_requested = false;
         let capped = self.heap.memory_cap_bytes.is_some() || self.heap.node_cap.is_some();
         let memory_tripped = self.heap.memory_cap_tripped;
         let nodes_tripped = self.heap.node_cap_tripped;

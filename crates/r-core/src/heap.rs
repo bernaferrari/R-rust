@@ -58,6 +58,11 @@ pub struct Heap {
     live_count: usize,
     /// Bytes of vector payload data, used as a GC pressure heuristic.
     payload_bytes: usize,
+    /// User-invoked gc() defers reclamation to the statement boundary —
+    /// mid-evaluation collection cannot see the evaluator's Rust-local
+    /// temporaries, so the request flags here and the boundary collects
+    /// with full root knowledge exactly as pressure-triggered rounds do.
+    pub gc_requested: bool,
     /// Allocation count at which the next collection triggers; grows
     // geometrically after each collection.
     pub next_gc_threshold: usize,
@@ -237,6 +242,7 @@ pub struct Heap {
 impl Heap {
     pub fn new() -> Heap {
         Heap {
+            gc_requested: false,
             next_gc_threshold: 1024,
             visible: true,
             umask_state: 0o022,
@@ -365,6 +371,11 @@ impl Heap {
     }
 
     /// True when the handle currently addresses a live object.
+    /// Live object count for stats reporting exactly as gc() surfaces.
+    pub fn live_object_count(&self) -> usize {
+        self.live_count
+    }
+
     pub fn is_live(&self, id: ValueId) -> bool {
         if id.is_sentinel() {
             return true;
