@@ -573,7 +573,7 @@ pub fn loess_primitive(
     let xs_val = force_if_promise(heap, interner, xs_val)?;
     let ys = reals_of_value(heap, ys_val).map_err(RSignal::from)?;
     let xs = reals_of_value(heap, xs_val).map_err(RSignal::from)?;
-    let (xs, ys) = (xs, ys);
+    let (mut xs, mut ys) = (xs, ys);
     if xs.len() != ys.len() || xs.is_empty() {
         return Err(EvalError::Condition("loess requires equal-length numeric x and y".to_string()).into());
     }
@@ -694,6 +694,53 @@ pub fn loess_primitive(
         }
         cursor2 = cdr;
     }
+    // na.action — the exclusion machinery exactly as GNU's model-frame
+    // arrangement: NA responses drop their observations from the fit, the
+    // action's class recorded for the residual padding. The action name reads
+    // from the unevaluated symbol exactly as the call arranges.
+    let mut na_class = String::new();
+    let mut cursor4 = args;
+    for _ in 0..16 {
+        let (car, cdr, tag) = match heap.object(cursor4) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        if let Some(RObject::Symbol { name, .. }) = heap.object(tag) {
+            let tname = interner.symbol_name(*name).to_string();
+            if tname == "na.action" {
+                if let Some(RObject::Symbol { name: an, .. }) = heap.object(car) {
+                    let aname = interner.symbol_name(*an).to_string();
+                    na_class = if aname == "na.exclude" { "exclude".to_string() } else { "omit".to_string() };
+                } else {
+                    na_class = "omit".to_string();
+                }
+            }
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor4 = cdr;
+    }
+    // NA filtering — the complete observations exactly as the model frame
+    // arranges; the excluded positions recorded for na.action.
+    let mut excluded: Vec<usize> = Vec::new();
+    let mut cx = Vec::new();
+    let mut cy = Vec::new();
+    let mut cw = Vec::new();
+    for i in 0..ys.len() {
+        if ys[i].is_nan() {
+            excluded.push(i + 1);
+        } else {
+            cx.push(xs[i]);
+            cy.push(ys[i]);
+            cw.push(weights[i]);
+        }
+    }
+    if !excluded.is_empty() {
+        xs = cx;
+        ys = cy;
+        weights = cw;
+    }
     // subset — the observation selection exactly as GNU's model-frame
     // arrangement: indices reorder and repeat exactly as given.
     let mut subset_idx: Option<Vec<usize>> = None;
@@ -793,6 +840,25 @@ pub fn loess_primitive(
     };
     let s_val = (sum_squares / delta1).sqrt();
     let _ = statistics;
+    // naresid padding exactly as GNU arranges: na.exclude reinserts NA at
+    // the excluded positions across the fitted values and residuals.
+    let (fitted, residuals) = if !excluded.is_empty() && na_class == "exclude" {
+        let total = ys.len() + excluded.len();
+        let na_r = f64::from_bits(r_core::object::NA_REAL_BITS);
+        let mut pf = vec![na_r; total];
+        let mut pr = vec![na_r; total];
+        let mut src = 0usize;
+        for pos in 1..=total {
+            if !excluded.contains(&pos) {
+                pf[pos - 1] = fitted[src];
+                pr[pos - 1] = residuals[src];
+                src += 1;
+            }
+        }
+        (pf, pr)
+    } else {
+        (fitted, residuals)
+    };
     // The object exactly as GNU's list-of-components shape.
     let fitted_id = heap.alloc(RObject::Real(fitted));
     let residuals_id = heap.alloc(RObject::Real(residuals));
@@ -807,6 +873,15 @@ pub fn loess_primitive(
     let ws_id = heap.alloc(RObject::Real(weights.clone()));
     let rb_id = heap.alloc(RObject::Real(robust.clone()));
     let pars_id = heap.alloc(RObject::Real(vec![span, degree as f64, cell, if family == "gaussian" { 0.0 } else { 1.0 }, if direct { 1.0 } else { 0.0 }]));
+    // na.action — the classed exclusion positions exactly as GNU arranges.
+    let na_id = if !excluded.is_empty() {
+        let positions: Vec<i32> = excluded.iter().map(|&p| p as i32).collect();
+        let v = heap.alloc(RObject::Integer(positions));
+        let cls = heap.alloc(RObject::String(vec![interner.intern_string(&na_class)]));
+        copy_with_attrib(heap, interner, v, "class", cls).map_err(RSignal::from)?
+    } else {
+        ValueId::NIL
+    };
     // x — the predictor matrix exactly as GNU's model arrangement: n×1 with
     // the dim attribute answering matrix subscripts.
     let xmat_id = heap.alloc(RObject::Real(xs.clone()));
@@ -819,13 +894,13 @@ pub fn loess_primitive(
         let mdim_id = heap.alloc(RObject::Integer(vec![xs.len() as i32, 1]));
         let m_id = copy_with_attrib(heap, interner, m_id, "dim", mdim_id).map_err(RSignal::from)?;
         (
-            vec![n_id, fitted_id, residuals_id, trl_id, d1_id, d2_id, s_id, xs_id, ys_id, ws_id, rb_id, pars_id, xmat_id, m_id],
-            vec!["n", "fitted", "residuals", "trace.hat", "one.delta", "two.delta", "s", ".x", ".y", ".weights", ".robust", ".pars", "x", "model"],
+            vec![n_id, fitted_id, residuals_id, trl_id, d1_id, d2_id, s_id, xs_id, ys_id, ws_id, rb_id, pars_id, xmat_id, m_id, na_id],
+            vec!["n", "fitted", "residuals", "trace.hat", "one.delta", "two.delta", "s", ".x", ".y", ".weights", ".robust", ".pars", "x", "model", "na.action"],
         )
     } else {
         (
-            vec![n_id, fitted_id, residuals_id, trl_id, d1_id, d2_id, s_id, xs_id, ys_id, ws_id, rb_id, pars_id, xmat_id],
-            vec!["n", "fitted", "residuals", "trace.hat", "one.delta", "two.delta", "s", ".x", ".y", ".weights", ".robust", ".pars", "x"],
+            vec![n_id, fitted_id, residuals_id, trl_id, d1_id, d2_id, s_id, xs_id, ys_id, ws_id, rb_id, pars_id, xmat_id, na_id],
+            vec!["n", "fitted", "residuals", "trace.hat", "one.delta", "two.delta", "s", ".x", ".y", ".weights", ".robust", ".pars", "x", "na.action"],
         )
     };
     let components = components;
@@ -901,28 +976,60 @@ pub fn predict_primitive(
             // contract arranges.
             let mut newdata: Option<Vec<f64>> = None;
             let mut want_se = false;
+            let mut position = 0usize;
             let mut cursor = args;
             for _ in 0..16 {
                 let (car, cdr, tag) = match heap.object(cursor) {
                     Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
                     _ => break,
                 };
+                let mut matched = false;
                 if let Some(RObject::Symbol { name, .. }) = heap.object(tag) {
                     let tname = interner.symbol_name(*name).to_string();
                     let v = eval(heap, interner, car, caller_env)?;
                     let v = force_if_promise(heap, interner, v)?;
                     match tname.as_str() {
                         "newdata" => {
+                            matched = true;
+                            // data.frame extraction exactly as the method's
+                            // as.matrix arrangement: the single-predictor
+                            // column reads directly.
                             if let Ok(rs) = reals_of_value(heap, v) {
                                 newdata = Some(rs);
+                            } else if let Some(RObject::List(cols)) = heap.object(v) {
+                                if let Some(first) = cols.first() {
+                                    if let Ok(rs) = reals_of_value(heap, *first) {
+                                        newdata = Some(rs);
+                                    }
+                                }
                             }
                         }
                         "se" => {
+                            matched = true;
                             want_se = logical_scalar(heap, v);
                         }
                         _ => {}
                     }
                 }
+                if !matched {
+                    // positional filling exactly as the formals order
+                    // arranges: the object occupies position zero, newdata
+                    // the first untagged position after it.
+                    if position > 0 && newdata.is_none() {
+                        let v = eval(heap, interner, car, caller_env)?;
+                        let v = force_if_promise(heap, interner, v)?;
+                        if let Ok(rs) = reals_of_value(heap, v) {
+                            newdata = Some(rs);
+                        } else if let Some(RObject::List(cols)) = heap.object(v) {
+                            if let Some(first) = cols.first() {
+                                if let Ok(rs) = reals_of_value(heap, *first) {
+                                    newdata = Some(rs);
+                                }
+                            }
+                        }
+                    }
+                }
+                position += 1;
                 if cdr == ValueId::NIL {
                     break;
                 }
@@ -955,22 +1062,45 @@ pub fn predict_primitive(
                 None => xs.clone(),
             };
             let eff: Vec<f64> = ws.iter().zip(rb.iter()).map(|(a, b)| a * b).collect();
-            let (fits, hat_rows): (Vec<f64>, Vec<Vec<f64>>) = if direct_surface {
-                crate::loessf::direct_fit(&xs, &ys, &eff, span, degree, &eval_points)
+            // The inside test exactly as predLoess arranges: finite points
+            // within the data range evaluate; everything else answers NA.
+            let xlo = xs.iter().cloned().fold(f64::INFINITY, f64::min);
+            let xhi = xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            let inside: Vec<bool> = eval_points.iter().map(|&z| z.is_finite() && z >= xlo && z <= xhi).collect();
+            let valid_points: Vec<f64> = eval_points.iter().zip(inside.iter()).filter(|(_, ins)| **ins).map(|(z, _)| *z).collect();
+            let (valid_fits, valid_rows): (Vec<f64>, Vec<Vec<f64>>) = if direct_surface {
+                crate::loessf::direct_fit(&xs, &ys, &eff, span, degree, &valid_points)
             } else {
                 (
-                    eval_points.iter().map(|&z| crate::loessf::predict_at(&state, &[z])).collect(),
-                    eval_points.iter().map(|&z| crate::loessf::hat_row_at(&state, &[z], xs.len())).collect(),
+                    valid_points.iter().map(|&z| crate::loessf::predict_at(&state, &[z])).collect(),
+                    valid_points.iter().map(|&z| crate::loessf::hat_row_at(&state, &[z], xs.len())).collect(),
                 )
             };
+            let na_r = f64::from_bits(r_core::object::NA_REAL_BITS);
+            let mut fits = vec![na_r; eval_points.len()];
+            let mut hat_rows: Vec<Vec<f64>> = vec![vec![na_r; xs.len()]; eval_points.len()];
+            {
+                let mut vi = 0usize;
+                for (pos, &ins) in inside.iter().enumerate() {
+                    if ins {
+                        fits[pos] = valid_fits[vi];
+                        hat_rows[pos] = valid_rows[vi].clone();
+                        vi += 1;
+                    }
+                }
+            }
             if !want_se {
                 let fit_id = heap.alloc(RObject::Real(fits));
                 return Ok(fit_id);
             }
             // se.fit = s × sqrt(sum_j L(z,j)² / weights_j) exactly as predLoess.
-            let ses: Vec<f64> = hat_rows.iter().map(|row| {
-                let acc: f64 = row.iter().zip(ws.iter()).map(|(l, w)| l * l / w).sum();
-                s_val * acc.sqrt()
+            let ses: Vec<f64> = hat_rows.iter().zip(inside.iter()).map(|(row, &ins)| {
+                if !ins {
+                    na_r
+                } else {
+                    let acc: f64 = row.iter().zip(ws.iter()).map(|(l, w)| l * l / w).sum();
+                    s_val * acc.sqrt()
+                }
             }).collect();
             let fit_id = heap.alloc(RObject::Real(fits));
             let se_id = heap.alloc(RObject::Real(ses));
