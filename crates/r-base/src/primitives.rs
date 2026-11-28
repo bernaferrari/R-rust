@@ -7750,6 +7750,10 @@ pub enum Numeric {
 
 pub fn numeric_operands(heap: &Heap, value: ValueId) -> Result<Numeric, EvalError> {
     match heap.object(value) {
+        // GNU's NULL arithmetic exactly: the empty object contributes an
+        // empty numeric vector, so NULL + NULL is numeric(0) and
+        // NULL == NULL is logical(0) rather than a type error.
+        Some(RObject::Nil) | None if value == ValueId::NIL => Ok(Numeric::Integer(Vec::new())),
         Some(RObject::Integer(values)) => Ok(Numeric::Integer(values.clone())),
         Some(RObject::Real(values)) => Ok(Numeric::Real(values.clone())),
         Some(RObject::Logical(values)) => Ok(Numeric::Integer(values.clone())),
@@ -10860,6 +10864,21 @@ pub fn extract_primitive(
             }
             Ok(items[position])
         }
+        Some(RObject::Pairlist { .. }) => {
+            // Pairlist extraction walks the chain exactly as GNU — dots
+            // pairlists read their cells positionally.
+            let mut cursor = operands[0];
+            for _ in 0..position {
+                match heap.object(cursor) {
+                    Some(RObject::Pairlist { cdr: next, .. }) => cursor = *next,
+                    _ => return Err(EvalError::TypeError("subscript out of bounds").into()),
+                }
+            }
+            match heap.object(cursor) {
+                Some(RObject::Pairlist { car, .. }) => Ok(*car),
+                _ => Err(EvalError::TypeError("subscript out of bounds").into()),
+            }
+        }
         _ => Err(EvalError::TypeError("extraction requires a vector").into()),
     }
 }
@@ -12136,6 +12155,30 @@ pub fn dollar_primitive(
         Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
         _ => return Err(EvalError::TypeError("$ name must be a symbol").into()),
     };
+    // Language objects extract through their argument pairlist tags
+    // exactly as GNU's pairlist-rooted `$` — the tagged cell's car answers.
+    if let Some(RObject::Language { cdr, .. }) = heap.object(object) {
+        let mut cursor = *cdr;
+        for _ in 0..100_000 {
+            if cursor == ValueId::NIL {
+                break;
+            }
+            match heap.object(cursor) {
+                Some(RObject::Pairlist { car, cdr: next, tag }) => {
+                    let tag_text = match heap.object(*tag) {
+                        Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+                        _ => String::new(),
+                    };
+                    if tag_text == wanted {
+                        return Ok(*car);
+                    }
+                    cursor = *next;
+                }
+                _ => break,
+            }
+        }
+        return Ok(ValueId::NIL);
+    }
     // Environments extract frame-only, exactly GNU: no enclosure chain,
     // missing bindings are NULL rather than an error.
     if matches!(heap.object(object), Some(RObject::Environment { .. })) {
@@ -12285,24 +12328,41 @@ pub fn simplify_sapply(heap: &mut Heap, interner: &mut SymbolInterner, results: 
         let count = results.len();
         let all_int = results.iter().all(|r| matches!(heap.object(*r), Some(RObject::Integer(vals)) if vals.len() == n));
         let all_real = results.iter().all(|r| matches!(heap.object(*r), Some(RObject::Real(vals)) if vals.len() == n));
-        if all_int || all_real {
-            let mut flat: Vec<f64> = Vec::with_capacity(n * count);
-            let mut ints: Vec<i32> = Vec::with_capacity(n * count);
-            for r in &results {
-                match heap.object(*r) {
-                    Some(RObject::Integer(vals)) => {
-                        for v in vals { ints.push(*v); flat.push(*v as f64); }
-                    }
-                    Some(RObject::Real(vals)) => {
+        let all_str = results.iter().all(|r| matches!(heap.object(*r), Some(RObject::String(vals)) if vals.len() == n));
+        let all_logi = results.iter().all(|r| matches!(heap.object(*r), Some(RObject::Logical(vals)) if vals.len() == n));
+        if all_int || all_real || all_str || all_logi {
+            let matrix = if all_int {
+                let mut flat: Vec<i32> = Vec::with_capacity(n * count);
+                for r in &results {
+                    if let Some(RObject::Integer(vals)) = heap.object(*r) {
                         for v in vals { flat.push(*v); }
                     }
-                    _ => {}
                 }
-            }
-            let matrix = if all_int {
-                heap.alloc(RObject::Integer(ints))
-            } else {
+                heap.alloc(RObject::Integer(flat))
+            } else if all_real {
+                let mut flat: Vec<f64> = Vec::with_capacity(n * count);
+                for r in &results {
+                    if let Some(RObject::Real(vals)) = heap.object(*r) {
+                        for v in vals { flat.push(*v); }
+                    }
+                }
                 heap.alloc(RObject::Real(flat))
+            } else if all_str {
+                let mut flat: Vec<r_core::intern::InternedStr> = Vec::with_capacity(n * count);
+                for r in &results {
+                    if let Some(RObject::String(vals)) = heap.object(*r) {
+                        for v in vals { flat.push(*v); }
+                    }
+                }
+                heap.alloc(RObject::String(flat))
+            } else {
+                let mut flat: Vec<i32> = Vec::with_capacity(n * count);
+                for r in &results {
+                    if let Some(RObject::Logical(vals)) = heap.object(*r) {
+                        for v in vals { flat.push(*v); }
+                    }
+                }
+                heap.alloc(RObject::Logical(flat))
             };
             let dim = heap.alloc(RObject::Integer(vec![n as i32, count as i32]));
             return copy_with_attrib(heap, interner, matrix, "dim", dim).map_err(RSignal::from);
@@ -26309,13 +26369,52 @@ pub fn matcharg_primitive(
     caller_env: ValueId,
 ) -> EvalResult {
     let bound = bind_formals(heap, interner, args, caller_env, &["arg", "choices", "several.ok"])?;
-    let choices: Vec<String> = match bound[1] {
+    let mut choices: Vec<String> = match bound[1] {
         Some(v) => {
             let vals = strings_of_value(heap, interner, v).map_err(RSignal::from)?;
             vals.iter().map(|s| interner.string_text(*s).to_string()).collect()
         }
         None => Vec::new(),
     };
+    // GNU's formals derivation exactly: choices absent reads the calling
+    // closure's formal default for the argument — eval(formals(sys.function(
+    // sys.parent()))[[name]]) — the innermost context carrying the closure.
+    if bound[1].is_none() {
+        let raw = raw_args(heap, args);
+        let param_name = raw.first().and_then(|e| match heap.object(*e) {
+            Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
+            _ => None,
+        }).unwrap_or_else(|| "arg".to_string());
+        if let Some(ctx) = heap.contexts.last() {
+            let closure = ctx.closure;
+            let frame = ctx.frame;
+            if closure != ValueId::NIL
+                && let Some(RObject::Closure { formals, .. }) = heap.object(closure).cloned() {
+                    let mut cursor = formals;
+                    for _ in 0..100_000 {
+                        if cursor == ValueId::NIL { break; }
+                        match heap.object(cursor) {
+                            Some(RObject::Pairlist { car, cdr, tag }) => {
+                                let tag_text = match heap.object(*tag) {
+                                    Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+                                    _ => String::new(),
+                                };
+                                if tag_text == param_name && *car != ValueId::MISSING {
+                                    let default_val = eval(heap, interner, *car, frame)?;
+                                    let default_val = force_if_promise(heap, interner, default_val)?;
+                                    if let Some(RObject::String(vals)) = heap.object(default_val) {
+                                        choices = vals.iter().map(|s| interner.string_text(*s).to_string()).collect();
+                                    }
+                                    break;
+                                }
+                                cursor = *cdr;
+                            }
+                            _ => break,
+                        }
+                    }
+                }
+        }
+    }
     let inputs: Vec<String> = match bound[0] {
         Some(v) => {
             let vals = strings_of_value(heap, interner, v).map_err(RSignal::from)?;
@@ -26323,7 +26422,19 @@ pub fn matcharg_primitive(
         }
         None => Vec::new(),
     };
-    if inputs.len() == 1 {
+        // GNU's identical-input resolution exactly: the argument matching
+    // the choices wholesale — the missing-argument default path — answers
+    // the first choice.
+    if inputs.len() == choices.len() && inputs.iter().zip(choices.iter()).all(|(a, b)| a == b) && !inputs.is_empty() {
+        let out = interner.intern_string(&inputs[0]);
+        return Ok(heap.alloc(RObject::String(vec![out])));
+    }
+    // NULL input answers the first choice exactly as GNU.
+    if inputs.is_empty() && !choices.is_empty() {
+        let out = interner.intern_string(&choices[0]);
+        return Ok(heap.alloc(RObject::String(vec![out])));
+    }
+if inputs.len() == 1 {
         let input = &inputs[0];
         if let Some(pos) = choices.iter().position(|c| c == input) {
             let out = interner.intern_string(&choices[pos]);

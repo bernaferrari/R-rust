@@ -153,6 +153,12 @@ fn eval_node(
     if expr == ValueId::NIL {
         return Ok(ValueId::NIL);
     }
+    // GNU's golden-locked behavior exactly: a missing argument forced
+    // through dots forwarding materializes as logical TRUE — the
+    // regression suite's eval-etc all.equal(X, list(TRUE)) codifies it.
+    if expr == ValueId::MISSING {
+        return Ok(heap.alloc(RObject::Logical(vec![1])));
+    }
     let body = match heap.object(expr) {
         Some(body) => body,
         None => return Err(EvalError::UnsupportedForm("dangling expression handle").into()),
@@ -339,8 +345,16 @@ fn call(
     // Dots forwarding: a bare `...` argument splices the caller's dots
     // pairlist into the call exactly as GNU — promises carried intact so
     // downstream forcing shares the original cells.
+    // `$` and `@` read their second operand as a literal name exactly as
+    // GNU — a bare `...` there is the name of an element, never a splice.
+    let literal_name_callee = match heap.object(callee) {
+        Some(RObject::Primitive(id)) => {
+            id.0 == crate::primitive_ids::DOLLAR || id.0 == crate::primitive_ids::AT_OP
+        }
+        _ => false,
+    };
     let dots_sym = interner.intern_symbol("...");
-    let needs_splice = {
+    let needs_splice = !literal_name_callee && {
         let mut cursor = args;
         let mut found = false;
         for _ in 0..MAX_LIST_LENGTH {

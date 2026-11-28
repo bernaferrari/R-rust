@@ -468,6 +468,12 @@ all.equal.language <- function(target, current, ...)
 }
 
 ## use.names is new in 3.1.0: avoid partial/positional matching
+
+## GNU's replicate exactly: n repetitions through sapply over integer(n),
+## the nullary closure capturing expr for evaluation in the parent frame.
+replicate <- function(n, expr, simplify = "array")
+    sapply(integer(n), eval.parent(substitute(function(...) expr)), simplify = simplify)
+
 all.equal.list <- function(target, current, ...,
                            check.attributes = TRUE, use.names = TRUE)
 {
