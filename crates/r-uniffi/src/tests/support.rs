@@ -1,5 +1,4 @@
 //! Shared test helpers: recording callback + package fixture.
-#![allow(dead_code)]
 
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
