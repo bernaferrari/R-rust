@@ -17903,12 +17903,66 @@ pub fn rep_int_primitive(
     caller_env: ValueId,
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 2)?;
-    let times = match heap.object(operands[1]) {
-        Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals.first().copied().unwrap_or(1) as i64,
-        Some(RObject::Real(vals)) => vals.first().copied().unwrap_or(1.0) as i64,
-        _ => 1,
+    // GNU's times admission exactly: a numeric vector — non-vector input
+    // names its type in the error; empty, NA, or negative elements are
+    // invalid outright. Scalar times repeats the whole input; a times
+    // vector matching the input length repeats elementwise.
+    let times_vals: Vec<i64> = match heap.object(operands[1]) {
+        Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals.iter().map(|&v| v as i64).collect(),
+        Some(RObject::Real(vals)) => vals.iter().map(|&v| v as i64).collect(),
+        Some(RObject::Environment { .. }) => {
+            return Err(EvalError::Condition(
+                "invalid type (environment) for 'times' (must be a vector)".to_string(),
+            )
+            .into());
+        }
+        _ => {
+            return Err(EvalError::Condition("invalid 'times' value".to_string()).into());
+        }
     };
-    repeat_elements(heap, interner, operands[0], times, true)
+    if times_vals.is_empty()
+        || times_vals.iter().any(|&t| t < 0 || t == r_core::object::NA_INTEGER as i64)
+    {
+        return Err(EvalError::Condition("invalid 'times' value".to_string()).into());
+    }
+    // The input-type admission — environments and other non-vector forms
+    // name their type exactly as GNU's replicate.c reports.
+    if let Some(RObject::Environment { .. }) = heap.object(operands[0]) {
+        return Err(EvalError::Condition(
+            "attempt to replicate an object of type 'environment'".to_string(),
+        )
+        .into());
+    }
+    if times_vals.len() == 1 {
+        return repeat_elements(heap, interner, operands[0], times_vals[0], true);
+    }
+    // Elementwise repetition — each element repeating its own count,
+    // zipped exactly as GNU's times-vector lattice.
+    macro_rules! elementwise {
+        ($vals:expr, $variant:expr) => {{
+            let vals = $vals;
+            if times_vals.len() != vals.len() {
+                return Err(EvalError::Condition("invalid 'times' value".to_string()).into());
+            }
+            let mut out = Vec::new();
+            for (i, &count) in times_vals.iter().enumerate() {
+                for _ in 0..count.max(0) as usize {
+                    out.push(vals[i].clone());
+                }
+            }
+            return Ok(heap.alloc($variant(out)));
+        }};
+    }
+    match heap.object(operands[0]).cloned() {
+        Some(RObject::Integer(vals)) => elementwise!(vals, RObject::Integer),
+        Some(RObject::Logical(vals)) => elementwise!(vals, RObject::Logical),
+        Some(RObject::Real(vals)) => elementwise!(vals, RObject::Real),
+        Some(RObject::String(vals)) => elementwise!(vals, RObject::String),
+        Some(RObject::Raw(vals)) => elementwise!(vals, RObject::Raw),
+        Some(RObject::Complex(vals)) => elementwise!(vals, RObject::Complex),
+        Some(RObject::List(vals)) => elementwise!(vals, RObject::List),
+        _ => Err(EvalError::Condition("invalid 'times' value".to_string()).into()),
+    }
 }
 
 /// rep_len(x, length.out) — recycle or pad to the exact output length;
