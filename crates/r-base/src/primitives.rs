@@ -7257,6 +7257,13 @@ pub fn assign_form(
             // call shape exactly as GNU's eval does.
             return assign_replacement(heap, interner, parts[0], parts[1], caller_env);
         }
+        // GNU's quoted-target form exactly: `">.bar" <- f` assigns the
+        // symbol named by the one-element character literal — the idiom
+        // non-syntactic method names register through.
+        Some(RObject::String(values)) if values.len() == 1 => {
+            let text = interner.string_text(values[0]).to_string();
+            interner.intern_symbol(&text)
+        }
         _ => {
             return Err(EvalError::TypeError("assignment target must be a symbol").into());
         }
@@ -10364,6 +10371,16 @@ pub fn extract_elements(
             let out: Vec<_> = positions.iter().map(|p| values[*p]).collect();
             Ok(heap.alloc(RObject::List(out)))
         }
+        Some(RObject::Expression(values)) => {
+            // Expression subscripting mirrors list positional semantics,
+            // the result staying an expression exactly as GNU.
+            let out: Vec<_> = positions
+                .iter()
+                .filter(|p| **p != usize::MAX && **p < values.len())
+                .map(|p| values[*p])
+                .collect();
+            Ok(heap.alloc(RObject::Expression(out)))
+        }
         _ => Err(EvalError::TypeError("subscript requires a vector")),
     }
 }
@@ -11356,7 +11373,43 @@ pub fn assign_replacement(
         let value = eval(heap, interner, rhs, caller_env)?;
         return force_if_promise(heap, interner, value);
     }
-    Err(EvalError::TypeError("unsupported replacement target").into())
+    // GNU's generic replacement desugar exactly: any call-shaped target
+    // `foo(x, ...) <- v` rewrites as `x <- `foo<-`(x, ..., v)` — the
+    // replacement function resolving by the suffixed name, original
+    // arguments passing unevaluated with the rhs appended last.
+    {
+        let replacement_name = format!("{}<-", head_name);
+        let replacement_sym = interner.intern_symbol(&replacement_name);
+        let sym_obj = heap.alloc(RObject::Symbol { name: replacement_sym, value: ValueId::NIL, internal: ValueId::NIL });
+        // Rebuild the argument chain: original args in order, rhs last.
+        let mut chain = heap.alloc(RObject::Pairlist {
+            car: rhs,
+            cdr: ValueId::NIL,
+            tag: ValueId::NIL,
+        });
+        for arg in call_args.iter().skip(1).rev() {
+            chain = heap.alloc(RObject::Pairlist {
+                car: *arg,
+                cdr: chain,
+                tag: ValueId::NIL,
+            });
+        }
+        chain = heap.alloc(RObject::Pairlist {
+            car: call_args[0],
+            cdr: chain,
+            tag: ValueId::NIL,
+        });
+        let call = heap.alloc(RObject::Language {
+            car: sym_obj,
+            cdr: chain,
+            tag: ValueId::NIL,
+        });
+        let replaced = eval(heap, interner, call, caller_env)?;
+        let replaced = force_if_promise(heap, interner, replaced)?;
+        replacement_writeback(heap, interner, obj_expr, sym, replaced, caller_env)?;
+        let value = eval(heap, interner, rhs, caller_env)?;
+        return force_if_promise(heap, interner, value);
+    }
 }
 
 /// `[<-` as a primitive: positional arguments object, index, value.

@@ -469,6 +469,22 @@ all.equal.language <- function(target, current, ...)
 
 ## use.names is new in 3.1.0: avoid partial/positional matching
 
+
+## GNU's isFALSE exactly — the strict length-one non-NA false test.
+isFALSE <- function(x) is.logical(x) && length(x) == 1L && !is.na(x) && !x
+
+
+## GNU's Encoding surface over attribute storage — the migration slice
+## tracks encodings as attributes rather than CHARSXP marks.
+Encoding <- function(x) {
+    e <- attr(x, "encoding")
+    if (is.null(e)) rep("unknown", length(x)) else e
+}
+`Encoding<-` <- function(x, value) {
+    attr(x, "encoding") <- value
+    x
+}
+
 ## GNU's replicate exactly: n repetitions through sapply over integer(n),
 ## the nullary closure capturing expr for evaluation in the parent frame.
 replicate <- function(n, expr, simplify = "array")

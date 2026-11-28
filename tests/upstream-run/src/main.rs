@@ -49,8 +49,23 @@ fn main() -> ExitCode {
     }
 
 
-    let mut session = PureSession::new();
-    match session.eval_output(&code) {
+    // GNU evaluates with generous expression-stack headroom; the macOS
+    // main thread's 8MB cannot hold the interpreter's deep recursion, so
+    // evaluation runs on a worker thread with a large explicit stack —
+    // the same headroom the conformance harness arranges through
+    // RUST_MIN_STACK for its own threads.
+    let (tx, rx) = std::sync::mpsc::channel();
+    let worker = std::thread::Builder::new()
+        .stack_size(1024 * 1024 * 1024)
+        .spawn(move || {
+            let mut session = PureSession::new();
+            let result = session.eval_output(&code);
+            let _ = tx.send(result);
+        })
+        .expect("spawn evaluation worker");
+    let outcome = rx.recv().expect("evaluation worker result");
+    worker.join().expect("evaluation worker join");
+    match outcome {
         Ok(output) => {
             let mut stdout = std::io::stdout();
             let _ = stdout.write_all(output.as_bytes());
