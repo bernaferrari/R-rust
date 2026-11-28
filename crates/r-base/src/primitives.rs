@@ -3333,6 +3333,22 @@ pub fn call_primitive_inner(
                 },
                 None => Some("*".to_string()),
             };
+            // GNU forwards the trailing arguments into every FUN call
+            // exactly as ordinary call evaluation arranges — the raw
+            // pairlist tail carries both values and tags intact.
+            let mut tail: Vec<(ValueId, ValueId)> = Vec::new();
+            let mut tcursor = args;
+            for skip in 0..1000usize {
+                if tcursor == ValueId::NIL { break; }
+                let (car, tag, next) = match heap.object(tcursor) {
+                    Some(RObject::Pairlist { car, tag, cdr, .. }) => (*car, *tag, *cdr),
+                    _ => break,
+                };
+                if skip >= 3 {
+                    tail.push((car, tag));
+                }
+                tcursor = next;
+            }
             let scalar_at = |heap: &mut Heap, v: ValueId, i: usize| -> Result<ValueId, RSignal> {
                 extract_elements(heap, v, &[i]).map_err(RSignal::from)
             };
@@ -3341,7 +3357,11 @@ pub fn call_primitive_inner(
                 for i in 0..xlen {
                     let xi = scalar_at(heap, xv, i)?;
                     let yj = scalar_at(heap, yv, j)?;
-                    let pair = heap.alloc(RObject::Pairlist { car: yj, cdr: ValueId::NIL, tag: ValueId::NIL });
+                    let mut tail_end = ValueId::NIL;
+                    for (car, tag) in tail.iter().rev() {
+                        tail_end = heap.alloc(RObject::Pairlist { car: *car, cdr: tail_end, tag: *tag });
+                    }
+                    let pair = heap.alloc(RObject::Pairlist { car: yj, cdr: tail_end, tag: ValueId::NIL });
                     let chain = heap.alloc(RObject::Pairlist { car: xi, cdr: pair, tag: ValueId::NIL });
                     let applied = match &fun_name {
                         Some(name) => {
@@ -3374,7 +3394,14 @@ pub fn call_primitive_inner(
                 }
             };
             let top = out.iter().map(|v| rank_of(heap, *v)).max().unwrap_or(3);
-            let unified = if top == 4 {
+            let unified = if top == 5 || top == 6 {
+                let mut vals: Vec<r_core::intern::InternedStr> = Vec::with_capacity(out.len());
+                for v in &out {
+                    let ss = strings_of_value(heap, interner, *v).map_err(RSignal::from)?;
+                    vals.push(ss.first().copied().unwrap_or_else(|| interner.intern_string("")));
+                }
+                heap.alloc(RObject::String(vals))
+            } else if top == 4 {
                 let mut vals: Vec<r_core::object::RComplex> = Vec::with_capacity(out.len());
                 for v in &out {
                     let cx = as_complex_vec(heap, *v).map_err(RSignal::from)?;
@@ -9410,6 +9437,32 @@ pub fn matrix_subset(
     if data_frame_shape(heap, interner, object).is_some() {
         return data_frame_matrix_subset(heap, interner, object, raw, caller_env);
     }
+    // GNU's `[.factor` leniency exactly: a dimensionless factor treats the
+    // extra margins loosely — the first subscript subsets the codes as a
+    // vector and the factor attributes carry forward intact.
+    if is_factor(heap, interner, object)
+        && get_attrib(heap, interner, object, "dim").is_none()
+    {
+        let first = raw.get(1).copied().unwrap_or(ValueId::MISSING);
+        if first == ValueId::MISSING {
+            return Ok(object);
+        }
+        let index = eval(heap, interner, first, caller_env)?;
+        let index = force_if_promise(heap, interner, index)?;
+        let bare = match heap.object(object) {
+            Some(RObject::Integer(vals)) => heap.alloc(RObject::Integer(vals.clone())),
+            _ => object,
+        };
+        let subsetted = subset_impl(heap, interner, bare, index)?;
+        let mut result = subsetted;
+        if let Some(levels) = get_attrib(heap, interner, object, "levels") {
+            result = copy_with_attrib(heap, interner, result, "levels", levels).map_err(RSignal::from)?;
+        }
+        if let Some(class) = get_attrib(heap, interner, object, "class") {
+            result = copy_with_attrib(heap, interner, result, "class", class).map_err(RSignal::from)?;
+        }
+        return Ok(result);
+    }
     let dims = match get_attrib(heap, interner, object, "dim") {
         Some(dim) => match heap.object(dim) {
             Some(RObject::Integer(dims)) if dims.len() >= 2 => (dims[0] as usize, dims[1] as usize),
@@ -13431,10 +13484,21 @@ pub fn data_frame_shape(
         _ => return None,
     };
     let ncol = items.len();
-    let nrow = items
-        .first()
-        .and_then(|c| vector_length(heap, *c))
-        .unwrap_or(0);
+    // GNU's nrow is the row.names length exactly — column inference only
+    // matters for frames whose row.names never attached, and zero-column
+    // frames carry their extent through row.names alone.
+    let nrow = match get_attrib(heap, interner, value, "row.names") {
+        Some(rn) => vector_length(heap, rn).unwrap_or(0),
+        None => 0,
+    };
+    let nrow = if nrow > 0 || items.is_empty() {
+        nrow
+    } else {
+        items
+            .first()
+            .and_then(|c| vector_length(heap, *c))
+            .unwrap_or(0)
+    };
     Some((nrow, ncol))
 }
 
