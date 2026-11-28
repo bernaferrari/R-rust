@@ -70,6 +70,14 @@ str <- function(object, ...) {
             cat(prefix, "function\n", sep = "")
         } else if (is.environment(x)) {
             cat(prefix, "<environment>\n", sep = "")
+        } else if (typeof(x) == "language" || typeof(x) == "symbol") {
+            # GNU's symbolic str exactly: the type label leading the
+            # inline deparse under one space.
+            cat(prefix, " ", typeof(x), " ", paste(deparse(x), collapse = " "), "\n", sep = "")
+        } else if (typeof(x) == "expression") {
+            # Expressions answer the whole construction deparsed under
+            # two spaces exactly as GNU's golden pins.
+            cat(prefix, "  ", paste(deparse(x), collapse = " "), "\n", sep = "")
         } else {
             typ <- switch(typeof(x),
                 double = "num", integer = "int", logical = "logi",

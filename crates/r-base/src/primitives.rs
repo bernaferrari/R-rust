@@ -6997,6 +6997,20 @@ pub fn call_primitive_inner(
             // format() on Date-classed input renders ISO exactly as the
             // print path; other input coerces to character.
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            // GNU's symbolic discipline exactly as format.R: language
+            // objects deparse inline while expression vectors render the
+            // whole expression() construction as one string.
+            match heap.object(operands[0]) {
+                Some(RObject::Expression(_)) => {
+                    let text = r_core::print::deparse(heap, interner, operands[0]);
+                    return Ok(heap.alloc(RObject::String(vec![interner.intern_string(&text)])));
+                }
+                Some(RObject::Language { .. }) | Some(RObject::Symbol { .. }) => {
+                    let text = r_core::print::deparse(heap, interner, operands[0]);
+                    return Ok(heap.alloc(RObject::String(vec![interner.intern_string(&text)])));
+                }
+                _ => {}
+            }
             if is_posixct_classed(heap, interner, operands[0]) {
                 let secs = numeric_vector(heap, operands[0]);
                 let out: Vec<r_core::intern::InternedStr> = secs
@@ -7426,14 +7440,17 @@ pub fn assign_form(
         }
     }
     if super_assign {
-        match r_core::env::assign(heap, caller_env, sym, value) {
+        // GNU's <<- discipline exactly as eval.c's applydefine: the search
+        // walks the ENCLOSING environments — the current activation frame
+        // never eligible, so a shadowing parameter or local binding is
+        // never the rewrite target — and a fruitless search falls back to
+        // defining in the global environment rather than the frame.
+        let search_start = r_core::env::enclosure_of(heap, caller_env).unwrap_or(caller_env);
+        match r_core::env::assign(heap, search_start, sym, value) {
             Ok(r_core::env::AssignOutcome::Assigned)
             | Ok(r_core::env::AssignOutcome::ReplacedActiveBinding) => {}
             Ok(r_core::env::AssignOutcome::NoExistingBinding) => {
-                // GNU: <<- with no existing binding defines in the global
-                // environment. Sentinel resolution is pending; defining in
-                // the current frame is the documented slice approximation.
-                r_core::env::define(heap, caller_env, sym, value)
+                r_core::env::define(heap, ValueId::GLOBAL_ENV, sym, value)
                     .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("superassign define")))?;
             }
             Err(_) => {
@@ -14150,9 +14167,68 @@ pub fn matrix_primitive(
     let dims = heap.alloc(RObject::Integer(vec![nrow as i32, ncol as i32]));
     let with_dim = copy_with_attrib(heap, interner, result, "dim", dims).map_err(RSignal::from)?;
     match lookup("dimnames", 3) {
-        Some(dn) => copy_with_attrib(heap, interner, with_dim, "dimnames", dn).map_err(RSignal::from),
+        Some(dn) => {
+            // GNU's normalize_dimnames discipline exactly: every component
+            // coerces to character before installation, integer sequences
+            // arriving as their decimal labels.
+            let dn = coerce_dimnames_character(heap, interner, dn);
+            copy_with_attrib(heap, interner, with_dim, "dimnames", dn).map_err(RSignal::from)
+        }
         None => Ok(with_dim),
     }
+}
+
+/// Character coercion of a dimnames list exactly as GNU's
+/// normalize_dimnames — each non-NULL component rendering through the
+/// type's character labels, real values integral-valued printing bare.
+fn coerce_dimnames_character(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    dn: ValueId,
+) -> ValueId {
+    let items = match heap.object(dn) {
+        Some(RObject::List(items)) => items.clone(),
+        _ => return dn,
+    };
+    let mut out: Vec<ValueId> = Vec::new();
+    for item in items {
+        let coerced = match heap.object(item) {
+            Some(RObject::String(_)) => item,
+            Some(RObject::Integer(vals)) => {
+                let text: Vec<_> = vals
+                    .iter()
+                    .map(|v| {
+                        if *v == r_core::object::NA_INTEGER {
+                            interner.intern_string("\0NA")
+                        } else {
+                            interner.intern_string(&v.to_string())
+                        }
+                    })
+                    .collect();
+                heap.alloc(RObject::String(text))
+            }
+            Some(RObject::Real(vals)) => {
+                let text: Vec<_> = vals
+                    .iter()
+                    .map(|v| {
+                        if v.is_nan() {
+                            interner.intern_string("\0NA")
+                        } else {
+                            interner.intern_string(&r_core::print::format_real(*v))
+                        }
+                    })
+                    .collect();
+                heap.alloc(RObject::String(text))
+            }
+            Some(RObject::Nil) | None => item,
+            _ => item,
+        };
+        out.push(coerced);
+    }
+    if out.iter().all(|v| matches!(heap.object(*v), Some(RObject::Nil) | None)) {
+        return dn;
+    }
+    heap.alloc(RObject::List(out))
 }
 
 /// `rep` argument resolution: GNU's forms are rep(x, times), rep(x, each),
@@ -14547,9 +14623,35 @@ pub fn structure_primitive(
         Some(v) => *v,
         None => return Err(EvalError::TypeError("structure requires input").into()),
     };
+    // GNU's special-name discipline exactly as structure.R: the dotted
+    // spellings map onto their attribute replacements with a deprecation
+    // warning classed deprecatedWarning.
+    let specials = [".Dim", ".Dimnames", ".Names", ".Tsp", ".Label"];
+    let replace = ["dim", "dimnames", "names", "tsp", "levels"];
+    let mut renamed: Vec<(String, ValueId)> = Vec::new();
+    let mut hit_specials: Vec<String> = Vec::new();
+    let mut hit_replacements: Vec<String> = Vec::new();
+    for (name, value) in tagged.into_iter() {
+        match specials.iter().position(|sp| *sp == name) {
+            Some(index) => {
+                hit_specials.push(format!("'{}'", name));
+                hit_replacements.push(format!("'{}'", replace[index]));
+                renamed.push((replace[index].to_string(), value));
+            }
+            None => renamed.push((name, value)),
+        }
+    }
+    if !hit_specials.is_empty() {
+        let message = format!(
+            "Replacing special names {} is deprecated; use {} instead.",
+            hit_specials.join(", "),
+            hit_replacements.join(", ")
+        );
+        signal_deprecated_warning(heap, interner, &message, caller_env)?;
+    }
     // copy_with_attrib appends, so forward application leaves the chain
     // in argument order exactly as GNU prints it.
-    for (name, value) in tagged.into_iter() {
+    for (name, value) in renamed.into_iter() {
         object = copy_with_attrib(heap, interner, object, &name, value).map_err(RSignal::from)?;
     }
     Ok(object)
@@ -18202,6 +18304,41 @@ pub fn signal_warning(
     Ok(())
 }
 
+/// GNU's .Deprecated discipline: the deprecation warning signals through
+/// the calling-handler chain carrying deprecatedWarning in its class
+/// vector before warning and condition, the muffleWarning restart armed
+/// exactly as simple warnings arrange.
+pub fn signal_deprecated_warning(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    text: &str,
+    caller_env: ValueId,
+) -> Result<(), RSignal> {
+    let id = heap.next_restart_id.max(1);
+    heap.next_restart_id = id + 1;
+    let object = build_restart_object(heap, interner, "muffleWarning", ValueId::NIL);
+    let depth = heap.restart_stack.len();
+    heap.restart_stack.push(r_core::heap::RestartEntry {
+        id,
+        handler: ValueId::NIL,
+        object,
+    });
+    let fired = fire_calling_handlers_classes(
+        heap, interner, &["deprecatedWarning", "warning", "condition"], text, caller_env,
+    );
+    heap.restart_stack.truncate(depth);
+    match fired {
+        Err(RSignal::RestartInvoke { id: invoked, .. }) if invoked == id => return Ok(()),
+        Err(other) => return Err(other),
+        Ok(()) => {}
+    }
+    if heap.warn_suppressed {
+        return Ok(());
+    }
+    heap.pending_warnings.push(text.to_string());
+    Ok(())
+}
+
 pub fn fire_calling_handlers(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
@@ -18213,11 +18350,25 @@ pub fn fire_calling_handlers(
     // registered for simpleWarning, warning, or condition alike.
     let simple = format!("simple{}", if class == "warning" { "Warning" } else { "Message" });
     let inheritable = [simple.as_str(), class, "condition"];
+    fire_calling_handlers_classes(heap, interner, &inheritable, text, caller_env)
+}
+
+/// The class-explicit variant exactly as GNU's condition inheritance —
+/// deprecation warnings carrying deprecatedWarning before warning before
+/// condition in the class vector, handlers matching any ancestor.
+pub fn fire_calling_handlers_classes(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    classes: &[&str],
+    text: &str,
+    caller_env: ValueId,
+) -> Result<(), RSignal> {
+    let inheritable: Vec<&str> = classes.to_vec();
     let matching: Vec<ValueId> = heap
         .calling_handlers
         .iter()
         .rev()
-        .filter(|entry| inheritable.contains(&interner.string_text(entry.class_name)))
+        .filter(|entry| inheritable.iter().any(|c| *c == interner.string_text(entry.class_name)))
         .map(|entry| entry.handler)
         .collect();
     if matching.is_empty() {
@@ -18229,11 +18380,11 @@ pub fn fire_calling_handlers(
     let names: Vec<_> = ["message", "call"].iter().map(|n| interner.intern_string(n)).collect();
     let names_obj = heap.alloc(RObject::String(names));
     let condition = copy_with_attrib(heap, interner, condition, "names", names_obj)?;
-    let classes: Vec<_> = [simple.as_str(), class, "condition"]
+    let classes_vec: Vec<_> = inheritable
         .iter()
         .map(|c| interner.intern_string(c))
         .collect();
-    let class_obj = heap.alloc(RObject::String(classes));
+    let class_obj = heap.alloc(RObject::String(classes_vec));
     let condition = copy_with_attrib(heap, interner, condition, "class", class_obj)?;
     for handler in matching {
         apply_closure_value(heap, interner, handler, &[condition], caller_env)?;
@@ -23297,9 +23448,36 @@ pub fn rank_primitive(
     let (positional, named) = collect_order_args(heap, interner, args, caller_env)?;
     let x = positional.first().copied().ok_or(EvalError::TypeError("rank requires an argument"))?;
     let keys = order_keys(heap, interner, x);
-    let na_last = flag_lookup(heap, &positional, &named, "na.last", 1)
-        .map(|v| logical_or_na(heap, v))
-        .unwrap_or(Some(true));
+    // GNU's na.last lattice exactly: the string "keep" alone keeps
+    // missing entries as NA in place; logical NA removes them outright;
+    // TRUE sorts them last and FALSE first.
+    #[derive(PartialEq)]
+    enum NaLast { Remove, First, Last, Keep }
+    let na_last = match flag_lookup(heap, &positional, &named, "na.last", 1) {
+        None => NaLast::Last,
+        Some(v) => {
+            let logical_na = matches!(heap.object(v), Some(RObject::Logical(vals)) if vals.first() == Some(&r_core::object::NA_INTEGER));
+            if logical_na {
+                NaLast::Remove
+            } else if let Some(text) = string_operand(heap, interner, v) {
+                if text == "keep" {
+                    NaLast::Keep
+                } else {
+                    match logical_or_na(heap, v) {
+                        None => NaLast::Remove,
+                        Some(false) => NaLast::First,
+                        Some(true) => NaLast::Last,
+                    }
+                }
+            } else {
+                match logical_or_na(heap, v) {
+                    None => NaLast::Remove,
+                    Some(false) => NaLast::First,
+                    Some(true) => NaLast::Last,
+                }
+            }
+        }
+    };
     let ties_method = flag_lookup(heap, &positional, &named, "ties.method", 2)
         .and_then(|v| string_operand(heap, interner, v))
         .unwrap_or_else(|| "average".to_string());
@@ -23312,7 +23490,7 @@ pub fn rank_primitive(
     sorted.sort_by(|&a, &b| compare_keys(&keys[a], &keys[b]));
 
     // The shift applied to non-missing ranks when missing values sort first.
-    let shift = if na_last == Some(false) { na_count as f64 } else { 0.0 };
+    let shift = if na_last == NaLast::First { na_count as f64 } else { 0.0 };
     let mut ranks: Vec<Option<f64>> = vec![None; keys.len()];
     let mut cursor = 0usize;
     while cursor < sorted.len() {
@@ -23336,9 +23514,10 @@ pub fn rank_primitive(
     }
 
     // Missing entries: sequential positions at the edge they sort toward,
-    // in original order exactly as GNU — never tie-averaged.
-    if na_last.is_some() {
-        let mut next = if na_last == Some(false) {
+    // in original order exactly as GNU — never tie-averaged — while the
+    // keep lattice leaves them missing in place.
+    if na_last == NaLast::First || na_last == NaLast::Last {
+        let mut next = if na_last == NaLast::First {
             1.0
         } else {
             non_na.len() as f64 + 1.0
@@ -23353,17 +23532,26 @@ pub fn rank_primitive(
 
     let present: Vec<f64> = ranks.iter().filter_map(|r| *r).collect();
     let any_fractional = present.iter().any(|v| v.fract() != 0.0);
-    if na_last.is_none() {
+    if na_last == NaLast::Remove {
         if any_fractional {
             return Ok(heap.alloc(RObject::Real(present)));
         }
         return Ok(heap.alloc(RObject::Integer(present.iter().map(|v| *v as i32).collect())));
     }
-    let all: Vec<f64> = ranks.iter().map(|r| r.unwrap_or(f64::NAN)).collect();
+    // NA entries encode through the type's own missing sentinel exactly
+    // as GNU — NA_integer_ in the integral answer, NaN in the real.
     if any_fractional {
+        let all: Vec<f64> = ranks.iter().map(|r| r.unwrap_or(f64::NAN)).collect();
         return Ok(heap.alloc(RObject::Real(all)));
     }
-    Ok(heap.alloc(RObject::Integer(all.iter().map(|v| *v as i32).collect())))
+    let all: Vec<i32> = ranks
+        .iter()
+        .map(|r| match r {
+            Some(v) => *v as i32,
+            None => r_core::object::NA_INTEGER,
+        })
+        .collect();
+    Ok(heap.alloc(RObject::Integer(all)))
 }
 
 /// na.omit / na.exclude — drop missing entries and record their positions
@@ -24674,7 +24862,23 @@ pub fn complex_ctor(
                 _ => None,
             }
         };
-        let reals = numeric_vector(heap, value);
+        // Character input coerces through as.double exactly as GNU's
+        // closure — decimal text parsing to its value, unparseable text
+        // missing.
+        let reals = match heap.object(value) {
+            Some(RObject::String(vals)) => vals
+                .iter()
+                .map(|v| {
+                    let text = interner.string_text(*v);
+                    if text == "\0NA" {
+                        f64::NAN
+                    } else {
+                        text.trim().parse::<f64>().unwrap_or(f64::NAN)
+                    }
+                })
+                .collect(),
+            _ => numeric_vector(heap, value),
+        };
         // GNU's partial matching exactly: tags resolve as unique prefixes
         // of the formals — re/im/mod/arg all expand positionally.
         let resolved = match tag_name.as_deref() {
@@ -24697,9 +24901,17 @@ pub fn complex_ctor(
             Some("modulus") => { modulus_vals = reals; saw_modulus = true; }
             Some("argument") => { argument_vals = reals; saw_argument = true; }
             _ => {
+                // GNU's closure formals positional order exactly:
+                // length.out, real, imaginary, modulus, argument —
+                // untagged arguments filling successive slots.
                 positional += 1;
-                if positional == 1 {
-                    length_out = reals.first().copied().unwrap_or(0.0) as usize;
+                match positional {
+                    1 => length_out = reals.first().copied().unwrap_or(0.0) as usize,
+                    2 => { real_vals = reals; saw_real = true; }
+                    3 => { imag_vals = reals; saw_imag = true; }
+                    4 => { modulus_vals = reals; saw_modulus = true; }
+                    5 => { argument_vals = reals; saw_argument = true; }
+                    _ => {}
                 }
             }
         }

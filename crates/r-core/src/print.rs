@@ -1365,7 +1365,21 @@ fn deparse_base(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Strin
             return format!("new(\"{}\"{}{})", class_text, if parts.is_empty() { "" } else { ", " }, parts.join(", "));
         }
     match heap.object(value) {
-        Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+        // Non-syntactic names quote through backticks exactly as GNU's
+        // deparse validity discipline.
+        Some(RObject::Symbol { name, .. }) => deparse_name(interner.symbol_name(*name)),
+        // Expression vectors deparse inside the expression() wrapper with
+        // each element comma-separated exactly as GNU's print shape.
+        Some(RObject::Expression(items)) => {
+            if items.is_empty() {
+                return "expression()".to_string();
+            }
+            let parts: Vec<String> = items
+                .iter()
+                .map(|item| deparse(heap, interner, *item))
+                .collect();
+            return format!("expression({})", parts.join(", "));
+        }
         Some(RObject::Language { car, cdr, .. }) => {
             let op_text = match heap.object(*car) {
                 Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
@@ -1394,6 +1408,49 @@ fn deparse_base(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Strin
                     }
                     _ => break,
                 }
+            }
+            // GNU's control-flow forms exactly as deparse.c's PP sheets:
+            // if renders with its parenthesized predicate and the else
+            // arm inline; braces join their statements with semicolons;
+            // the loop forms carry their headers verbatim.
+            if op_text == "if" && (items.len() == 2 || items.len() == 3) {
+                let cond = deparse(heap, interner, items[0]);
+                let yes = deparse(heap, interner, items[1]);
+                if items.len() == 3 {
+                    let no = deparse(heap, interner, items[2]);
+                    return format!("if ({}) {} else {}", cond, yes, no);
+                }
+                return format!("if ({}) {}", cond, yes);
+            }
+            if op_text == "{" {
+                if items.is_empty() {
+                    return "{ }".to_string();
+                }
+                let parts: Vec<String> = items
+                    .iter()
+                    .map(|item| deparse(heap, interner, *item))
+                    .collect();
+                return format!("{{  {} }}", parts.join("; "));
+            }
+            if op_text == "while" && items.len() == 2 {
+                return format!("while ({}) {}", deparse(heap, interner, items[0]), deparse(heap, interner, items[1]));
+            }
+            if op_text == "for" && items.len() == 3 {
+                return format!(
+                    "for ({} in {}) {}",
+                    deparse(heap, interner, items[0]),
+                    deparse(heap, interner, items[1]),
+                    deparse(heap, interner, items[2])
+                );
+            }
+            if op_text == "repeat" && items.len() == 1 {
+                return format!("repeat {}", deparse(heap, interner, items[0]));
+            }
+            if op_text == "function" && items.len() == 2 {
+                return format!("function ({}) {}", deparse(heap, interner, items[0]), deparse(heap, interner, items[1]));
+            }
+            if op_text == "(" && items.len() == 1 {
+                return format!("({})", deparse(heap, interner, items[0]));
             }
             const INFIX: &[&str] = &[
                 "+", "-", "*", "/", "^", "%%", "<", ">", "<=", ">=", "==", "!=", "|", "&", "~", "=", "<-", ":=", "%in%", "|>", "||", "&&",
