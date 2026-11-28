@@ -14,9 +14,9 @@ use r_core::id::ValueId;
 use r_core::intern::SymbolInterner;
 use r_core::object::RObject;
 
-/// Trigonometric and hyperbolic family — real inputs produce real outputs
-/// exactly as the other unary math; complex inputs evaluate through the
-/// standard real-part compositions GNU's complex trig derives from.
+// Trigonometric and hyperbolic family — real inputs produce real outputs
+// exactly as the other unary math; complex inputs evaluate through the
+// standard real-part compositions GNU's complex trig derives from.
 
 /// Density/distribution family over nmath's pure-Rust cores — GNU's exact
 /// positional+named argument resolution with scalar parameter defaults,
@@ -271,6 +271,7 @@ pub fn weighted_sample_indices_pure(
             for _ in 0..size {
                 let r_u = heap.rng.unif();
                 let mut j = nm1;
+                #[allow(clippy::needless_range_loop)] // multi-array index arithmetic is the algorithm
                 for jj in 0..nm1 {
                     if r_u <= p[jj] {
                         j = jj;
@@ -292,6 +293,7 @@ pub fn weighted_sample_indices_pure(
             let r_t = totalmass * heap.rng.unif();
             let mut mass = 0.0;
             let mut j = n - 1 - i;
+            #[allow(clippy::needless_range_loop)] // multi-array index arithmetic is the algorithm
             for jj in 0..j {
                 mass += p[jj];
                 if r_t <= mass {
@@ -330,6 +332,7 @@ pub fn loess_core_fit(xs: &[f64], ys: &[f64], span: f64, degree: usize) -> Vec<f
         let p = degree + 1;
         let mut a = vec![vec![0.0f64; p]; p];
         let mut bb = vec![0.0f64; p];
+        #[allow(clippy::needless_range_loop)] // multi-array index arithmetic is the algorithm
         for i in 0..nf {
             let k = idx[i];
             let u = (dist[k] / rho).sqrt();
@@ -368,6 +371,7 @@ pub fn loess_core_fit(xs: &[f64], ys: &[f64], span: f64, degree: usize) -> Vec<f
             }
             for r in (col + 1)..p {
                 let factor = a[r][col] / d;
+                #[allow(clippy::needless_range_loop)] // multi-array index arithmetic is the algorithm
                 for c in col..p {
                     a[r][c] -= factor * a[col][c];
                 }

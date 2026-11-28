@@ -151,11 +151,9 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// Patch a cell's car in place — used by pipe rewriting exactly as the
     /// legacy parser's SETCAR.
     pub fn set_car(&mut self, cell: ValueId, new_car: ValueId) {
-        if let Some(slot) = self.heap.object_mut(cell) {
-            match slot {
-                RObject::Pairlist { car, .. } | RObject::Language { car, .. } => *car = new_car,
-                _ => {}
-            }
+        match self.heap.object_mut(cell) {
+            Some(RObject::Pairlist { car, .. }) | Some(RObject::Language { car, .. }) => *car = new_car,
+            _ => {}
         }
     }
 

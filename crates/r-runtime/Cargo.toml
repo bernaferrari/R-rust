@@ -15,7 +15,7 @@ browser-analysis-tools = []
 default = []
 # Enable RenderPlot-backed GE device for high-quality skia output inside real R graphics (plot, grid, etc.)
 # Pulls r-graphics-engine (kept optional so pure-math WASM builds stay small).
-renderplot-device = ["r-device-android-headless"]
+renderplot-device = ["r-device-android-headless", "r-base/renderplot-device"]
 # GNU configures this off unless --enable-memory-profiling. The pinned
 # oracle is built without it, so tracemem errors and duplicate does not
 # report copies. Enable to match a Homebrew-style build.

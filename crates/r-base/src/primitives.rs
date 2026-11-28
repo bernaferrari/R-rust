@@ -9,10 +9,14 @@
 
 // Attribute machinery lives in r-core's object model exactly as the DAG
 // requires — re-exported here so the registry's existing paths resolve.
+// The facade shim exactly as the crate-split transition arranges — the glob
+// re-export keeps legacy paths resolving while domain crates own the items.
+#[allow(hidden_glob_reexports)]
 pub use r_stats::*;
-use r_core::prim::{pairlist_car_cdr, pairlist_parts};
-use r_graphics::*;
+#[allow(hidden_glob_reexports)]
+pub use r_graphics::*;
 pub use r_core::attrib::{attrib_names, get_attrib, get_attrib_public, is_date_classed, is_posixct_classed, string_vec_pub};
+#[allow(hidden_glob_reexports)]
 pub use r_core::prim::*;
 use r_core::attrib::string_vec;
 
@@ -47,8 +51,8 @@ pub fn call_primitive(
     // eval propagates the evaluated expression's own visibility exactly
     // as .Internal does — the inner answer decides, not the wrapper.
     // Braces and parens propagate the final inner visibility exactly as
-    /// GNU — `{ invisible(1) }` returns invisibly — so they join .Internal
-    /// and eval in the propagation exceptions.
+    // GNU — `{ invisible(1) }` returns invisibly — so they join .Internal
+    // and eval in the propagation exceptions.
     if result.is_ok() && id.0 != INTERNAL && id.0 != EVAL_FN && id.0 != LOCAL_FN && id.0 != BRACE && id.0 != PAREN && id.0 != SUPPRESS_WARNINGS && id.0 != USEMETHOD && id.0 != NEXTMETHOD && id.0 != PLOT_FN && id.0 != SYSTEM && id.0 != OPTIONS_FN && id.0 != WITH_RESTARTS && id.0 != WITH_CALLING_HANDLERS && id.0 != PAR && id.0 != PALETTE_FN && id.0 != HIST && id.0 != BARPLOT && id.0 != BOXPLOT && id.0 != CURVE_FN && id.0 != MATPLOT && id.0 != SVG_FN && id.0 != PNG_FN && id.0 != DEV_OFF && id.0 != PIE_FN && id.0 != STRIPCHART && id.0 != DOTCHART && id.0 != DENSITY_FN && id.0 != GRID_FN && id.0 != RUG_FN && id.0 != TRYCATCH {
         heap.visible = !matches!(
             id.0,
@@ -2289,6 +2293,7 @@ pub fn call_primitive_inner(
                     if upper_tri {
                         for i in 0..eff {
                             let mut acc = b[i];
+                            #[allow(clippy::needless_range_loop)] // index arithmetic is the algorithm
                             for j in 0..i {
                                 acc -= rat(j, i) * x[j];
                             }
@@ -2297,6 +2302,7 @@ pub fn call_primitive_inner(
                     } else {
                         for i in (0..eff).rev() {
                             let mut acc = b[i];
+                            #[allow(clippy::needless_range_loop)] // index arithmetic is the algorithm
                             for j in (i + 1)..eff {
                                 acc -= rat(j, i) * x[j];
                             }
@@ -2306,6 +2312,7 @@ pub fn call_primitive_inner(
                 } else if upper_tri {
                     for i in (0..eff).rev() {
                         let mut acc = b[i];
+                        #[allow(clippy::needless_range_loop)] // index arithmetic is the algorithm
                         for j in (i + 1)..eff {
                             acc -= rat(i, j) * x[j];
                         }
@@ -2314,6 +2321,7 @@ pub fn call_primitive_inner(
                 } else {
                     for i in 0..eff {
                         let mut acc = b[i];
+                        #[allow(clippy::needless_range_loop)] // index arithmetic is the algorithm
                         for j in 0..i {
                             acc -= rat(i, j) * x[j];
                         }
@@ -2534,9 +2542,9 @@ pub fn call_primitive_inner(
             let len = vector_length(heap, operands[0]).unwrap_or(0);
             let mut out = vec![1i32; len];
             for operand in &operands {
-                for i in 0..len {
-                    if out[i] == 1 && element_is_na(heap, interner, *operand, i) {
-                        out[i] = 0;
+                for (i, cell) in out.iter_mut().enumerate() {
+                    if *cell == 1 && element_is_na(heap, interner, *operand, i) {
+                        *cell = 0;
                     }
                 }
             }
@@ -3535,6 +3543,7 @@ pub fn call_primitive_inner(
                     }
                 }
             };
+            #[allow(clippy::too_many_arguments)] // algorithm-shaped signature exactly as the GNU/Fortran port arranges
             fn scan_dir_entries(
                 dir: &str,
                 prefix: &str,
@@ -7107,8 +7116,8 @@ pub fn sequence_elements(heap: &mut Heap, seq: ValueId) -> Result<Vec<ValueId>, 
     Ok(elements.into_iter().map(|body| heap.alloc(body)).collect())
 }
 
-/// Binary comparisons with GNU elementwise semantics: numeric coercion,
-/// recycling, logical results.
+// Binary comparisons with GNU elementwise semantics: numeric coercion,
+// recycling, logical results.
 
 /// Ordered-factor class membership — the class vector carries "ordered".
 pub fn is_ordered_classed(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
@@ -7130,16 +7139,16 @@ pub fn comparison(
     // magnitudes in mixed units order exactly as GNU's time lattice.
     let operands = {
         let mut ops = operands;
-        for i in 0..2 {
-            if is_difftime_classed(heap, interner, ops[i]) {
-                let factor = unit_seconds(&difftime_units(heap, interner, ops[i]));
-                let scaled: Vec<f64> = match heap.object(ops[i]) {
+        for op in ops.iter_mut() {
+            if is_difftime_classed(heap, interner, *op) {
+                let factor = unit_seconds(&difftime_units(heap, interner, *op));
+                let scaled: Vec<f64> = match heap.object(*op) {
                     Some(RObject::Real(vals)) => vals.iter().map(|x| x * factor).collect(),
                     Some(RObject::Integer(vals)) => vals.iter().map(|&x| x as f64 * factor).collect(),
                     _ => Vec::new(),
                 };
                 if !scaled.is_empty() {
-                    ops[i] = heap.alloc(RObject::Real(scaled));
+                    *op = heap.alloc(RObject::Real(scaled));
                 }
             }
         }
@@ -10617,6 +10626,7 @@ pub fn unlist_primitive(
             _ => 0,
         }
     }
+    #[allow(clippy::too_many_arguments)] // algorithm-shaped signature exactly as the GNU/Fortran port arranges
     fn walk(
         heap: &Heap,
         interner: &SymbolInterner,
@@ -13623,6 +13633,10 @@ pub fn factor_primitive(
 }
 
 /// One conversion spec parsed out of a sprintf format string.
+/// Positional-then-named operand split exactly as the binary-connection
+/// argument collector shapes it.
+pub type BinArgs = (Vec<ValueId>, Vec<(String, ValueId)>);
+
 pub struct ConvSpec {
     zero_pad: bool,
     plus: bool,
@@ -14002,7 +14016,7 @@ pub fn levels_assign_primitive(
     // Surviving levels compact in order; codes remap.
     let mut surviving: Vec<String> = Vec::new();
     let mut position_map: Vec<Option<usize>> = Vec::new(); // old idx -> new 0-based
-    for (_i, name) in new_names_raw.iter().enumerate() {
+    for name in new_names_raw.iter() {
         if name == "\0NA" || name == "NA" && !old_levels.contains(name) {
             position_map.push(None);
         } else {
@@ -14906,7 +14920,6 @@ pub fn structural_identical(
                 })
         }
         (Some(RObject::String(a)), Some(RObject::String(b))) => a == b,
-        (Some(RObject::Raw(a)), Some(RObject::Raw(b))) => a == b,
         (Some(RObject::List(a)), Some(RObject::List(b))) => {
             a.len() == b.len()
                 && a.iter().zip(b.iter()).all(|(x, y)| structural_identical(heap, interner, *x, *y))
@@ -17088,10 +17101,10 @@ pub fn pminmax_primitive(
                     Some(a) => a.max(v),
                 });
             }
-            out.push(if saw_na || acc.is_none() {
+            out.push(if saw_na {
                 r_core::object::NA_INTEGER
             } else {
-                acc.unwrap()
+                acc.unwrap_or(r_core::object::NA_INTEGER)
             });
         }
         return Ok(heap.alloc(RObject::Integer(out)));
@@ -17115,10 +17128,10 @@ pub fn pminmax_primitive(
                 Some(a) => a.max(v),
             });
         }
-        out.push(if saw_na || acc.is_none() {
+        out.push(if saw_na {
             f64::from_bits(r_core::object::NA_REAL_BITS)
         } else {
-            acc.unwrap()
+            acc.unwrap_or(f64::from_bits(r_core::object::NA_REAL_BITS))
         });
     }
     Ok(heap.alloc(RObject::Real(out)))
@@ -17600,15 +17613,15 @@ pub fn plot_generic(
             let sym = interner.intern_symbol(&format!("plot.{class}"));
             // plot.default is the primitive itself — looking it up would
             // recurse, exactly why GNU's default lives outside the chain.
-            if class != "default" {
-                if let Some((_, binding)) = r_core::env::lookup(heap, caller_env, sym) {
-                    let method = force_if_promise(heap, interner, binding.value)?;
-                    let remaining: Vec<String> = Vec::new();
-                    heap.s3_dispatch.push(("plot".to_string(), object, remaining));
-                    let result = s3_apply(heap, interner, method, object, caller_env);
-                    heap.s3_dispatch.pop();
-                    return result;
-                }
+            if class != "default"
+                && let Some((_, binding)) = r_core::env::lookup(heap, caller_env, sym)
+            {
+                let method = force_if_promise(heap, interner, binding.value)?;
+                let remaining: Vec<String> = Vec::new();
+                heap.s3_dispatch.push(("plot".to_string(), object, remaining));
+                let result = s3_apply(heap, interner, method, object, caller_env);
+                heap.s3_dispatch.pop();
+                return result;
             }
         }
     }
@@ -18432,10 +18445,10 @@ pub fn merge_primitive(
     // Pairing: cartesian expansion on duplicate keys exactly as GNU,
     // x-row-major within each x row's matches.
     let mut pairs: Vec<(Option<usize>, Option<usize>)> = Vec::new();
-    for xi in 0..x_nrow {
+    for (xi, xk) in x_keys.iter().enumerate() {
         let mut matched = false;
-        for yi in 0..y_nrow {
-            if x_keys[xi] == y_keys[yi] {
+        for (yi, yk) in y_keys.iter().enumerate() {
+            if xk == yk {
                 pairs.push((Some(xi), Some(yi)));
                 matched = true;
             }
@@ -18445,8 +18458,8 @@ pub fn merge_primitive(
         }
     }
     if all_y {
-        for yi in 0..y_nrow {
-            if !x_keys.iter().any(|k| k == &y_keys[yi]) {
+        for (yi, yk) in y_keys.iter().enumerate() {
+            if !x_keys.iter().any(|k| k == yk) {
                 pairs.push((None, Some(yi)));
             }
         }
@@ -19033,6 +19046,7 @@ pub fn solve_primitive(
     let mut out = vec![0.0f64; n * ncols];
     for col in 0..ncols {
         let mut x: Vec<f64> = (0..n).map(|i| b_vals.get(col * n + i).copied().unwrap_or(0.0)).collect();
+        #[allow(clippy::needless_range_loop)] // index arithmetic is the algorithm
         for j in 0..n {
             if pivots[j] != j {
                 x.swap(j, pivots[j]);
@@ -20356,7 +20370,7 @@ pub fn collect_order_args(
     interner: &mut SymbolInterner,
     args: ValueId,
     caller_env: ValueId,
-) -> Result<(Vec<ValueId>, Vec<(String, ValueId)>), RSignal> {
+) -> Result<BinArgs, RSignal> {
     let mut positional: Vec<ValueId> = Vec::new();
     let mut named: Vec<(String, ValueId)> = Vec::new();
     let mut cursor = args;
@@ -23095,6 +23109,7 @@ pub fn aperm_impl(
     // Walk output linear positions column-major, mapping each back to the
     // input linear index through the permutation.
     let mut mapping = vec![0usize; total];
+    #[allow(clippy::needless_range_loop)] // multi-array coordinate arithmetic is the algorithm
     for linear in 0..total {
         let mut rem = linear;
         let mut in_index = 0usize;
@@ -23275,6 +23290,7 @@ pub fn bquote_splice(
 
 /// Element missingness at one position across the atomic lattice — the
 /// complete.cases row predicate.
+#[allow(clippy::too_many_arguments)] // algorithm-shaped signature exactly as the GNU/Fortran port arranges
 pub fn element_is_na(heap: &Heap, interner: &SymbolInterner, value: ValueId, index: usize) -> bool {
     match heap.object(value) {
         Some(RObject::Integer(_v)) | Some(RObject::Logical(_v)) => {
@@ -23299,6 +23315,7 @@ pub fn element_is_na(heap: &Heap, interner: &SymbolInterner, value: ValueId, ind
 /// dimensions keeping the trailing subspace; row variants keep the
 /// leading subspace summing the rest. NA poisoning exactly as GNU —
 /// na.rm drops missing terms from both sum and count.
+#[allow(clippy::too_many_arguments)] // kernel signature mirrors GNU's margin summary shape
 pub fn margin_summary_impl(
     heap: &mut Heap,
     interner: &mut SymbolInterner,

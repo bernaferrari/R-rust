@@ -1691,6 +1691,7 @@ pub fn rgb2hsv_primitive(
         let rs = reals_of_value(heap, input).unwrap_or_default();
         let gs = slots[1].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
         let bs = slots[2].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
+        #[allow(clippy::needless_range_loop)] // multi-array index arithmetic is the algorithm
         for i in 0..rs.len() {
             let r = rs[i];
             let g = gs.get(i % gs.len().max(1)).copied().unwrap_or(0.0);
@@ -2941,6 +2942,7 @@ pub fn density_primitive(
     // density at sd = bw.
     let span = (2 * n - 1) as f64 / (n - 1) as f64 * (up - lo);
     let mut kords = vec![0.0f64; 2 * n];
+    #[allow(clippy::needless_range_loop)] // multi-array index arithmetic is the algorithm
     for i in 0..(2 * n) {
         kords[i] = span * i as f64 / (2 * n - 1) as f64;
     }
@@ -2957,8 +2959,10 @@ pub fn density_primitive(
     // the length exactly as the manual inverse-fft scaling.
     let two_n = 2 * n;
     let mut conv = vec![0.0f64; n];
+    #[allow(clippy::needless_range_loop)] // multi-array index arithmetic is the algorithm
     for t in 0..n {
         let mut acc = 0.0;
+        #[allow(clippy::needless_range_loop)] // multi-array index arithmetic is the algorithm
         for s in 0..two_n {
             if binned[s] != 0.0 {
                 let idx = (t + two_n - s) % two_n;
@@ -3483,10 +3487,12 @@ pub fn barplot_primitive(
         for r in 0..nrow {
             let mut base = vec![0.0f64; ncol];
             if r > 0 && !beside {
+                #[allow(clippy::needless_range_loop)] // multi-array index arithmetic is the algorithm
                 for c in 0..ncol {
                     base[c] = (0..r).map(|rr| heights[rr].get(c).copied().unwrap_or(0.0)).sum();
                 }
             }
+            #[allow(clippy::needless_range_loop)] // multi-array index arithmetic is the algorithm
             for c in 0..ncol {
                 let h = heights[r].get(c).copied().unwrap_or(0.0);
                 let pos_index = if beside { c * nrow + r } else { c };

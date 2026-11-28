@@ -47,6 +47,9 @@ pub enum EvalError {
 /// values that unwind exactly one construct (the closure body, the loop)
 /// and must never be swallowed by error handling. Errors ride the same
 /// channel because both unwind evaluation, which is what makes
+/// The pre/post-dots formal split exactly as GNU's argument matching halves it.
+type FormalSplit = (Vec<(SymId, ValueId)>, Vec<(SymId, ValueId)>);
+
 /// `Result<ValueId, RSignal>` the single evaluation result type the plan
 /// specifies — no panics, no catch_unwind.
 #[derive(Debug, Clone, PartialEq)]
@@ -451,6 +454,7 @@ pub fn apply_closure_public(
     apply_closure(heap, interner, formals, body, closure_env, args, caller_env, ValueId::NIL, ValueId::NIL)
 }
 
+#[allow(clippy::too_many_arguments)] // algorithm-shaped signature exactly as the GNU/Fortran port arranges
 fn apply_closure(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
@@ -474,7 +478,7 @@ fn apply_closure(
     // unconsumed lands in the dots pairlist in supplied order.
     let dots_sym = interner.intern_symbol("...");
     let dots_position = formal_list.iter().position(|(sym, _)| *sym == dots_sym);
-    let (pre_formals, post_formals): (Vec<(SymId, ValueId)>, Vec<(SymId, ValueId)>) = match dots_position {
+    let (pre_formals, post_formals): FormalSplit = match dots_position {
         Some(pos) => (
             formal_list[..pos].to_vec(),
             formal_list[pos + 1..].to_vec(),

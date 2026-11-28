@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
 //! GNU's 657-entry color name database, canonical in the pure world.
-//! `rcolor` is RGBA packed into u32 exactly as GNU's colorspace machinery.
+//! `Rcolor` is RGBA packed into u32 exactly as GNU's colorspace machinery.
 
-type rcolor = u32;
+type Rcolor = u32;
 
 
 
@@ -13,7 +13,7 @@ type rcolor = u32;
 
 pub struct ColorDataBaseEntry {
     pub name: &'static [u8],
-    pub code: rcolor,
+    pub code: Rcolor,
 }
 
 pub static COLOR_DATA_BASE: &[ColorDataBaseEntry] = &COLOR_DATA;

@@ -881,6 +881,7 @@ impl LayoutState {
     /// layout(): grid with an explicit order matrix. Region widths and
     /// heights are honored in uniform proportions (portable contract);
     /// mfind keeps its previous value as in GNU's C_layout.
+    #[allow(clippy::too_many_arguments)] // algorithm-shaped signature exactly as the GNU/Fortran port arranges
     pub fn set_layout(
         &mut self,
         nrow: i32,

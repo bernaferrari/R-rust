@@ -8,8 +8,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Upstream R source commit: d4cc5d9e196a144bbb087a798bb945b37121383b
 // src/main/rlocale_data.h: SHA256 f775844fa3a145ab4e4d934b2a39c601e785dd2a8166b22f3cf0155c388a488b
-#![forbid(unsafe_code)]
-
 pub const R_ALPHA: &[(u32, u32)] = &[
     (0x41, 0x5a),
     (0x61, 0x7a),

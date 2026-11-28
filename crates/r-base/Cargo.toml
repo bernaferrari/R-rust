@@ -10,6 +10,9 @@ description = "The primitive registry: base, stats, and graphics builtins over t
 crate-type = ["rlib"]
 name = "r_base"
 
+[features]
+renderplot-device = ["r-graphics/renderplot-device"]
+
 [dependencies]
 r-graphics = { path = "../r-graphics" }
 r-stats = { path = "../r-stats" }

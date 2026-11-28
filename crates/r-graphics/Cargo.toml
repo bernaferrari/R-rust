@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 description = "The graphics domain builtins exactly as GNU's grDevices organizes them — plots, axes, colors, devices, and the par() surface"
 
+[features]
+# The PNG rasterizer — the Vello CPU headless device, exactly as r-runtime's
+# feature chain forwards it. Slim builds compile the honest-failure stub.
+renderplot-device = ["dep:r-device-android-headless"]
+
 [dependencies]
 r-core = { path = "../r-core" }
 r-graphics-engine = { path = "../r-graphics-engine" }
+r-device-android-headless = { path = "../r-device-android-headless", optional = true }

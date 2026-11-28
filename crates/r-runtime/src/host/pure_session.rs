@@ -891,9 +891,9 @@ impl PureSession {
     }
 }
 
-/// The baked package set exactly as the pinned assets carry it — the
-/// base-package inventory GNU R installs, minus the internal compiler
-/// assets that never surface as a user package.
+// The baked package set exactly as the pinned assets carry it — the
+// base-package inventory GNU R installs, minus the internal compiler
+// assets that never surface as a user package.
 
 /// Read one field of a Debian-control-format DESCRIPTION exactly as the
 /// facade's filesystem parser does — continuation lines join with spaces.

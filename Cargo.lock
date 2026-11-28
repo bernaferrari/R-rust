@@ -1681,6 +1681,7 @@ name = "r-graphics"
 version = "0.1.0"
 dependencies = [
  "r-core",
+ "r-device-android-headless",
  "r-graphics-engine",
 ]
 

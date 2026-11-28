@@ -101,7 +101,6 @@ fn parse_node(cursor: &mut Cursor<'_>) -> Option<Parsed> {
     let mut refs = Vec::new();
     let mut data = Vec::new();
     let mut len = 0u32;
-    let mut extra = 0u8;
     match tag {
         T_SYM | T_NAMESPACE => {
             let n = cursor.u32()? as usize;
@@ -167,7 +166,7 @@ fn parse_node(cursor: &mut Cursor<'_>) -> Option<Parsed> {
             }
         }
         T_ENV => {
-            extra = cursor.u8()?;
+            let _ = cursor.u8()?;
             for _ in 0..3 {
                 refs.push(cursor.u32()?);
             }

@@ -51,6 +51,10 @@ pub struct CallingHandlerEntry {
 pub type PrimitiveDispatcher =
     fn(&mut Heap, &mut crate::intern::SymbolInterner, crate::object::BuiltinId, ValueId, ValueId) -> crate::eval::EvalResult;
 
+/// S4 class registry shape — name → (ordered slots with types, contains
+/// parent) exactly as GNU's class table.
+pub type S4ClassTable = std::collections::HashMap<String, (Vec<(String, String)>, Option<String>)>;
+
 #[derive(Debug, Default)]
 pub struct Heap {
     pub slots: Vec<SlotState>,
@@ -119,7 +123,7 @@ pub struct Heap {
     pub s3_dispatch: Vec<(String, crate::id::ValueId, Vec<String>)>,
     /// S4 class registry — name → (ordered slots with types, contains
     /// parent) exactly as GNU's class table.
-    pub s4_classes: std::collections::HashMap<String, (Vec<(String, String)>, Option<String>)>,
+    pub s4_classes: S4ClassTable,
     /// Debug-marked closures — the .Internal debug machinery's state.
     pub debugged: std::collections::HashSet<crate::id::ValueId>,
     /// Interrupt suspension flag — GNU's interruptsSuspended state.

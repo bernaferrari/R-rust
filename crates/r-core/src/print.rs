@@ -803,10 +803,12 @@ fn format_matrix_inner(
         out.push_str(header);
     }
     let _ = positional;
+    #[allow(clippy::needless_range_loop)] // multi-array index arithmetic is the algorithm
     for i in 0..nrow {
         out.push('\n');
         out.push_str(&row_labels[i]);
         out.push_str(&" ".repeat(label_width - row_labels[i].len() + 1));
+        #[allow(clippy::needless_range_loop)] // multi-array index arithmetic is the algorithm
         for j in 0..ncol {
             if j > 0 {
                 out.push(' ');

@@ -213,6 +213,10 @@ impl EnvFrame {
 pub trait AltrepProvider: std::fmt::Debug {
     /// Vector length in elements.
     fn len(&self) -> usize;
+    /// Zero-length exactly as len reports — the lint-paired convenience.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     /// Materialize element `index` as a plain value. The exact typed accessors
     /// grow with the migration; this probe is enough for heap/GC correctness.
     fn elt_real(&self, index: usize) -> Option<f64> {
