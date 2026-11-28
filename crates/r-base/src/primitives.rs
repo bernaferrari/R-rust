@@ -23749,6 +23749,110 @@ pub fn bind_primitive(
     if operands.is_empty() {
         return Ok(ValueId::NIL);
     }
+    // GNU's rbind.data.frame exactly: a leading frame binds rows
+    // per-column — each vector operand contributing one row, elements
+    // distributing across the columns positionally, column types
+    // unifying at their lattice summit, row names reading the tags.
+    if op == RBIND && data_frame_shape(heap, interner, operands[0]).is_some() {
+        let frame = operands[0];
+        let (frame_rows, ncol) = data_frame_shape(heap, interner, frame).unwrap_or((0, 0));
+        let frame_columns: Vec<ValueId> = match heap.object(frame) {
+            Some(RObject::List(items)) => items.clone(),
+            _ => Vec::new(),
+        };
+        let col_names: Vec<String> = get_attrib(heap, interner, frame, "names")
+            .map(|id| string_vec(heap, interner, id))
+            .unwrap_or_default();
+        // Gather per-column entries: the frame's columns to start, then
+        // each vector operand's contribution row by row.
+        let mut column_entries: Vec<Vec<ValueId>> = frame_columns.iter().take(ncol).map(|c| vec![*c]).collect();
+        let mut row_count = frame_rows;
+        let mut row_names: Vec<String> = (1..=frame_rows).map(|i| i.to_string()).collect();
+        for (pos, operand) in operands.iter().enumerate().skip(1) {
+            let len = vector_length(heap, *operand).unwrap_or(0);
+            if len == 0 {
+                continue;
+            }
+            let rows_here = if len % ncol.max(1) == 0 { len / ncol.max(1) } else { 1 };
+            for row in 0..rows_here.max(1) {
+                for (j, entry) in column_entries.iter_mut().enumerate() {
+                    let flat = row * ncol + j;
+                    if flat < len {
+                        let cell = extract_elements(heap, *operand, &[flat]).map_err(RSignal::from)?;
+                        entry.push(cell);
+                    }
+                }
+                row_count += 1;
+                let tag_name = tags.get(pos).cloned().flatten();
+                row_names.push(tag_name.unwrap_or_else(|| row_count.to_string()));
+            }
+        }
+        // Unify each column at its lattice summit exactly as c() arranges.
+        let mut built_columns: Vec<ValueId> = Vec::new();
+        for entries in column_entries.iter() {
+            // Rows beyond the frame contribute single cells; assemble the
+            // column by concatenating the entries' elements.
+            let mut rank = 0u8;
+            for e in entries {
+                rank = rank.max(match heap.object(*e) {
+                    Some(RObject::Logical(_)) => 1,
+                    Some(RObject::Integer(_)) => 2,
+                    Some(RObject::Real(_)) => 3,
+                    Some(RObject::Complex(_)) => 4,
+                    Some(RObject::String(_)) => 5,
+                    _ => 0,
+                });
+            }
+            let total_len: usize = entries.iter().map(|e| vector_length(heap, *e).unwrap_or(0)).sum();
+            let column = match rank {
+                5 => {
+                    let mut out: Vec<r_core::intern::InternedStr> = Vec::with_capacity(total_len);
+                    for e in entries {
+                        let ss = strings_of_value(heap, interner, *e).map_err(RSignal::from)?;
+                        out.extend(ss.iter());
+                    }
+                    heap.alloc(RObject::String(out))
+                }
+                3 | 4 => {
+                    let mut out: Vec<f64> = Vec::with_capacity(total_len);
+                    for e in entries {
+                        let rs = reals_of_value(heap, *e).unwrap_or_default();
+                        out.extend(rs.iter());
+                    }
+                    heap.alloc(RObject::Real(out))
+                }
+                2 => {
+                    let mut out: Vec<i32> = Vec::with_capacity(total_len);
+                    for e in entries {
+                        match heap.object(*e) {
+                            Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => out.extend(vals.iter()),
+                            _ => {
+                                let rs = reals_of_value(heap, *e).unwrap_or_default();
+                                out.extend(rs.iter().map(|x| *x as i32));
+                            }
+                        }
+                    }
+                    heap.alloc(RObject::Integer(out))
+                }
+                1 => {
+                    let mut out: Vec<i32> = Vec::with_capacity(total_len);
+                    for e in entries {
+                        match heap.object(*e) {
+                            Some(RObject::Logical(vals)) | Some(RObject::Integer(vals)) => out.extend(vals.iter()),
+                            _ => {}
+                        }
+                    }
+                    heap.alloc(RObject::Logical(out))
+                }
+                _ => heap.alloc(RObject::Logical(Vec::new())),
+            };
+            built_columns.push(column);
+        }
+        let built = build_data_frame(heap, interner, built_columns, col_names)?;
+        let interned: Vec<r_core::intern::InternedStr> = row_names.iter().map(|n| interner.intern_string(n)).collect();
+        let rn = heap.alloc(RObject::String(interned));
+        return copy_with_attrib(heap, interner, built, "row.names", rn).map_err(RSignal::from);
+    }
     // Highest rank across operands decides the matrix type.
     let mut rank = 0u8;
     for operand in &operands {
