@@ -3732,18 +3732,28 @@ pub fn call_primitive_inner(
                     let mut width = 2i32;
                     let mut digits = nsmall as i32;
                     for &v in vals {
-                        if v.is_nan() || v.is_nan() || (!v.is_finite() && v.is_nan()) { continue; }
-                        if v.is_nan() { width = width.max(2); continue; }
-                        if !v.is_finite() { width = width.max(8); continue; }
+                        // GNU's exact widths by bit-level kind: the NA
+                        // payload reads two letters, other NaN three,
+                        // the sign only appearing on negative infinity.
+                        if v.to_bits() == r_core::object::NA_REAL_BITS {
+                            width = width.max(2);
+                            continue;
+                        }
+                        if v.is_nan() {
+                            width = width.max(3);
+                            continue;
+                        }
+                        if !v.is_finite() {
+                            let w = if v == f64::INFINITY { 3 } else { 4 };
+                            width = width.max(w);
+                            continue;
+                        }
                         let rendered = if v.fract() == 0.0 && nsmall == 0 {
                             format!("{}", v as i64)
                         } else {
                             format!("{:.*}", nsmall.max(0) as usize + if v.fract() != 0.0 && nsmall == 0 { 2 } else { 0 }, v)
                         };
                         width = width.max(nchar_len(&rendered));
-                    }
-                    if vals.iter().any(|v| v.is_nan()) {
-                        width = width.max(2);
                     }
                     // digits: nsmall when forced, otherwise the decimal
                     // count of the most precise value.
@@ -3757,15 +3767,31 @@ pub fn call_primitive_inner(
                     vec![width, if vals.iter().any(|v| v.fract() != 0.0 && v.is_finite()) || nsmall > 0 { nsmall.max(2) as i32 } else { 0 }, 0]
                 }
                 Some(RObject::Complex(vals)) => {
-                    // re/im width/digits/exponent sextuple exactly as GNU.
-                    let re_width = vals.iter().map(|c| {
-                        let v = c.r;
-                        if v.is_nan() { 2 } else if v.fract() == 0.0 { (v as i64).to_string().len() as i32 } else { format!("{}", v).len() as i32 }
-                    }).max().unwrap_or(0);
-                    let im_width = vals.iter().map(|c| {
-                        let v = c.i;
-                        if v.is_nan() { 2 } else if v.fract() == 0.0 { (v as i64).to_string().len() as i32 } else { format!("{}", v).len() as i32 }
-                    }).max().unwrap_or(0);
+                    // GNU's exact complex width semantics: elements with
+                    // either part NA-bits are excluded entirely; the
+                    // imaginary width is taken of the absolute values —
+                    // the sign position is separate in the layout.
+                    let na_bits = r_core::object::NA_REAL_BITS;
+                    let real_width = |v: f64| -> i32 {
+                        if v.to_bits() == na_bits { 2 }
+                        else if v.is_nan() { 3 }
+                        else if v == f64::INFINITY { 3 }
+                        else if v == f64::NEG_INFINITY { 4 }
+                        else if v.fract() == 0.0 && v.abs() < 1e15 { (v as i64).to_string().len() as i32 }
+                        else { format!("{}", v).len() as i32 }
+                    };
+                    let re_width = vals
+                        .iter()
+                        .filter(|c| c.r.to_bits() != na_bits && c.i.to_bits() != na_bits)
+                        .map(|c| real_width(c.r))
+                        .max()
+                        .unwrap_or(0);
+                    let im_width = vals
+                        .iter()
+                        .filter(|c| c.r.to_bits() != na_bits && c.i.to_bits() != na_bits)
+                        .map(|c| real_width(c.i.abs()) )
+                        .max()
+                        .unwrap_or(0);
                     vec![re_width, 0, 0, im_width, 0, 0]
                 }
                 Some(RObject::String(vals)) => {
@@ -6760,7 +6786,92 @@ pub fn call_primitive_inner(
                     .collect();
                 Ok(heap.alloc(RObject::String(out)))
             } else {
-                coerce_character(heap, interner, operands[0])
+                let coerced = coerce_character(heap, interner, operands[0])?;
+                // GNU's numeric-family justification exactly: real,
+                // integer, logical and complex input right-justifies
+                // every element to the vector's maximum rendered width —
+                // NA rendering as the padded two letters exactly.
+                // GNU's complex layout exactly: the real part right-
+                // justifies to its vector width, the imaginary part to
+                // its own — the sign position occupied by + for positive
+                // imaginaries, the negative sign riding the digits.
+                if let Some(RObject::Complex(zvals)) = heap.object(operands[0]) {
+                    let zvals = zvals.clone();
+                    let na_bits = r_core::object::NA_REAL_BITS;
+                    let render_re = |z: r_core::object::RComplex| -> String {
+                        if z.r.to_bits() == na_bits { "NA".to_string() } else if z.r.is_nan() { "NaN".to_string() } else { r_core::print::format_real(z.r) }
+                    };
+                    let render_im = |z: r_core::object::RComplex| -> String {
+                        if z.i.to_bits() == na_bits { "NA".to_string() } else if z.i.is_nan() { "NaN".to_string() } else { r_core::print::format_real(z.i) }
+                    };
+                    let res: Vec<String> = zvals.iter().map(|z| render_re(*z)).collect();
+                    let ims: Vec<String> = zvals.iter().map(|z| render_im(*z)).collect();
+                    // GNU excludes NA elements from the width computation
+                    // entirely — their bare rendering pads into the total.
+                    let finite_idx: Vec<usize> = zvals
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, z)| z.r.to_bits() != na_bits && z.i.to_bits() != na_bits)
+                        .map(|(i, _)| i)
+                        .collect();
+                    let rew = finite_idx.iter().map(|&i| res[i].chars().count()).max().unwrap_or(0);
+                    let imw = finite_idx.iter().map(|&i| ims[i].trim_start_matches('-').chars().count()).max().unwrap_or(0);
+                    let total = rew + 1 + imw + 1;
+                    let out: Vec<r_core::intern::InternedStr> = zvals
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, z)| {
+                            // GNU's NA discipline exactly: either part
+                            // NA-bits renders the whole element as the
+                            // bare NA string right-justified to the full
+                            // complex width — never part-wise NA text.
+                            if z.r.to_bits() == na_bits || z.i.to_bits() == na_bits {
+                                let pad = total.saturating_sub(2);
+                                return interner.intern_string(&format!("{}NA", " ".repeat(pad)));
+                            }
+                            let re = &res[idx];
+                            let im = &ims[idx];
+                            let re_pad = rew.saturating_sub(re.chars().count());
+                            let im_negative = im.starts_with('-');
+                            let im_digits = im.trim_start_matches('-');
+                            let im_pad = imw.saturating_sub(im_digits.chars().count());
+                            let sign = if im_negative { "-" } else { "+" };
+                            interner.intern_string(&format!(
+                                "{}{}{}{}{}i",
+                                " ".repeat(re_pad), re, sign, " ".repeat(im_pad), im_digits
+                            ))
+                        })
+                        .collect();
+                    return Ok(heap.alloc(RObject::String(out)));
+                }
+                let numeric_family = matches!(
+                    heap.object(operands[0]),
+                    Some(RObject::Real(_))
+                        | Some(RObject::Integer(_))
+                        | Some(RObject::Logical(_))
+                );
+                if numeric_family && let Some(RObject::String(vals)) = heap.object(coerced) {
+                    // NA renders as the literal letters exactly as GNU —
+                    // format never answers missing strings for numeric
+                    // input, the sentinel reading as its two characters.
+                    let texts: Vec<String> = vals
+                        .iter()
+                        .map(|v| {
+                            let t = interner.string_text(*v).to_string();
+                            if t.starts_with('\0') { "NA".to_string() } else { t }
+                        })
+                        .collect();
+                    let width = texts.iter().map(|t| t.chars().count()).max().unwrap_or(0);
+                    let out: Vec<r_core::intern::InternedStr> = texts
+                        .iter()
+                        .map(|t| {
+                            let pad = width.saturating_sub(t.chars().count());
+                            interner.intern_string(&format!("{}{}", " ".repeat(pad), t))
+                        })
+                        .collect();
+                    return Ok(heap.alloc(RObject::String(out)));
+                }
+                Ok(coerced)
             }
         }
         IS_ARRAY => {
