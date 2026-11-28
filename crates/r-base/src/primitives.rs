@@ -1923,19 +1923,76 @@ pub fn call_primitive_inner(
                 },
                 None => Vec::new(),
             };
-            if dims.len() != 2 {
+            if dims.is_empty() {
                 return Err(EvalError::TypeError("apply requires a matrix").into());
             }
             let margin = first_real(heap, operands[1])? as usize;
-            let (nrow, ncol) = (dims[0], dims[1]);
-            let count = if margin == 1 { nrow } else { ncol };
+            if margin < 1 || margin > dims.len() {
+                return Err(EvalError::TypeError("apply requires a matrix").into());
+            }
+            let count = dims[margin - 1];
+            // GNU's n-dimensional slicing exactly: the margin coordinate
+            // fixes at each index, the remaining coordinates sweeping in
+            // column-major order — the slice carries the remaining dims
+            // exactly when more than one survives.
+            let strides: Vec<usize> = {
+                let mut st = Vec::with_capacity(dims.len());
+                let mut acc = 1usize;
+                for d in &dims {
+                    st.push(acc);
+                    acc *= d;
+                }
+                st
+            };
+            let element_at = |heap: &mut Heap, coords: &[usize]| -> ValueId {
+                let linear: usize = coords.iter().enumerate().map(|(k, c)| c * strides[k]).sum();
+                extract_elements(heap, operands[0], &[linear])
+                    .unwrap_or(ValueId::NIL)
+            };
+            let slice_dims: Vec<usize> = dims.iter().enumerate().filter(|(k, _)| *k != margin - 1).map(|(_, d)| *d).collect();
+            let slice_len: usize = slice_dims.iter().product();
             let mut results = Vec::new();
             for idx in 0..count {
-                let slice = extract_matrix_margin(heap, interner, operands[0], margin, idx, nrow, ncol)?;
+                // Sweep the remaining coordinates column-major, gathering
+                // each element into the slice's storage type.
+                let mut slice_vals: Vec<ValueId> = Vec::with_capacity(slice_len);
+                let mut coords = vec![0usize; dims.len()];
+                coords[margin - 1] = idx;
+                for _ in 0..slice_len {
+                    slice_vals.push(element_at(heap, &coords));
+                    // Increment the fastest-moving non-margin coordinate.
+                    for k in 0..dims.len() {
+                        if k == margin - 1 { continue; }
+                        coords[k] += 1;
+                        if coords[k] < dims[k] { break; }
+                        coords[k] = 0;
+                    }
+                }
+                // Unify the gathered elements at the highest rank exactly
+                // as vector slicing answers them — the empty slice keeping
+                // the source array's storage type exactly as GNU arranges.
+                let slice = if slice_vals.is_empty() {
+                    match heap.object(operands[0]) {
+                        Some(RObject::String(_)) => heap.alloc(RObject::String(Vec::new())),
+                        Some(RObject::Complex(_)) => heap.alloc(RObject::Complex(Vec::new())),
+                        Some(RObject::Real(_)) => heap.alloc(RObject::Real(Vec::new())),
+                        Some(RObject::Integer(_)) => heap.alloc(RObject::Integer(Vec::new())),
+                        Some(RObject::Logical(_)) => heap.alloc(RObject::Logical(Vec::new())),
+                        _ => heap.alloc(RObject::Logical(Vec::new())),
+                    }
+                } else {
+                    unify_slice_elements(heap, interner, slice_vals)
+                };
+                let slice = if slice_dims.len() > 1 {
+                    let dim_obj = heap.alloc(RObject::Integer(slice_dims.iter().map(|d| *d as i32).collect()));
+                    copy_with_attrib(heap, interner, slice, "dim", dim_obj).map_err(RSignal::from)?
+                } else {
+                    slice
+                };
                 let applied = apply_fun_to(heap, interner, operands[2], slice, caller_env)?;
                 results.push(applied);
             }
-            simplify_sapply(heap, results)
+            simplify_sapply(heap, interner, results)
         }
         AS_ENVIRONMENT => {
             // Position and name lookup over the enclosure chain exactly as
@@ -11328,7 +11385,7 @@ pub fn apply_family(
     }
     // sapply simplification: homogeneous length-one atomic results unbox
     // into a single vector of the common type; anything else stays a list.
-    let simplified = simplify_sapply(heap, results)?;
+    let simplified = simplify_sapply(heap, interner, results)?;
     // GNU carries input names onto the simplified output whenever the
     // lengths align — vector names and pairlist tags alike.
     let out_len = vector_length(heap, simplified).unwrap_or(0);
@@ -11341,9 +11398,41 @@ pub fn apply_family(
 
 /// GNU's simplification rule shape: every result a length-one atomic vector
 /// of one type unboxes elementwise; otherwise the list stands.
-pub fn simplify_sapply(heap: &mut Heap, results: Vec<ValueId>) -> EvalResult {
+pub fn simplify_sapply(heap: &mut Heap, interner: &mut SymbolInterner, results: Vec<ValueId>) -> EvalResult {
     if results.is_empty() {
         return Ok(heap.alloc(RObject::List(results)));
+    }
+    // GNU's uniform length-n assembly exactly: results sharing one atomic
+    // type and a length beyond one bind column-major into a matrix — the
+    // dim-of-slice answers arranging rows precisely as apply shapes them.
+    let lens: Vec<usize> = results.iter().map(|r| vector_length(heap, *r).unwrap_or(0)).collect();
+    if lens.len() > 1 && lens[0] > 1 && lens.iter().all(|l| *l == lens[0]) {
+        let n = lens[0];
+        let count = results.len();
+        let all_int = results.iter().all(|r| matches!(heap.object(*r), Some(RObject::Integer(vals)) if vals.len() == n));
+        let all_real = results.iter().all(|r| matches!(heap.object(*r), Some(RObject::Real(vals)) if vals.len() == n));
+        if all_int || all_real {
+            let mut flat: Vec<f64> = Vec::with_capacity(n * count);
+            let mut ints: Vec<i32> = Vec::with_capacity(n * count);
+            for r in &results {
+                match heap.object(*r) {
+                    Some(RObject::Integer(vals)) => {
+                        for v in vals { ints.push(*v); flat.push(*v as f64); }
+                    }
+                    Some(RObject::Real(vals)) => {
+                        for v in vals { flat.push(*v); }
+                    }
+                    _ => {}
+                }
+            }
+            let matrix = if all_int {
+                heap.alloc(RObject::Integer(ints))
+            } else {
+                heap.alloc(RObject::Real(flat))
+            };
+            let dim = heap.alloc(RObject::Integer(vec![n as i32, count as i32]));
+            return copy_with_attrib(heap, interner, matrix, "dim", dim).map_err(RSignal::from);
+        }
     }
     enum Kind {
         Logical,
@@ -22574,7 +22663,7 @@ pub fn mapply_primitive(
         }
     }
     if simplify {
-        return simplify_sapply(heap, results);
+        return simplify_sapply(heap, interner, results);
     }
     Ok(heap.alloc(RObject::List(results)))
 }
@@ -25075,4 +25164,64 @@ pub fn datamatrix_primitive(
     let matrix = heap.alloc(RObject::Real(vals));
     let dim = heap.alloc(RObject::Integer(vec![nrow as i32, ncol as i32]));
     copy_with_attrib(heap, interner, matrix, "dim", dim).map_err(RSignal::from)
+}
+
+/// Gather single-element extraction results into the unified vector the
+/// slice represents — the highest lattice rank deciding storage exactly
+/// as c() unification arranges.
+pub fn unify_slice_elements(heap: &mut Heap, interner: &mut SymbolInterner, elements: Vec<ValueId>) -> ValueId {
+    let mut rank = 0u8;
+    for v in &elements {
+        rank = rank.max(match heap.object(*v) {
+            Some(RObject::Logical(_)) => 1,
+            Some(RObject::Integer(_)) => 2,
+            Some(RObject::Real(_)) => 3,
+            Some(RObject::Complex(_)) => 4,
+            Some(RObject::String(_)) => 5,
+            _ => 0,
+        });
+    }
+    match rank {
+        5 => {
+            let mut out = Vec::with_capacity(elements.len());
+            for v in &elements {
+                match heap.object(*v) {
+                    Some(RObject::String(vals)) => out.push(vals.first().copied().unwrap_or_else(|| interner.intern_string(""))),
+                    _ => out.push(interner.intern_string("NA")),
+                }
+            }
+            heap.alloc(RObject::String(out))
+        }
+        4 => {
+            let mut out = Vec::with_capacity(elements.len());
+            for v in &elements {
+                let cx = as_complex_vec(heap, *v).unwrap_or_default();
+                out.push(cx.first().copied().unwrap_or(r_core::object::RComplex { r: 0.0, i: 0.0 }));
+            }
+            heap.alloc(RObject::Complex(out))
+        }
+        3 => {
+            let mut out = Vec::with_capacity(elements.len());
+            for v in &elements {
+                let rs = reals_of_value(heap, *v).unwrap_or_default();
+                out.push(rs.first().copied().unwrap_or(f64::from_bits(r_core::object::NA_REAL_BITS)));
+            }
+            heap.alloc(RObject::Real(out))
+        }
+        2 | 1 => {
+            let mut out = Vec::with_capacity(elements.len());
+            for v in &elements {
+                match heap.object(*v) {
+                    Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => out.push(vals.first().copied().unwrap_or(r_core::object::NA_INTEGER)),
+                    _ => out.push(r_core::object::NA_INTEGER),
+                }
+            }
+            if rank == 1 {
+                heap.alloc(RObject::Logical(out))
+            } else {
+                heap.alloc(RObject::Integer(out))
+            }
+        }
+        _ => heap.alloc(RObject::Logical(Vec::new())),
+    }
 }
