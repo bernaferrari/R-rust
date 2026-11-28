@@ -3461,7 +3461,7 @@ pub fn call_primitive_inner(
             } else if top == 4 {
                 let mut vals: Vec<r_core::object::RComplex> = Vec::with_capacity(out.len());
                 for v in &out {
-                    let cx = as_complex_vec(heap, *v).map_err(RSignal::from)?;
+                    let cx = as_complex_vec(heap, interner, *v).map_err(RSignal::from)?;
                     vals.push(cx.first().copied().unwrap_or(r_core::object::RComplex { r: 0.0, i: 0.0 }));
                 }
                 heap.alloc(RObject::Complex(vals))
@@ -6245,12 +6245,12 @@ pub fn call_primitive_inner(
         COMPLEX_CTOR => complex_ctor(heap, interner, args, caller_env),
         AS_COMPLEX => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
-            let vals = as_complex_vec(heap, operands[0]).map_err(RSignal::from)?;
+            let vals = as_complex_vec(heap, interner, operands[0]).map_err(RSignal::from)?;
             Ok(heap.alloc(RObject::Complex(vals)))
         }
         RE_C | IM_C | MOD_C | ARG_C => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
-            let vals = as_complex_vec(heap, operands[0]).map_err(RSignal::from)?;
+            let vals = as_complex_vec(heap, interner, operands[0]).map_err(RSignal::from)?;
             let out: Vec<f64> = vals
                 .iter()
                 .map(|z| match id.0 {
@@ -6264,7 +6264,7 @@ pub fn call_primitive_inner(
         }
         CONJ_C => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
-            let vals = as_complex_vec(heap, operands[0]).map_err(RSignal::from)?;
+            let vals = as_complex_vec(heap, interner, operands[0]).map_err(RSignal::from)?;
             let out: Vec<r_core::object::RComplex> = vals
                 .iter()
                 .map(|z| r_core::object::RComplex { r: z.r, i: -z.i })
@@ -7643,6 +7643,14 @@ pub fn sequence_elements(heap: &mut Heap, seq: ValueId) -> Result<Vec<ValueId>, 
             .iter()
             .map(|v| RObject::String(vec![*v]))
             .collect(),
+        Some(RObject::Complex(values)) => values
+            .iter()
+            .map(|v| RObject::Complex(vec![*v]))
+            .collect(),
+        Some(RObject::Raw(values)) => values
+            .iter()
+            .map(|v| RObject::Raw(vec![*v]))
+            .collect(),
         Some(RObject::List(elements)) => return Ok(elements.clone()),
         // Pairlist chains iterate their node cars exactly as apply over
         // formals does in GNU.
@@ -7763,8 +7771,8 @@ pub fn comparison(
         || matches!(heap.object(operands[1]), Some(RObject::Complex(_)));
     if complex_involved {
         if op == EQ || op == NE {
-            let a = as_complex_vec(heap, operands[0]).map_err(RSignal::from)?;
-            let b = as_complex_vec(heap, operands[1]).map_err(RSignal::from)?;
+            let a = as_complex_vec(heap, interner, operands[0]).map_err(RSignal::from)?;
+            let b = as_complex_vec(heap, interner, operands[1]).map_err(RSignal::from)?;
             let n = a.len().max(b.len());
             if n == 0 {
                 return Ok(heap.alloc(RObject::Logical(Vec::new())));
@@ -16938,7 +16946,7 @@ pub fn xtabs_primitive(
 /// Promote any arithmetic input to its complex vector form exactly as
 /// GNU's type lattice — integer/logical/real gain a zero imaginary part,
 /// NA propagating into both parts as GNU's complex NA does.
-pub fn as_complex_vec(heap: &Heap, value: ValueId) -> Result<Vec<r_core::object::RComplex>, EvalError> {
+pub fn as_complex_vec(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Result<Vec<r_core::object::RComplex>, EvalError> {
     use r_core::object::{NA_INTEGER, NA_REAL_BITS, RComplex};
     match heap.object(value) {
         Some(RObject::Complex(vals)) => Ok(vals.clone()),
@@ -16963,6 +16971,30 @@ pub fn as_complex_vec(heap: &Heap, value: ValueId) -> Result<Vec<r_core::object:
             })
             .collect()),
         Some(RObject::Raw(vals)) => Ok(vals.iter().map(|&v| RComplex { r: v as f64, i: 0.0 }).collect()),
+        Some(RObject::String(vals)) => Ok(vals
+            .iter()
+            .map(|&v| {
+                // GNU's character coercion exactly: numeric text parses,
+                // NaN reads as NaN+0i — distinct from NA_complex — and
+                // the NUL-prefixed sentinel carries NA through.
+                let text = interner.string_text(v).to_string();
+                if text == "\0NA" {
+                    RComplex { r: f64::from_bits(NA_REAL_BITS), i: f64::from_bits(NA_REAL_BITS) }
+                } else {
+                    let trimmed = text.trim();
+                    if trimmed.eq_ignore_ascii_case("nan") {
+                        RComplex { r: f64::NAN, i: 0.0 }
+                    } else if trimmed == "NA" {
+                        RComplex { r: f64::from_bits(NA_REAL_BITS), i: f64::from_bits(NA_REAL_BITS) }
+                    } else {
+                        match trimmed.parse::<f64>() {
+                            Ok(x) => RComplex { r: x, i: 0.0 },
+                            Err(_) => RComplex { r: f64::from_bits(NA_REAL_BITS), i: f64::from_bits(NA_REAL_BITS) },
+                        }
+                    }
+                }
+            })
+            .collect()),
         _ => Err(EvalError::TypeError("non-numeric argument to binary operator")),
     }
 }
@@ -16987,8 +17019,8 @@ pub fn complex_arithmetic(
     if op == MOD {
         return Err(EvalError::TypeError("unimplemented complex operation").into());
     }
-    let a = as_complex_vec(heap, a_id).map_err(RSignal::from)?;
-    let b = as_complex_vec(heap, b_id).map_err(RSignal::from)?;
+    let a = as_complex_vec(heap, interner, a_id).map_err(RSignal::from)?;
+    let b = as_complex_vec(heap, interner, b_id).map_err(RSignal::from)?;
     let na = f64::from_bits(NA_REAL_BITS);
     // GNU's complex equality exactly: both components compare bitwise,
     // NA in either poisons to NA-logical, and the result is logical —
@@ -22613,6 +22645,67 @@ pub fn math2_primitive(
             operands.len()
         ))));
     }
+    // GNU's z_atan2 exactly: complex operands evaluate catan(y/x) with
+    // the quadrant correction — zero denominators answer the signed
+    // half-plane exactly as the C99 composition arranges.
+    if op == ATAN2 {
+        let cx = matches!(heap.object(operands[0]), Some(RObject::Complex(_)));
+        let cy = matches!(heap.object(operands[1]), Some(RObject::Complex(_)));
+        if cx || cy {
+            use r_core::object::RComplex;
+            let xs = as_complex_vec(heap, interner, operands[0]).map_err(RSignal::from)?;
+            let ys = as_complex_vec(heap, interner, operands[1]).map_err(RSignal::from)?;
+            if xs.is_empty() || ys.is_empty() {
+                return Ok(heap.alloc(RObject::Complex(Vec::new())));
+            }
+            let na = f64::from_bits(r_core::object::NA_REAL_BITS);
+            let clog = |z: RComplex| -> RComplex {
+                let modulus = (z.r * z.r + z.i * z.i).sqrt();
+                RComplex { r: modulus.ln(), i: z.i.atan2(z.r) }
+            };
+            let cmul = |x: RComplex, y: RComplex| RComplex { r: x.r * y.r - x.i * y.i, i: x.r * y.i + x.i * y.r };
+            let cdiv = |x: RComplex, y: RComplex| {
+                let d = y.r * y.r + y.i * y.i;
+                RComplex { r: (x.r * y.r + x.i * y.i) / d, i: (x.i * y.r - x.r * y.i) / d }
+            };
+            let csub = |x: RComplex, y: RComplex| RComplex { r: x.r - y.r, i: x.i - y.i };
+            let cadd = |x: RComplex, y: RComplex| RComplex { r: x.r + y.r, i: x.i + y.i };
+            // catan(z) = (log(1+iz) - log(1-iz)) / 2i — principal branch.
+            let catan = |z: RComplex| -> RComplex {
+                let iz = RComplex { r: -z.i, i: z.r };
+                let one = RComplex { r: 1.0, i: 0.0 };
+                let num = csub(clog(cadd(one, iz)), clog(csub(one, iz)));
+                RComplex { r: num.i / 2.0, i: -num.r / 2.0 }
+            };
+            let n = xs.len().max(ys.len());
+            let out: Vec<RComplex> = (0..n)
+                .map(|i| {
+                    let yv = xs[i % xs.len()];
+                    let xv = ys[i % ys.len()];
+                    if xv.r == 0.0 && xv.i == 0.0 {
+                        if yv.r == 0.0 && yv.i == 0.0 {
+                            RComplex { r: na, i: na }
+                        } else {
+                            let y = yv.r;
+                            let dr = if y.is_nan() { y } else if y >= 0.0 { std::f64::consts::FRAC_PI_2 } else { -std::f64::consts::FRAC_PI_2 };
+                            RComplex { r: dr, i: 0.0 }
+                        }
+                    } else {
+                        let mut dr = catan(cdiv(yv, xv));
+                        if xv.r < 0.0 {
+                            dr.r += std::f64::consts::PI;
+                        }
+                        if dr.r > std::f64::consts::PI {
+                            dr.r -= 2.0 * std::f64::consts::PI;
+                        }
+                        let _ = (cmul, cadd);
+                        dr
+                    }
+                })
+                .collect();
+            return Ok(heap.alloc(RObject::Complex(out)));
+        }
+    }
     let xs = reals_of_value(heap, operands[0]).map_err(RSignal::from)?;
     let ys = reals_of_value(heap, operands[1]).map_err(RSignal::from)?;
     if xs.is_empty() || ys.is_empty() {
@@ -23530,6 +23623,12 @@ pub fn complex_ctor(
     let mut length_out = 0usize;
     let mut real_vals: Vec<f64> = Vec::new();
     let mut imag_vals: Vec<f64> = Vec::new();
+    let mut modulus_vals: Vec<f64> = Vec::new();
+    let mut argument_vals: Vec<f64> = Vec::new();
+    let mut saw_real = false;
+    let mut saw_imag = false;
+    let mut saw_modulus = false;
+    let mut saw_argument = false;
     let mut positional = 0usize;
     let mut cursor = args;
     for _ in 0..100_000 {
@@ -23550,10 +23649,27 @@ pub fn complex_ctor(
             }
         };
         let reals = numeric_vector(heap, value);
-        match tag_name.as_deref() {
+        // GNU's partial matching exactly: tags resolve as unique prefixes
+        // of the formals — re/im/mod/arg all expand positionally.
+        let resolved = match tag_name.as_deref() {
+            Some(tag) => {
+                let formals = ["length.out", "real", "imaginary", "modulus", "argument"];
+                let exact = formals.iter().position(|f| *f == tag);
+                let matches: Vec<&str> = formals.iter().copied().filter(|f| f.starts_with(tag)).collect();
+                match exact {
+                    Some(pos) => Some(formals[pos]),
+                    None if matches.len() == 1 => Some(matches[0]),
+                    _ => None,
+                }
+            }
+            None => None,
+        };
+        match resolved {
             Some("length.out") => length_out = reals.first().copied().unwrap_or(0.0) as usize,
-            Some("real") => real_vals = reals,
-            Some("imaginary") => imag_vals = reals,
+            Some("real") => { real_vals = reals; saw_real = true; }
+            Some("imaginary") => { imag_vals = reals; saw_imag = true; }
+            Some("modulus") => { modulus_vals = reals; saw_modulus = true; }
+            Some("argument") => { argument_vals = reals; saw_argument = true; }
             _ => {
                 positional += 1;
                 if positional == 1 {
@@ -23563,6 +23679,22 @@ pub fn complex_ctor(
         }
         cursor = next;
     }
+    // GNU's constructor discipline exactly: polar construction whenever
+    // modulus or argument appear, the Cartesian form otherwise.
+    if saw_modulus || saw_argument {
+        let n = length_out.max(argument_vals.len()).max(modulus_vals.len());
+        let out: Vec<RComplex> = (0..n)
+            .map(|i| {
+                let m = if modulus_vals.is_empty() { 1.0 } else { modulus_vals[i % modulus_vals.len()] };
+                let a = if argument_vals.is_empty() { 0.0 } else { argument_vals[i % argument_vals.len()] };
+                // modulus * exp(1i * argument) exactly as GNU's closure —
+                // the unit exponential carries cosine and sine directly.
+                RComplex { r: m * a.cos(), i: m * a.sin() }
+            })
+            .collect();
+        return Ok(heap.alloc(RObject::Complex(out)));
+    }
+    let _ = (saw_real, saw_imag);
     if length_out == 0 {
         length_out = real_vals.len().max(imag_vals.len());
     }
@@ -25516,113 +25648,36 @@ pub fn polyroot_primitive(
 ) -> EvalResult {
     use r_core::object::RComplex;
     let operands = eval_args(heap, interner, args, caller_env, 1)?;
-    let coeffs = as_complex_vec(heap, operands[0]).map_err(RSignal::from)?;
-    // Strip trailing zeros exactly as GNU — they carry no root structure.
-    let mut c: Vec<RComplex> = coeffs;
-    while c.len() > 1 {
-        let last = c[c.len() - 1];
-        if last.r == 0.0 && last.i == 0.0 {
-            c.pop();
-        } else {
-            break;
+    let coeffs = as_complex_vec(heap, interner, operands[0]).map_err(RSignal::from)?;
+    // GNU's degree detection exactly: the highest index carrying a
+    // nonzero coefficient, trailing zeros stripped of root structure.
+    let mut degree = 0usize;
+    for (i, z) in coeffs.iter().enumerate() {
+        if z.r != 0.0 || z.i != 0.0 {
+            degree = i;
         }
     }
-    let degree = c.len().saturating_sub(1);
     if degree == 0 {
         return Ok(heap.alloc(RObject::Complex(Vec::new())));
     }
-    let eval_poly = |z: RComplex| -> RComplex {
-        // Horner in ascending-coefficient reading — highest first.
-        let mut acc = c[c.len() - 1];
-        for k in (0..c.len() - 1).rev() {
-            acc = RComplex {
-                r: acc.r * z.r - acc.i * z.i + c[k].r,
-                i: acc.r * z.i + acc.i * z.r + c[k].i,
-            };
+    // Coefficients reverse into DECREASING powers exactly as GNU's
+    // do_polyroot arranges for the cpoly entry contract.
+    let n = degree + 1;
+    let mut opr = vec![0.0f64; n];
+    let mut opi = vec![0.0f64; n];
+    for i in 0..n {
+        if !coeffs[i].r.is_finite() || !coeffs[i].i.is_finite() {
+            return Err(EvalError::Condition("invalid polynomial coefficient".to_string()).into());
         }
-        acc
-    };
-    let eval_deriv = |z: RComplex| -> RComplex {
-        let mut acc = RComplex { r: c[c.len() - 1].r * (degree as f64), i: c[c.len() - 1].i * (degree as f64) };
-        for k in (1..c.len() - 1).rev() {
-            acc = RComplex {
-                r: acc.r * z.r - acc.i * z.i + c[k].r * (k as f64),
-                i: acc.r * z.i + acc.i * z.r + c[k].i * (k as f64),
-            };
-        }
-        acc
-    };
-    let cdiv = |x: RComplex, y: RComplex| -> RComplex {
-        let d = y.r * y.r + y.i * y.i;
-        if d == 0.0 {
-            return RComplex { r: f64::NAN, i: f64::NAN };
-        }
-        RComplex { r: (x.r * y.r + x.i * y.i) / d, i: (x.i * y.r - x.r * y.i) / d }
-    };
-    let csub = |x: RComplex, y: RComplex| RComplex { r: x.r - y.r, i: x.i - y.i };
-    let cmul = |x: RComplex, y: RComplex| RComplex { r: x.r * y.r - x.i * y.i, i: x.r * y.i + x.i * y.r };
-    // Initial points on the Cauchy bound circle, rotated off symmetry
-    // exactly as the simultaneous method requires distinct starts.
-    let leading = c[c.len() - 1];
-    let lmod = (leading.r * leading.r + leading.i * leading.i).sqrt();
-    let mut radius = 1.0f64;
-    for k in 0..degree {
-        let m = (c[k].r * c[k].r + c[k].i * c[k].i).sqrt() / lmod;
-        if 1.0 + m.powf(1.0 / (degree - k) as f64) > radius {
-            radius = 1.0 + m.powf(1.0 / (degree - k) as f64);
-        }
+        opr[degree - i] = coeffs[i].r;
+        opi[degree - i] = coeffs[i].i;
     }
-    let n = degree;
-    let mut roots: Vec<RComplex> = (0..n)
-        .map(|i| {
-            let angle = 2.0 * std::f64::consts::PI * (i as f64) / (n as f64) + 0.7135;
-            RComplex { r: radius * angle.cos(), i: radius * angle.sin() }
-        })
-        .collect();
-    for _ in 0..2000 {
-        let mut max_shift = 0.0f64;
-        for i in 0..n {
-            let mut denom = c[c.len() - 1];
-            for (j, other) in roots.iter().enumerate() {
-                if j != i {
-                    denom = cmul(denom, csub(roots[i], *other));
-                }
-            }
-            let step = cdiv(eval_poly(roots[i]), denom);
-            roots[i] = csub(roots[i], step);
-            let smag = (step.r * step.r + step.i * step.i).sqrt();
-            if smag > max_shift {
-                max_shift = smag;
-            }
-        }
-        if max_shift < 1e-14 {
-            break;
-        }
+    let (roots, fail) = crate::cpoly::r_cpolyroot(&opr, &opi, degree);
+    if fail {
+        return Err(EvalError::Condition("root finding code failed".to_string()).into());
     }
-    // Clustered exact-multiplicity roots remain Jenkins-Traub territory:
-    // Newton polishing in every globalized form escapes the convergence
-    // basin or stalls on floating-point cluster separation, documented
-    // as future numerical work exactly as the bead records.
-
-    // Newton polishing exactly as the accuracy contract — clustered roots
-    // sharpen through the derivative iteration once the simultaneous
-    // phase places them in the basin.
-    for root in roots.iter_mut() {
-        for _ in 0..200 {
-            let f = eval_poly(*root);
-            let fp = eval_deriv(*root);
-            let step = cdiv(f, fp);
-            if step.r.is_nan() {
-                break;
-            }
-            *root = csub(*root, step);
-            if step.r * step.r + step.i * step.i < 1e-28 {
-                break;
-            }
-        }
-    }
-    let _ = csub;
-    Ok(heap.alloc(RObject::Complex(roots)))
+    let out: Vec<RComplex> = roots.iter().map(|(r, i)| RComplex { r: *r, i: *i }).collect();
+    Ok(heap.alloc(RObject::Complex(out)))
 }
 
 /// GNU's char.expand engine exactly: exact matches answer first, then
@@ -25808,7 +25863,7 @@ pub fn unify_slice_elements(heap: &mut Heap, interner: &mut SymbolInterner, elem
         4 => {
             let mut out = Vec::with_capacity(elements.len());
             for v in &elements {
-                let cx = as_complex_vec(heap, *v).unwrap_or_default();
+                let cx = as_complex_vec(heap, interner, *v).unwrap_or_default();
                 out.push(cx.first().copied().unwrap_or(r_core::object::RComplex { r: 0.0, i: 0.0 }));
             }
             heap.alloc(RObject::Complex(out))

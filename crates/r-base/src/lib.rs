@@ -5,6 +5,7 @@
 //! follows as the next internal wave.
 
 pub mod assets;
+pub mod cpoly;
 pub mod datasets;
 pub mod session;
 pub mod primitives;
