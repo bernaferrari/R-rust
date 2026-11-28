@@ -7704,6 +7704,58 @@ pub fn comparison(
         }
         ops
     };
+    // GNU's Ops.data.frame exactly: a frame measured against an atomic
+    // vector answers the column-wise logical matrix — column j against
+    // the vector's j-th element, single vectors recycling across every
+    // column, row order column-major exactly as frame storage arranges.
+    let df_side = if data_frame_shape(heap, interner, operands[0]).is_some() {
+        Some(0usize)
+    } else if data_frame_shape(heap, interner, operands[1]).is_some() {
+        Some(1usize)
+    } else {
+        None
+    };
+    if let Some(side) = df_side {
+        let frame = operands[side];
+        let other = operands[1 - side];
+        let frame_on_left = side == 0;
+        let (nrow, ncol) = data_frame_shape(heap, interner, frame).unwrap_or((0, 0));
+        let columns: Vec<ValueId> = match heap.object(frame) {
+            Some(RObject::List(items)) => items.clone(),
+            _ => Vec::new(),
+        };
+        let rhs_len = vector_length(heap, other).unwrap_or(0);
+        if rhs_len == ncol || rhs_len == 1 {
+            let mut out: Vec<i32> = Vec::with_capacity(nrow * ncol);
+            for (j, col) in columns.iter().take(ncol).enumerate() {
+                let col_reals = reals_of_value(heap, *col).unwrap_or_default();
+                let rhs_reals = reals_of_value(heap, other).unwrap_or_default();
+                let scalar = rhs_reals.get(if rhs_len == 1 { 0 } else { j }).copied().unwrap_or(f64::NAN);
+                for i in 0..nrow {
+                    let a = col_reals.get(i).copied().unwrap_or(f64::NAN);
+                    let (left, right) = if frame_on_left { (a, scalar) } else { (scalar, a) };
+                    let result = if left.is_nan() || right.is_nan() {
+                        r_core::object::NA_INTEGER
+                    } else {
+                        let truth = match op {
+                            EQ => left == right,
+                            NE => left != right,
+                            LT => left < right,
+                            LE => left <= right,
+                            GT => left > right,
+                            GE => left >= right,
+                            _ => false,
+                        };
+                        if truth { 1 } else { 0 }
+                    };
+                    out.push(result);
+                }
+            }
+            let logical = heap.alloc(RObject::Logical(out));
+            let dim = heap.alloc(RObject::Integer(vec![nrow as i32, ncol as i32]));
+            return copy_with_attrib(heap, interner, logical, "dim", dim).map_err(RSignal::from);
+        }
+    }
     // Complex comparison exactly as GNU: equality and inequality compare
     // componentwise bitwise with NA poisoning either side; ordering is
     // the invalid-comparison error GNU raises.
@@ -9394,7 +9446,17 @@ pub fn data_frame_matrix_subset(
             positions
         }
     };
-    let rows_raw = resolve(heap, interner, raw[1], nrow, &[])?;
+    // Character row indexing matches the row names exactly as GNU —
+    // integer row names reading their decimal forms.
+    let row_name_texts: Vec<String> = match get_attrib(heap, interner, object, "row.names") {
+        Some(id) => match heap.object(id) {
+            Some(RObject::String(entries)) => entries.iter().map(|e| interner.string_text(*e).to_string()).collect(),
+            Some(RObject::Integer(entries)) => entries.iter().map(|e| e.to_string()).collect(),
+            _ => Vec::new(),
+        },
+        None => Vec::new(),
+    };
+    let rows_raw = resolve(heap, interner, raw[1], nrow, &row_name_texts)?;
     let rows = complement(rows_raw, nrow);
     let cols_raw = resolve(heap, interner, raw[2], ncol, &col_names)?;
     let cols = complement(cols_raw, ncol);
@@ -10669,7 +10731,7 @@ pub fn assign_replacement(
                     }
                 }
                 let index_obj = heap.alloc(RObject::Integer(flat));
-                let replaced = subset_replace(heap, object, index_obj, value).map_err(RSignal::from)?;
+                let replaced = subset_replace(heap, interner, object, index_obj, value).map_err(RSignal::from)?;
                 // The dimensions survive replacement exactly as GNU — the
                 // shape is structural, not data.
                 let dim_vec = heap.alloc(RObject::Integer(vec![nrow as i32, ncol as i32]));
@@ -10695,7 +10757,7 @@ pub fn assign_replacement(
         let index = force_if_promise(heap, interner, index)?;
         let value = eval(heap, interner, rhs, caller_env)?;
         let value = force_if_promise(heap, interner, value)?;
-        let replaced = subset_replace(heap, object, index, value).map_err(RSignal::from)?;
+        let replaced = subset_replace(heap, interner, object, index, value).map_err(RSignal::from)?;
         r_core::env::define(heap, caller_env, sym, replaced)
             .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("replacement define")))?;
         // Replacement assignments evaluate to the assigned value in GNU — the
@@ -10789,7 +10851,7 @@ pub fn subset_assign_primitive(
     caller_env: ValueId,
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 3)?;
-    subset_replace(heap, operands[0], operands[1], operands[2]).map_err(RSignal::from)
+    subset_replace(heap, interner, operands[0], operands[1], operands[2]).map_err(RSignal::from)
 }
 
 
@@ -10936,7 +10998,7 @@ pub fn subset2_assign_primitive(
     // for exactly one position.
     let length = vector_length(heap, object);
     if length.is_some() {
-        return subset_replace(heap, object, index, value).map_err(RSignal::from);
+        return subset_replace(heap, interner, object, index, value).map_err(RSignal::from);
     }
 
     Err(EvalError::TypeError("[[<- requires a list, vector or environment").into())
@@ -10950,10 +11012,59 @@ pub fn subset2_assign_primitive(
 /// replacement is documented as future work.
 pub fn subset_replace(
     heap: &mut Heap,
+    interner: &mut SymbolInterner,
     object: ValueId,
     index: ValueId,
     value: ValueId,
 ) -> Result<ValueId, EvalError> {
+    // GNU's character replacement exactly: indices resolve against the
+    // names attribute progressively — each unmatched name extends the
+    // vector once, duplicates within the same call resolving into the
+    // slot the first occurrence created. The rewritten integer index
+    // then flows through the ordinary machinery, the grown names
+    // attaching to the result.
+    if let Some(RObject::String(values)) = heap.object(index) {
+        let index_texts: Vec<String> = values.iter().map(|v| interner.string_text(*v).to_string()).collect();
+        let mut names: Vec<String> = match get_attrib(heap, interner, object, "names") {
+            Some(id) => match heap.object(id) {
+                Some(RObject::String(entries)) => entries.iter().map(|e| interner.string_text(*e).to_string()).collect(),
+                _ => Vec::new(),
+            },
+            None => Vec::new(),
+        };
+        let base_length = vector_length(heap, object).unwrap_or(0);
+        if names.len() < base_length {
+            names.resize(base_length, String::new());
+        }
+        let mut positions: Vec<i32> = Vec::new();
+        let mut cur_len = base_length;
+        let mut grew = false;
+        for text in &index_texts {
+            if text == "\0NA" || text.is_empty() {
+                continue;
+            }
+            match names.iter().position(|n| n == text && !n.is_empty()) {
+                Some(pos) => positions.push(pos as i32 + 1),
+                None => {
+                    positions.push(cur_len as i32 + 1);
+                    if names.len() <= cur_len {
+                        names.resize(cur_len + 1, String::new());
+                    }
+                    names[cur_len] = text.clone();
+                    cur_len += 1;
+                    grew = true;
+                }
+            }
+        }
+        let rewritten = heap.alloc(RObject::Integer(positions));
+        let result = subset_replace(heap, interner, object, rewritten, value)?;
+        if grew {
+            let interned: Vec<r_core::intern::InternedStr> = names.iter().map(|n| interner.intern_string(n)).collect();
+            let names_vec = heap.alloc(RObject::String(interned));
+            return copy_with_attrib(heap, interner, result, "names", names_vec).map_err(|_e| EvalError::TypeError("names attach"));
+        }
+        return Ok(result);
+    }
     // Resolve positions exactly as subsetting does, but out-of-range
     // positive indices extend rather than pad-NA-read.
     let length = vector_length(heap, object)
@@ -11003,7 +11114,7 @@ pub fn subset_replace(
                 })
                 .collect();
             let truncated = heap.alloc(RObject::Integer(truncs));
-            return subset_replace(heap, object, truncated, value);
+            return subset_replace(heap, interner, object, truncated, value);
         }
         _ => return Err(EvalError::TypeError("unsupported replacement index")),
     };
@@ -11063,6 +11174,15 @@ pub fn subset_replace(
         (object, value)
     };
 
+    // GNU's attribute fidelity exactly: replacement preserves the
+    // object's names through the reconstruction the typed path performs.
+    let source_name_entries: Option<Vec<r_core::intern::InternedStr>> = match get_attrib(heap, interner, object, "names") {
+        Some(id) => match heap.object(id) {
+            Some(RObject::String(entries)) => Some(entries.clone()),
+            _ => None,
+        },
+        None => None,
+    };
     macro_rules! replace_typed {
         ($variant:ident, $na:expr) => {
             match (heap.object(object), heap.object(value)) {
@@ -11076,7 +11196,18 @@ pub fn subset_replace(
                     for (n, pos) in positions.iter().enumerate() {
                         out[*pos] = replacements[n % replacements.len()];
                     }
-                    return Ok(heap.alloc(RObject::$variant(out)));
+                    let result = heap.alloc(RObject::$variant(out));
+                    if let Some(entries) = &source_name_entries {
+                        // The names extend alongside the vector exactly
+                        // as GNU — growth padding empty entries.
+                        let mut name_texts: Vec<r_core::intern::InternedStr> = entries.clone();
+                        while name_texts.len() < required {
+                            name_texts.push(interner.intern_string(""));
+                        }
+                        let names_vec = heap.alloc(RObject::String(name_texts));
+                        return copy_with_attrib(heap, interner, result, "names", names_vec).map_err(|_e| EvalError::TypeError("names attach"));
+                    }
+                    return Ok(result);
                 }
                 _ => {}
             }
@@ -19640,15 +19771,36 @@ pub fn as_data_frame_primitive(
         && let Some(RObject::Integer(dims)) = heap.object(dim).cloned()
             && dims.len() == 2 {
                 let (nr, nc) = (dims[0] as usize, dims[1] as usize);
+                // GNU's dimnames propagation exactly: column names carry
+                // into the frame names, row names into row.names — the
+                // V-prefix fallback answering only their absence.
+                let (mut row_texts, mut col_texts): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
+                if let Some(dn) = get_attrib(heap, interner, x, "dimnames")
+                    && let Some(RObject::List(parts)) = heap.object(dn).cloned() {
+                        if let Some(rows) = parts.first()
+                            && let Some(RObject::String(entries)) = heap.object(*rows).cloned() {
+                                row_texts = entries.iter().map(|e| interner.string_text(*e).to_string()).collect();
+                            }
+                        if let Some(cols) = parts.get(1)
+                            && let Some(RObject::String(entries)) = heap.object(*cols).cloned() {
+                                col_texts = entries.iter().map(|e| interner.string_text(*e).to_string()).collect();
+                            }
+                    }
                 let mut columns: Vec<ValueId> = Vec::new();
                 let mut names: Vec<String> = Vec::new();
                 for c in 0..nc {
                     let positions: Vec<usize> = (0..nr).map(|r| c * nr + r).collect();
                     let column = extract_elements(heap, x, &positions).map_err(RSignal::from)?;
                     columns.push(column);
-                    names.push(format!("V{}", c + 1));
+                    names.push(col_texts.get(c).cloned().filter(|n| !n.is_empty()).unwrap_or_else(|| format!("V{}", c + 1)));
                 }
-                return build_data_frame(heap, interner, columns, names);
+                let frame = build_data_frame(heap, interner, columns, names)?;
+                if !row_texts.is_empty() {
+                    let interned: Vec<r_core::intern::InternedStr> = row_texts.iter().map(|t| interner.intern_string(t)).collect();
+                    let rn = heap.alloc(RObject::String(interned));
+                    return copy_with_attrib(heap, interner, frame, "row.names", rn).map_err(RSignal::from);
+                }
+                return Ok(frame);
             }
     // List path: each element a column exactly as as.data.frame.list.
     if let Some(RObject::List(items)) = heap.object(x).cloned() {
