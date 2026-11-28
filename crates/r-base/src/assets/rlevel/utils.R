@@ -76,10 +76,21 @@ str <- function(object, ...) {
                 character = "chr", complex = "cplx", raw = "raw",
                 typeof(x))
             n <- length(x)
-            idx <- if (n > 0) seq_len(min(n, 5)) else integer(0)
-            body <- if (n > 0) paste(format(x[idx]), collapse = " ") else ""
-            rng <- if (n == 0) paste0(typeof(x), "(0)") else if (n > 1) paste0("[1:", n, "] ") else ""
-            cat(prefix, " ", typ, " ", rng, body, "\n", sep = "")
+            if (n == 0) {
+                cat(prefix, " ", typ, "(0) \n", sep = "")
+            } else {
+                idx <- seq_len(min(n, 5))
+                vals <- x[idx]
+                body <- if (typeof(x) == "logical") {
+                    paste(ifelse(is.na(vals), "NA", ifelse(vals, "TRUE", "FALSE")), collapse = " ")
+                } else if (typeof(x) == "character") {
+                    paste(ifelse(is.na(vals), "NA", paste0('"', vals, '"')), collapse = " ")
+                } else {
+                    paste(format(vals), collapse = " ")
+                }
+                rng <- if (n > 1) paste0("[1:", n, "] ") else ""
+                cat(prefix, " ", typ, " ", rng, body, "\n", sep = "")
+            }
         }
     }
     str.describe(object, "")

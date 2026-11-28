@@ -693,3 +693,5 @@ data.class <- function(x) {
 
 # GNU's symbol coercion exactly as the primitive's string-to-name conversion.
 as.symbol <- as.name
+
+nlevels <- function(x) length(levels(x))

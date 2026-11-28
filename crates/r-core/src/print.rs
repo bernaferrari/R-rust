@@ -853,6 +853,16 @@ pub fn format_cat_element(_heap: &Heap, interner: &SymbolInterner, value: &RObje
                 text.to_string()
             }
         }
+        RObject::Complex(values) => {
+            let z = values[index];
+            // GNU's sign discipline exactly: the separator answers the
+            // imaginary rendering's own leading minus — negative zero
+            // never drawing one, just as format_real renders it bare.
+            let im = format_real(z.i);
+            let sign = if im.starts_with('-') { "" } else { "+" };
+            format!("{}{}{}i", format_real(z.r), sign, im)
+        }
+        RObject::Raw(values) => format!("{:02x}", values[index]),
         _ => "?".to_string(),
     }
 }

@@ -441,7 +441,7 @@ pub fn call_primitive_inner(
                     let length = vector_length(heap, value).unwrap_or(0);
                     if let Some(object) = heap.object(value) {
                         match object {
-                            RObject::Real(_) | RObject::Integer(_) | RObject::Logical(_) | RObject::String(_) => {
+                            RObject::Real(_) | RObject::Integer(_) | RObject::Logical(_) | RObject::String(_) | RObject::Complex(_) | RObject::Raw(_) => {
                                 for i in 0..length {
                                     pieces.push(r_core::print::format_cat_element(heap, interner, object, i));
                                 }
@@ -3489,8 +3489,11 @@ pub fn call_primitive_inner(
                     }
                     extract_elements(heap, v, &idx).map_err(RSignal::from)
                 };
-                let big_x = rep_each(heap, xv, ylen)?;
-                let big_y = rep_times(heap, yv, xlen)?;
+                // GNU's arrangement exactly: X cycles times=nY down the
+                // column-major lanes while Y repeats each=nX across —
+                // flat position i + (j-1)*nX pairing x[i] with y[j].
+                let big_x = rep_times(heap, xv, ylen)?;
+                let big_y = rep_each(heap, yv, xlen)?;
                 // GNU's match.fun error exactly: a string naming no
                 // function reports the mode-qualified lookup failure.
                 if let Some(name) = &fun_name {
@@ -19516,6 +19519,85 @@ pub fn pminmax_primitive(
         return Err(EvalError::TypeError("pmin/pmax require input").into());
     }
     let want_min = op == PMIN;
+    // GNU's character lattice exactly: any character input lifts every
+    // operand to character — numbers rendering through as.character —
+    // and the extrema compare lexicographically byte-wise.
+    let any_character = inputs.iter().any(|v| matches!(heap.object(*v), Some(RObject::String(_))));
+    if any_character {
+        let columns: Vec<Vec<Option<String>>> = inputs
+            .iter()
+            .map(|v| {
+                let n = vector_length(heap, *v).unwrap_or(0);
+                match heap.object(*v).cloned() {
+                    Some(RObject::String(vals)) => vals
+                        .iter()
+                        .map(|s| {
+                            let text = interner.string_text(*s).to_string();
+                            // NA strings ride the interner's NA sentinel —
+                            // the raw text never answers NA exactly as
+                            // the character vector's own NA discipline.
+                            if text == "\0NA" {
+                                None
+                            } else {
+                                Some(text)
+                            }
+                        })
+                        .collect(),
+                    _ => {
+                        let rs = reals_of_value(heap, *v).unwrap_or_default();
+                        (0..n)
+                            .map(|i| {
+                                let x = rs.get(i).copied().unwrap_or(f64::NAN);
+                                if x.is_nan() {
+                                    None
+                                } else if x.fract() == 0.0 && x.abs() < 1e15 {
+                                    Some(format!("{}", x as i64))
+                                } else {
+                                    Some(format!("{x}"))
+                                }
+                            })
+                            .collect()
+                    }
+                }
+            })
+            .collect();
+        let len = columns.iter().map(|c| c.len()).max().unwrap_or(0);
+        if len == 0 {
+            return Ok(heap.alloc(RObject::String(Vec::new())));
+        }
+        let mut out: Vec<r_core::intern::InternedStr> = Vec::with_capacity(len);
+        for i in 0..len {
+            let mut acc: Option<String> = None;
+            let mut saw_na = false;
+            for col in &columns {
+                let v = col[i % col.len().max(1)].clone();
+                match v {
+                    None => {
+                        if !na_rm {
+                            saw_na = true;
+                            break;
+                        }
+                        continue;
+                    }
+                    Some(text) => {
+                        acc = Some(match acc {
+                            None => text,
+                            Some(cur) => {
+                                let better = if want_min { text < cur } else { text > cur };
+                                if better { text } else { cur }
+                            }
+                        });
+                    }
+                }
+            }
+            if saw_na || acc.is_none() {
+                out.push(interner.intern_string("\0NA"));
+            } else if let Some(text) = acc {
+                out.push(interner.intern_string(&text));
+            }
+        }
+        return Ok(heap.alloc(RObject::String(out)));
+    }
     let all_int = inputs.iter().all(|v| {
         matches!(heap.object(*v), Some(RObject::Integer(_)) | Some(RObject::Logical(_)))
     });
@@ -24265,19 +24347,61 @@ pub fn find_interval_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["x", "vec"])?;
+    let slots = eval_matched_args(
+        heap,
+        interner,
+        args,
+        caller_env,
+        &["x", "vec", "rightmost.closed", "all.inside", "left.open"],
+    )?;
     let xs = slots[0].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
     let breaks = slots[1].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
+    let flag = |slot: Option<ValueId>| -> bool {
+        slot.and_then(|v| match heap.object(v) {
+            Some(RObject::Logical(vals)) => vals.first().map(|x| *x != 0 && *x != r_core::object::NA_INTEGER),
+            _ => None,
+        })
+        .unwrap_or(false)
+    };
+    let rightmost_closed = flag(slots[2]);
+    let all_inside = flag(slots[3]);
+    let left_open = flag(slots[4]);
+    // GNU's findInterval2 exactly as appl/interv.c: the boundary macros
+    // answer before any interval search — rightmost_closed under
+    // left_open closes the *leftmost* interval instead, and all_inside
+    // coerces every outside answer into 1 or n-1. The interior count
+    // reads as the largest index the bisection's equality direction
+    // arranges — xt[i] <= x counting left-inclusive, xt[i] < x left-open.
+    let n = breaks.len();
     let out: Vec<i32> = xs
         .iter()
         .map(|x| {
             if x.is_nan() {
                 return r_core::object::NA_INTEGER;
             }
-            // GNU: count of breaks <= x, upper-bound semantics exactly.
+            if n == 0 {
+                return 0;
+            }
+            let x_grtr = |v: f64| *x > v || (!left_open && *x >= v);
+            let x_smlr = |v: f64| *x < v || (left_open && *x <= v);
+            if x_grtr(breaks[n - 1]) {
+                return if all_inside || (rightmost_closed && *x == breaks[n - 1]) {
+                    (n as i32) - 1
+                } else {
+                    n as i32
+                };
+            }
+            if x_smlr(breaks[0]) {
+                return if all_inside || (rightmost_closed && *x == breaks[0]) {
+                    1
+                } else {
+                    0
+                };
+            }
             let mut count = 0i32;
             for b in &breaks {
-                if *b <= *x {
+                let inside = if left_open { *b < *x } else { *b <= *x };
+                if inside {
                     count += 1;
                 } else {
                     break;
