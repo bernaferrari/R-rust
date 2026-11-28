@@ -24809,7 +24809,13 @@ pub fn char_expand_impl(input: &str, target: &[String], nomatch: &str) -> String
     if prefixes.len() > 1 {
         return String::new();
     }
-    nomatch.to_string()
+    // GNU's nomatch is charmatch's index discipline exactly — it reads as
+    // a positional index into the target, so non-numeric text coerces to
+    // the NA index and answers NA exactly as the golden edges arrange.
+    match nomatch.parse::<i32>() {
+        Ok(index) if index >= 1 && (index as usize) <= target.len() => target[(index - 1) as usize].clone(),
+        _ => "\0NA".to_string(),
+    }
 }
 
 /// `char.expand` — the vectorized engine exactly as GNU: inputs expand

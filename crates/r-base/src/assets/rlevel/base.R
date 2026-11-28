@@ -125,3 +125,18 @@ noquote <- function(obj) structure(obj, class = "noquote")
 eval.parent <- function(expr, n = 1) eval(expr, parent.frame(n + 1))
 
 evalq <- function(expr, envir = parent.frame(), enclos = NULL) eval(expr, envir)
+
+# GNU's trivial type predicates and operators exactly as base defines
+# them — the atomic lattice is the seven scalar types, recursive is
+# everything structural, and the null-coalescing infix is base's own.
+is.atomic <- function(x) typeof(x) %in% c("NULL", "logical", "integer", "double", "complex", "character", "raw")
+
+is.recursive <- function(x) typeof(x) %in% c("list", "pairlist", "closure", "environment", "language", "expression", "symbol")
+
+`%||%` <- function(x, y) if (is.null(x)) y else x
+
+zapsmall <- function(x, digits = getOption("digits")) {
+    mx <- max(abs(x))
+    rounded <- round(x, digits)
+    ifelse(abs(rounded) <= mx * 10^(-digits), 0, rounded)
+}
