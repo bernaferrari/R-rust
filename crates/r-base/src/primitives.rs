@@ -3791,20 +3791,37 @@ pub fn call_primitive_inner(
             for i in 0..n {
                 let target = &targets[i % targets.len().max(1)];
                 let source = &sources[i % sources.len().max(1)];
-                let success = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), source)
-                    .and_then(|host_source| std::fs::read(&host_source).ok())
-                    .and_then(|bytes| {
-                        use std::io::Write;
-                        r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), target)
-                            .and_then(|host_target| {
-                                std::fs::OpenOptions::new()
-                                    .append(true)
-                                    .open(&host_target)
-                                    .and_then(|mut f| f.write_all(&bytes))
-                                    .ok()
-                            })
-                    })
-                    .is_some();
+                // Append is read-concatenate-write through the virtual
+                // layer exactly as the flat store arranges — the bytes
+                // either side travel the same contract.
+                let virtual_mode = heap.browser_files_enabled
+                    || heap.browser_files.contains_key(source)
+                    || heap.browser_files.contains_key(target);
+                let success = if virtual_mode {
+                    match r_core::vfile::read_file(heap, source) {
+                        Ok(bytes) => {
+                            let mut combined = r_core::vfile::read_file(heap, target).unwrap_or_default();
+                            combined.extend_from_slice(&bytes);
+                            r_core::vfile::write_file(heap, target, &combined).is_ok()
+                        }
+                        Err(_) => false,
+                    }
+                } else {
+                    r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), source)
+                        .and_then(|host_source| std::fs::read(&host_source).ok())
+                        .and_then(|bytes| {
+                            use std::io::Write;
+                            r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), target)
+                                .and_then(|host_target| {
+                                    std::fs::OpenOptions::new()
+                                        .append(true)
+                                        .open(&host_target)
+                                        .and_then(|mut f| f.write_all(&bytes))
+                                        .ok()
+                                })
+                        })
+                        .is_some()
+                };
                 out.push(success as i32);
             }
             Ok(heap.alloc(RObject::Logical(out)))
