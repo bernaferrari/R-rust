@@ -9232,6 +9232,8 @@ pub fn length_primitive(
             }
             count
         }
+        // GNU's null extent exactly: the empty object measures zero.
+        None if operands[0] == ValueId::NIL => 0usize,
         _ => return Err(EvalError::TypeError("length requires a vector").into()),
     };
     Ok(heap.alloc(RObject::Integer(vec![length as i32])))
@@ -10348,6 +10350,41 @@ pub fn extract_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
+    // GNU's multi-index extraction exactly: additional subscripts count
+    // the array dimensions, the linear position computing column-major
+    // through the dim strides.
+    let raw_count = raw_args(heap, args).len();
+    if raw_count > 2 {
+        let all_operands = eval_args(heap, interner, args, caller_env, raw_count)?;
+        let dims: Vec<usize> = match get_attrib(heap, interner, all_operands[0], "dim") {
+            Some(d) => match heap.object(d) {
+                Some(RObject::Integer(v)) => v.iter().map(|x| (*x).max(0) as usize).collect(),
+                Some(RObject::Real(v)) => v.iter().map(|x| (*x as i64).max(0) as usize).collect(),
+                _ => Vec::new(),
+            },
+            None => Vec::new(),
+        };
+        if dims.len() >= raw_count - 1 {
+            let indices: Vec<i64> = all_operands[1..]
+                .iter()
+                .map(|op| match heap.object(*op) {
+                    Some(RObject::Real(v)) if !v.is_empty() => v[0] as i64,
+                    Some(RObject::Integer(v)) if !v.is_empty() => v[0] as i64,
+                    _ => 0,
+                })
+                .collect();
+            let mut linear: i64 = 0;
+            let mut stride: i64 = 1;
+            for (k, idx) in indices.iter().enumerate() {
+                linear += (idx - 1) * stride;
+                stride *= dims.get(k).copied().unwrap_or(0) as i64;
+            }
+            let one = heap.alloc(RObject::Integer(vec![(linear + 1) as i32]));
+            let inner = heap.alloc(RObject::Pairlist { car: one, cdr: ValueId::NIL, tag: ValueId::NIL });
+            let pair = heap.alloc(RObject::Pairlist { car: all_operands[0], cdr: inner, tag: ValueId::NIL });
+            return extract_primitive(heap, interner, pair, caller_env);
+        }
+    }
     let operands = eval_args(heap, interner, args, caller_env, 2)?;
     // Character indices resolve through the names attribute exactly as
     // GNU's exact-name matching.
@@ -23810,20 +23847,47 @@ pub fn bind_primitive(
     };
     let dim = heap.alloc(RObject::Integer(vec![nrow as i32, ncol as i32]));
     let matrix = copy_with_attrib(heap, interner, matrix, "dim", dim).map_err(RSignal::from)?;
+    // GNU's margin names exactly: the non-binding orientation reads the
+    // operand names attributes — the first operand whose names span the
+    // margin supplying them.
+    let mut margin_names: Option<Vec<String>> = None;
+    let margin_extent = if op == CBIND { nrow } else { ncol };
+    for (pos, operand) in operands.iter().enumerate() {
+        if lengths.get(pos).copied().unwrap_or(0) == margin_extent
+            && let Some(id) = get_attrib(heap, interner, *operand, "names")
+                && let Some(RObject::String(entries)) = heap.object(id) {
+                    let texts: Vec<String> = entries.iter().map(|e| interner.string_text(*e).to_string()).collect();
+                    if texts.len() == margin_extent && texts.iter().any(|t| !t.is_empty()) {
+                        margin_names = Some(texts);
+                        break;
+                    }
+                }
+    }
     // Dimension names: tags fill the binding orientation exactly as GNU;
     // the other orientation carries empty names.
-    if tags.iter().any(|t| t.is_some()) {
-        let tag_texts: Vec<r_core::intern::InternedStr> = tags
-            .iter()
-            .map(|t| interner.intern_string(t.as_deref().unwrap_or("")))
-            .collect();
-        let tag_vec = heap.alloc(RObject::String(tag_texts));
+    if tags.iter().any(|t| t.is_some()) || margin_names.is_some() {
+        let tag_vec = if tags.iter().any(|t| t.is_some()) {
+            let tag_texts: Vec<r_core::intern::InternedStr> = tags
+                .iter()
+                .map(|t| interner.intern_string(t.as_deref().unwrap_or("")))
+                .collect();
+            heap.alloc(RObject::String(tag_texts))
+        } else {
+            ValueId::NIL
+        };
+        let margin_vec = match &margin_names {
+            Some(texts) => {
+                let interned: Vec<r_core::intern::InternedStr> = texts.iter().map(|t| interner.intern_string(t)).collect();
+                heap.alloc(RObject::String(interned))
+            }
+            None => ValueId::NIL,
+        };
         // The untagged orientation carries NULL exactly as GNU — an empty
         // character vector would read non-null to is.null.
         let (first, second) = if op == CBIND {
-            (ValueId::NIL, tag_vec)
+            (margin_vec, tag_vec)
         } else {
-            (tag_vec, ValueId::NIL)
+            (tag_vec, margin_vec)
         };
         let dn = heap.alloc(RObject::List(vec![first, second]));
         copy_with_attrib(heap, interner, matrix, "dimnames", dn).map_err(RSignal::from)

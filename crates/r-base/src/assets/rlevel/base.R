@@ -147,3 +147,7 @@ zapsmall <- function(x, digits = getOption("digits")) {
 try <- function(expr, silent = FALSE) {
     tryCatch(expr, error = function(e) structure(conditionMessage(e), class = "try-error"))
 }
+
+# GNU's AsIs identity exactly as base defines it — the class wrapper
+# shielding vectors from frame-column interpretation.
+I <- function(x) structure(x, class = "AsIs")
