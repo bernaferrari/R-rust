@@ -41,6 +41,11 @@ fn gnu_scientific(x: f64) -> (bool, i32, i32, bool) {
         } else {
             r_prec *= TBL[(-kp) as usize];
         }
+    } else if kp <= -308 {
+        // GNU's denormal-aware path exactly: scaling up by 1e+303 first
+        // keeps every intermediate inside the normal range — direct
+        // 10^kp evaluation would bottom out in subnormal imprecision.
+        r_prec = (r_prec * 1e303) / 10f64.powi(kp + 303);
     } else {
         r_prec /= 10f64.powi(kp);
     }
@@ -193,18 +198,14 @@ pub fn encode_real(x: f64, w: usize, d: usize, e: i32) -> String {
     } else if e != 0 {
         // C's %#w.de shape: mantissa with exactly d decimals — zeros
         // kept — then e, the sign, and at least two exponent digits.
+        // Rust's {:.*e} rounding is correctly rounded even in subnormal
+        // territory where manual scaling loses precision; the exponent
+        // reshapes to printf form after.
         let x = if x == 0.0 { 0.0 } else { x };
-        let exp = if x == 0.0 { 0 } else { x.abs().log10().floor() as i32 };
-        let mantissa = x / 10f64.powi(exp);
-        // Rounding the mantissa can carry into the next decade exactly
-        // as printf arranges — rescale when it does.
-        let rounded = format!("{:.*}", d, mantissa);
-        let (mantissa_final, exp_final) = if rounded.parse::<f64>().unwrap_or(0.0).abs() >= 10.0 {
-            (format!("{:.*}", d, mantissa / 10.0), exp + 1)
-        } else {
-            (rounded, exp)
-        };
-        format!("{}e{}{:02}", mantissa_final, if exp_final < 0 { "-" } else { "+" }, exp_final.abs())
+        let raw = format!("{:.*e}", d, x);
+        let (mantissa_part, exp_part) = raw.split_once('e').unwrap_or((raw.as_str(), "0"));
+        let exp_value: i32 = exp_part.parse().unwrap_or(0);
+        format!("{}e{}{:02}", mantissa_part, if exp_value < 0 { "-" } else { "+" }, exp_value.abs())
     } else {
         let x = if x == 0.0 { 0.0 } else { x };
         format!("{:.*}", d, x)

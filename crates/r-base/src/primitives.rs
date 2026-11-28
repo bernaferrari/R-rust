@@ -1770,13 +1770,13 @@ pub fn call_primitive_inner(
             if operands.is_empty() {
                 return Err(EvalError::TypeError("round requires an argument").into());
             }
-            let digits_vec: Vec<i32> = if operands.len() > 1 {
+            let digits_vec: Vec<f64> = if operands.len() > 1 {
                 match reals_of_value(heap, operands[1]) {
-                    Ok(vals) if !vals.is_empty() => vals.iter().map(|v| *v as i32).collect(),
-                    _ => vec![if id.0 == ROUND { 0 } else { 6 }],
+                    Ok(vals) if !vals.is_empty() => vals.clone(),
+                    _ => vec![if id.0 == ROUND { 0.0 } else { 6.0 }],
                 }
             } else {
-                vec![if id.0 == ROUND { 0 } else { 6 }]
+                vec![if id.0 == ROUND { 0.0 } else { 6.0 }]
             };
             let digits = digits_vec[0];
             // GNU's complex rounding exactly as complex.c: round answers
@@ -1795,7 +1795,7 @@ pub fn call_primitive_inner(
                             if v.is_nan() || !v.is_finite() {
                                 v
                             } else {
-                                round_half_even(v, el_digits)
+                                round_half_even(v, el_digits as i32)
                             }
                         };
                         r_core::object::RComplex { r: part(z.r), i: part(z.i) }
@@ -1809,7 +1809,7 @@ pub fn call_primitive_inner(
                             return r_core::object::RComplex { r: z.r, i: z.i };
                         }
                         let exponent = mag.log10().floor() as i32;
-                        let position = exponent - el_digits + 1;
+                        let position = exponent - el_digits as i32 + 1;
                         let part = |v: f64| {
                             if v.is_nan() || !v.is_finite() {
                                 v
@@ -1835,17 +1835,33 @@ pub fn call_primitive_inner(
             let values = reals_of_value(heap, operands[0]).map_err(RSignal::from)?;
             let out: Vec<f64> = values
                 .iter()
-                .map(|v| {
-                    if v.is_nan() || !v.is_finite() {
-                        *v
-                    } else if id.0 == ROUND {
-                        round_half_even(*v, digits)
+                .enumerate()
+                .map(|(index, v)| {
+                    let el_digits = digits_vec[index % digits_vec.len()];
+                    if id.0 == ROUND {
+                        if v.is_nan() || !v.is_finite() {
+                            *v
+                        } else {
+                            round_half_even(*v, el_digits as i32)
+                        }
                     } else {
-                        signif_digits(*v, digits)
+                        // fprec handles its own NaN/Inf discipline — the
+                        // digits operand's NA propagating through the IEEE
+                        // addition exactly as GNU.
+                        signif_digits(*v, el_digits)
                     }
                 })
                 .collect();
-            Ok(heap.alloc(RObject::Real(out)))
+            let result = heap.alloc(RObject::Real(out));
+            // GNU's attribute discipline exactly as the complex path —
+            // the rounding family preserves input attributes.
+            let attrib = heap.get(operands[0]).map(|slot| slot.attrib).unwrap_or(ValueId::NIL);
+            if attrib != ValueId::NIL {
+                if let Some(slot) = heap.get_mut(result) {
+                    slot.attrib = attrib;
+                }
+            }
+            Ok(result)
         }
         ANYNA => {
             // Elementwise scan exactly as GNU — NaN counts as missing
@@ -26505,15 +26521,112 @@ pub fn round_half_even(v: f64, digits: i32) -> f64 {
     }
 }
 
-/// GNU signif semantics: round to the given count of significant digits.
-pub fn signif_digits(v: f64, digits: i32) -> f64 {
-    if v == 0.0 {
-        return v;
+/// GNU's fprec exactly as nmath/fprec.c: digits rounding half-away to an
+/// integer capped at 22 and floored at 1, infinite digits answering the
+/// input unchanged or collapsing to one digit, NaN in either operand
+/// propagating through the IEEE addition. The scaling splits at the
+/// denormal boundary exactly as the max10e discipline arranges.
+fn fprec(x: f64, digits: f64) -> f64 {
+    const MAX_DIGITS: i32 = 22;
+    const MAX10E: i32 = 308;
+    if x.is_nan() || digits.is_nan() {
+        // GNU relies on the hardware propagating the NaN payload through
+        // the addition — x + digits of an NA operand answering NA. Rust's
+        // arithmetic canonicalizes, so the payload propagates explicitly:
+        // an NA in either operand answers NA, plain NaN otherwise.
+        let na_bits = r_core::object::NA_REAL_BITS;
+        if x.to_bits() == na_bits || digits.to_bits() == na_bits {
+            return f64::from_bits(na_bits);
+        }
+        return x + digits;
     }
-    let digits = if digits < 1 { 1 } else { digits };
-    let magnitude = v.abs().log10().floor() as i32;
-    let shift = digits - 1 - magnitude;
-    round_half_even(v, shift)
+    if !x.is_finite() {
+        return x;
+    }
+    let mut digits = digits;
+    if !digits.is_finite() {
+        if digits > 0.0 {
+            return x;
+        } else {
+            digits = 1.0;
+        }
+    }
+    if x == 0.0 {
+        return x;
+    }
+    // C round() rounds half away from zero — digits 2.5 answering three
+    // significant digits exactly as GNU.
+    let mut dig = digits.round() as i32;
+    if dig > MAX_DIGITS {
+        return x;
+    } else if dig < 1 {
+        dig = 1;
+    }
+    let sgn = if x < 0.0 { -1.0 } else { 1.0 };
+    let x = x.abs();
+    let l10 = x.log10();
+    let mut e10 = dig - 1 - l10.floor() as i32;
+    // Exact integer powers of ten through repeated multiplication and
+    // division — R_pow_di's binary-powering discipline.
+    // R_pow_di exactly as nmath: negative exponents invert the base
+    // BEFORE powering — numerically distinct from dividing the positive
+    // power, the rounding differences visible in denormal territory.
+    fn pow_di(x: f64, mut n: i32) -> f64 {
+        let mut pow = 1.0;
+        if n != 0 {
+            let mut x = x;
+            if n < 0 {
+                n = -n;
+                x = 1.0 / x;
+            }
+            loop {
+                if n & 1 != 0 {
+                    pow *= x;
+                }
+                n >>= 1;
+                if n != 0 {
+                    x *= x;
+                } else {
+                    break;
+                }
+            }
+        }
+        pow
+    }
+    if l10.abs() < (MAX10E - 2) as f64 {
+        let mut p10 = 1.0;
+        if e10 > MAX10E {
+            p10 = pow_di(10.0, e10 - MAX10E);
+            e10 = MAX10E;
+        }
+        if e10 > 0 {
+            let pow10 = pow_di(10.0, e10);
+            sgn * (((x * pow10) * p10).round_ties_even() / pow10) / p10
+        } else {
+            let pow10 = pow_di(10.0, -e10);
+            sgn * ((x / pow10).round_ties_even() * pow10)
+        }
+    } else {
+        // The large/small-magnitude path: scaled rounding through floor
+        // with the half offset exactly as the full-precision discipline.
+        let do_round = f64::MAX.log10() - l10 >= pow_di(10.0, -dig);
+        let e2 = dig + if e10 > 0 { 1 } else { -1 } * MAX_DIGITS;
+        let p10 = pow_di(10.0, e2);
+        let p10_big = pow_di(10.0, e10 - e2);
+        let mut xr = x * p10;
+        xr *= p10_big;
+        if do_round {
+            xr += 0.5;
+        }
+        let xr = xr.floor() / p10;
+        sgn * xr / p10_big
+    }
+}
+
+/// Signif through the exact fprec port — the digits argument carrying
+/// its f64 value so NA/NaN/Inf distinctions survive.
+fn signif_digits(v: f64, digits: f64) -> f64 {
+    fprec(v, digits)
 }
 
 /// GNU sinpi exactness: integer inputs are exactly zero, half-integers
