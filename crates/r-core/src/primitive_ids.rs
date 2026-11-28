@@ -723,4 +723,5 @@ pub const ABS: u32 = 57;
     /// rawConnection(object, open) — raw-vector-backed connection.
     pub const RAWCONNECTION: u32 = 692;
     pub const ASNAMESPACE: u32 = 694;
+    pub const ALIST: u32 = 695;
 

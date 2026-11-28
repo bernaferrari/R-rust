@@ -455,7 +455,29 @@ pub fn bootstrap_env(heap: &mut Heap, interner: &mut SymbolInterner) -> ValueId 
     env::define(heap, base, sym, na_str).expect("NA_character_");    register_baked_packages(heap, interner, base);
     attach_default_packages(heap, interner, base, user);
     populate_rlevel_namespaces(heap, interner);
+    install_internal_wrappers(heap, interner);
     user
+}
+
+/// GNU's .Internal-wrapped base functions are genuine closures in the base
+/// namespace — rep_len is function(x, length.out) .Internal(rep_len(x,
+/// length.out)) exactly as base/R/rep.R arranges, which is why formals,
+/// body, and environment introspection all answer. The pure world installs
+/// the same wrappers over its primitive dispatch: evaluation reaches the
+/// primitive through .Internal's direct table resolution, so the wrapper
+/// costs exactly one frame — matching GNU, where calling the closure is
+/// the frame discipline too.
+fn install_internal_wrappers(heap: &mut Heap, interner: &mut SymbolInterner) {
+    use r_core::eval::eval;
+    use r_core::parser::parse_native_expressions;
+    const WRAPPERS: &str = "rep_len <- function(x, length.out) .Internal(rep_len(x, length.out))
+rep.int <- function(x, times) .Internal(rep.int(x, times))
+";
+    let Some(base) = heap.base_env_id else { return };
+    let Ok(expressions) = parse_native_expressions(WRAPPERS, heap, interner) else { return };
+    for expr in &expressions {
+        let _ = eval(heap, interner, *expr, base);
+    }
 }
 
 /// GNU populates package namespaces with R-level closures defined in the

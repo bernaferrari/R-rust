@@ -424,8 +424,21 @@ fn call(
     // (no inner frame claimed it), and never overwrite as the error
     // unwinds through outer frames. Control flow is not a condition
     // and attaches nothing.
+    // .Internal frames are transparent exactly as GNU's context stack
+    // arranges — the internal bridge is not a visible calling frame, so
+    // errors unwinding through it claim nothing and the user-level call
+    // answers conditionCall. Without this transparency the wrapper
+    // closures' inner formals would shadow the user's own invocation.
+    let internal_frame = matches!(
+        heap.object(call_expr),
+        Some(RObject::Language { car, .. }) if matches!(
+            heap.object(*car),
+            Some(RObject::Symbol { name, .. }) if interner.symbol_name(*name) == ".Internal"
+        )
+    );
     if let Err(RSignal::Error(_)) = &result
-        && heap.error_call == ValueId::NIL {
+        && heap.error_call == ValueId::NIL
+        && !internal_frame {
             heap.error_call = call_expr;
         }
     result
