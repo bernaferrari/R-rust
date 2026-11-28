@@ -105,3 +105,21 @@ all.equal <- function (target, current, tolerance = sqrt(.Machine$double.eps), .
         return(TRUE)
     paste0("target is ", mode(target), ", current is ", mode(current))
 }
+
+# GNU's trivial base closures exactly as base/R sources define them —
+# force is the identity that evaluates its argument, the quote family
+# pastes the ASCII forms the C locale arranges, noquote is the class
+# wrapper, and eval.parent/evalq ride the eval envir machinery.
+force <- function(x) x
+
+sQuote <- function(x) paste0("'", x, "'")
+
+dQuote <- function(x) paste0('"', x, '"')
+
+shQuote <- function(string) paste0("'", gsub("'", "'\\\\''", string), "'")
+
+noquote <- function(obj) structure(obj, class = "noquote")
+
+eval.parent <- function(expr, n = 1) eval(expr, parent.frame(n + 1))
+
+evalq <- function(expr, envir = parent.frame(), enclos = NULL) eval(expr, envir)

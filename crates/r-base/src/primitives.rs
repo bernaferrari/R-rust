@@ -3350,8 +3350,23 @@ pub fn call_primitive_inner(
             // execution frame. The distinction is load-bearing inside
             // local() and eval frames: bindings written into the body's
             // fresh environment are visible through parent.frame()
-            // precisely because the call happened there.
-            heap.contexts.last().map(|c| c.callenv).or(Some(caller_env)).map_or(Ok(caller_env), Ok)
+            // precisely because the call happened there. The n argument
+            // walks the calling chain exactly as GNU — each generation
+            // outward is one context's calling environment.
+            let n = {
+                let operands = eval_args(heap, interner, args, caller_env, 1).unwrap_or_default();
+                operands.first().and_then(|v| match heap.object(*v) {
+                    Some(RObject::Real(vals)) => vals.first().map(|x| *x as usize),
+                    Some(RObject::Integer(vals)) => vals.first().map(|x| *x as usize),
+                    _ => None,
+                }).unwrap_or(1)
+            };
+            let len = heap.contexts.len();
+            if len >= n && n >= 1 {
+                Ok(heap.contexts[len - n].callenv)
+            } else {
+                Ok(caller_env)
+            }
         }
         IS_FUNCTION => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
