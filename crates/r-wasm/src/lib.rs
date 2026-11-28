@@ -567,12 +567,10 @@ mod tests {
         session.close();
     }
 
-    /// Serialize/unserialize/rawConnection conformance — the pure world's
-    /// serialization layer does not yet implement these primitives with
-    /// GNU's connection semantics. Tracked in the serialization
-    /// conformance epic; un-ignore when the layer lands.
+    /// Serialize/unserialize/rawConnection conformance — GNU's connection
+    /// semantics over the pure-world RBG1 format exactly as the contract
+    /// arranges: typed errors, deparsed calls, three round-trip forms.
     #[test]
-    #[ignore = "pure-world serialize/unserialize/rawConnection conformance pending — see beads"]
     fn unserialize_connection_contract_matches_gnu() {
         let mut session = WasmRSession::new().unwrap();
         assert_eq!(
