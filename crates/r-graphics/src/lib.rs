@@ -2280,6 +2280,30 @@ pub fn curve_primitive(
         // the fp ordering is observable in the endpoint ulps.
         (0..n).map(|i| from + (to - from) * i as f64 / (n - 1) as f64).collect()
     };
+    // GNU's name-to-call rewriting exactly: a bare function name
+    // becomes the call `fn(x)` over the xname symbol — curve(sin)
+    // plots sin over the grid rather than evaluating to the function
+    // object itself.
+    let raw_expr = match heap.object(raw_expr) {
+        Some(RObject::Symbol { .. }) => {
+            let xsym = heap.alloc(RObject::Symbol {
+                name: interner.intern_symbol(&xname),
+                value: ValueId::NIL,
+                internal: ValueId::NIL,
+            });
+            let arg_node = heap.alloc(RObject::Pairlist {
+                car: xsym,
+                cdr: ValueId::NIL,
+                tag: ValueId::NIL,
+            });
+            heap.alloc(RObject::Language {
+                car: raw_expr,
+                cdr: arg_node,
+                tag: ValueId::NIL,
+            })
+        }
+        _ => raw_expr,
+    };
     // Data environment binding xname to the whole vector — vectorized
     // evaluation exactly as GNU's eval(expr, envir = ll).
     let data_env = r_core::env::new_environment(heap, caller_env);
