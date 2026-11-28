@@ -713,3 +713,13 @@ pub const PRINT: u32 = 63;
 pub const EXP: u32 = 55;
 pub const LOG: u32 = 56;
 pub const ABS: u32 = 57;
+    /// serialize(object, connection) — RBG1 binary graph encoding exactly
+    /// as the pure-world format arranges.
+    pub const SERIALIZE: u32 = 690;
+    /// unserialize(connection) — RBG1 decode with GNU's connection typing.
+    pub const UNSERIALIZE: u32 = 691;
+    /// gc() — trigger collection, invisible stats exactly as GNU.
+    pub const GC_FN: u32 = 693;
+    /// rawConnection(object, open) — raw-vector-backed connection.
+    pub const RAWCONNECTION: u32 = 692;
+

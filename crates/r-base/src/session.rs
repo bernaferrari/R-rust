@@ -138,18 +138,30 @@ impl Session {
     pub fn eval_script(&mut self, source: &str) -> Result<String, SessionError> {
         let expressions = parse_native_expressions(source, &mut self.heap, &mut self.interner)
             .map_err(SessionError::Parse)?;
-        for expr in &expressions {
+        let tokens: Vec<_> = expressions
+            .iter()
+            .map(|expr| self.heap.retained_roots.register(*expr))
+            .collect();
+        let result = self.eval_script_loop(&expressions);
+        for token in tokens {
+            self.heap.retained_roots.release(token);
+        }
+        return result;
+    }
+
+    fn eval_script_loop(&mut self, expressions: &[ValueId]) -> Result<String, SessionError> {
+        for expr in expressions {
             let value = match eval(&mut self.heap, &mut self.interner, *expr, self.global_env) {
                 Ok(value) => value,
                 Err(signal) => {
                     // The error path still collects — reclaiming the
                     // unwound garbage is what lets the next expression
                     // admit again after a budget failure.
-                    let _ = self.boundary_maintenance(ValueId::NIL, &expressions);
+                    let _ = self.boundary_maintenance(ValueId::NIL, expressions);
                     return Err(SessionError::Eval(signal));
                 }
             };
-            if let Err(text) = self.boundary_maintenance(value, &expressions) {
+            if let Err(text) = self.boundary_maintenance(value, expressions) {
                 return Err(SessionError::Eval(RSignal::from(EvalError::Condition(text))));
             }
             // Primitive writes (cat/print/writeLines) and auto-printed
@@ -216,6 +228,14 @@ impl Session {
                 return full;
             }
         };
+        // Parsed-but-unevaluated expressions must survive collections
+        // triggered mid-evaluation — user-invoked gc() has no knowledge of
+        // this loop's Rust locals, so the expressions register as retained
+        // roots for the script's duration exactly as host handles do.
+        let tokens: Vec<_> = expressions
+            .iter()
+            .map(|expr| self.heap.retained_roots.register(*expr))
+            .collect();
         for expr in &expressions {
             match eval(&mut self.heap, &mut self.interner, *expr, self.global_env) {
                 Ok(value) => {
@@ -227,6 +247,9 @@ impl Session {
                         full.stderr.push_str(&line);
                         full.output.push_str(&line);
                         full.error = Some(text);
+                        for token in tokens {
+                            self.heap.retained_roots.release(token);
+                        }
                         return full;
                     }
                     // Primitive writes accumulate in the output buffer; the
@@ -271,9 +294,15 @@ impl Session {
                     full.stderr.push_str(&line);
                     full.output.push_str(&line);
                     full.error = Some(text);
+                    for token in tokens {
+                        self.heap.retained_roots.release(token);
+                    }
                     return full;
                 }
             }
+        }
+        for token in tokens {
+            self.heap.retained_roots.release(token);
         }
         if self.heap.output_capture_truncated {
             // The capture marker joins stdout and the transcript exactly

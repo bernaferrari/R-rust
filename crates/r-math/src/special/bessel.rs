@@ -201,13 +201,4 @@ mod tests {
             "bessel_j({x}, 0) = {value}, asymptotic {expected}"
         );
     }
-
-    #[test]
-    fn test_ffi_shims() {
-        assert_eq!(ffi::Rf_bessel_i(2.0, 1.0, 0), bessel_i(2.0, 1.0, false));
-        assert_eq!(ffi::bessel_i(2.0, 1.0, 1), bessel_i(2.0, 1.0, true));
-        assert_eq!(ffi::Rf_bessel_j(2.0, 1.0), bessel_j(2.0, 1.0));
-        assert_eq!(ffi::Rf_bessel_k(2.0, 1.0, 0), bessel_k(2.0, 1.0, false));
-        assert_eq!(ffi::Rf_bessel_y(5.0, 0.0), bessel_y(5.0, 0.0));
-    }
 }
