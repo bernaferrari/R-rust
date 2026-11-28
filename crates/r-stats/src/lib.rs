@@ -186,11 +186,60 @@ pub fn qhyper_primitive(
     let m = positional.get(1).and_then(|v| first_real(heap, *v).ok()).unwrap_or(f64::NAN);
     let n = positional.get(2).and_then(|v| first_real(heap, *v).ok()).unwrap_or(f64::NAN);
     let k = positional.get(3).and_then(|v| first_real(heap, *v).ok()).unwrap_or(f64::NAN);
-    let lower = positional.get(4).and_then(|v| logical_or_na(heap, *v)).unwrap_or(true);
-    let logp = positional.get(5).and_then(|v| logical_or_na(heap, *v)).unwrap_or(false);
+    let present = |v: &ValueId| if *v == ValueId::NIL { None } else { logical_or_na(heap, *v) };
+    let lower = positional.get(4).and_then(present).unwrap_or(true);
+    let logp = positional.get(5).and_then(present).unwrap_or(false);
     let out: Vec<f64> = xs
         .iter()
         .map(|&v| r_math::dist::hypergeometric::qhyper_inner(v, m, n, k, lower, logp))
+        .collect();
+    Ok(heap.alloc(RObject::Real(out)))
+}
+
+/// phyper(x, m, n, k) — three-parameter hypergeometric CDF, mirroring
+/// the quantile primitive exactly with the sign conventions inverted.
+pub fn phyper_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let bound = bind_formals(heap, interner, args, caller_env, &["x", "m", "n", "k", "lower.tail", "log.p"])?;
+    let positional: Vec<ValueId> = bound.iter().map(|s| s.unwrap_or(ValueId::NIL)).collect();
+    let x = bound[0].ok_or(EvalError::TypeError("phyper requires input"))?;
+    let xs = numeric_vector(heap, x);
+    let m = positional.get(1).and_then(|v| first_real(heap, *v).ok()).unwrap_or(f64::NAN);
+    let n = positional.get(2).and_then(|v| first_real(heap, *v).ok()).unwrap_or(f64::NAN);
+    let k = positional.get(3).and_then(|v| first_real(heap, *v).ok()).unwrap_or(f64::NAN);
+    let present = |v: &ValueId| if *v == ValueId::NIL { None } else { logical_or_na(heap, *v) };
+    let lower = positional.get(4).and_then(present).unwrap_or(true);
+    let logp = positional.get(5).and_then(present).unwrap_or(false);
+    let out: Vec<f64> = xs
+        .iter()
+        .map(|&v| r_math::dist::hypergeometric::phyper_inner(v, m, n, k, lower, logp))
+        .collect();
+    Ok(heap.alloc(RObject::Real(out)))
+}
+
+/// dhyper(x, m, n, k) — three-parameter hypergeometric density.
+pub fn dhyper_primitive(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    args: ValueId,
+    caller_env: ValueId,
+) -> EvalResult {
+    let bound = bind_formals(heap, interner, args, caller_env, &["x", "m", "n", "k", "log"])?;
+    let positional: Vec<ValueId> = bound.iter().map(|s| s.unwrap_or(ValueId::NIL)).collect();
+    let x = bound[0].ok_or(EvalError::TypeError("dhyper requires input"))?;
+    let xs = numeric_vector(heap, x);
+    let m = positional.get(1).and_then(|v| first_real(heap, *v).ok()).unwrap_or(f64::NAN);
+    let n = positional.get(2).and_then(|v| first_real(heap, *v).ok()).unwrap_or(f64::NAN);
+    let k = positional.get(3).and_then(|v| first_real(heap, *v).ok()).unwrap_or(f64::NAN);
+    let present4 = |v: &ValueId| if *v == ValueId::NIL { None } else { logical_or_na(heap, *v) };
+    let logp = positional.get(4).and_then(present4).unwrap_or(false);
+    let out: Vec<f64> = xs
+        .iter()
+        .map(|&v| r_math::dist::hypergeometric::dhyper_inner(v, m, n, k, logp))
         .collect();
     Ok(heap.alloc(RObject::Real(out)))
 }
@@ -210,8 +259,9 @@ pub fn ptukey_primitive(
     let nmeans = positional.get(1).and_then(|v| first_real(heap, *v).ok()).unwrap_or(f64::NAN);
     let df = positional.get(2).and_then(|v| first_real(heap, *v).ok()).unwrap_or(f64::NAN);
     let nranges = positional.get(3).and_then(|v| first_real(heap, *v).ok()).unwrap_or(1.0);
-    let lower = positional.get(4).and_then(|v| logical_or_na(heap, *v)).unwrap_or(true);
-    let logp = positional.get(5).and_then(|v| logical_or_na(heap, *v)).unwrap_or(false);
+    let present = |v: &ValueId| if *v == ValueId::NIL { None } else { logical_or_na(heap, *v) };
+    let lower = positional.get(4).and_then(present).unwrap_or(true);
+    let logp = positional.get(5).and_then(present).unwrap_or(false);
     let out: Vec<f64> = xs
         .iter()
         .map(|&v| r_math::dist::tukey::ptukey_inner(v, nranges, nmeans, df, lower, logp))

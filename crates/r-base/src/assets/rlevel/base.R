@@ -24,6 +24,19 @@
     sizeof.pointer = 8L
 )
 
+# GNU's platform constants exactly as platform.c installs them for the
+# pinned unix oracle build.
+.Platform <- list(
+    OS.type = "unix",
+    file.sep = "/",
+    dynlib.ext = ".so",
+    GUI = "X11",
+    endian = "little",
+    pkgType = "source",
+    path.sep = ":",
+    r_arch = ""
+)
+
 print.function <- function (x, useSource = TRUE, ...)
     print.default(x, useSource = useSource, ...)
 

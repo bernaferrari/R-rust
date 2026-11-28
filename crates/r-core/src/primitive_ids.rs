@@ -729,5 +729,7 @@ pub const ABS: u32 = 57;
     pub const CHAREXPAND: u32 = 699;
     pub const DATAMATRIX: u32 = 700;
     pub const LOWESS: u32 = 701;
+    pub const PHYPER: u32 = 702;
+    pub const DHYPER: u32 = 703;
     pub const ALIST: u32 = 695;
 
