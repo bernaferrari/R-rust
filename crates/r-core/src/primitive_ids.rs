@@ -728,5 +728,6 @@ pub const ABS: u32 = 57;
     pub const MATCHARG: u32 = 698;
     pub const CHAREXPAND: u32 = 699;
     pub const DATAMATRIX: u32 = 700;
+    pub const LOWESS: u32 = 701;
     pub const ALIST: u32 = 695;
 
