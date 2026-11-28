@@ -21,6 +21,11 @@ evalq <- function(expr, envir = parent.frame(), enclos = NULL) eval(expr, envir)
 # GNU's trivial type predicates and operators exactly as base defines
 # them — the atomic lattice is the seven scalar types, recursive is
 # everything structural, and the null-coalescing infix is base's own.
+# GNU's defunct discipline exactly: plclust errors through .Defunct's
+# three-line message — the function name, the replacement, and the help
+# pointer — as stats arranged before removal.
+plclust <- function(...) stop("'plclust' is defunct.\nUse 'plot' instead.\nSee help(\"Defunct\")", call. = FALSE)
+
 is.atomic <- function(x) typeof(x) %in% c("NULL", "logical", "integer", "double", "complex", "character", "raw")
 
 is.recursive <- function(x) typeof(x) %in% c("list", "pairlist", "closure", "environment", "language", "expression", "symbol")

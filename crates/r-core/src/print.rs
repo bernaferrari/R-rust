@@ -21,13 +21,19 @@ use crate::object::{RObject, NA_INTEGER, NA_REAL_BITS};
 /// default digits=7 — alpha rounding through the exact power-of-ten
 /// scaling, trailing zeros trimming the significant count.
 fn gnu_scientific(x: f64) -> (bool, i32, i32, bool) {
+    gnu_scientific_d(x, 7)
+}
+
+/// The digit-parameterized core of gnu_scientific — coercion paths run
+/// the identical analysis at DBL_DIG exactly as coerce.c arranges.
+fn gnu_scientific_d(x: f64, digits: i32) -> (bool, i32, i32, bool) {
     // Returns (neg, kpower, nsig, roundingwidens).
     if x == 0.0 {
         return (false, 0, 1, false);
     }
     let neg = x < 0.0;
     let r = x.abs();
-    const DIGITS: i32 = 7;
+    let DIGITS: i32 = digits;
     const TBL: [f64; 23] = [
         1e00, 1e01, 1e02, 1e03, 1e04, 1e05, 1e06, 1e07, 1e08, 1e09,
         1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19,
@@ -87,6 +93,12 @@ fn gnu_scientific(x: f64) -> (bool, i32, i32, bool) {
 /// scientific width plus scipen, trailing decimals uniform across every
 /// element. nsmall is zero in the print paths the corpus exercises.
 pub fn format_real_params(vals: &[f64]) -> (usize, usize, i32) {
+    format_real_params_d(vals, 7)
+}
+
+/// formatReal at an explicit digit count exactly as the coercion paths
+/// require — DBL_DIG pinning inside StringFromReal.
+pub fn format_real_params_d(vals: &[f64], digits: i32) -> (usize, usize, i32) {
     let mut naflag = false;
     let mut nanflag = false;
     let mut posinf = false;
@@ -113,7 +125,7 @@ pub fn format_real_params(vals: &[f64]) -> (usize, usize, i32) {
             }
         } else {
             any_finite = true;
-            let (n, kpower, nsig, rw) = gnu_scientific(x);
+            let (n, kpower, nsig, rw) = gnu_scientific_d(x, digits);
             let neg_i = if n { 1 } else { 0 };
             let mut left = kpower + 1;
             if rw {
@@ -215,6 +227,25 @@ pub fn encode_real(x: f64, w: usize, d: usize, e: i32) -> String {
     } else {
         format!("{}{}", " ".repeat(w - body.len()), body)
     }
+}
+
+/// GNU's coercion rendering exactly as StringFromReal: the scalar
+/// formats through formatReal at the given digit count — 15 for
+/// as.character — trailing zeros trimmed through the significant-digit
+/// analysis rather than the fixed width.
+pub fn format_real_scalar_d(v: f64, digits: i32) -> String {
+    if v.is_nan() {
+        return if v.to_bits() == crate::object::NA_REAL_BITS {
+            "NA".to_string()
+        } else {
+            "NaN".to_string()
+        };
+    }
+    if v.is_infinite() {
+        return if v > 0.0 { "Inf".to_string() } else { "-Inf".to_string() };
+    }
+    let (w, d, e) = format_real_params_d(&[v], digits);
+    encode_real(v, w, d, e).trim_start().to_string()
 }
 
 pub fn format_real(v: f64) -> String {
@@ -452,6 +483,42 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     // unquoted, with the Levels line trailing exactly as print.factor.
     if matches!(object, RObject::Integer(_)) && is_factor(heap, interner, value) {
         return format_factor(heap, interner, value);
+    }
+    // Condition printing exactly as print.condition: the angle-bracket
+    // rendering `<class in <call>: message>` — the call clause dropping
+    // when NULL exactly as GNU — the class answering the first class.
+    if let RObject::List(_) = object {
+        let classes: Vec<String> = match crate::attrib::get_attrib(heap, interner, value, "class") {
+            Some(id) => crate::attrib::string_vec_pub(heap, interner, id),
+            None => Vec::new(),
+        };
+        if classes.iter().any(|c| c == "condition") {
+            let field = |name: &str| -> Option<ValueId> {
+                let names_id = crate::attrib::get_attrib(heap, interner, value, "names")?;
+                let names = crate::attrib::string_vec_pub(heap, interner, names_id);
+                let index = names.iter().position(|n| n == name)?;
+                match heap.object(value) {
+                    Some(RObject::List(items)) => items.get(index).copied(),
+                    _ => None,
+                }
+            };
+            let message = field("message")
+                .and_then(|id| match heap.object(id) {
+                    Some(RObject::String(vals)) if !vals.is_empty() => {
+                        Some(interner.string_text(vals[0]).to_string())
+                    }
+                    _ => None,
+                })
+                .unwrap_or_default();
+            let call_clause = match field("call") {
+                Some(id) if id != ValueId::NIL && !matches!(heap.object(id), Some(RObject::Nil)) => {
+                    format!(" in {}", deparse(heap, interner, id))
+                }
+                _ => String::new(),
+            };
+            let class = classes.first().cloned().unwrap_or_else(|| "condition".to_string());
+            return format!("<{}{}: {}>", class, call_clause, message);
+        }
     }
     // summaryDefault printing: GNU's two-row table — statistic names as
     // the header row, formatted values below, every column right-justified
@@ -853,13 +920,27 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         }
         _ => None,
     };
+    // GNU's digits option exactly as print.c: options(digits) pins the
+    // significant digits of every real and complex print, clamped into
+    // the 1..22 range, defaulting 7.
+    let print_digits: i32 = heap
+        .options
+        .iter()
+        .find(|(name, _)| name == "digits")
+        .and_then(|(_, id)| match heap.object(*id) {
+            Some(RObject::Real(vals)) => vals.first().copied(),
+            Some(RObject::Integer(vals)) => vals.first().map(|v| *v as f64),
+            _ => None,
+        })
+        .map(|v| (v as i32).clamp(1, 22))
+        .unwrap_or(7);
     let elements: Vec<String> = match object {
         // GNU's printvector discipline exactly: real vectors format
         // through one uniform (width, decimals, scientific) triple
         // computed across the whole vector — fixed notation keeping its
         // trailing zeros, the width comparison deciding scientific.
         RObject::Real(values) => {
-            let (w, d, e) = format_real_params(values);
+            let (w, d, e) = format_real_params_d(values, print_digits);
             values.iter().map(|&v| encode_real(v, w, d, e).trim_start().to_string()).collect()
         }
         // GNU's formatComplex exactly: two independent formatReal passes —
@@ -872,8 +953,8 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
                 .collect();
             let re_parts: Vec<f64> = finite.iter().map(|z| z.r).collect();
             let im_parts: Vec<f64> = finite.iter().map(|z| z.i.abs()).collect();
-            let (wr, dr, er) = format_real_params(&re_parts);
-            let (wi, di, ei) = format_real_params(&im_parts);
+            let (wr, dr, er) = format_real_params_d(&re_parts, print_digits);
+            let (wi, di, ei) = format_real_params_d(&im_parts, print_digits);
             values
                 .iter()
                 .map(|z| {

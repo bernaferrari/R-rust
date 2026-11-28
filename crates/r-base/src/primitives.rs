@@ -1165,7 +1165,11 @@ pub fn call_primitive_inner(
             }
             signal_warning(heap, interner, &message, caller_env)?;
             heap.visible = false;
-            Ok(ValueId::NIL)
+            // GNU's do_warning returns the message string itself — the
+            // invisibility keeping it silent at top level exactly as
+            // `v <- warning("w")` binding "w" arranges.
+            let interned = interner.intern_string(&message);
+            Ok(heap.alloc(RObject::String(vec![interned])))
         }
         MESSAGE_FN => {
             // message(...) concatenates paste0-style and writes one line to
@@ -17281,7 +17285,11 @@ pub fn coerce_character(
                 if v.to_bits() == r_core::object::NA_REAL_BITS {
                     interner.intern_string("\0NA")
                 } else {
-                    interner.intern_string(&r_core::print::format_real(v))
+                    // GNU pins R_print.digits to DBL_DIG around
+                    // StringFromReal exactly as coerce.c — as.character
+                    // renders 15 significant digits regardless of
+                    // options("digits").
+                    interner.intern_string(&r_core::print::format_real_scalar_d(v, 15))
                 }
             })
             .collect(),
