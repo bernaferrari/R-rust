@@ -7288,10 +7288,56 @@ pub fn if_form(
     }
     let test = eval(heap, interner, parts[0], caller_env)?;
     let test = force_if_promise(heap, interner, test)?;
+    // GNU's asLogical discipline exactly: logicals pass through;
+    // integers and numerics answer nonzero; character strings parse
+    // the logical spellings; NA in every family — including the
+    // unparseable string coercion — is the missing-value error, and
+    // over-length conditions error rather than truncating exactly as
+    // R >= 4.x arranges.
     let truth = match heap.object(test) {
-        Some(RObject::Logical(values)) if !values.is_empty() => values[0] != 0,
-        Some(RObject::Integer(values)) if !values.is_empty() => values[0] != 0,
-        Some(RObject::Real(values)) if !values.is_empty() => values[0] != 0.0,
+        Some(RObject::Logical(values)) if !values.is_empty() => {
+            if values.len() > 1 {
+                return Err(EvalError::TypeError("the condition has length > 1").into());
+            }
+            if values[0] == r_core::object::NA_INTEGER {
+                return Err(EvalError::TypeError("missing value where TRUE/FALSE needed").into());
+            }
+            values[0] != 0
+        }
+        Some(RObject::Integer(values)) if !values.is_empty() => {
+            if values.len() > 1 {
+                return Err(EvalError::TypeError("the condition has length > 1").into());
+            }
+            if values[0] == r_core::object::NA_INTEGER {
+                return Err(EvalError::TypeError("missing value where TRUE/FALSE needed").into());
+            }
+            values[0] != 0
+        }
+        Some(RObject::Real(values)) if !values.is_empty() => {
+            if values.len() > 1 {
+                return Err(EvalError::TypeError("the condition has length > 1").into());
+            }
+            if values[0].is_nan() {
+                return Err(EvalError::TypeError("missing value where TRUE/FALSE needed").into());
+            }
+            values[0] != 0.0
+        }
+        Some(RObject::String(values)) if !values.is_empty() => {
+            if values.len() > 1 {
+                return Err(EvalError::TypeError("the condition has length > 1").into());
+            }
+            let text = interner.string_text(values[0]);
+            match text {
+                "TRUE" | "True" | "true" | "T" => true,
+                "FALSE" | "False" | "false" | "F" => false,
+                _ => {
+                    return Err(EvalError::TypeError("missing value where TRUE/FALSE needed").into());
+                }
+            }
+        }
+        Some(RObject::Logical(_)) | Some(RObject::Integer(_)) | Some(RObject::Real(_)) | Some(RObject::String(_)) => {
+            return Err(EvalError::TypeError("argument is of length zero").into());
+        }
         _ => {
             return Err(EvalError::TypeError("if condition must be logical").into());
         }

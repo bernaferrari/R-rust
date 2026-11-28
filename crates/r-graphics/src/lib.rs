@@ -3104,6 +3104,9 @@ pub fn density_primitive(
         .collect();
     let names_obj = heap.alloc(RObject::String(names_vec));
     let result = copy_with_attrib(heap, interner, list, "names", names_obj)?;
+    // class(d) == "density" exactly as GNU's structure(class) stamp.
+    let class_obj = heap.alloc(RObject::String(vec![interner.intern_string("density")]));
+    let result = copy_with_attrib(heap, interner, result, "class", class_obj)?;
     heap.visible = false;
     Ok(result)
 }

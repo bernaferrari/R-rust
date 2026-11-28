@@ -695,3 +695,13 @@ data.class <- function(x) {
 as.symbol <- as.name
 
 nlevels <- function(x) length(levels(x))
+
+simpleError <- function(msg, call = NULL)
+    structure(class = c("simpleError", "error", "condition"),
+              list(message = msg, call = call))
+simpleWarning <- function(msg, call = NULL)
+    structure(class = c("simpleWarning", "warning", "condition"),
+              list(message = msg, call = call))
+simpleMessage <- function(msg, call = NULL)
+    structure(class = c("simpleMessage", "message", "condition"),
+              list(message = msg, call = call))
