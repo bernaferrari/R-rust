@@ -479,10 +479,19 @@ pub fn call_primitive_inner(
             Ok(ValueId::NIL)
         }
         INVISIBLE => {
-            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            // GNU's default exactly: the bare invisible() call hides NULL —
+            // the argument is optional with NULL as its value.
+            let first = raw_args(heap, args).first().copied();
+            let operand = match first {
+                Some(car) => {
+                    let evaluated = eval(heap, interner, car, caller_env)?;
+                    force_if_promise(heap, interner, evaluated)?
+                }
+                None => ValueId::NIL,
+            };
             // Visibility metadata is a print-system concern outside the slice;
             // the value passes through exactly as GNU's return shape.
-            Ok(operands[0])
+            Ok(operand)
         }
         TRYCATCH => trycatch_primitive(heap, interner, args, caller_env),
         TYPEOF => {
@@ -10957,6 +10966,31 @@ pub fn nchar_primitive(
     Ok(heap.alloc(RObject::Integer(counts)))
 }
 
+/// The replacement writeback exactly as GNU's nested decomposition: a
+/// symbol target defines directly in the calling environment; a call
+/// target recurses through the inner replacement form, the already-
+/// evaluated value riding as a self-evaluating constant.
+pub fn replacement_writeback(
+    heap: &mut Heap,
+    interner: &mut SymbolInterner,
+    obj_expr: ValueId,
+    sym: Option<r_core::intern::SymId>,
+    replaced: ValueId,
+    caller_env: ValueId,
+) -> Result<(), RSignal> {
+    match sym {
+        Some(symbol) => {
+            r_core::env::define(heap, caller_env, symbol, replaced)
+                .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("replacement define")))?;
+            Ok(())
+        }
+        None => {
+            assign_replacement(heap, interner, obj_expr, replaced, caller_env)?;
+            Ok(())
+        }
+    }
+}
+
 /// The replacement-assignment desugar: `x[i] <- v` where the target is a
 /// `[` call. The slice requires the subscripted object be a plain symbol —
 /// nested replacement chains are deep GNU territory beyond the migration
@@ -10980,8 +11014,14 @@ pub fn assign_replacement(
     if call_args.is_empty() {
         return Err(EvalError::UnsupportedForm("replacement arity").into());
     }
-    let sym = match heap.object(call_args[0]) {
-        Some(RObject::Symbol { name, .. }) => *name,
+    // GNU's nested replacement decomposition exactly: the object slot is
+    // a plain symbol in the shallow case, itself a call in nested forms
+    // like names(x)[i] <- v — the writeback recursing through the inner
+    // replacement rather than rejecting the shape.
+    let obj_expr = call_args[0];
+    let sym = match heap.object(obj_expr) {
+        Some(RObject::Symbol { name, .. }) => Some(*name),
+        Some(RObject::Language { .. }) => None,
         _ => return Err(EvalError::TypeError("replacement object must be a symbol").into()),
     };
     if head_name == "[" {
@@ -11058,12 +11098,10 @@ pub fn assign_replacement(
                 let replaced = copy_with_attrib(heap, interner, replaced, "dim", dim_vec).map_err(RSignal::from)?;
                 if let Some(dn) = get_attrib(heap, interner, object, "dimnames") {
                     let replaced2 = copy_with_attrib(heap, interner, replaced, "dimnames", dn).map_err(RSignal::from)?;
-                    r_core::env::define(heap, caller_env, sym, replaced2)
-                        .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("replacement define")))?;
+                    replacement_writeback(heap, interner, obj_expr, sym, replaced2, caller_env)?;
                     return Ok(value);
                 }
-                r_core::env::define(heap, caller_env, sym, replaced)
-                    .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("replacement define")))?;
+                replacement_writeback(heap, interner, obj_expr, sym, replaced, caller_env)?;
                 return Ok(value);
             }
         }
@@ -11078,8 +11116,7 @@ pub fn assign_replacement(
         let value = eval(heap, interner, rhs, caller_env)?;
         let value = force_if_promise(heap, interner, value)?;
         let replaced = subset_replace(heap, interner, object, index, value).map_err(RSignal::from)?;
-        r_core::env::define(heap, caller_env, sym, replaced)
-            .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("replacement define")))?;
+        replacement_writeback(heap, interner, obj_expr, sym, replaced, caller_env)?;
         // Replacement assignments evaluate to the assigned value in GNU — the
         // right-hand value, not the whole modified object.
         return Ok(value);
@@ -11127,9 +11164,46 @@ pub fn assign_replacement(
         });
         let replaced = eval(heap, interner, synthetic, caller_env)?;
         let replaced = force_if_promise(heap, interner, replaced)?;
-        r_core::env::define(heap, caller_env, sym, replaced)
-            .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("replacement define")))?;
+        replacement_writeback(heap, interner, obj_expr, sym, replaced, caller_env)?;
         return Ok(value);
+    }
+    if head_name == "[[" {
+        // GNU's element replacement exactly: x[[i]] <- v swaps the whole
+        // element without coercion — the index resolving to a single
+        // position, lists splicing the value in place.
+        if call_args.len() != 2 {
+            return Err(EvalError::UnsupportedForm("replacement arity").into());
+        }
+        let object = eval(heap, interner, call_args[0], caller_env)?;
+        let object = force_if_promise(heap, interner, object)?;
+        let index = eval(heap, interner, call_args[1], caller_env)?;
+        let index = force_if_promise(heap, interner, index)?;
+        let value = eval(heap, interner, rhs, caller_env)?;
+        let value = force_if_promise(heap, interner, value)?;
+        if let Some(RObject::List(items)) = heap.object(object) {
+            let mut items = items.clone();
+            let pos = match heap.object(index) {
+                Some(RObject::Real(v)) => v.first().copied().unwrap_or(f64::NAN) as i64,
+                Some(RObject::Integer(v)) => v.first().copied().unwrap_or(0) as i64,
+                _ => 0,
+            };
+            let idx = (pos - 1).max(0) as usize;
+            if idx < items.len() {
+                items[idx] = value;
+            }
+            let rebuilt = heap.alloc(RObject::List(items));
+            // The attributes survive exactly as GNU — element replacement
+            // is structural on the container, not the metadata.
+            let mut rebuilt = rebuilt;
+            for attr_name in ["names", "class", "row.names", "dim", "dimnames"] {
+                if let Some(av) = get_attrib(heap, interner, object, attr_name) {
+                    rebuilt = copy_with_attrib(heap, interner, rebuilt, attr_name, av).map_err(RSignal::from)?;
+                }
+            }
+            replacement_writeback(heap, interner, obj_expr, sym, rebuilt, caller_env)?;
+            return Ok(value);
+        }
+        return Err(EvalError::TypeError("[[<- requires a list, vector or environment").into());
     }
     if head_name == "$" {
         if call_args.len() != 2 {
@@ -11154,8 +11228,7 @@ pub fn assign_replacement(
             tag: ValueId::NIL,
         });
         let replaced = dollar_assign_primitive(heap, interner, object_node, caller_env)?;
-        r_core::env::define(heap, caller_env, sym, replaced)
-            .map_err(|_| RSignal::Error(EvalError::UnsupportedForm("replacement define")))?;
+        replacement_writeback(heap, interner, obj_expr, sym, replaced, caller_env)?;
         // Replacement assignments evaluate to the right-hand value in GNU.
         let value = eval(heap, interner, rhs, caller_env)?;
         return force_if_promise(heap, interner, value);
@@ -11752,6 +11825,27 @@ pub fn names_primitive(
     caller_env: ValueId,
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 1)?;
+    // Language objects carry names as the argument tags exactly as GNU —
+    // the leading function position never contributing a name.
+    if let Some(RObject::Language { cdr, .. }) = heap.object(operands[0]).cloned() {
+        let mut out: Vec<r_core::intern::InternedStr> = Vec::new();
+        let mut cursor = cdr;
+        for _ in 0..100_000 {
+            if cursor == ValueId::NIL { break; }
+            match heap.object(cursor) {
+                Some(RObject::Pairlist { tag, cdr: next, .. }) => {
+                    let text = match heap.object(*tag) {
+                        Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
+                        _ => String::new(),
+                    };
+                    out.push(interner.intern_string(&text));
+                    cursor = *next;
+                }
+                _ => break,
+            }
+        }
+        return Ok(heap.alloc(RObject::String(out)));
+    }
     // Pairlists carry their names as node tags rather than an attribute
     // exactly as GNU's dotted-pair shape.
     if matches!(heap.object(operands[0]), Some(RObject::Pairlist { .. })) {
@@ -11787,6 +11881,48 @@ pub fn names_assign_core(
     obj: ValueId,
     value: ValueId,
 ) -> Result<ValueId, EvalError> {
+    // GNU's language-object names exactly: the call's argument tags carry
+    // the names — assignment rewrites the pairlist tags in place, the
+    // leading function position never taking one.
+    if value != ValueId::NIL {
+        if let Some(RObject::Language { car, cdr, tag }) = heap.object(obj).cloned() {
+            let names_vec: Vec<String> = match heap.object(value) {
+                Some(RObject::String(vals)) => vals.iter().map(|v| interner.string_text(*v).to_string()).collect(),
+                _ => Vec::new(),
+            };
+            if !names_vec.is_empty() {
+                // Collect the argument cells in order.
+                let mut cells: Vec<(ValueId, ValueId)> = Vec::new();
+                let mut cursor = cdr;
+                for _ in 0..10_000 {
+                    if cursor == ValueId::NIL { break; }
+                    match heap.object(cursor) {
+                        Some(RObject::Pairlist { car, cdr: next, .. }) => {
+                            cells.push((*car, *next));
+                            cursor = *next;
+                        }
+                        _ => break,
+                    }
+                }
+                // Rebuild the chain with tags assigned positionally — the
+                // names vector's first element tags the first argument.
+                let mut chain = ValueId::NIL;
+                for (pos, (cell_car, cell_next)) in cells.iter().enumerate().rev() {
+                    let _ = cell_next;
+                    let name = names_vec.get(pos).cloned().unwrap_or_default();
+                    let tag_value = if name.is_empty() {
+                        ValueId::NIL
+                    } else {
+                        let sym = interner.intern_symbol(&name);
+                        heap.alloc(RObject::Symbol { name: sym, value: ValueId::UNBOUND, internal: ValueId::NIL })
+                    };
+                    chain = heap.alloc(RObject::Pairlist { car: *cell_car, cdr: chain, tag: tag_value });
+                }
+                let rebuilt = heap.alloc(RObject::Language { car, cdr: chain, tag });
+                return Ok(rebuilt);
+            }
+        }
+    }
     // GNU's coercion exactly: names are always character — numeric or
     // logical values coerce through as.character before attaching, NIL
     // stripping the attribute as ever.
