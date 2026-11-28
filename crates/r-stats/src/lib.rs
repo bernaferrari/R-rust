@@ -431,7 +431,7 @@ pub fn loess_core_fit(xs: &[f64], ys: &[f64], span: f64, degree: usize) -> Vec<f
     let fits: Vec<(f64, f64)> = vertices.iter().map(|&q| vertex_fit(xs, ys, q, nf, span, degree)).collect();
     // Cubic Hermite blending exactly as ehg128: value and slope pairs at
     // the leaf's corner vertices, the derivative terms scaled by the
-    /// cell width.
+    // cell width.
     let mut fitted = vec![0.0f64; n];
     for i in 0..n {
         let z = xs[i];
@@ -819,7 +819,7 @@ pub fn sample_primitive(
         }
         // GNU's uniform branch exactly as random.c do_sample: independent
         // full-population draws when replacing (or a single draw), else
-        /// the Fisher-Yates copy-out loop pool[j] = pool[--remaining].
+        // the Fisher-Yates copy-out loop pool[j] = pool[--remaining].
         if !probs.is_empty() {
             if probs.len() != n {
                 return Err(RSignal::Error(EvalError::Condition(

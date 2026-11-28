@@ -167,7 +167,7 @@ impl Session {
             }
             // Primitive writes (cat/print/writeLines) and auto-printed
             // values interleave in evaluation order exactly as GNU's
-            /// stdout does — both append to the one output buffer.
+            // stdout does — both append to the one output buffer.
             if self.heap.visible {
                 let text = r_core::print::format_value(&self.heap, &self.interner, value);
                 self.heap.emit(&text);
@@ -255,7 +255,7 @@ impl Session {
                     }
                     // Primitive writes accumulate in the output buffer; the
                     // auto-printed value joins them before the chunk is
-                    /// lifted — the interleave is evaluation order exactly.
+                    // lifted — the interleave is evaluation order exactly.
                     if self.heap.visible {
                         let text = r_core::print::format_value(&self.heap, &self.interner, value);
                         self.heap.emit(&text);
@@ -308,7 +308,7 @@ impl Session {
         if self.heap.output_capture_truncated {
             // The capture marker joins stdout and the transcript exactly
             // as the facade appends it — output the runtime dropped on
-            /// the embedder's behalf is announced, never silent.
+            // the embedder's behalf is announced, never silent.
             let marker = "\n[captured console output truncated by runtime limit]";
             full.stdout.push_str(marker);
             full.output.push_str(marker);

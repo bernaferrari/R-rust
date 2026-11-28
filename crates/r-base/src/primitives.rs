@@ -44,7 +44,7 @@ pub fn call_primitive(
     // .Internal propagates the inner evaluation's visibility exactly —
     // the central discipline must not override what the wrapped call set.
     // eval propagates the evaluated expression's own visibility exactly
-    /// as .Internal does — the inner answer decides, not the wrapper.
+    // as .Internal does — the inner answer decides, not the wrapper.
     // Braces and parens propagate the final inner visibility exactly as
     /// GNU — `{ invisible(1) }` returns invisibly — so they join .Internal
     /// and eval in the propagation exceptions.
@@ -242,7 +242,7 @@ pub fn call_primitive_inner(
         STOP => {
             // GNU's stop raises the error condition with the message —
             // evaluation aborts through the signal channel exactly as a
-            /// type error would.
+            // type error would.
             let operands = eval_args(heap, interner, args, caller_env, 1).unwrap_or_default();
             let message = match operands.first().and_then(|v| heap.object(*v)) {
                 Some(RObject::String(values)) if !values.is_empty() => {
@@ -260,7 +260,7 @@ pub fn call_primitive_inner(
         NEW_ENV => {
             // GNU's parent defaults to the calling environment; a tagged
             // parent= argument overrides it exactly as GNU. hash and size
-            /// are performance hints outside the slice.
+            // are performance hints outside the slice.
             let mut parent = caller_env;
             let mut cursor = args;
             loop {
@@ -287,7 +287,7 @@ pub fn call_primitive_inner(
         LS => {
             // GNU: the environment argument is optional and defaults to the
             // calling environment; all.names=TRUE includes dot-prefixed
-            /// hidden bindings.
+            // hidden bindings.
             let mut env = caller_env;
             let mut all_names = false;
             let mut pattern: Option<String> = None;
@@ -338,9 +338,9 @@ pub fn call_primitive_inner(
         CAT => {
             // Variadic output: operands coerce elementwise and concatenate
             // with the separator — tagged sep exactly as GNU, default one
-            /// space. Output lands in the session capture buffer, or the
-            /// tagged file (append honored) exactly as GNU's connection
-            /// redirection.
+            // space. Output lands in the session capture buffer, or the
+            // tagged file (append honored) exactly as GNU's connection
+            // redirection.
             let mut pieces: Vec<String> = Vec::new();
             let mut sep = " ".to_string();
             let mut file_target: Option<String> = None;
@@ -772,7 +772,7 @@ pub fn call_primitive_inner(
         INTERNAL => {
             // GNU's .Internal evaluates its single argument as a direct
             // internal call — in the new world the inner call evaluates
-            /// exactly as written, the internal table being the primitives.
+            // exactly as written, the internal table being the primitives.
             // Unknown inner function heads raise GNU's exact no-internal-
             // function error rather than the unbound-variable fallback.
             let raw = raw_args(heap, args);
@@ -786,7 +786,7 @@ pub fn call_primitive_inner(
                                 "La_dgecon" | "La_zgecon" => {
                                     // GNU's Lapack bridge errors on the
                                     // empty matrix exactly as the kind's
-                                    /// factorization validation reports it.
+                                    // factorization validation reports it.
                                     let routine = if head == "La_zgecon" { "zgetrf" } else { "dgetrf" };
                                     return Err(RSignal::Error(EvalError::Condition(
                                         format!("error code -4 from Lapack routine '{routine}()'"),
@@ -891,8 +891,8 @@ pub fn call_primitive_inner(
                                     if group {
                                         // Group boundaries scan the sorted
                                         // keys — ends mark each group's
-                                        /// final position, maxgrpn the
-                                        /// largest run exactly as GNU.
+                                        // final position, maxgrpn the
+                                        // largest run exactly as GNU.
                                         let sorted_keys: Vec<&str> = indexed.iter().map(|(_, k)| k.as_str()).collect();
                                         let mut ends: Vec<i32> = Vec::new();
                                         let mut max_run = 0i32;
@@ -960,10 +960,10 @@ pub fn call_primitive_inner(
                                 "warning" => {
                                     // GNU's internal contract exactly:
                                     // warning(call., immediate., noBreaks.,
-                                    /// message...) — the logical flag triple
-                                    /// leads and never enters the message,
-                                    /// and the call returns the message
-                                    /// string rather than NULL.
+                                    // message...) — the logical flag triple
+                                    // leads and never enters the message,
+                                    // and the call returns the message
+                                    // string rather than NULL.
                                     let raw_inner = raw_args(heap, inner_args);
                                     let mut message = String::new();
                                     for expr in raw_inner.iter().skip(3) {
@@ -1023,8 +1023,8 @@ pub fn call_primitive_inner(
         WARNING => {
             // GNU defers warnings to end-of-task: collapse every argument
             // paste0-style — vectors contribute every element, empties
-            /// nothing — buffer the text, and return NULL invisibly. The
-            /// harness drains the buffer into `Warning message:` blocks.
+            // nothing — buffer the text, and return NULL invisibly. The
+            // harness drains the buffer into `Warning message:` blocks.
             let raw = raw_args(heap, args);
             let mut message = String::new();
             for expr in &raw {
@@ -1051,7 +1051,7 @@ pub fn call_primitive_inner(
         MESSAGE_FN => {
             // message(...) concatenates paste0-style and writes one line to
             // the message stream immediately — the harness merges streams
-            /// in order, so direct output exactly matches GNU's interleave.
+            // in order, so direct output exactly matches GNU's interleave.
             let raw = raw_args(heap, args);
             let mut text = String::new();
             for expr in &raw {
@@ -2533,7 +2533,7 @@ pub fn call_primitive_inner(
             }
             // Type fidelity exactly as GNU: cummin/cummax keep integer for
             // integer/logical input; cumsum integer stays integer; cumprod
-            /// is always double.
+            // is always double.
             let keep_int = int_input && id.0 != CUMPROD;
             if keep_int {
                 let ints: Vec<i32> = out
@@ -3185,7 +3185,7 @@ pub fn call_primitive_inner(
         IS_S4_TEST => {
             // GNU's isS4 reads the object bit — the slice's reading: the
             // class attribute names a registered S4 class exactly as new()
-            /// arranges.
+            // arranges.
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             let is_s4 = get_attrib(heap, interner, operands[0], "class")
                 .map(|id| string_vec(heap, interner, id))
@@ -3257,7 +3257,7 @@ pub fn call_primitive_inner(
         PARENT_FRAME => {
             // One activation outward exactly as GNU's default — the
             // caller's frame; beyond the outermost closure the caller's
-            /// own environment is the conservative answer.
+            // own environment is the conservative answer.
             let len = heap.contexts.len();
             if len >= 2 {
                 Ok(heap.contexts[len - 2].frame)
@@ -3300,7 +3300,7 @@ pub fn call_primitive_inner(
         FORMAT_DF => {
             // Zero-length atomic input passes through unchanged exactly
             // as GNU's empty-frame formatting — the columns loop never
-            /// coerces what never appears.
+            // coerces what never appears.
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             let empty_atomic = match heap.object(operands[0]) {
                 Some(RObject::String(v)) => v.is_empty(),
@@ -3317,7 +3317,7 @@ pub fn call_primitive_inner(
         FORMAT_INFO => {
             // GNU's width probe: one integer for atomic vectors — the
             // maximum rendered width — numeric input reporting the
-            /// width/digits/exponent triple and complex its re/im pair.
+            // width/digits/exponent triple and complex its re/im pair.
             let mut positional = Vec::new();
             let mut nsmall = 0i64;
             let mut cursor = args;
@@ -3355,7 +3355,7 @@ pub fn call_primitive_inner(
                 Some(RObject::Real(vals)) => {
                     // GNU's fixed-notation width: integers print bare,
                     // fractional values with nsmall decimals padding —
-                    /// the exponent flag zero while values fit fixed form.
+                    // the exponent flag zero while values fit fixed form.
                     let mut width = 2i32;
                     let mut digits = nsmall as i32;
                     for &v in vals {
@@ -3442,7 +3442,7 @@ pub fn call_primitive_inner(
         SYSTEM_FILE => {
             // GNU's resource probe: missing packages and missing entries
             // are the empty string, hits the joined path — the package
-            /// root itself when no file arguments ride along.
+            // root itself when no file arguments ride along.
             let mut positional: Vec<ValueId> = Vec::new();
             let mut package = String::new();
             let mut cursor = args;
@@ -3971,7 +3971,7 @@ pub fn call_primitive_inner(
         DROP_FN => {
             // drop(): dimensions of extent 1 vanish along with their
             // dimnames entries; a single surviving dimension demotes the
-            /// array to a vector carrying that entry as names — GNU exactly.
+            // array to a vector carrying that entry as names — GNU exactly.
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             let x = operands[0];
             let dims: Vec<i32> = match get_attrib(heap, interner, x, "dim") {
@@ -4088,8 +4088,8 @@ pub fn call_primitive_inner(
         DUPLICATED | ANYDUPLICATED => {
             // fromLast scans backward; incomparables values never count as
             // duplicated — NA itself comparable unless excluded. The scan
-            /// order decides which twin is flagged: the FIRST occurrence
-            /// in scan order is canonical, later ones duplicate.
+            // order decides which twin is flagged: the FIRST occurrence
+            // in scan order is canonical, later ones duplicate.
             let raw = raw_args(heap, args);
             let mut positional: Vec<ValueId> = Vec::new();
             let mut from_last = false;
@@ -4228,8 +4228,8 @@ pub fn call_primitive_inner(
         DO_CALL => {
             // do.call(fun, list): each list element becomes one argument,
             // pre-forced exactly as apply_fun_to so primitives and
-            /// closures both receive values rather than re-evaluated
-            /// expressions.
+            // closures both receive values rather than re-evaluated
+            // expressions.
             let raw = raw_args(heap, args);
             if raw.len() < 2 {
                 return Err(EvalError::TypeError("do.call requires function and args").into());
@@ -4398,7 +4398,7 @@ pub fn call_primitive_inner(
         CAPABILITIES => {
             // GNU's 19-capability vector in canonical order — support
             // values reflecting this runtime honestly: Unicode string
-            /// handling and sockets yes, X11/aqua/Tcl no.
+            // handling and sockets yes, X11/aqua/Tcl no.
             let entries: [(&str, bool); 19] = [
                 ("jpeg", false), ("png", false), ("tiff", false), ("tcltk", false),
                 ("X11", false), ("aqua", false), ("http/ftp", true), ("sockets", true),
@@ -4703,7 +4703,7 @@ pub fn call_primitive_inner(
         RM => {
             // rm(x, y) — bare symbols name bindings to remove from the
             // calling environment; list= and envir= follow GNU's exact
-            /// forms with locked-environment errors surfacing.
+            // forms with locked-environment errors surfacing.
             let raw = raw_args(heap, args);
             let mut target_env = caller_env;
             let mut list_names: Vec<String> = Vec::new();
@@ -4796,8 +4796,8 @@ pub fn call_primitive_inner(
             }
             // GNU validates the time series parameters: numeric of length
             // three, and frequency and ordering sane — NA and NaN slip
-            /// through exactly as the oracle documents because their
-            /// comparisons are never definitively true.
+            // through exactly as the oracle documents because their
+            // comparisons are never definitively true.
             let numeric_vals: Option<Vec<f64>> = match heap.object(operands[1]) {
                 Some(RObject::Real(vals)) => Some(vals.clone()),
                 Some(RObject::Integer(vals)) => Some(
@@ -4962,7 +4962,7 @@ pub fn call_primitive_inner(
             };
             // POSIXct input carries seconds — as.Date floors into days
             // exactly as GNU, euclidean division keeping pre-epoch
-            /// instants on their civil date.
+            // instants on their civil date.
             let out: Vec<f64> = if is_posixct_classed(heap, interner, operands[0]) {
                 out.iter()
                     .map(|&s| {
@@ -5032,8 +5032,8 @@ pub fn call_primitive_inner(
         IS_UNSORTED => {
             // GNU sortedness across the atomic lattice: numeric, character,
             // complex (real then imaginary), and raw each order by their
-            /// own keys; NA participation makes the result NA unless na.rm
-            /// drops it; strictly counts equality as unsorted.
+            // own keys; NA participation makes the result NA unless na.rm
+            // drops it; strictly counts equality as unsorted.
             let mut xval = ValueId::NIL;
             let mut na_rm = false;
             let mut strictly = false;
@@ -5157,7 +5157,7 @@ pub fn call_primitive_inner(
         CAPTURE_OUTPUT => {
             // Each argument evaluates in order; everything the evaluation
             // writes to the output buffer drains into the result as one
-            /// element per line exactly as GNU's sink capture.
+            // element per line exactly as GNU's sink capture.
             let start = heap.output.len();
             let raw = raw_args(heap, args);
             for arg in raw {
@@ -5195,9 +5195,9 @@ pub fn call_primitive_inner(
         TAPPLY => {
             // GNU tapply: the index is a vector or a list of vectors; each
             // contributes a dimension whose levels come from factor levels
-            /// or sorted-unique values. The result is an array filled
-            /// column-major over the level combinations; empty combinations
-            /// yield NA exactly as the oracle documents.
+            // or sorted-unique values. The result is an array filled
+            // column-major over the level combinations; empty combinations
+            // yield NA exactly as the oracle documents.
             let operands = eval_args(heap, interner, args, caller_env, 3)?;
             let x = operands[0];
             let index = operands[1];
@@ -5318,7 +5318,7 @@ pub fn call_primitive_inner(
             let class_vec = heap.alloc(RObject::String(vec![interner.intern_string("array")]));
             // names() on the 1-D result surfaces dimnames[[1]] exactly as
             // GNU arrays; carry the explicit names attribute only in the
-            /// single-index case where GNU's object shows it.
+            // single-index case where GNU's object shows it.
             let values = if dims.len() == 1 {
                 let first: Vec<r_core::intern::InternedStr> = col_levels[0]
                     .iter()
@@ -5336,7 +5336,7 @@ pub fn call_primitive_inner(
         VAPPLY => {
             // Like sapply with a type template: each application must yield
             // the template's type, and the results always combine into a
-            /// template-typed vector — GNU's type-safe apply exactly.
+            // template-typed vector — GNU's type-safe apply exactly.
             let operands = eval_args(heap, interner, args, caller_env, 3)?;
             let x = operands[0];
             let fun = operands[1];
@@ -5404,7 +5404,7 @@ pub fn call_primitive_inner(
         AS_POSIXCT => {
             // Parse ISO datetimes into seconds since epoch, stamping the
             // two-element POSIXct/POSIXt class and the tzone attribute
-            /// exactly as GNU. The tz argument arrives tagged.
+            // exactly as GNU. The tz argument arrives tagged.
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             let mut tz = "UTC".to_string();
             let mut cursor = args;
@@ -5491,7 +5491,7 @@ pub fn call_primitive_inner(
         QUOTE => {
             // The argument returns unevaluated exactly as GNU — quote is
             // the fundamental capture primitive, and its arity discipline
-            /// counts empty arguments exactly as the oracle pins.
+            // counts empty arguments exactly as the oracle pins.
             let count = raw_args(heap, args).len();
             if count != 1 {
                 return Err(EvalError::Condition(format!(
@@ -5522,7 +5522,7 @@ pub fn call_primitive_inner(
         TILDE => {
             // The formula constructor captures both sides unevaluated as a
             // language object, stamped with the formula class and the
-            /// calling environment exactly as GNU's ~ evaluation.
+            // calling environment exactly as GNU's ~ evaluation.
             let tilde_sym = heap.alloc(RObject::Symbol {
                 name: interner.intern_symbol("~"),
                 value: ValueId::UNBOUND,
@@ -5829,7 +5829,7 @@ pub fn call_primitive_inner(
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             // mode collapses the numeric family and renames the object
             // types exactly as GNU's mode; storage.mode keeps the storage
-            /// precision names.
+            // precision names.
             let storage = match heap.object(operands[0]) {
                 Some(RObject::Nil) | None => "NULL",
                 Some(RObject::Logical(_)) => "logical",
@@ -5900,7 +5900,7 @@ pub fn call_primitive_inner(
         CONDITION_CALL => {
             // conditionCall reads the call slot of the condition exactly
             // as GNU — the second element of the named-list shape the
-            /// runtime constructs, NULL when the error carried no call.
+            // runtime constructs, NULL when the error carried no call.
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             match heap.object(operands[0]) {
                 Some(RObject::List(items)) if items.len() >= 2 => Ok(items[1]),
@@ -5910,7 +5910,7 @@ pub fn call_primitive_inner(
         EXTERNAL_GRAPHICS => {
             // A pure-R runtime has no native load table at all, so every
             // external graphics symbol is genuinely absent from it —
-            /// GNU's own error shape for the unregistered case exactly.
+            // GNU's own error shape for the unregistered case exactly.
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             let name = string_operand(heap, interner, operands[0])
                 .unwrap_or_else(|| "unknown".to_string());
@@ -5921,31 +5921,31 @@ pub fn call_primitive_inner(
         IS_GENERIC => {
             // No S4 generic can exist in the runtime yet — setGeneric and
             // the methods metadata machinery are unimplemented — so the
-            /// honest answer for every object is FALSE exactly as GNU
-            /// answers for non-generics. When generic registration lands
-            /// this upgrades to inspect the methods metadata. GNU places
-            /// isGeneric in the methods namespace; the pure world's base
-            /// placement is invisible to search-path lookup but visible
-            /// to methods:: qualification — the documented placement gap.
+            // honest answer for every object is FALSE exactly as GNU
+            // answers for non-generics. When generic registration lands
+            // this upgrades to inspect the methods metadata. GNU places
+            // isGeneric in the methods namespace; the pure world's base
+            // placement is invisible to search-path lookup but visible
+            // to methods:: qualification — the documented placement gap.
             let _ = eval_args(heap, interner, args, caller_env, 1)?;
             Ok(heap.alloc(RObject::Logical(vec![0])))
         }
         PUSH_BACK_LENGTH => {
             // pushBack itself is unimplemented, so no connection can ever
             // carry pushed-back lines — zero is the honest count exactly
-            /// as GNU answers for connections with empty pushback. When
-            /// pushBack lands this upgrades to read the connection's
-            /// pushback stack depth.
+            // as GNU answers for connections with empty pushback. When
+            // pushBack lands this upgrades to read the connection's
+            // pushback stack depth.
             let _ = eval_args(heap, interner, args, caller_env, 1)?;
             Ok(heap.alloc(RObject::Integer(vec![0])))
         }
         LOCAL_FN => {
             // GNU's base closure `local(envir = new.env(), ...)` in
             // special-form shape: the body expressions evaluate inside
-            /// the target environment — a fresh child of the calling
-            /// frame by default, the supplied envir otherwise — and the
-            /// last value answers with the inner visibility exactly as
-            /// eval does.
+            // the target environment — a fresh child of the calling
+            // frame by default, the supplied envir otherwise — and the
+            // last value answers with the inner visibility exactly as
+            // eval does.
             let mut target: Option<ValueId> = None;
             let mut body_exprs: Vec<ValueId> = Vec::new();
             let mut cursor = args;
@@ -5991,7 +5991,7 @@ pub fn call_primitive_inner(
         EVAL_FN => {
             // eval of an expression vector evaluates every element in
             // order and yields the last value exactly as GNU; a bare
-            /// language object evaluates directly.
+            // language object evaluates directly.
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             match heap.object(operands[0]) {
                 Some(RObject::Expression(items)) => {
@@ -6013,7 +6013,7 @@ pub fn call_primitive_inner(
         DPUT => {
             // dput writes the deparsed construction to the file (or the
             // output buffer when no file is given) and returns its input
-            /// invisibly exactly as GNU.
+            // invisibly exactly as GNU.
             let operands = eval_args(heap, interner, args, caller_env, 2)
                 .unwrap_or_else(|_| eval_args(heap, interner, args, caller_env, 1).unwrap_or_default());
             if operands.is_empty() {
@@ -6081,7 +6081,7 @@ pub fn call_primitive_inner(
         INHERITS => {
             // inherits checks the class chain for classed objects; the
             // unclassed atomic types carry their implicit classes exactly
-            /// as GNU's implicitClass table.
+            // as GNU's implicitClass table.
             let operands = eval_args(heap, interner, args, caller_env, 2)?;
             let want: Vec<String> = match heap.object(operands[1]) {
                 Some(RObject::String(vals)) => vals
@@ -6139,7 +6139,7 @@ pub fn call_primitive_inner(
         FORMALS => {
             // The closure's formals pairlist as a named list — defaults
             // ride as their expressions, missing defaults as the empty
-            /// symbol exactly as GNU's formals list.
+            // symbol exactly as GNU's formals list.
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             let formals = match heap.object(operands[0]) {
                 Some(RObject::Closure { formals, .. }) => Some(*formals),
@@ -6191,7 +6191,7 @@ pub fn call_primitive_inner(
             }
             // One or two operands exactly as GNU — the second rides as the
             // default for absent options. The optional operand walks the
-            /// raw pairlist since eval_args enforces exact arity.
+            // raw pairlist since eval_args enforces exact arity.
             let mut operand_count = 0usize;
             {
                 let mut cursor = args;
@@ -6580,7 +6580,7 @@ pub fn arithmetic(
         if let Ok(unary) = eval_args(heap, interner, args, caller_env, 1) {
             // Unary negation of a classed timespan keeps the chain —
             // -difftime negates the value and preserves units exactly as
-            /// GNU's unary method.
+            // GNU's unary method.
             let classed = is_difftime_classed(heap, interner, unary[0])
                 || is_date_classed(heap, interner, unary[0])
                 || is_posixct_classed(heap, interner, unary[0]);
@@ -6635,9 +6635,9 @@ pub fn arithmetic(
     let operands = eval_args(heap, interner, args, caller_env, 2)?;
     // The datetime operand lattice: difftime operands rescale into the
     // target unit of the operation — seconds against POSIXct, days
-    /// against Dates — and difftime-difftime pairs convert into their
-    /// finer unit, shedding class so the fold sees bare numerics exactly
-    /// as GNU's arithmetic methods arrange.
+    // against Dates — and difftime-difftime pairs convert into their
+    // finer unit, shedding class so the fold sees bare numerics exactly
+    // as GNU's arithmetic methods arrange.
     let left_date = is_date_classed(heap, interner, operands[0]);
     let right_date = is_date_classed(heap, interner, operands[1]);
     let left_posix = is_posixct_classed(heap, interner, operands[0]);
@@ -6809,7 +6809,7 @@ pub fn arithmetic(
             let result = heap.alloc(RObject::Real(folded));
             // GNU's datetime arithmetic discipline: the classed operand's
             // attribute chain wins regardless of position, and each class
-            /// pair follows its exact method matrix.
+            // pair follows its exact method matrix.
             let left_date = is_date_classed(heap, interner, operands[0]);
             let right_date = is_date_classed(heap, interner, operands[1]);
             let result = if (left_date && !right_date) || (left_posix && !right_posix) {
@@ -6830,8 +6830,8 @@ pub fn arithmetic(
             };
             // difftime arithmetic: pairs in +/- already folded in their
             // finer unit — stamp the class back with that unit. Scaling
-            /// by a plain number keeps the difftime and its units exactly
-            /// as GNU; difftime*difftime and division-by-difftime error.
+            // by a plain number keeps the difftime and its units exactly
+            // as GNU; difftime*difftime and division-by-difftime error.
             if left_dt && right_dt && op == DIV {
                 return Err(EvalError::Condition(
                     "second argument of / cannot be a \"difftime\" object".to_string(),
@@ -6906,8 +6906,8 @@ pub fn arithmetic(
             }
             // GNU's exact Date arithmetic error matrix: non-subtraction
             // between Dates, multiplication of a Date by anything, and
-            /// subtraction of a Date from a number all raise distinct
-            /// conditions exactly as the oracle pins.
+            // subtraction of a Date from a number all raise distinct
+            // conditions exactly as the oracle pins.
             if left_date && right_date && op != SUB {
                 return Err(EvalError::Condition(format!(
                     "binary {op_text} is not defined for \"Date\" objects"
@@ -6928,7 +6928,7 @@ pub fn arithmetic(
             }
             // Subtracting a classed non-number from a Date is the exact
             // "can only subtract numbers" condition — foo-classed input
-            /// is not a number for arithmetic purposes in GNU.
+            // is not a number for arithmetic purposes in GNU.
             if left_date && op == SUB && !right_date {
                 let right_classed = get_attrib(heap, interner, operands[1], "class").is_some();
                 let right_difftime = is_difftime_classed(heap, interner, operands[1]);
@@ -8268,7 +8268,7 @@ pub fn concat_primitive_inner(
 
     // GNU's object fallback: any S4-classed operand turns the
     // concatenation into a list wrap — each operand rides as elements
-    /// exactly as c() object preservation arranges.
+    // exactly as c() object preservation arranges.
     let any_s4 = operands.iter().any(|v| {
         get_attrib(heap, interner, *v, "class")
             .map(|id| string_vec(heap, interner, id))
@@ -8282,8 +8282,8 @@ pub fn concat_primitive_inner(
     }
     // GNU's datetime concatenation: the first operand's class method
     // governs — c.Date coerces POSIXct siblings down to days, c.POSIXct
-    /// lifts Date siblings to midnight seconds — and the result carries
-    /// the class exactly as the method dispatch arranges.
+    // lifts Date siblings to midnight seconds — and the result carries
+    // the class exactly as the method dispatch arranges.
     let first_date = operands.first().map(|v| is_date_classed(heap, interner, *v)).unwrap_or(false);
     let first_posix = operands.first().map(|v| is_posixct_classed(heap, interner, *v)).unwrap_or(false);
     let first_tzone = if first_posix {
@@ -8669,8 +8669,8 @@ pub fn subset_primitive(
 ) -> EvalResult {
     // GNU's dispatch on argument count: two operands is vector-style
     // subsetting; three or more with a dim attribute is matrix indexing —
-    /// `x[i, j]` with the missing-argument sentinel standing for whole
-    /// extents.
+    // `x[i, j]` with the missing-argument sentinel standing for whole
+    // extents.
     let raw = raw_args(heap, args);
     if raw.len() >= 3 {
         return matrix_subset(heap, interner, raw, caller_env);
@@ -8701,7 +8701,7 @@ pub fn data_frame_matrix_subset(
         .unwrap_or_default();
     // Index resolution shared with the matrix path — numeric positions
     // 1-based, logicals recycle, the missing sentinel spans the extent.
-    /// Character vectors match column names exactly as GNU.
+    // Character vectors match column names exactly as GNU.
     let resolve = |heap: &mut Heap, interner: &mut SymbolInterner, raw_index: ValueId, extent: usize, names: &[String]| -> Result<Vec<usize>, RSignal> {
         if raw_index == ValueId::MISSING {
             return Ok((0..extent).collect());
@@ -8828,7 +8828,7 @@ pub fn data_frame_matrix_subset(
     let frame = build_data_frame(heap, interner, columns, names)?;
     // Row names subset along exactly as GNU: the source row names carry
     // forward by the selected positions, fresh numbering only when the
-    /// source lacked explicit names.
+    // source lacked explicit names.
     if let Some(source_rn) = get_attrib(heap, interner, object, "row.names") {
         let source_names = string_vec(heap, interner, source_rn);
         if !source_names.is_empty() {
@@ -8856,7 +8856,7 @@ pub fn interner_na_string(heap: &mut Heap, interner: &mut SymbolInterner) -> r_c
     let _ = heap;
     // The NUL-prefixed sentinel is the codebase's NA_character_
     // representation exactly as GNU's NA_STRING — plain "NA" would be
-    /// indistinguishable from the literal string.
+    // indistinguishable from the literal string.
     interner.intern_string("\0NA")
 }
 
@@ -9067,7 +9067,7 @@ pub fn subset_impl(
         Some(RObject::String(values)) => {
             // Named access: exact matching against the source's names,
             // unmatched positions yield NA exactly as GNU. Partial matching
-            /// is `[[`'s business, not `[`'s.
+            // is `[[`'s business, not `[`'s.
             let source_names = get_attrib(heap, interner, source, "names");
             let positions: Vec<usize> = match source_names {
                 Some(names_id) => {
@@ -9110,7 +9110,7 @@ pub fn subset_impl(
     let extracted = extract_elements(heap, source, &positions).map_err(RSignal::from)?;
     // GNU fidelity: `[` carries the names of selected elements across —
     // positional and named subsetting alike. Out-of-range and NA positions
-    /// take the NA-string sentinel the bridge round-trips.
+    // take the NA-string sentinel the bridge round-trips.
     if let Some(names_id) = get_attrib(heap, interner, source, "names") {
         let source_names: Vec<r_core::intern::InternedStr> = match heap.object(names_id) {
             Some(RObject::String(entries)) => entries.clone(),
@@ -9348,7 +9348,7 @@ pub fn reduction(
 ) -> EvalResult {
     // GNU's variadic shape: every unlabeled argument concatenates into the
     // reduction input; the tagged na.rm strips NA positions instead of
-    /// poisoning.
+    // poisoning.
     let mut inputs: Vec<ValueId> = Vec::new();
     let mut na_rm = false;
     let mut cursor = args;
@@ -9762,7 +9762,7 @@ pub fn paste_primitive(
     }
     // GNU paste coercion renders NA_character_ as the text "NA" — the
     // conversion lives here, not in shared string coercion, so nchar and
-    /// friends still see genuine missingness.
+    // friends still see genuine missingness.
     for column in columns.iter_mut() {
         for element in column.iter_mut() {
             if interner.string_text(*element) == "\0NA" {
@@ -9932,7 +9932,7 @@ pub fn assign_replacement(
         }
         // Build the synthetic `$<-(object, name, value)` argument chain —
         // object and name pass unevaluated exactly as the parser emits them,
-        /// the rhs attaches as the final argument.
+        // the rhs attaches as the final argument.
         let value_node = heap.alloc(RObject::Pairlist {
             car: rhs,
             cdr: ValueId::NIL,
@@ -10485,7 +10485,7 @@ pub fn dollar_primitive(
     };
     // GNU discipline: `$` is invalid for atomic vectors — only recursive
     // objects (lists) extract by dollar. Atomic named access goes through
-    /// `[` with character indices, a separate slice.
+    // `[` with character indices, a separate slice.
     match heap.object(object) {
         Some(RObject::List(items)) => {
             let position = match position {
@@ -10675,9 +10675,9 @@ pub fn unlist_primitive(
 ) -> EvalResult {
     // GNU unlist: recursive=TRUE flattens nested lists fully and atomizes
     // to the highest type in the lattice; recursive=FALSE descends exactly
-    /// one list level and yields a list whose nested lists stay intact.
-    /// Names concatenate outer.inner with dots, positional indices gluing
-    /// bare exactly as GNU's name construction.
+    // one list level and yields a list whose nested lists stay intact.
+    // Names concatenate outer.inner with dots, positional indices gluing
+    // bare exactly as GNU's name construction.
     if !matches!(heap.object(value), Some(RObject::List(_))) {
         return Ok(value);
     }
@@ -10793,7 +10793,7 @@ pub fn unlist_primitive(
     walk(heap, interner, value, "", 0, recursive, &mut leaves, &mut crossed_list);
     // recursive=FALSE atomizes exactly like recursive=TRUE when no sublist
     // boundary was crossed — the shallow shape only appears once list
-    /// structure actually participates, exactly as GNU.
+    // structure actually participates, exactly as GNU.
     if !recursive && !crossed_list {
         return unlist_primitive(heap, interner, value, true, use_names);
     }
@@ -10863,7 +10863,7 @@ pub fn unlist_primitive(
     } else if top_rank >= 4 {
         // Complex promotion: real parts ride from the numeric leaves exactly
         // as GNU's coercion — logicals and integers contribute their value,
-        /// complex leaves their own real part.
+        // complex leaves their own real part.
         let zs: Vec<r_core::object::RComplex> = reals
             .iter()
             .zip(imags.iter())
@@ -10978,7 +10978,7 @@ pub fn seq_primitive(
     if let Some(n) = length_out.filter(|_| lookup("by", 2).is_none()) {
         // The interpolation form exactly: exactly n points, endpoints
         // inclusive, avoiding the floating-point endpoint drift of the
-        /// stepping loop.
+        // stepping loop.
         if n == 1 {
             out.push(from_v);
         } else {
@@ -11401,7 +11401,7 @@ pub fn ordering_primitive(
                             }
                             // GNU na.last: absent/NA drops (already done);
                             // TRUE appends after the final order, FALSE
-                            /// prepends — placement ignores decreasing.
+                            // prepends — placement ignores decreasing.
                             match na_last {
                                 Some(true) => {
                                     for _ in 0..na_count {
@@ -11581,7 +11581,7 @@ pub fn ifelse_primitive(
     }
     // GNU's type lattice: the result takes the common type of the branches
     // — logical+logical stays logical, integer mixtures stay integer, any
-    /// real input widens to double exactly as the coercion hierarchy.
+    // real input widens to double exactly as the coercion hierarchy.
     let rank = |v: ValueId| -> u32 {
         match heap.object(v) {
             Some(RObject::Logical(_)) => 0,
@@ -12102,7 +12102,7 @@ pub fn rep_dispatch(
     };
     // GNU's rep replicates the names attribute parallel to the payload:
     // each-element repetition contiguous, whole-vector repetition in
-    /// blocks, length.out recycling alongside the values.
+    // blocks, length.out recycling alongside the values.
     if let Ok(source_ops) = eval_args(heap, interner, args, caller_env, 1) {
         let source = source_ops[0];
         let source_names: Vec<String> = match get_attrib(heap, interner, source, "names") {
@@ -12377,10 +12377,10 @@ pub fn trycatch_primitive(
             };
             // The condition object in GNU's shape exactly: message plus
             // call slots in a named list, classed simpleError/error/
-            /// condition so class() and S3 dispatch read it as the
-            /// condition it is. The call slot stays NIL until the error
-            /// channel carries the raising expression — the documented
-            /// condition-call fidelity gap.
+            // condition so class() and S3 dispatch read it as the
+            // condition it is. The call slot stays NIL until the error
+            // channel carries the raising expression — the documented
+            // condition-call fidelity gap.
             let message_str = heap.alloc(RObject::String(vec![interner.intern_string(&message)]));
             let raising_call = heap.error_call;
             heap.error_call = ValueId::NIL;
@@ -12696,9 +12696,9 @@ pub fn tempfile_primitive(
     static COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     // Browser-file sessions answer virtual paths exactly as the facade's
     // browser profile does — the virtual store is the filesystem there,
-    /// so a host-tempdir path would be a write target R can never use.
-    /// Uniqueness rides the same counter; existence checks consult the
-    /// virtual store rather than the host.
+    // so a host-tempdir path would be a write target R can never use.
+    // Uniqueness rides the same counter; existence checks consult the
+    // virtual store rather than the host.
     if heap.browser_files_enabled {
         loop {
             let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -12791,7 +12791,7 @@ pub fn writelines_primitive(
     }
     // Connection objects write through the shared state; path strings
     // truncate-write exactly as the pre-connection behavior. GNU's
-    /// writeLines returns invisible NULL either way.
+    // writeLines returns invisible NULL either way.
     if is_connection(heap, con_arg) {
         connection_write(heap, interner, con_arg, content.as_bytes()).map_err(RSignal::from)?;
     } else {
@@ -12879,7 +12879,7 @@ pub fn readlines_primitive(
     let content = if is_connection(heap, con_arg) {
         // Connection reads stream from the cursor exactly as GNU — the
         // position advances past everything read so repeated calls
-        /// continue where the last stopped.
+        // continue where the last stopped.
         let taken = with_conn(heap, con_arg, |state| {
             if !state.open {
                 return None;
@@ -13509,7 +13509,7 @@ pub fn aggregate_primitive(
     let mut unique_keys: Vec<String> = keys.clone();
     // GNU orders multi-way group expansion column-major: the first grouper
     // varies fastest, so the sort prioritizes the last key component and
-    /// ties break toward the first exactly as array indexing does.
+    // ties break toward the first exactly as array indexing does.
     unique_keys.sort_by(|a, b| {
         let ac: Vec<&str> = a.split('\x01').collect();
         let bc: Vec<&str> = b.split('\x01').collect();
@@ -13518,7 +13518,7 @@ pub fn aggregate_primitive(
             let bv = bc.get(j).copied().unwrap_or("");
             // Factor columns compare by level position; anything absent
             // from the levels sorts past the end exactly as GNU's integer
-            /// code comparison would place it.
+            // code comparison would place it.
             let ord = match &grouper_levels.get(j).cloned().flatten() {
                 Some(levels) => {
                     let ai = levels.iter().position(|l| l == av).map(|p| p as i32).unwrap_or(i32::MAX);
@@ -13581,7 +13581,7 @@ pub fn aggregate_primitive(
             .collect();
         // Factor groupers emit the coded factor column — integer indices
         // into the original levels with the class chain exactly as GNU's
-        /// aggregate data frame method preserves them.
+        // aggregate data frame method preserves them.
         if let Some(levels) = &grouper_levels.get(j).cloned().flatten() {
             let codes: Vec<i32> = parts
                 .iter()
@@ -13683,8 +13683,8 @@ pub fn apply_fun_to(
 ) -> EvalResult {
     // The argument arrives already evaluated — wrapping it in a pre-forced
     // promise keeps primitive argument forcing value-faithful exactly as
-    /// GNU: forcing yields the object itself rather than re-evaluating it
-    /// as an expression, which would mis-evaluate symbols as lookups.
+    // GNU: forcing yields the object itself rather than re-evaluating it
+    // as an expression, which would mis-evaluate symbols as lookups.
     let forced = heap.alloc(RObject::Promise {
         expr: arg,
         env: caller_env,
@@ -13722,7 +13722,7 @@ pub fn factor_primitive(
     let texts = string_vec(heap, interner, operands[0]);
     // A tagged levels argument supplies the level set verbatim — order and
     // empties included — exactly as GNU; otherwise levels derive sorted
-    /// from the data.
+    // from the data.
     let mut tagged_levels: Option<Vec<String>> = None;
     let mut cursor = args;
     loop {
@@ -13971,7 +13971,7 @@ pub fn format_spec(
     };
     // GNU's uniform numeric discipline: the sign (+/-/space) leads, zero
     // padding follows the sign, and width justification pads with spaces —
-    /// left when the minus flag is present.
+    // left when the minus flag is present.
     let finish = |digits: String, negative: bool, spec: &ConvSpec| -> String {
         let sign = if negative {
             "-"
@@ -14431,7 +14431,7 @@ pub fn unique_primitive(
                 }
                 // Reverse iteration encounters last occurrences first, so
                 // the plain keep-first-seen rule yields fromLast exactly —
-                /// output ordering restores original indices either way.
+                // output ordering restores original indices either way.
                 let duplicate = representatives.iter().any(|&r| eq(&values[r], vi));
                 if !duplicate {
                     keep[i] = true;
@@ -14497,8 +14497,8 @@ pub fn save_primitive(
     let mut names: Vec<String> = Vec::new();
     // Positional-mode detection: any non-symbol untagged argument means
     // the call follows .Internal's positional ordering — names vector,
-    /// file, ascii, version, envir — rather than the user-facing bare
-    /// symbol capture.
+    // file, ascii, version, envir — rather than the user-facing bare
+    // symbol capture.
     let mut positional_mode = false;
     {
         let mut scan = args;
@@ -14881,7 +14881,7 @@ pub fn coerce_character(
     }
     // Factor-classed input coerces through its level labels exactly as
     // as.character.factor — the integer codes index the levels, missing
-    /// codes yielding NA.
+    // codes yielding NA.
     if is_factor(heap, interner, value) {
         if let Some(levels_id) = get_attrib(heap, interner, value, "levels") {
             let levels = string_vec(heap, interner, levels_id);
@@ -15358,7 +15358,7 @@ pub fn xtabs_primitive(
     }
     // The formula's right-hand side: the second element of the tilde call
     // for one-sided form; terms split across the plus chain exactly as
-    /// GNU's terms.object decomposition.
+    // GNU's terms.object decomposition.
     let rhs = match heap.object(formula) {
         Some(RObject::Language { cdr, .. }) => match heap.object(*cdr) {
             Some(RObject::Pairlist { car, .. }) => *car,
@@ -16576,8 +16576,8 @@ pub fn split_primitive(
     };
     // Key ordering follows GNU's factor coercion: numeric groups sort
     // numerically then stringify, logical groups order FALSE before TRUE,
-    /// character groups byte-sort; factor input contributes every level
-    /// including the unobserved ones, which yield empty groups.
+    // character groups byte-sort; factor input contributes every level
+    // including the unobserved ones, which yield empty groups.
     let factor_levels: Option<Vec<String>> = if is_factor(heap, interner, f) {
         get_attrib(heap, interner, f, "levels").map(|l| string_vec(heap, interner, l))
     } else {
@@ -18073,9 +18073,9 @@ pub fn rep_len_primitive(
     let operands = eval_args(heap, interner, args, caller_env, 2)?;
     // GNU's admission discipline exactly: length.out is a scalar —
     // multi-element or empty input is invalid outright — NA, non-finite
-    /// and negative-integer values are invalid, while a fractional
-    /// negative truncates toward zero first (rep_len(1L, -0.5) is
-    /// length zero, not an error).
+    // and negative-integer values are invalid, while a fractional
+    // negative truncates toward zero first (rep_len(1L, -0.5) is
+    // length zero, not an error).
     let raw_len: f64 = match heap.object(operands[1]) {
         Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => {
             if vals.len() != 1 {
@@ -18104,8 +18104,8 @@ pub fn rep_len_primitive(
     let target = truncated as usize;
     // Pre-allocation admission — a target whose payload blows the host's
     // memory cap answers the memory-limit error instead of committing
-    /// the allocation, and anything past the Vec capacity ceiling is an
-    /// error rather than a raw-vec panic.
+    // the allocation, and anything past the Vec capacity ceiling is an
+    // error rather than a raw-vec panic.
     if target > 0 {
         let element_bytes = match heap.object(operands[0]) {
             Some(RObject::Real(_)) => 8usize,
@@ -18370,7 +18370,7 @@ pub fn transform_primitive(
         let value = force_if_promise(heap, interner, value_evaluated)?;
         // GNU evaluates every expression against the original frame —
         // eval(substitute(list(...)), data) — so replacements never
-        /// chain into later expressions.
+        // chain into later expressions.
         match names.iter().position(|n| n == &tag_name) {
             Some(position) => {
                 columns[position] = value;
@@ -18423,7 +18423,7 @@ pub fn within_primitive(
     let _ = eval(heap, interner, entries[1], data_env)?;
     // Harvest the environment: original columns in order (possibly
     // reassigned), then new bindings in creation order exactly as the
-    /// frame enumeration carries them.
+    // frame enumeration carries them.
     let mut columns: Vec<ValueId> = Vec::new();
     let mut names: Vec<String> = Vec::new();
     let frame_syms = r_core::env::frame_symbols(heap, data_env);
@@ -18710,7 +18710,7 @@ pub fn merge_primitive(
                     let yvalue = column_value_at(heap, interner, y_columns[yi], Some(yrow));
                     // The y value adopts x's column type exactly as GNU's
                     // common-type coercion — integer keys widening to
-                    /// real when x's key is real.
+                    // real when x's key is real.
                     coerce_column_piece(heap, interner, template, yvalue)
                 }
             };
@@ -18855,7 +18855,7 @@ pub fn abbreviate_primitive(
         }
         // Pass order exactly as GNU: punctuation/spaces, vowels,
         // consonants — each scanning right-to-left one removal at a
-        /// time until the length target.
+        // time until the length target.
         let classes: &[fn(char) -> bool] = &[
             |c: char| !c.is_alphanumeric(),
             |c: char| matches!(c, 'a' | 'e' | 'i' | 'o' | 'u'),
@@ -19367,9 +19367,9 @@ pub fn open_file_connection(heap: &mut Heap, interner: &mut SymbolInterner, path
     let readable = mode.starts_with('r');
     // Browser-file sessions treat the virtual store as the filesystem
     // exactly as the facade's browser profile does — no host resolution
-    /// at all: reads require the key to exist, write modes truncate or
-    /// create in the store, and the connection carries the R-visible
-    /// path so the virtual-aware write-through keys correctly.
+    // at all: reads require the key to exist, write modes truncate or
+    // create in the store, and the connection carries the R-visible
+    // path so the virtual-aware write-through keys correctly.
     if heap.browser_files_enabled {
         let read_buf = if readable {
             match heap.browser_files.get(&path) {
@@ -19475,14 +19475,14 @@ pub fn close_primitive(
 pub fn connection_write(heap: &mut Heap, interner: &SymbolInterner, con: ValueId, bytes: &[u8]) -> Result<(), EvalError> {
     // GNU accepts a filename in place of a connection — the write opens
     // the path directly, truncating exactly as a freshly opened write
-    /// connection would.
+    // connection would.
     if let Some(path) = string_operand(heap, interner, con) {
         return r_core::vfile::write_file(heap, &path, bytes)
             .map_err(|_| EvalError::TypeError("invalid connection"));
     }
     // The write-through target leaves the borrow of the connection cell
     // before mutation exactly as the ownership discipline requires —
-    /// virtual appends need the mutable heap.
+    // virtual appends need the mutable heap.
     let target = with_conn(heap, con, |state| {
         if state.open {
             Some(state.path.clone())
@@ -19737,7 +19737,7 @@ pub fn table_primitive(
 ) -> EvalResult {
     // The single-argument slice — multi-way tables are outside the
     // conformance surface. The dimension name comes from the tag exactly
-    /// as GNU's dnn default.
+    // as GNU's dnn default.
     let mut dim_name = String::new();
     let mut input = ValueId::NIL;
     let mut cursor = args;
@@ -20075,7 +20075,7 @@ pub fn strip_attrib(
     let _ = interner;
     // Attributes live on the object — clearing names means overwriting
     // with NULL exactly as attr(x, "names") <- NULL. If the attribute
-    /// store is a chain walk, the empty assignment drops the entry.
+    // store is a chain walk, the empty assignment drops the entry.
     match get_attrib(heap, interner, value, name) {
         // copy_with_attrib treats the NIL sentinel as removal exactly as
         // GNU's attr(x, "names") <- NULL.
@@ -20903,8 +20903,8 @@ pub fn trig_unary(
                     _ => {
                         // tanh = sinh/cosh stabilized through the tanh(a)
                         // composition — dividing numerator and denominator
-                        /// by cosh(a) keeps large-real inputs finite exactly
-                        /// as libm's saturated complex tanh.
+                        // by cosh(a) keeps large-real inputs finite exactly
+                        // as libm's saturated complex tanh.
                         let ta = a.tanh();
                         let num = RComplex { r: ta * b.cos(), i: b.sin() };
                         let den = RComplex { r: b.cos(), i: ta * b.sin() };
@@ -21062,8 +21062,8 @@ pub fn strsplit_primitive(
         } else {
             // Iterative first-match over the shrinking remainder exactly
             // as successive non-overlapping delimiters — regex_search
-            /// answers (start, end) in char positions, so the scan works
-            /// over chars throughout.
+            // answers (start, end) in char positions, so the scan works
+            // over chars throughout.
             let all_chars: Vec<char> = text.chars().collect();
             let mut out: Vec<String> = Vec::new();
             let mut pos = 0usize;
@@ -21491,7 +21491,7 @@ pub fn mapply_primitive(
     }
     // USE.NAMES exactly as GNU: the first vector argument supplies the
     // result names — its own names when present, its character values
-    /// when it is a character vector.
+    // when it is a character vector.
     if use_names && !results.is_empty() && positional.len() > 1 {
         {
             let source = positional[1];
@@ -21546,7 +21546,7 @@ pub fn map_primitive(
 ) -> EvalResult {
     // Compose over mapply's machinery by evaluating mapply with
     // SIMPLIFY=FALSE — rewrapping the argument chain with the two extra
-    /// tagged nodes exactly as GNU's Map definition does in R code.
+    // tagged nodes exactly as GNU's Map definition does in R code.
     let mut chain = args;
     let mut nodes: Vec<(ValueId, ValueId)> = Vec::new();
     for _ in 0..100_000 {
@@ -21592,7 +21592,7 @@ pub fn negate_primitive(
     };
     // The negating closure: function(...) -f(...) shape is beyond the
     // evaluator's closure-construction slice for variadic forwarding;
-    /// fixed-formals closures construct exactly.
+    // fixed-formals closures construct exactly.
     if formals == ValueId::NIL {
         return Err(RSignal::Error(EvalError::Condition(
             "Negate over primitives is outside the closure-construction slice".to_string(),
@@ -21703,7 +21703,7 @@ pub fn expand_grid_primitive(
         }
         // Homogeneous columns collapse back to atomic vectors exactly as
         // GNU's expand.grid factors — atomic shape preserved when the
-        /// input was atomic length-one cells.
+        // input was atomic length-one cells.
         let col_value = alloc_homogeneous(heap, interner, cells);
         columns.push(col_value);
         before *= len;
@@ -22360,7 +22360,7 @@ pub fn bind_primitive(
     let longest = lengths.iter().copied().max().unwrap_or(0);
     // Zero-length operands drop out whenever any non-zero operand exists
     // exactly as GNU's cbind/rbind; when every operand is empty they all
-    /// stay and shape a zero-extent matrix of the common type.
+    // stay and shape a zero-extent matrix of the common type.
     if longest > 0 {
         let keep: Vec<usize> = (0..operands.len()).filter(|&i| lengths[i] > 0).collect();
         operands = keep.iter().map(|&i| operands[i]).collect();
@@ -22378,7 +22378,7 @@ pub fn bind_primitive(
         if len == 0 {
             // Zero-extent matrices never touch their elements — the total
             // element count is zero — so this path is unreachable in exact
-            /// GNU shape; the guard documents the invariant.
+            // GNU shape; the guard documents the invariant.
             return (r_core::object::NA_INTEGER, f64::from_bits(r_core::object::NA_REAL_BITS), "NA".to_string());
         }
         let idx = row % len;

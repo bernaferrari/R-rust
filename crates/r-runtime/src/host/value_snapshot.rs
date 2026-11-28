@@ -205,7 +205,7 @@ fn attach_metadata(
         }
     }
     // Attributes whose conversion found nothing leave no metadata — the
-    /// un-attributed shape surfaces bare exactly as the old world.
+    // un-attributed shape surfaces bare exactly as the old world.
     if metadata.names.is_none()
         && metadata.dim.is_none()
         && metadata.class.is_none()

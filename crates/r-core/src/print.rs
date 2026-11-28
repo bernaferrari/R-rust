@@ -31,8 +31,8 @@ pub fn format_real(v: f64) -> String {
     }
     // GNU format.c's formatReal exactly: fixed notation whenever its
     // width does not exceed scientific width plus scipen — a width
-    /// comparison, not an exponent threshold. digits=7 and scipen=0
-    /// are the pinned defaults.
+    // comparison, not an exponent threshold. digits=7 and scipen=0
+    // are the pinned defaults.
     let (neg, kpower, nsig) = scientific_parts(v);
     let left = kpower + 1;
     let right = nsig - left;
@@ -63,7 +63,7 @@ fn scientific_parts(v: f64) -> (i32, i32, i32) {
     let neg = if v < 0.0 { 1 } else { 0 };
     // GNU rounds to digits significant figures FIRST — carry-over
     // changes both the exponent and the significant count exactly as
-    /// 999999999999 rounding into 1e12 demonstrates.
+    // 999999999999 rounding into 1e12 demonstrates.
     let abs = v.abs();
     let rough_exp = abs.log10().floor() as i32;
     let rounded: f64 = format!("{:.*e}", 6, abs)
@@ -397,7 +397,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
             .unwrap_or_else(|| "UTC".to_string());
         // GNU drops the time component only when every finite element is
         // exactly midnight — a single non-midnight renders all times
-        /// exactly as format.POSIXct's collective omission rule.
+        // exactly as format.POSIXct's collective omission rule.
         let all_midnight = secs
             .iter()
             .filter(|s| s.is_finite())
@@ -429,7 +429,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     }
     // Date printing: classed day counts display as quoted ISO strings
     // exactly as print.Date — a character-vector rendering of the civil
-    /// dates.
+    // dates.
     if matches!(object, RObject::Real(_) | RObject::Integer(_))
         && crate::attrib::is_date_classed(heap, interner, value)
     {
@@ -495,7 +495,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     }
     // data.frame printing: classed lists lay out as tables — column names
     // right-justified over per-column widths, row names on the left,
-    /// character cells unquoted exactly as print.data.frame.
+    // character cells unquoted exactly as print.data.frame.
     if matches!(object, RObject::List(_)) && is_data_frame(heap, interner, value) {
         return format_data_frame(heap, interner, value);
     }
@@ -547,7 +547,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         RObject::Environment { .. } => {
             // Named environments print their name exactly as GNU's
             // <environment: R_GlobalEnv> — the name rides the attribute
-            /// chain in the new world.
+            // chain in the new world.
             let name = crate::attrib::get_attrib(heap, interner, value, "name")
                 .and_then(|id| match heap.object(id) {
                     Some(RObject::String(values)) if !values.is_empty() => {
@@ -587,7 +587,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     }
     // Matrix layout: a two-length integer dim attribute lays the vector out
     // column-major under [,j] column headers and [i,] row labels exactly as
-    /// GNU's print.matrix does.
+    // GNU's print.matrix does.
     if let Some(dim) = dim_attribute(heap, interner, value) {
         if dim.len() == 2 && dim[0] > 0 && dim[1] > 0 && dim[0] * dim[1] == length as i32 {
             let (row_names, col_names) = dimnames_of(heap, interner, value);
@@ -605,8 +605,8 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     // GNU right-justifies every element to the widest element text so the
     // columnar reading holds — NA padding is the visible consequence.
     // Real vectors share one decimal count across all elements — GNU's
-    /// format.c uniformity rule: the maximum decimals any fixed-window
-    /// element needs applies to all, so 100.5 drags 200 into 200.0.
+    // format.c uniformity rule: the maximum decimals any fixed-window
+    // element needs applies to all, so 100.5 drags 200 into 200.0.
     let uniform_decimals: Option<usize> = match object {
         RObject::Real(values) => {
             let mut max_dec = 0usize;
@@ -653,7 +653,7 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     };
     // GNU named-vector layout: the names print as a header row over the
     // values, each column right-justified to the wider of name and value,
-    /// with no [1] tags — the two-row reading is the tell.
+    // with no [1] tags — the two-row reading is the tell.
     let names_id = crate::attrib::get_attrib(heap, interner, value, "names");
     let names_vec: Option<Vec<String>> = names_id.and_then(|id| match heap.object(id) {
         Some(RObject::String(values)) if values.len() == length => Some(
@@ -669,8 +669,8 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         Some(names) => {
             // GNU's printNamedVector: one uniform width across every name
             // and value, each cell right-justified and followed by a
-            /// trailing space — line ends keep the final blank exactly as
-            /// printvector.c emits it.
+            // trailing space — line ends keep the final blank exactly as
+            // printvector.c emits it.
             let uniform = elements
                 .iter()
                 .chain(names.iter())
@@ -694,8 +694,8 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
             if matches!(object, RObject::String(_)) {
                 // GNU character vectors column-align LEFT-justified to the
                 // uniform width — the padding trails each element, the
-                /// line itself keeping the final blank exactly as
-                /// printvector.c emits it.
+                // line itself keeping the final blank exactly as
+                // printvector.c emits it.
                 let uniform = elements.iter().map(|e| e.len()).max().unwrap_or(0);
                 for element in &elements {
                     out.push(' ');
@@ -911,7 +911,7 @@ fn format_cell(heap: &Heap, interner: &SymbolInterner, column: &RObject, index: 
             if text == "\0NA" {
                 // Frame cells render character NA bracketed exactly as
                 // GNU's format.char — distinct from the bare NA of
-                /// matrix and vector printing.
+                // matrix and vector printing.
                 "<NA>".to_string()
             } else {
                 text.to_string()

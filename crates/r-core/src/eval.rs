@@ -91,7 +91,7 @@ pub fn eval(
 ) -> EvalResult {
     // GNU's nested-too-deeply ceiling — options(expressions=) in shape,
     // the host's resource limit in authority. Zero configures the GNU
-    /// default of 500 exactly as the facade's resource contract pins.
+    // default of 500 exactly as the facade's resource contract pins.
     let ceiling = if heap.max_eval_depth == 0 {
         500
     } else {
@@ -214,7 +214,7 @@ fn eval_node(
             let (car, cdr) = (*car, *cdr);
             // GNU's findFun: a symbolic call head resolves through function
             // lookup, which skips non-callable bindings — a variable named
-            /// `names` never shadows the primitive in function position.
+            // `names` never shadows the primitive in function position.
             let callee = match heap.object(car) {
                 Some(RObject::Symbol { name, .. }) => {
                     let sym = *name;
@@ -340,7 +340,7 @@ fn call(
 ) -> EvalResult {
     // Dots forwarding: a bare `...` argument splices the caller's dots
     // pairlist into the call exactly as GNU — promises carried intact so
-    /// downstream forcing shares the original cells.
+    // downstream forcing shares the original cells.
     let dots_sym = interner.intern_symbol("...");
     let needs_splice = {
         let mut cursor = args;
@@ -423,9 +423,9 @@ fn call(
     };
     // conditionCall fidelity — GNU's context stack answers the raising
     // frame's call: attach this call when the error originates here
-    /// (no inner frame claimed it), and never overwrite as the error
-    /// unwinds through outer frames. Control flow is not a condition
-    /// and attaches nothing.
+    // (no inner frame claimed it), and never overwrite as the error
+    // unwinds through outer frames. Control flow is not a condition
+    // and attaches nothing.
     if let Err(RSignal::Error(_)) = &result {
         if heap.error_call == ValueId::NIL {
             heap.error_call = call_expr;
@@ -556,7 +556,7 @@ fn apply_closure(
 
     // Dots capture: every argument matching left unconsumed joins the
     // pairlist as a promise in the caller's environment, tags preserved
-    /// exactly as GNU — forwarding and introspection both read this.
+    // exactly as GNU — forwarding and introspection both read this.
     if dots_position.is_some() {
         let mut dots = ValueId::NIL;
         let cells: Vec<(usize, Option<SymId>, ValueId)> = arg_list

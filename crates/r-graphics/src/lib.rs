@@ -42,7 +42,7 @@ pub fn par_default(name: &str) -> Vec<f64> {
 pub fn par_get(heap: &Heap, name: &str) -> Vec<f64> {
     // The dumb-parameter reading exactly as the naive machine's: the
     // cascade answers region-coupled names, everything else falls to
-    /// GNU's defaults — typing is reconstructed at object construction.
+    // GNU's defaults — typing is reconstructed at object construction.
     match heap.graphics.query(name) {
         Some(r_core::graphics::layout::ParValue::Real(values)) => values,
         Some(r_core::graphics::layout::ParValue::Integer(values))
@@ -257,7 +257,7 @@ pub fn plot_new_primitive(
     let (regions, clear, transition) = heap.graphics.prepare_plot_figure();
     // GNU's figure-margins validation — a nonpositive plot region in
     // either dimension rejects the frame exactly as
-    /// "figure margins too large"; nothing commits on failure.
+    // "figure margins too large"; nothing commits on failure.
     let plot_width = regions.plot[2] - regions.plot[0];
     let plot_height = regions.plot[3] - regions.plot[1];
     if transition_would_commit(heap) && (plot_width <= 0.0 || plot_height <= 0.0) {
@@ -268,7 +268,7 @@ pub fn plot_new_primitive(
     heap.graphics.commit_plot_figure(transition);
     // The layout's own decision exactly as GNU's GNewPlot — reuse
     // paths and mid-grid steps keep the page, first figures and
-    /// post-wrap frames clear.
+    // post-wrap frames clear.
     if clear {
         heap.graphics.clear_scene();
     }
@@ -464,7 +464,7 @@ pub fn resolve_rcolor(
                 other => {
                     // The full 657-entry database with hex parsing
                     // exactly as col2rgb — every GNU color name
-                    /// resolves in drawing primitives.
+                    // resolves in drawing primitives.
                     if let Some((r, g, b, a)) = resolve_named_color(other) {
                         return Some(Color { r: r as u8, g: g as u8, b: b as u8, a: a as u8 });
                     }
@@ -504,7 +504,7 @@ pub fn rect_primitive(
     use r_graphics_engine::{Color, DrawOperation, Path, Stroke};
     // Positional order covers GNU's first four exactly; col/border are
     // effectively always named in practice — the density/angle/lty
-    /// slots of GNU's full signature remain unwired.
+    // slots of GNU's full signature remain unwired.
     let slots = eval_matched_args(
         heap,
         interner,
@@ -581,7 +581,7 @@ pub fn points_primitive(
     }
     // pch resolves per-point with GNU's recycling exactly as col —
     // precomputed so the emission loop holds no borrow across the
-    /// scene mutation.
+    // scene mutation.
     let pch_values: Vec<i32> = match slots[2] {
         Some(v) => match heap.object(v) {
             Some(RObject::Real(values)) => values.iter().map(|x| *x as i32).collect(),
@@ -839,7 +839,7 @@ pub fn grconvert_primitive(
             } else {
                 // y grows upward in user space, downward in raster —
                 // device bottom pairs with user low exactly as the
-                /// conversion flips.
+                // conversion flips.
                 (usr[2], usr[3], plot[3], plot[1])
             };
             let height = heap.graphics.layout.device_size().1;
@@ -1068,7 +1068,7 @@ pub fn title_primitive(
     let slots = eval_matched_args(heap, interner, args, caller_env, &["main", "sub", "xlab", "ylab"])?;
     // Extract every label upfront exactly as the other primitives
     // precompute — the emission loop holds no borrow across scene
-    /// mutation.
+    // mutation.
     let texts: Vec<Option<String>> = (0..4)
         .map(|slot| {
             slots[slot].and_then(|v| match heap.object(v) {
@@ -1104,7 +1104,7 @@ pub fn title_primitive(
     };
     // xlab centers below the bottom margin at two lines out exactly
     // as mgp's axis-title line approximates; ylab mirrors beside the
-    /// left margin; main sits in the top margin.
+    // left margin; main sits in the top margin.
     if let Some(xlab) = text_of(2) {
         if !xlab.is_empty() {
             emit(heap, xlab, center_x, plot[3] as f32 + 2.5 * line, TextAnchor::Middle);
@@ -1321,7 +1321,7 @@ pub fn color_ramp_primitive(
             let k = n / 2;
             // First half green-to-tan, second half continuing to
             // near-white exactly as GNU's split sequences with the
-            /// overlapping first element dropped.
+            // overlapping first element dropped.
             let h1 = gnu_seq(4.0 / 12.0, 2.0 / 12.0, k);
             let s1 = gnu_seq(1.0, 1.0, k);
             let v1 = gnu_seq(0.65, 0.9, k);
@@ -2226,8 +2226,8 @@ pub fn curve_primitive(
     };
     // The expression itself must never evaluate in the caller
     // environment — extract the remaining arguments manually with
-    /// positional-then-named matching exactly as GNU's formals after
-    /// expr.
+    // positional-then-named matching exactly as GNU's formals after
+    // expr.
     let mut from_v: Option<ValueId> = None;
     let mut to_v: Option<ValueId> = None;
     let mut n_v: Option<ValueId> = None;
@@ -2955,7 +2955,7 @@ pub fn density_primitive(
     }
     // Kernel ordinates exactly as GNU: seq(0, (2n-1)/(n-1)*(up-lo),
     // length 2n) with the mirrored negative second half, gaussian
-    /// density at sd = bw.
+    // density at sd = bw.
     let span = (2 * n - 1) as f64 / (n - 1) as f64 * (up - lo);
     let mut kords = vec![0.0f64; 2 * n];
     for i in 0..(2 * n) {
@@ -2971,7 +2971,7 @@ pub fn density_primitive(
     }
     // Circular convolution directly — mathematically identical to
     // GNU's FFT convolution for this symmetric kernel; divided by
-    /// the length exactly as the manual inverse-fft scaling.
+    // the length exactly as the manual inverse-fft scaling.
     let two_n = 2 * n;
     let mut conv = vec![0.0f64; n];
     for t in 0..n {

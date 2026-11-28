@@ -199,8 +199,8 @@ impl PureSession {
         let value = typed.numeric_scalar_value();
         let mut display = full.output;
         // The display truncation pass exactly as the facade's result
-        /// budget — the transcript itself fits the embedder's budget or
-        /// it ends at the boundary with the truncation marker.
+        // budget — the transcript itself fits the embedder's budget or
+        // it ends at the boundary with the truncation marker.
         if let Some(limit) = self.result_limit {
             if display.len() > limit {
                 let mut boundary = limit;
@@ -298,8 +298,8 @@ impl PureSession {
     /// completion pool exactly as the facade's enumeration answers it.
     pub fn global_binding_names(&self) -> Vec<String> {
         // Sorted exactly as the facade contract pins and GNU's ls()
-        /// answers — frame order is insertion order, meaningless to
-        /// the embedder snapshotting its workspace.
+        // answers — frame order is insertion order, meaningless to
+        // the embedder snapshotting its workspace.
         let mut names: Vec<String> =
             crate::value::env::frame_symbols(&self.session.heap, self.session.global_env)
                 .iter()
@@ -437,11 +437,11 @@ impl PureSession {
             None
         };
         // The facade's interactive contract exactly: evaluation that
-        /// errors after producing output or drawing answers the
-        /// error-with-output shape, never a silent fold — graphics may
-        /// have progressed before the error and the embedder is owed
-        /// both halves. Clean output rides stdout; the error line itself
-        /// belongs to the message, not the transcript.
+        // errors after producing output or drawing answers the
+        // error-with-output shape, never a silent fold — graphics may
+        // have progressed before the error and the embedder is owed
+        // both halves. Clean output rides stdout; the error line itself
+        // belongs to the message, not the transcript.
         match full.error {
             Some(message) => Err(super::facade::RSessionError::EvalErrorWithOutput {
                 message,
