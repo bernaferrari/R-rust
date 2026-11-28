@@ -705,3 +705,5 @@ simpleWarning <- function(msg, call = NULL)
 simpleMessage <- function(msg, call = NULL)
     structure(class = c("simpleMessage", "message", "condition"),
               list(message = msg, call = call))
+
+substring <- function(text, first, last = 1000000L) substr(text, first, last)
