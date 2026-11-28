@@ -728,7 +728,15 @@ pub fn pretty_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["x", "n"])?;
+    // GNU's full pretty.default signature — partial matching admits the
+    // legacy h/shr abbreviations exactly as matchArgs arranges.
+    let slots = eval_matched_args(
+        heap,
+        interner,
+        args,
+        caller_env,
+        &["x", "n", "min.n", "shrink.sml", "high.u.bias", "u5.bias", "eps.correct", "f.min"],
+    )?;
     let xs: Vec<f64> = slots[0]
         .and_then(|v| reals_of_value(heap, v).ok())
         .unwrap_or_default()
@@ -738,23 +746,26 @@ pub fn pretty_primitive(
     if xs.is_empty() {
         return Ok(heap.alloc(RObject::Real(Vec::new())));
     }
-    let n = slots[1]
-        .and_then(|v| reals_of_value(heap, v).ok())
-        .and_then(|v| v.first().copied())
-        .unwrap_or(5.0) as i32;
+    let real_slot = |slot: usize, default: f64| -> f64 {
+        slots[slot]
+            .and_then(|v| reals_of_value(heap, v).ok())
+            .and_then(|v| v.first().copied())
+            .unwrap_or(default)
+    };
+    let n = real_slot(1, 5.0) as i32;
+    let high_u_bias = real_slot(4, 1.5);
     let lo = xs.iter().copied().fold(f64::INFINITY, f64::min);
     let up = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    // GNU pretty.default's fixed constants exactly.
     let result = r_core::graphics::pretty::r_pretty(
         lo,
         up,
         n,
-        n.div_euclid(3),
-        0.75,
-        1.5,
-        0.5 + 1.5 * 1.5,
-        2f64.powi(-20),
-        0,
+        real_slot(2, (n.div_euclid(3)) as f64) as i32,
+        real_slot(3, 0.75),
+        high_u_bias,
+        real_slot(5, 0.5 + 1.5 * high_u_bias),
+        real_slot(7, 2f64.powi(-20)),
+        real_slot(6, 0.0) as i32,
     );
     let ndiv = result.ndiv;
     if !(0..=10_000_000).contains(&ndiv) {

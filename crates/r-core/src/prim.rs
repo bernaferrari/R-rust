@@ -302,6 +302,30 @@ pub fn eval_matched_args(
             }
         }
     }
+    // GNU's partial matching exactly as matchArgs arranges: a remaining
+    // tagged argument binds the unique formal it prefixes; ambiguous or
+    // absent prefixes leave the argument untouched.
+    for (i, (tag, car)) in items.iter().enumerate() {
+        if used[i] {
+            continue;
+        }
+        let Some(prefix) = tag.as_deref() else { continue };
+        if prefix.is_empty() {
+            continue;
+        }
+        let candidates: Vec<usize> = names
+            .iter()
+            .enumerate()
+            .filter(|(slot, formal)| slots[*slot].is_none() && formal.starts_with(prefix))
+            .map(|(slot, _)| slot)
+            .collect();
+        if candidates.len() == 1 {
+            let slot = candidates[0];
+            let value = eval(heap, interner, *car, caller_env)?;
+            slots[slot] = Some(force_if_promise(heap, interner, value)?);
+            used[i] = true;
+        }
+    }
     // Positional filling for the untagged remainder.
     let mut next_slot = 0;
     for (i, (tag, car)) in items.iter().enumerate() {
@@ -371,13 +395,29 @@ pub fn bind_formals(
         }
         cursor = cdr;
     }
-    // Exact-name pass first, then positional fill of open slots.
+    // Exact-name pass first — GNU's partial matching then claims unique-
+    // prefix tags before positional fill, exactly as matchArgs arranges.
+    let mut unmatched_tagged: Vec<(String, ValueId)> = Vec::new();
     let mut positional: Vec<ValueId> = Vec::new();
     for (tag, value) in pending {
         match tag.as_deref().and_then(|n| formals.iter().position(|f| *f == n)) {
             Some(slot) if slots[slot].is_none() => slots[slot] = Some(value),
             Some(_) => {}
-            None => positional.push(value),
+            None => match tag {
+                Some(name) if !name.is_empty() => unmatched_tagged.push((name, value)),
+                _ => positional.push(value),
+            },
+        }
+    }
+    for (name, value) in unmatched_tagged {
+        let candidates: Vec<usize> = formals
+            .iter()
+            .enumerate()
+            .filter(|(slot, formal)| slots[*slot].is_none() && formal.starts_with(name.as_str()))
+            .map(|(slot, _)| slot)
+            .collect();
+        if candidates.len() == 1 {
+            slots[candidates[0]] = Some(value);
         }
     }
     let mut iter = positional.into_iter();

@@ -405,6 +405,36 @@ pub fn bootstrap_env(heap: &mut Heap, interner: &mut SymbolInterner) -> ValueId 
     let upper_val = heap.alloc(RObject::String(upper));
     let sym = interner.intern_symbol("LETTERS");
     env::define(heap, base, sym, upper_val).expect("LETTERS");
+    // GNU's startup options exactly as R's initialization seeds them —
+    // the scalar defaults every session carries before the first
+    // options() call, with .Options bound in base as their object form.
+    if heap.options.is_empty() {
+        let mut seeded: Vec<(String, ValueId)> = Vec::new();
+        for (key, value) in [
+            ("width", RObject::Real(vec![80.0])),
+            ("digits", RObject::Integer(vec![7])),
+            ("warn", RObject::Integer(vec![0])),
+            ("scipen", RObject::Integer(vec![0])),
+            ("timeout", RObject::Real(vec![60.0])),
+            ("echo", RObject::Logical(vec![1])),
+            ("verbose", RObject::Logical(vec![0])),
+            ("expressions", RObject::Integer(vec![5000])),
+            ("max.print", RObject::Integer(vec![99999])),
+            ("warning.length", RObject::Integer(vec![1000])),
+            ("keep.source", RObject::Logical(vec![1])),
+            ("stringsAsFactors", RObject::Logical(vec![0])),
+            ("useFancyQuotes", RObject::Logical(vec![1])),
+            ("show.error.messages", RObject::Logical(vec![1])),
+        ] {
+            let id = heap.alloc(value);
+            seeded.push((key.to_string(), id));
+        }
+        for (key, text) in [("prompt", "> "), ("continue", "+ "), ("na.action", "na.omit")] {
+            let id = heap.alloc(RObject::String(vec![interner.intern_string(text)]));
+            seeded.push((key.to_string(), id));
+        }
+        heap.options = seeded;
+    }
     // .GlobalEnv resolves to the user environment itself — the global
     // exactly as GNU's top-level reference.
     let user = env::new_environment(heap, base);
@@ -413,6 +443,7 @@ pub fn bootstrap_env(heap: &mut Heap, interner: &mut SymbolInterner) -> ValueId 
     // references exactly as GNU's globalenv/baseenv items.
     heap.global_env_id = Some(user);
     heap.base_env_id = Some(base);
+    sync_dot_options(heap, interner);
     let genv_sym = interner.intern_symbol(".GlobalEnv");
     env::define(heap, base, genv_sym, user).expect(".GlobalEnv");
     // The global environment carries its printed name — GNU's
@@ -641,4 +672,21 @@ fn attach_default_packages(heap: &mut Heap, interner: &mut SymbolInterner, base:
         && let Some(RObject::Environment { enclos, .. }) = heap.object_mut(user) {
             *enclos = *first;
         }
+}
+
+/// `.Options` — GNU's object form of the live options store, rebound in
+/// baseenv after every mutation exactly as do_options arranges.
+pub fn sync_dot_options(heap: &mut Heap, interner: &mut SymbolInterner) {
+    let items: Vec<ValueId> = heap.options.iter().map(|(_, v)| *v).collect();
+    let names: Vec<r_core::intern::InternedStr> = heap.options
+        .iter()
+        .map(|(n, _)| interner.intern_string(n))
+        .collect();
+    let result = heap.alloc(RObject::List(items));
+    let names_vec = heap.alloc(RObject::String(names));
+    let named = r_core::prim::copy_with_attrib(heap, interner, result, "names", names_vec).unwrap_or(result);
+    if let Some(base) = heap.base_env_id {
+        let sym = interner.intern_symbol(".Options");
+        let _ = env::define(heap, base, sym, named);
+    }
 }
