@@ -986,3 +986,15 @@ heatmap <- function(x, Rowv = NULL, Colv = NULL, distfun = dist,
     }
     invisible(list(rowInd = rowInd, colInd = colInd))
 }
+
+
+# GNU's loess.control exactly as loess.R arranges — the named control
+# parameters with their documented defaults.
+loess.control <- function(surface = c("interpolate", "direct"),
+                          statistics = c("approximate", "exact"),
+                          trace.hat = c("exact", "approximate"),
+                          cell = 0.2, iterations = 4, iterTrace = FALSE) {
+    list(surface = match.arg(surface), statistics = match.arg(statistics),
+         trace.hat = match.arg(trace.hat), cell = cell,
+         iterations = iterations, iterTrace = iterTrace)
+}
