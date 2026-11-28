@@ -731,5 +731,6 @@ pub const ABS: u32 = 57;
     pub const LOWESS: u32 = 701;
     pub const PHYPER: u32 = 702;
     pub const DHYPER: u32 = 703;
+pub const LIST2ENV: u32 = 704;
     pub const ALIST: u32 = 695;
 
