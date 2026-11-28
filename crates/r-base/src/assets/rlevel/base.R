@@ -70,15 +70,17 @@ all.equal <- function (target, current, tolerance = sqrt(.Machine$double.eps), .
 {
     if (missing(tolerance))
         tolerance <- 1.49011611938477e-08
-    if (is.numeric(target) && is.numeric(current)) {
+    if ((is.numeric(target) || is.complex(target)) && (is.numeric(current) || is.complex(current))) {
         lt <- length(target)
         lc <- length(current)
         if (lt != lc)
             return(paste0("Numeric: lengths (", lt, ", ", lc, ") differ"))
         if (lt == 0)
             return(TRUE)
-        target <- as.numeric(target)
-        current <- as.numeric(current)
+        if (!is.complex(target))
+            target <- as.numeric(target)
+        if (!is.complex(current))
+            current <- as.numeric(current)
         if (any(is.na(target) != is.na(current)))
             return("'is.NA' value mismatch")
         keep <- !is.na(target)

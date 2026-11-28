@@ -724,5 +724,8 @@ pub const ABS: u32 = 57;
     pub const RAWCONNECTION: u32 = 692;
     pub const ASNAMESPACE: u32 = 694;
     pub const FFT: u32 = 696;
+    pub const POLYROOT: u32 = 697;
+    pub const MATCHARG: u32 = 698;
+    pub const CHAREXPAND: u32 = 699;
     pub const ALIST: u32 = 695;
 
