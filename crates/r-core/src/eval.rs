@@ -557,7 +557,11 @@ fn apply_closure(
         env::define(heap, frame, sym, promise).map_err(|_| RSignal::Error(EvalError::UnsupportedForm("frame define")))?;
     }
     for (sym, default) in remaining {
-        let binding = if default == ValueId::NIL || default == ValueId::MISSING {
+        // GNU's exact distinction: only the missing sentinel marks a
+        // defaultless formal — the NULL literal is a genuine default
+        // expression, bound as a promise evaluating to NIL exactly as
+        // function(x, scale = NULL) reads scale back as NULL.
+        let binding = if default == ValueId::MISSING {
             ValueId::MISSING
         } else {
             new_promise(heap, default, frame)

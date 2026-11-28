@@ -9115,6 +9115,12 @@ pub fn concat_primitive_inner(
             }).collect::<Vec<_>>(),
             _ => Vec::new(),
         });
+        // GNU's NULL discipline exactly: both NIL representations drop
+        // out of concatenation — the sentinel never reaching the object
+        // match at all.
+        if *operand == ValueId::NIL {
+            continue;
+        }
         let flat = match heap.object(*operand) {
             Some(RObject::Nil) => continue,
             Some(RObject::Raw(values)) => {
@@ -19626,16 +19632,46 @@ pub fn s3_apply(
     object: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    let forced = heap.alloc(RObject::Promise {
-        expr: object,
-        env: caller_env,
-        value: object,
-    });
-    let arg_node = heap.alloc(RObject::Pairlist {
-        car: forced,
-        cdr: ValueId::NIL,
-        tag: ValueId::NIL,
-    });
+    // GNU's forwarding exactly: the method inherits the generic's
+    // arguments — every frame binding passes through as a symbol
+    // reference into the generic frame, so promises chain rather than
+    // re-evaluate and the method's formals re-match by name and position
+    // exactly as if the method had been called in the generic's place.
+    let frame_entries: Vec<r_core::intern::SymId> = match heap.object(caller_env) {
+        Some(RObject::Environment { frame: r_core::object::EnvFrame::List(entries), .. }) => {
+            entries.iter().map(|(sym, _)| *sym).collect()
+        }
+        _ => Vec::new(),
+    };
+    let mut arg_node = ValueId::NIL;
+    for sym in frame_entries.iter().rev() {
+        let name_text = interner.symbol_name(*sym).to_string();
+        if name_text == "..." {
+            continue;
+        }
+        let sym_obj = heap.alloc(RObject::Symbol {
+            name: *sym,
+            value: ValueId::UNBOUND,
+            internal: ValueId::NIL,
+        });
+        arg_node = heap.alloc(RObject::Pairlist {
+            car: sym_obj,
+            cdr: arg_node,
+            tag: ValueId::NIL,
+        });
+    }
+    if frame_entries.is_empty() {
+        let forced = heap.alloc(RObject::Promise {
+            expr: object,
+            env: caller_env,
+            value: object,
+        });
+        arg_node = heap.alloc(RObject::Pairlist {
+            car: forced,
+            cdr: ValueId::NIL,
+            tag: ValueId::NIL,
+        });
+    }
     match heap.object(method).cloned() {
         Some(RObject::Closure { formals, body, env }) => {
             let applied = r_core::eval::apply_closure_public(heap, interner, formals, body, env, arg_node, caller_env)?;
