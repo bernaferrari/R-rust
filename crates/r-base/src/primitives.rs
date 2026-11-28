@@ -9717,6 +9717,99 @@ pub fn subset_impl(
         /// Positions to exclude (0-based, no duplicates required).
         Excluding(Vec<usize>),
     }
+    // GNU's matrix-index coordinate subsetting exactly: an index matrix
+    // whose column count matches the array's dimensionality treats each
+    // row as coordinates — numeric entries stride column-major, character
+    // entries matching the dimnames per margin, NA propagating in either
+    // form, unmatched characters raising the subscript error.
+    if let Some(idim) = get_attrib(heap, interner, index, "dim")
+        && let Some(sdim) = get_attrib(heap, interner, source, "dim") {
+            let index_dims: Vec<usize> = match heap.object(idim) {
+                Some(RObject::Integer(v)) => v.iter().map(|x| (*x).max(0) as usize).collect(),
+                _ => Vec::new(),
+            };
+            let source_dims: Vec<usize> = match heap.object(sdim) {
+                Some(RObject::Integer(v)) => v.iter().map(|x| (*x).max(0) as usize).collect(),
+                _ => Vec::new(),
+            };
+            if index_dims.len() == 2 && !source_dims.is_empty() && index_dims[1] == source_dims.len() {
+                let nrows = index_dims[0];
+                let ncols = index_dims[1];
+                let strides: Vec<usize> = {
+                    let mut st = Vec::with_capacity(source_dims.len());
+                    let mut acc = 1usize;
+                    for d in &source_dims {
+                        st.push(acc);
+                        acc *= d;
+                    }
+                    st
+                };
+                // Dimnames per margin for character resolution.
+                let dimnames_parts: Vec<Vec<String>> = match get_attrib(heap, interner, source, "dimnames") {
+                    Some(dn) => match heap.object(dn) {
+                        Some(RObject::List(parts)) => parts
+                            .iter()
+                            .map(|part| match heap.object(*part) {
+                                Some(RObject::String(entries)) => entries.iter().map(|e| interner.string_text(*e).to_string()).collect(),
+                                _ => Vec::new(),
+                            })
+                            .collect(),
+                        _ => Vec::new(),
+                    },
+                    None => Vec::new(),
+                };
+                let is_char = matches!(heap.object(index), Some(RObject::String(_)));
+                let mut positions: Vec<usize> = Vec::with_capacity(nrows);
+                for r in 0..nrows {
+                    let mut linear: usize = 0;
+                    let mut row_na = false;
+                    for k in 0..ncols {
+                        let cell_flat = k * nrows + r;
+                        if is_char {
+                            let text = match heap.object(index) {
+                                Some(RObject::String(vals)) => vals.get(cell_flat).map(|v| interner.string_text(*v).to_string()).unwrap_or_default(),
+                                _ => String::new(),
+                            };
+                            if text == "\0NA" {
+                                row_na = true;
+                                break;
+                            }
+                            let names = dimnames_parts.get(k).cloned().unwrap_or_default();
+                            if names.is_empty() {
+                                return Err(EvalError::TypeError("subscript out of bounds").into());
+                            }
+                            match names.iter().position(|n| *n == text && !n.is_empty()) {
+                                Some(pos) => linear += pos * strides[k],
+                                // NA dimnames never match exactly as GNU.
+                                None => return Err(EvalError::TypeError("subscript out of bounds").into()),
+                            }
+                        } else {
+                            let raw = match heap.object(index) {
+                                Some(RObject::Integer(vals)) => vals.get(cell_flat).copied().map(|v| v as i64),
+                                Some(RObject::Real(vals)) => vals.get(cell_flat).copied().map(|v| if v.is_nan() { i64::MIN } else { v as i64 }),
+                                _ => None,
+                            };
+                            match raw {
+                                Some(v) if v == i64::MIN || v == r_core::object::NA_INTEGER as i64 => {
+                                    row_na = true;
+                                    break;
+                                }
+                                Some(v) if v >= 1 => {
+                                    let coord = (v - 1) as usize;
+                                    if coord >= source_dims[k] {
+                                        return Err(EvalError::TypeError("subscript out of bounds").into());
+                                    }
+                                    linear += coord * strides[k];
+                                }
+                                _ => return Err(EvalError::TypeError("subscript out of bounds").into()),
+                            }
+                        }
+                    }
+                    positions.push(if row_na { usize::MAX } else { linear });
+                }
+                return extract_elements(heap, source, &positions).map_err(RSignal::from);
+            }
+        }
     // data.frame single-index subsetting selects COLUMNS, not elements —
     // the frame structure rebuilds over the selection exactly as GNU.
     if let Some((_, ncol)) = data_frame_shape(heap, interner, source) {
@@ -11062,6 +11155,20 @@ pub fn subset_replace(
     index: ValueId,
     value: ValueId,
 ) -> Result<ValueId, EvalError> {
+    // Coordinate-matrix replacement resolves through the shared matrix
+    // index discipline exactly as GNU — the positions then flowing
+    // through the ordinary typed machinery.
+    if let Some(coords) = coordinate_positions(heap, interner, object, index).map_err(|e| match e {
+        RSignal::Error(x) => x,
+        _ => EvalError::TypeError("coordinate resolution"),
+    })? {
+        let rewritten: Vec<i32> = coords
+            .iter()
+            .map(|p| if *p == usize::MAX { r_core::object::NA_INTEGER } else { *p as i32 + 1 })
+            .collect();
+        let rewritten_id = heap.alloc(RObject::Integer(rewritten));
+        return subset_replace(heap, interner, object, rewritten_id, value);
+    }
     // GNU's character replacement exactly: indices resolve against the
     // names attribute progressively — each unmatched name extends the
     // vector once, duplicates within the same call resolving into the
@@ -11177,10 +11284,12 @@ pub fn subset_replace(
             Some(RObject::Logical(_)) => Some(0),
             Some(RObject::Integer(_)) => Some(1),
             Some(RObject::Real(_)) => Some(2),
+            Some(RObject::Complex(_)) => Some(3),
+            Some(RObject::String(_)) => Some(4),
             _ => None,
         }
     }
-    fn coerce(heap: &mut Heap, value: ValueId, to: u32) -> ValueId {
+    fn coerce(heap: &mut Heap, interner: &mut SymbolInterner, value: ValueId, to: u32) -> ValueId {
         let na_int = r_core::object::NA_INTEGER;
         let na_real = f64::from_bits(r_core::object::NA_REAL_BITS);
         match (heap.object(value), to) {
@@ -11202,6 +11311,63 @@ pub fn subset_replace(
                     .collect();
                 heap.alloc(RObject::Real(out))
             }
+            (Some(RObject::Logical(v)), 3) | (Some(RObject::Integer(v)), 3) => {
+                let out: Vec<r_core::object::RComplex> = v
+                    .iter()
+                    .map(|x| if *x == na_int {
+                        r_core::object::RComplex { r: na_real, i: na_real }
+                    } else {
+                        r_core::object::RComplex { r: *x as f64, i: 0.0 }
+                    })
+                    .collect();
+                heap.alloc(RObject::Complex(out))
+            }
+            (Some(RObject::Real(v)), 3) => {
+                let out: Vec<r_core::object::RComplex> = v
+                    .iter()
+                    .map(|x| if x.is_nan() {
+                        r_core::object::RComplex { r: na_real, i: na_real }
+                    } else {
+                        r_core::object::RComplex { r: *x, i: 0.0 }
+                    })
+                    .collect();
+                heap.alloc(RObject::Complex(out))
+            }
+            // Character widening exactly as GNU: NA logicals read the NA
+            // string sentinel, every other entry deparsing its printed form.
+            (Some(RObject::Logical(v)), 4) | (Some(RObject::Integer(v)), 4) => {
+                let out: Vec<r_core::intern::InternedStr> = v
+                    .iter()
+                    .map(|x| if *x == na_int {
+                        interner.intern_string("\0NA")
+                    } else {
+                        interner.intern_string(&x.to_string())
+                    })
+                    .collect();
+                heap.alloc(RObject::String(out))
+            }
+            (Some(RObject::Real(v)), 4) => {
+                let out: Vec<r_core::intern::InternedStr> = v
+                    .iter()
+                    .map(|x| if x.is_nan() {
+                        interner.intern_string("\0NA")
+                    } else {
+                        interner.intern_string(&r_core::print::format_real(*x))
+                    })
+                    .collect();
+                heap.alloc(RObject::String(out))
+            }
+            (Some(RObject::Complex(v)), 4) => {
+                let out: Vec<r_core::intern::InternedStr> = v
+                    .iter()
+                    .map(|x| if x.r.is_nan() {
+                        interner.intern_string("\0NA")
+                    } else {
+                        interner.intern_string(&format!("{}{}{}i", r_core::print::format_real(x.r), if x.i >= 0.0 { "+" } else { "" }, r_core::print::format_real(x.i)))
+                    })
+                    .collect();
+                heap.alloc(RObject::String(out))
+            }
             _ => value,
         }
     }
@@ -11212,8 +11378,8 @@ pub fn subset_replace(
     let (object, value) = if target_rank > 0 || replacement_rank > 0 {
         let common = target_rank.max(replacement_rank);
         (
-            coerce(heap, object, common),
-            coerce(heap, value, common),
+            coerce(heap, interner, object, common),
+            coerce(heap, interner, value, common),
         )
     } else {
         (object, value)
@@ -11228,6 +11394,10 @@ pub fn subset_replace(
         },
         None => None,
     };
+    // Matrix shape attributes carry through replacement exactly as GNU —
+    // dim and dimnames riding alongside names.
+    let source_dim = get_attrib(heap, interner, object, "dim");
+    let source_dimnames = get_attrib(heap, interner, object, "dimnames");
     macro_rules! replace_typed {
         ($variant:ident, $na:expr) => {
             match (heap.object(object), heap.object(value)) {
@@ -11241,7 +11411,13 @@ pub fn subset_replace(
                     for (n, pos) in positions.iter().enumerate() {
                         out[*pos] = replacements[n % replacements.len()];
                     }
-                    let result = heap.alloc(RObject::$variant(out));
+                    let mut result = heap.alloc(RObject::$variant(out));
+                    if let Some(dim) = source_dim {
+                        result = copy_with_attrib(heap, interner, result, "dim", dim).map_err(|_e| EvalError::TypeError("dim attach"))?;
+                    }
+                    if let Some(dimnames) = source_dimnames {
+                        result = copy_with_attrib(heap, interner, result, "dimnames", dimnames).map_err(|_e| EvalError::TypeError("dimnames attach"))?;
+                    }
                     if let Some(entries) = &source_name_entries {
                         // The names extend alongside the vector exactly
                         // as GNU — growth padding empty entries.
@@ -11262,6 +11438,33 @@ pub fn subset_replace(
     replace_typed!(Integer, r_core::object::NA_INTEGER);
     replace_typed!(Real, f64::from_bits(r_core::object::NA_REAL_BITS));
     replace_typed!(Raw, 0u8);
+    replace_typed!(Complex, r_core::object::RComplex { r: f64::from_bits(r_core::object::NA_REAL_BITS), i: f64::from_bits(r_core::object::NA_REAL_BITS) });
+    // String replacement: the NA sentinel interned per position exactly
+    // as the object model represents NA_character_.
+    match (heap.object(object), heap.object(value)) {
+        (Some(RObject::String(target)), Some(RObject::String(replacements))) => {
+            let mut out = target.clone();
+            let replacements = replacements.clone();
+            let required = positions.iter().max().map(|m| m + 1).unwrap_or(0);
+            while out.len() < required {
+                out.push(interner.intern_string("\0NA"));
+            }
+            for (n, pos) in positions.iter().enumerate() {
+                out[*pos] = replacements[n % replacements.len()];
+            }
+            let result = heap.alloc(RObject::String(out));
+            if let Some(entries) = &source_name_entries {
+                let mut name_texts: Vec<r_core::intern::InternedStr> = entries.clone();
+                while name_texts.len() < required {
+                    name_texts.push(interner.intern_string(""));
+                }
+                let names_vec = heap.alloc(RObject::String(name_texts));
+                return copy_with_attrib(heap, interner, result, "names", names_vec).map_err(|_e| EvalError::TypeError("names attach"));
+            }
+            return Ok(result);
+        }
+        _ => {}
+    }
     // Language replacement exactly as GNU's pairlist writing arranges —
     // the object decomposes, the replacement flows through the list
     // machinery, and the result rebuilds into the call shape.
@@ -13137,56 +13340,76 @@ pub fn matrix_primitive(
     let data_len = vector_length(heap, data)
         .ok_or(EvalError::TypeError("matrix data must be a vector"))
         .map_err(RSignal::from)?;
-    let nrow = match lookup("nrow", 1) {
-        Some(v) => first_real(heap, v).map_err(RSignal::from)? as usize,
-        None => data_len,
+    // GNU's interdependent extents exactly: one missing margin derives
+    // from the other through ceiling division, both missing answering
+    // the single-column shape.
+    let nrow_given = lookup("nrow", 1).map(|v| first_real(heap, v).map_err(RSignal::from).map(|x| x as usize)).transpose()?;
+    let ncol_given = lookup("ncol", 2).map(|v| first_real(heap, v).map_err(RSignal::from).map(|x| x as usize)).transpose()?;
+    let (nrow, ncol) = match (nrow_given, ncol_given) {
+        (Some(nr), Some(nc)) => (nr, nc),
+        (Some(nr), None) => (nr, (data_len + nr.max(1) - 1) / nr.max(1)),
+        (None, Some(nc)) => ((data_len + nc.max(1) - 1) / nc.max(1), nc),
+        (None, None) => (data_len, 1),
     };
-    let ncol = match lookup("ncol", 2) {
-        Some(v) => first_real(heap, v).map_err(RSignal::from)? as usize,
-        None => (data_len + nrow - 1) / nrow.max(1),
+    // GNU's byrow exactly: data fills row-major, the transpose reading
+    // back into column-major storage.
+    let byrow = match lookup("byrow", 3) {
+        Some(v) => matches!(heap.object(v), Some(RObject::Logical(vals)) if vals.first().copied().unwrap_or(0) != 0),
+        None => false,
     };
     let total = nrow * ncol;
+    // The byrow reading exactly: column-major output position (r, c)
+    // draws from row-major input position r*ncol + c.
+    let src_pos = |i: usize| -> usize {
+        if byrow && nrow > 0 && ncol > 0 {
+            let r = i % nrow;
+            let c = i / nrow;
+            r * ncol + c
+        } else {
+            i
+        }
+    };
     // Recycle the data vector to the matrix extent — same-type copying.
     let result = match heap.object(data) {
         Some(RObject::Real(values)) => {
             let mut out = Vec::with_capacity(total);
             for i in 0..total {
-                out.push(values[i % values.len().max(1)]);
+                out.push(values[src_pos(i) % values.len().max(1)]);
             }
             heap.alloc(RObject::Real(out))
         }
         Some(RObject::Integer(values)) => {
             let mut out = Vec::with_capacity(total);
             for i in 0..total {
-                out.push(values[i % values.len().max(1)]);
+                out.push(values[src_pos(i) % values.len().max(1)]);
             }
             heap.alloc(RObject::Integer(out))
         }
         Some(RObject::Logical(values)) => {
             let mut out = Vec::with_capacity(total);
             for i in 0..total {
-                out.push(values[i % values.len().max(1)]);
+                out.push(values[src_pos(i) % values.len().max(1)]);
             }
             heap.alloc(RObject::Logical(out))
         }
         Some(RObject::String(values)) => {
             let mut out = Vec::with_capacity(total);
             for i in 0..total {
-                out.push(values[i % values.len().max(1)]);
+                out.push(values[src_pos(i) % values.len().max(1)]);
             }
             heap.alloc(RObject::String(out))
         }
         Some(RObject::Complex(values)) => {
             let mut out = Vec::with_capacity(total);
             for i in 0..total {
-                out.push(values[i % values.len().max(1)]);
+                out.push(values[src_pos(i) % values.len().max(1)]);
             }
             heap.alloc(RObject::Complex(out))
         }
         Some(RObject::Raw(values)) => {
             let mut out = Vec::with_capacity(total);
             for i in 0..total {
-                out.push(values[i % values.len().max(1)]);
+                out.push(values[src_pos(i) % values.len().max(1)]);
             }
             heap.alloc(RObject::Raw(out))
         }
@@ -25376,6 +25599,11 @@ pub fn polyroot_primitive(
             break;
         }
     }
+    // Clustered exact-multiplicity roots remain Jenkins-Traub territory:
+    // Newton polishing in every globalized form escapes the convergence
+    // basin or stalls on floating-point cluster separation, documented
+    // as future numerical work exactly as the bead records.
+
     // Newton polishing exactly as the accuracy contract — clustered roots
     // sharpen through the derivative iteration once the simultaneous
     // phase places them in the basin.
@@ -25645,4 +25873,106 @@ pub fn language_rebuild(heap: &mut Heap, elements: &[ValueId]) -> ValueId {
         chain = heap.alloc(RObject::Pairlist { car: *item, cdr: chain, tag: ValueId::NIL });
     }
     heap.alloc(RObject::Language { car: elements[0], cdr: chain, tag: ValueId::NIL })
+}
+
+/// GNU's coordinate-matrix resolution shared by subsetting and
+/// replacement exactly: an index matrix whose column count matches the
+/// array's dimensionality treats each row as coordinates — numeric
+/// entries striding column-major, character entries matching dimnames
+/// per margin, NA propagating, unmatched characters the subscript error.
+/// Answers None when the index is not a coordinate matrix for the source.
+pub fn coordinate_positions(
+    heap: &Heap,
+    interner: &SymbolInterner,
+    source: ValueId,
+    index: ValueId,
+) -> Result<Option<Vec<usize>>, RSignal> {
+    let (idim, sdim) = match (get_attrib(heap, interner, index, "dim"), get_attrib(heap, interner, source, "dim")) {
+        (Some(a), Some(b)) => (a, b),
+        _ => return Ok(None),
+    };
+    let index_dims: Vec<usize> = match heap.object(idim) {
+        Some(RObject::Integer(v)) => v.iter().map(|x| (*x).max(0) as usize).collect(),
+        _ => return Ok(None),
+    };
+    let source_dims: Vec<usize> = match heap.object(sdim) {
+        Some(RObject::Integer(v)) => v.iter().map(|x| (*x).max(0) as usize).collect(),
+        _ => return Ok(None),
+    };
+    if index_dims.len() != 2 || source_dims.is_empty() || index_dims[1] != source_dims.len() {
+        return Ok(None);
+    }
+    let nrows = index_dims[0];
+    let ncols = index_dims[1];
+    let strides: Vec<usize> = {
+        let mut st = Vec::with_capacity(source_dims.len());
+        let mut acc = 1usize;
+        for d in &source_dims {
+            st.push(acc);
+            acc *= d;
+        }
+        st
+    };
+    let dimnames_parts: Vec<Vec<String>> = match get_attrib(heap, interner, source, "dimnames") {
+        Some(dn) => match heap.object(dn) {
+            Some(RObject::List(parts)) => parts
+                .iter()
+                .map(|part| match heap.object(*part) {
+                    Some(RObject::String(entries)) => entries.iter().map(|e| interner.string_text(*e).to_string()).collect(),
+                    _ => Vec::new(),
+                })
+                .collect(),
+            _ => Vec::new(),
+        },
+        None => Vec::new(),
+    };
+    let is_char = matches!(heap.object(index), Some(RObject::String(_)));
+    let mut positions: Vec<usize> = Vec::with_capacity(nrows);
+    for r in 0..nrows {
+        let mut linear: usize = 0;
+        let mut row_na = false;
+        for k in 0..ncols {
+            let cell_flat = k * nrows + r;
+            if is_char {
+                let text = match heap.object(index) {
+                    Some(RObject::String(vals)) => vals.get(cell_flat).map(|v| interner.string_text(*v).to_string()).unwrap_or_default(),
+                    _ => String::new(),
+                };
+                if text == "\0NA" {
+                    row_na = true;
+                    break;
+                }
+                let names = dimnames_parts.get(k).cloned().unwrap_or_default();
+                if names.is_empty() {
+                    return Err(EvalError::TypeError("subscript out of bounds").into());
+                }
+                match names.iter().position(|n| *n == text && !n.is_empty()) {
+                    Some(pos) => linear += pos * strides[k],
+                    None => return Err(EvalError::TypeError("subscript out of bounds").into()),
+                }
+            } else {
+                let raw = match heap.object(index) {
+                    Some(RObject::Integer(vals)) => vals.get(cell_flat).copied().map(|v| v as i64),
+                    Some(RObject::Real(vals)) => vals.get(cell_flat).copied().map(|v| if v.is_nan() { i64::MIN } else { v as i64 }),
+                    _ => None,
+                };
+                match raw {
+                    Some(v) if v == i64::MIN || v == r_core::object::NA_INTEGER as i64 => {
+                        row_na = true;
+                        break;
+                    }
+                    Some(v) if v >= 1 => {
+                        let coord = (v - 1) as usize;
+                        if coord >= source_dims[k] {
+                            return Err(EvalError::TypeError("subscript out of bounds").into());
+                        }
+                        linear += coord * strides[k];
+                    }
+                    _ => return Err(EvalError::TypeError("subscript out of bounds").into()),
+                }
+            }
+        }
+        positions.push(if row_na { usize::MAX } else { linear });
+    }
+    Ok(Some(positions))
 }
