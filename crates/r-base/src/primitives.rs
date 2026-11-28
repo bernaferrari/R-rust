@@ -611,6 +611,12 @@ pub fn call_primitive_inner(
             }
             let mut created = true;
             for path in string_vec(heap, interner, path_arg) {
+                if heap.browser_files_enabled {
+                    // Implied directories need no creation exactly as the
+                    // flat keyspace arranges — writing a descendant key
+                    // materializes every ancestor.
+                    continue;
+                }
                 let host_path = r_core::path_policy::resolve_host_path(
                     heap.path_policy.as_ref(),
                     &path,
@@ -1399,16 +1405,27 @@ pub fn call_primitive_inner(
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
-                    let text = r_core::path_policy::resolve_host_path(
-                        heap.path_policy.as_ref(),
-                        path,
-                    )
-                    .and_then(|host| {
-                        std::fs::metadata(&host)
-                            .map(|m| format!("{:o}", m.permissions().mode() & 0o7777))
-                            .ok()
-                    })
-                    .unwrap_or_else(|| "\0NA".to_string());
+                    let virtual_hit = heap.browser_files.contains_key(path)
+                        || heap.browser_files.keys().any(|k| k.starts_with(&format!("{}/", path.trim_end_matches('/'))));
+                    let text = if virtual_hit {
+                        // The flat store writes one uniform mode exactly
+                        // as its byte semantics arrange — permission bits
+                        // have no meaning over a keyspace.
+                        "644".to_string()
+                    } else if heap.browser_files_enabled {
+                        "\0NA".to_string()
+                    } else {
+                        r_core::path_policy::resolve_host_path(
+                            heap.path_policy.as_ref(),
+                            path,
+                        )
+                        .and_then(|host| {
+                            std::fs::metadata(&host)
+                                .map(|m| format!("{:o}", m.permissions().mode() & 0o7777))
+                                .ok()
+                        })
+                        .unwrap_or_else(|| "\0NA".to_string())
+                    };
                     modes.push(text);
                 }
                 #[cfg(not(unix))]
@@ -1422,10 +1439,27 @@ pub fn call_primitive_inner(
             let mut sizes = Vec::new();
             let mut dirs = Vec::new();
             for path in &paths {
-                let meta = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), path)
-                    .and_then(|host| std::fs::metadata(&host).ok());
-                sizes.push(meta.as_ref().map(|m| m.len() as f64).unwrap_or(f64::NAN));
-                dirs.push(meta.map(|m| if m.is_dir() { 1 } else { 0 }).unwrap_or(r_core::object::NA_INTEGER));
+                if heap.browser_files_enabled {
+                    // Metadata derives from the keyspace exactly as the
+                    // store's shape arranges — size is the byte length,
+                    // directories are implied by descent.
+                    let trimmed = path.trim_end_matches('/');
+                    if let Some(bytes) = heap.browser_files.get(path) {
+                        sizes.push(bytes.len() as f64);
+                        dirs.push(0);
+                    } else if trimmed == "." || heap.browser_files.keys().any(|k| k.starts_with(&format!("{trimmed}/"))) {
+                        sizes.push(0.0);
+                        dirs.push(1);
+                    } else {
+                        sizes.push(f64::NAN);
+                        dirs.push(r_core::object::NA_INTEGER);
+                    }
+                } else {
+                    let meta = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), path)
+                        .and_then(|host| std::fs::metadata(&host).ok());
+                    sizes.push(meta.as_ref().map(|m| m.len() as f64).unwrap_or(f64::NAN));
+                    dirs.push(meta.map(|m| if m.is_dir() { 1 } else { 0 }).unwrap_or(r_core::object::NA_INTEGER));
+                }
             }
             let size_col = heap.alloc(RObject::Real(sizes));
             let isdir_col = heap.alloc(RObject::Logical(dirs));
@@ -4242,7 +4276,22 @@ pub fn call_primitive_inner(
         DIR_EXISTS => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             let paths = string_vec(heap, interner, operands[0]);
-            let out: Vec<i32> = paths.iter().map(|p| if std::path::Path::new(p).is_dir() { 1 } else { 0 }).collect();
+            let out: Vec<i32> = paths.iter().map(|p| {
+                if heap.browser_files_enabled {
+                    // Directories are implied by key structure exactly as
+                    // the flat store arranges — a directory exists when
+                    // any key descends beneath it, and the root always
+                    // exists because the store itself is there.
+                    let trimmed = p.trim_end_matches('/');
+                    if trimmed == "." || trimmed.is_empty() {
+                        return 1;
+                    }
+                    let prefix = format!("{trimmed}/");
+                    if heap.browser_files.keys().any(|k| k.starts_with(&prefix)) { 1 } else { 0 }
+                } else {
+                    if std::path::Path::new(p).is_dir() { 1 } else { 0 }
+                }
+            }).collect();
             Ok(heap.alloc(RObject::Logical(out)))
         }
         FILE_CREATE => {
