@@ -573,6 +573,7 @@ pub fn loess_primitive(
     let xs_val = force_if_promise(heap, interner, xs_val)?;
     let ys = reals_of_value(heap, ys_val).map_err(RSignal::from)?;
     let xs = reals_of_value(heap, xs_val).map_err(RSignal::from)?;
+    let (xs, ys) = (xs, ys);
     if xs.len() != ys.len() || xs.is_empty() {
         return Err(EvalError::Condition("loess requires equal-length numeric x and y".to_string()).into());
     }
@@ -608,15 +609,228 @@ pub fn loess_primitive(
         }
         cursor = cdr;
     }
-    let fitted = loess_core_fit(&xs, &ys, span, degree);
+    // weights and control exactly as GNU's simpleLoess arranges: the case
+    // weights multiply the tricube inside the fit, family selects the
+    // robustifying iterations, control carries the surface/statistics/cell
+    // parameters through the tagged list.
+    let mut weights = vec![1.0f64; xs.len()];
+    let mut family = String::from("gaussian");
+    let mut surface = String::from("interpolate");
+    let mut statistics = String::from("approximate");
+    let mut cell = 0.2f64;
+    let mut iterations_ctl = 4usize;
+    let mut cursor2 = args;
+    for _ in 0..16 {
+        let (car, cdr, tag) = match heap.object(cursor2) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        if let Some(RObject::Symbol { name, .. }) = heap.object(tag) {
+            let tname = interner.symbol_name(*name).to_string();
+            let v = eval(heap, interner, car, caller_env)?;
+            let v = force_if_promise(heap, interner, v)?;
+            match tname.as_str() {
+                "weights" => {
+                    if let Ok(ws) = reals_of_value(heap, v) {
+                        if ws.len() == xs.len() {
+                            weights = ws;
+                        }
+                    }
+                }
+                "family" => {
+                    if let Some(RObject::String(ss)) = heap.object(v) {
+                        if let Some(f0) = ss.first() {
+                            family = interner.string_text(*f0).to_string();
+                        }
+                    }
+                }
+                "control" => {
+                    if let Some(RObject::List(items)) = heap.object(v) {
+                        let items = items.clone();
+                        // read the tagged control entries by name
+                        let names = get_attrib(heap, interner, v, "names");
+                        if let Some(nm) = names {
+                            if let Some(RObject::String(nms)) = heap.object(nm) {
+                                let nms = nms.clone();
+                                for (ix, item) in items.iter().enumerate() {
+                                    let key = interner.string_text(nms[ix]).to_string();
+                                    match key.as_str() {
+                                        "surface" => {
+                                            if let Some(RObject::String(ss)) = heap.object(*item) {
+                                                if let Some(f0) = ss.first() {
+                                                    surface = interner.string_text(*f0).to_string();
+                                                }
+                                            }
+                                        }
+                                        "statistics" => {
+                                            if let Some(RObject::String(ss)) = heap.object(*item) {
+                                                if let Some(f0) = ss.first() {
+                                                    statistics = interner.string_text(*f0).to_string();
+                                                }
+                                            }
+                                        }
+                                        "cell" => {
+                                            if let Ok(r) = first_real(heap, *item) {
+                                                cell = r;
+                                            }
+                                        }
+                                        "iterations" => {
+                                            if let Ok(r) = first_real(heap, *item) {
+                                                iterations_ctl = r as usize;
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor2 = cdr;
+    }
+    // subset — the observation selection exactly as GNU's model-frame
+    // arrangement: indices reorder and repeat exactly as given.
+    let mut subset_idx: Option<Vec<usize>> = None;
+    let mut want_model = false;
+    let mut cursor3 = args;
+    for _ in 0..16 {
+        let (car, cdr, tag) = match heap.object(cursor3) {
+            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+            _ => break,
+        };
+        if let Some(RObject::Symbol { name, .. }) = heap.object(tag) {
+            let tname = interner.symbol_name(*name).to_string();
+            let v = eval(heap, interner, car, caller_env)?;
+            let v = force_if_promise(heap, interner, v)?;
+            match tname.as_str() {
+                "subset" => {
+                    if let Ok(rs) = reals_of_value(heap, v) {
+                        subset_idx = Some(rs.iter().map(|r| *r as usize).collect());
+                    }
+                }
+                "model" => {
+                    want_model = logical_scalar(heap, v);
+                }
+                _ => {}
+            }
+        }
+        if cdr == ValueId::NIL {
+            break;
+        }
+        cursor3 = cdr;
+    }
+    let (mut xs, mut ys, mut weights) = (xs, ys, weights);
+    if let Some(idx) = &subset_idx {
+        let nx = xs.clone();
+        let ny = ys.clone();
+        let nw = weights.clone();
+        xs = idx.iter().filter_map(|&i| if i >= 1 && i <= nx.len() { Some(nx[i - 1]) } else { None }).collect();
+        ys = idx.iter().filter_map(|&i| if i >= 1 && i <= ny.len() { Some(ny[i - 1]) } else { None }).collect();
+        weights = idx.iter().filter_map(|&i| if i >= 1 && i <= nw.len() { Some(nw[i - 1]) } else { None }).collect();
+    }
+    let iterations = if family == "gaussian" { 1 } else { iterations_ctl.max(1) };
+    let direct = surface == "direct";
+    // The exact fit chain exactly as simpleLoess arranges: the first
+    // iteration computes the statistics, robustness iterations reweight
+    // through lowesw's bisquare and refit with statistics none.
+    let mut robust = vec![1.0f64; xs.len()];
+    let effw: Vec<f64> = weights.iter().zip(robust.iter()).map(|(a, b)| a * b).collect();
+    let mut state = crate::loessf::loess_fit_exact(&xs, &ys, &effw, span, degree, span * cell);
+    let mut fitted = if direct {
+        crate::loessf::direct_fit(&xs, &ys, &effw, span, degree, &xs).0
+    } else {
+        state.fitted.clone()
+    };
+    // The statistics exactly as the surface/statistics pair arranges: the
+    // interpolate/exact path reads the hat matrix; direct/approximate reads
+    // the own-point leverages through the coefficient-table approximation.
+    let (mut trl, mut delta1, mut delta2) = if direct {
+        let effw2: Vec<f64> = weights.iter().zip(robust.iter()).map(|(a, b)| a * b).collect();
+        let (_, rows) = crate::loessf::direct_fit(&xs, &ys, &effw2, span, degree, &xs);
+        let trl_v: f64 = rows.iter().enumerate().map(|(i, r)| r[i]).sum();
+        let tau = match degree { 0 => 1, 1 => 2, _ => 3 };
+        let (d1, d2) = crate::loessf::lowesa(trl_v, xs.len(), 1, tau, 0);
+        (trl_v, d1, d2)
+    } else {
+        (state.trl, state.delta1, state.delta2)
+    };
+    for _j in 1..iterations {
+        // lowesw — the bisquare robustness weights exactly as the Fortran:
+        // cmad = 6×median|resid| with the even-n averaged pair, weights
+        // (1-(r/cmad)²)² inside, zero outside.
+        let resid: Vec<f64> = ys.iter().zip(fitted.iter()).map(|(y, f)| y - f).collect();
+        robust = crate::loessf::lowesw(&resid);
+        let eff: Vec<f64> = weights.iter().zip(robust.iter()).map(|(a, b)| a * b).collect();
+        state = crate::loessf::loess_fit_exact(&xs, &ys, &eff, span, degree, span * cell);
+        fitted = if direct {
+            crate::loessf::direct_fit(&xs, &ys, &eff, span, degree, &xs).0
+        } else {
+            state.fitted.clone()
+        };
+    }
     let residuals: Vec<f64> = ys.iter().zip(fitted.iter()).map(|(y, f)| y - f).collect();
+    // The scale exactly as simpleLoess arranges: the symmetric family reads
+    // the pseudovalue residuals through lowesp's adjustment exactly.
+    let sum_squares: f64 = if family == "gaussian" {
+        weights.iter().zip(residuals.iter()).map(|(w, r)| w * r * r).sum()
+    } else {
+        let pseudo = crate::loessf::lowesp(&ys, &fitted, &weights, &robust);
+        let zz = if direct {
+            crate::loessf::direct_fit(&xs, &pseudo, &weights, span, degree, &xs).0
+        } else {
+            crate::loessf::loess_fit_exact(&xs, &pseudo, &weights, span, degree, span * cell).fitted
+        };
+        weights.iter().zip(pseudo.iter().zip(zz.iter())).map(|(w, (p, z))| {
+            let r = p - z;
+            w * r * r
+        }).sum()
+    };
+    let s_val = (sum_squares / delta1).sqrt();
+    let _ = statistics;
     // The object exactly as GNU's list-of-components shape.
     let fitted_id = heap.alloc(RObject::Real(fitted));
     let residuals_id = heap.alloc(RObject::Real(residuals));
     let n_id = heap.alloc(RObject::Real(vec![xs.len() as f64]));
-    let components = vec![n_id, fitted_id, residuals_id];
+    let trl_id = heap.alloc(RObject::Real(vec![trl]));
+    let d1_id = heap.alloc(RObject::Real(vec![delta1]));
+    let d2_id = heap.alloc(RObject::Real(vec![delta2]));
+    let s_id = heap.alloc(RObject::Real(vec![s_val]));
+    // the fit state carried for predict exactly as the kd component arranges
+    let xs_id = heap.alloc(RObject::Real(xs.clone()));
+    let ys_id = heap.alloc(RObject::Real(ys.clone()));
+    let ws_id = heap.alloc(RObject::Real(weights.clone()));
+    let rb_id = heap.alloc(RObject::Real(robust.clone()));
+    let pars_id = heap.alloc(RObject::Real(vec![span, degree as f64, cell, if family == "gaussian" { 0.0 } else { 1.0 }, if direct { 1.0 } else { 0.0 }]));
+    // x — the predictor matrix exactly as GNU's model arrangement: n×1 with
+    // the dim attribute answering matrix subscripts.
+    let xmat_id = heap.alloc(RObject::Real(xs.clone()));
+    let dim_id = heap.alloc(RObject::Integer(vec![xs.len() as i32, 1]));
+    let xmat_id = copy_with_attrib(heap, interner, xmat_id, "dim", dim_id).map_err(RSignal::from)?;
+    let (components, names): (Vec<ValueId>, Vec<&str>) = if want_model {
+        // model — the model frame approximated as the x matrix exactly as the
+        // single-predictor arrangement consumes it.
+        let m_id = heap.alloc(RObject::Real(xs.clone()));
+        let mdim_id = heap.alloc(RObject::Integer(vec![xs.len() as i32, 1]));
+        let m_id = copy_with_attrib(heap, interner, m_id, "dim", mdim_id).map_err(RSignal::from)?;
+        (
+            vec![n_id, fitted_id, residuals_id, trl_id, d1_id, d2_id, s_id, xs_id, ys_id, ws_id, rb_id, pars_id, xmat_id, m_id],
+            vec!["n", "fitted", "residuals", "trace.hat", "one.delta", "two.delta", "s", ".x", ".y", ".weights", ".robust", ".pars", "x", "model"],
+        )
+    } else {
+        (
+            vec![n_id, fitted_id, residuals_id, trl_id, d1_id, d2_id, s_id, xs_id, ys_id, ws_id, rb_id, pars_id, xmat_id],
+            vec!["n", "fitted", "residuals", "trace.hat", "one.delta", "two.delta", "s", ".x", ".y", ".weights", ".robust", ".pars", "x"],
+        )
+    };
+    let components = components;
     let result = heap.alloc(RObject::List(components));
-    let names = ["n", "fitted", "residuals"]
+    let names = names
         .iter()
         .map(|t| interner.intern_string(t))
         .collect::<Vec<_>>();
@@ -636,8 +850,16 @@ pub fn predict_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    let operands = eval_args(heap, interner, args, caller_env, 1)?;
-    let object = operands[0];
+    // UseMethod dispatch exactly as GNU arranges: predict.<class> resolves
+    // as a closure in the calling frames and applies with the object and the
+    // remaining arguments; the loess fallthrough implements the method
+    // directly where no override exists.
+    let operands_raw = raw_args(heap, args);
+    if operands_raw.is_empty() {
+        return Err(EvalError::TypeError("predict requires an object").into());
+    }
+    let object = eval(heap, interner, operands_raw[0], caller_env)?;
+    let object = force_if_promise(heap, interner, object)?;
     let class: Option<String> = get_attrib(heap, interner, object, "class").and_then(|id| {
         match heap.object(id) {
             Some(RObject::String(entries)) if !entries.is_empty() => {
@@ -646,20 +868,124 @@ pub fn predict_primitive(
             _ => None,
         }
     });
+    if let Some(cls) = &class {
+        let method_name = format!("predict.{}", cls);
+        let sym = interner.intern_symbol(&method_name);
+        if let Some((_, binding)) = r_core::env::lookup(heap, caller_env, sym) {
+            let method = force_if_promise(heap, interner, binding.value)?;
+            if matches!(heap.object(method), Some(RObject::Closure { .. })) {
+                // Apply exactly as UseMethod arranges: the method call with the
+                // original argument list reconstructed as a language object.
+                let call = heap.alloc(RObject::Language {
+                    car: method,
+                    cdr: args,
+                    tag: ValueId::NIL,
+                });
+                return eval(heap, interner, call, caller_env);
+            }
+        }
+    }
     if class.as_deref() == Some("loess")
         && let Some(RObject::List(items)) = heap.object(object) {
+            let items = items.clone();
             let names: Vec<String> = get_attrib(heap, interner, object, "names").and_then(|id| {
                 match heap.object(id) {
                     Some(RObject::String(entries)) => Some(entries.iter().map(|e| interner.string_text(*e).to_string()).collect()),
                     _ => None,
                 }
             }).unwrap_or_default();
-            if let Some(pos) = names.iter().position(|n| n == "fitted")
-                && let Some(&fitted) = items.get(pos) {
-                    return Ok(fitted);
+            let component = |key: &str| -> Option<ValueId> {
+                names.iter().position(|n| n == key).and_then(|pos| items.get(pos).copied())
+            };
+            // Read the tagged arguments: newdata and se exactly as the method
+            // contract arranges.
+            let mut newdata: Option<Vec<f64>> = None;
+            let mut want_se = false;
+            let mut cursor = args;
+            for _ in 0..16 {
+                let (car, cdr, tag) = match heap.object(cursor) {
+                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
+                    _ => break,
+                };
+                if let Some(RObject::Symbol { name, .. }) = heap.object(tag) {
+                    let tname = interner.symbol_name(*name).to_string();
+                    let v = eval(heap, interner, car, caller_env)?;
+                    let v = force_if_promise(heap, interner, v)?;
+                    match tname.as_str() {
+                        "newdata" => {
+                            if let Ok(rs) = reals_of_value(heap, v) {
+                                newdata = Some(rs);
+                            }
+                        }
+                        "se" => {
+                            want_se = logical_scalar(heap, v);
+                        }
+                        _ => {}
+                    }
                 }
+                if cdr == ValueId::NIL {
+                    break;
+                }
+                cursor = cdr;
+            }
+            let fitted = component("fitted");
+            if newdata.is_none() && !want_se {
+                if let Some(f) = fitted {
+                    return Ok(f);
+                }
+            }
+            // Recompute the exact fit exactly as the deterministic surface
+            // arranges — the object carries every input.
+            let xs = component(".x").and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
+            let ys = component(".y").and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
+            let ws = component(".weights").and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
+            let rb = component(".robust").and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
+            let pars = component(".pars").and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
+            let s_val = component("s").and_then(|v| first_real(heap, v).ok()).unwrap_or(0.0);
+            let d1 = component("one.delta").and_then(|v| first_real(heap, v).ok()).unwrap_or(0.0);
+            let d2 = component("two.delta").and_then(|v| first_real(heap, v).ok()).unwrap_or(0.0);
+            if xs.is_empty() || pars.len() < 4 {
+                return Err(EvalError::TypeError("predict: no method for this object").into());
+            }
+            let (span, degree, cell) = (pars[0], pars[1] as usize, pars[2]);
+            let direct_surface = pars.len() > 4 && pars[4] != 0.0;
+            let state = crate::loessf::loess_fit_exact_weighted(&xs, &ys, &ws, &rb, span, degree, span * cell);
+            let eval_points: Vec<f64> = match &newdata {
+                Some(nd) => nd.clone(),
+                None => xs.clone(),
+            };
+            let eff: Vec<f64> = ws.iter().zip(rb.iter()).map(|(a, b)| a * b).collect();
+            let (fits, hat_rows): (Vec<f64>, Vec<Vec<f64>>) = if direct_surface {
+                crate::loessf::direct_fit(&xs, &ys, &eff, span, degree, &eval_points)
+            } else {
+                (
+                    eval_points.iter().map(|&z| crate::loessf::predict_at(&state, &[z])).collect(),
+                    eval_points.iter().map(|&z| crate::loessf::hat_row_at(&state, &[z], xs.len())).collect(),
+                )
+            };
+            if !want_se {
+                let fit_id = heap.alloc(RObject::Real(fits));
+                return Ok(fit_id);
+            }
+            // se.fit = s × sqrt(sum_j L(z,j)² / weights_j) exactly as predLoess.
+            let ses: Vec<f64> = hat_rows.iter().map(|row| {
+                let acc: f64 = row.iter().zip(ws.iter()).map(|(l, w)| l * l / w).sum();
+                s_val * acc.sqrt()
+            }).collect();
+            let fit_id = heap.alloc(RObject::Real(fits));
+            let se_id = heap.alloc(RObject::Real(ses));
+            let df_id = heap.alloc(RObject::Real(vec![d1 * d1 / d2]));
+            let rs_id = heap.alloc(RObject::Real(vec![s_val]));
+            let out = heap.alloc(RObject::List(vec![fit_id, se_id, rs_id, df_id]));
+            let nm = ["fit", "se.fit", "residual.scale", "df"]
+                .iter()
+                .map(|t| interner.intern_string(t))
+                .collect::<Vec<_>>();
+            let nm_id = heap.alloc(RObject::String(nm));
+            copy_with_attrib(heap, interner, out, "names", nm_id).map_err(RSignal::from)
+        } else {
+            Err(EvalError::TypeError("predict: no method for this object").into())
         }
-    Err(EvalError::TypeError("predict: no method for this object").into())
 }
 
 /// GNU's RNGkind: query and set the generator, normal and sample kinds.
