@@ -13,6 +13,10 @@ pub struct ContextFrame {
     pub call: ValueId,
     pub closure: ValueId,
     pub nargs: usize,
+    /// The environment the invocation was evaluated in exactly as GNU's
+    /// calling environment — parent.frame() answers from this, not the
+    /// parent closure's own execution frame.
+    pub callenv: ValueId,
 }
 
 

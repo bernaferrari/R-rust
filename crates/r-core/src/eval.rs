@@ -594,6 +594,7 @@ fn apply_closure(
         call: call_expr,
         closure: closure_id,
         nargs: arg_list.len(),
+        callenv: caller_env,
     });
     // The closure boundary absorbs a `return` signal — exactly one frame
     // of unwinding — while break/next/errors propagate outward.

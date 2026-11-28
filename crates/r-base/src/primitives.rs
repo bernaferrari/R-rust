@@ -3241,15 +3241,14 @@ pub fn call_primitive_inner(
             }
         }
         PARENT_FRAME => {
-            // One activation outward exactly as GNU's default — the
-            // caller's frame; beyond the outermost closure the caller's
-            // own environment is the conservative answer.
-            let len = heap.contexts.len();
-            if len >= 2 {
-                Ok(heap.contexts[len - 2].frame)
-            } else {
-                Ok(caller_env)
-            }
+            // GNU's parent frame is the environment the invocation was
+            // evaluated in — the calling environment exactly as the
+            // context record carries — not the parent closure's own
+            // execution frame. The distinction is load-bearing inside
+            // local() and eval frames: bindings written into the body's
+            // fresh environment are visible through parent.frame()
+            // precisely because the call happened there.
+            heap.contexts.last().map(|c| c.callenv).or(Some(caller_env)).map_or(Ok(caller_env), Ok)
         }
         IS_FUNCTION => {
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
@@ -4437,6 +4436,16 @@ pub fn call_primitive_inner(
                 match triple {
                     Some((car, cdr, tag)) => {
                         is_chain = true;
+                        // Missing slots canonicalize to GNU's empty-name
+                        // missing symbol exactly as formals() reports them
+                        // — one representation for the missing argument
+                        // across every conversion path.
+                        let car = if car == ValueId::MISSING {
+                            let empty = interner.intern_symbol("");
+                            heap.alloc(RObject::Symbol { name: empty, value: ValueId::UNBOUND, internal: ValueId::NIL })
+                        } else {
+                            car
+                        };
                         items.push(car);
                         if let Some(RObject::Symbol { name, .. }) = heap.object(tag) {
                             names.push(interner.symbol_name(*name).to_string());
@@ -5962,18 +5971,31 @@ pub fn call_primitive_inner(
         EVAL_FN => {
             // eval of an expression vector evaluates every element in
             // order and yields the last value exactly as GNU; a bare
-            // language object evaluates directly.
-            let operands = eval_args(heap, interner, args, caller_env, 1)?;
+            // language object evaluates directly. The envir argument is
+            // load-bearing exactly as GNU — eval(quote(x), e) evaluates
+            // inside e, which is the entire machinery of the report and
+            // capture idioms; without it the explicit environment was
+            // silently ignored and evaluation happened in the caller's
+            // frame instead.
+            let operands = eval_args(heap, interner, args, caller_env, 2)
+                .unwrap_or_else(|_| eval_args(heap, interner, args, caller_env, 1).unwrap_or_default());
+            if operands.is_empty() {
+                return Err(EvalError::TypeError("eval requires an expression").into());
+            }
+            let eval_env = operands.get(1).and_then(|v| match heap.object(*v) {
+                Some(RObject::Environment { .. }) => Some(*v),
+                _ => None,
+            }).unwrap_or(caller_env);
             match heap.object(operands[0]) {
                 Some(RObject::Expression(items)) => {
                     let items = items.clone();
                     let mut last = ValueId::NIL;
                     for item in items {
-                        last = r_core::eval::eval(heap, interner, item, caller_env)?;
+                        last = r_core::eval::eval(heap, interner, item, eval_env)?;
                     }
                     Ok(last)
                 }
-                _ => r_core::eval::eval(heap, interner, operands[0], caller_env),
+                _ => r_core::eval::eval(heap, interner, operands[0], eval_env),
             }
         }
         DEPARSE1 => {
@@ -14869,6 +14891,20 @@ pub fn structural_identical(
     right: ValueId,
 ) -> bool {
     if left == right {
+        return true;
+    }
+    // GNU's missing argument is one object across representation
+    // boundaries: the sentinel and the empty-name symbol are the same
+    // R_MissingArg — formals report one form, raw pairlist slots carry
+    // the other, and identical() sees through both.
+    let is_missing_form = |v: ValueId| -> bool {
+        v == ValueId::MISSING
+            || matches!(
+                heap.object(v),
+                Some(RObject::Symbol { name, .. }) if interner.symbol_name(*name).is_empty()
+            )
+    };
+    if is_missing_form(left) && is_missing_form(right) {
         return true;
     }
     let attrib_identical = |heap: &Heap, interner: &SymbolInterner, a: ValueId, b: ValueId| -> bool {

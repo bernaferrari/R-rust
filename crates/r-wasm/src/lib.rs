@@ -553,7 +553,6 @@ mod tests {
     /// sys.call/sys.nframe introspection. Tracked in the conformance
     /// epics; un-ignore as the pure world reaches parity.
     #[test]
-    #[ignore = "pure-world conformance depth pending — read.fwf connections, compiler package, internal identity"]
     fn rep_len_admission_contract_matches_gnu() {
         let mut session = WasmRSession::new().unwrap();
         assert_eq!(
