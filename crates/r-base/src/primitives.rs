@@ -12195,7 +12195,28 @@ pub fn names_primitive(
     }
     match get_attrib(heap, interner, operands[0], "names") {
         Some(names) => Ok(names),
-        None => Ok(ValueId::NIL),
+        None => {
+            // GNU's one-dimensional array discipline exactly as attrib.c:
+            // absent a names attribute, a vector carrying a single dim
+            // reads its dimnames' first component as the names.
+            let one_dim = match get_attrib(heap, interner, operands[0], "dim") {
+                Some(dim_id) => match heap.object(dim_id) {
+                    Some(RObject::Integer(dims)) => dims.len() == 1,
+                    _ => false,
+                },
+                None => false,
+            };
+            if one_dim {
+                if let Some(dn) = get_attrib(heap, interner, operands[0], "dimnames") {
+                    if let Some(RObject::List(items)) = heap.object(dn) {
+                        if let Some(first) = items.first() {
+                            return Ok(*first);
+                        }
+                    }
+                }
+            }
+            Ok(ValueId::NIL)
+        }
     }
 }
 
@@ -22322,6 +22343,10 @@ pub fn table_primitive(
     } else {
         Vec::new()
     };
+    // GNU's input coercion exactly: numeric vectors pass through the
+    // factor discipline — categories sorting numerically before their
+    // character labelling — while character input sorts lexically.
+    let numeric_input = matches!(heap.object(input), Some(RObject::Real(_)) | Some(RObject::Integer(_))) && !factored;
     let values: Vec<String> = if factored {
         match heap.object(input) {
             Some(RObject::Integer(codes)) => codes
@@ -22336,11 +22361,48 @@ pub fn table_primitive(
                 .collect(),
             _ => Vec::new(),
         }
+    } else if numeric_input {
+        match heap.object(input) {
+            Some(RObject::Real(vals)) => vals
+                .iter()
+                .map(|v| if v.is_nan() { "\0NA".to_string() } else { r_core::print::format_real(*v) })
+                .collect(),
+            Some(RObject::Integer(vals)) => vals
+                .iter()
+                .map(|v| if *v == r_core::object::NA_INTEGER { "\0NA".to_string() } else { v.to_string() })
+                .collect(),
+            _ => Vec::new(),
+        }
     } else {
         string_vec(heap, interner, input)
     };
     let categories: Vec<String> = if factored {
         levels.clone()
+    } else if numeric_input {
+        // Numeric sort before labelling exactly as GNU's factor levels —
+        // 2 preceding 10 against the lexical order.
+        let mut keyed: Vec<(f64, String)> = Vec::new();
+        match heap.object(input) {
+            Some(RObject::Real(vals)) => {
+                for v in vals.iter() {
+                    if !v.is_nan() {
+                        keyed.push((*v, r_core::print::format_real(*v)));
+                    }
+                }
+            }
+            Some(RObject::Integer(vals)) => {
+                for v in vals.iter() {
+                    if *v != r_core::object::NA_INTEGER {
+                        keyed.push((*v as f64, v.to_string()));
+                    }
+                }
+            }
+            _ => {}
+        }
+        keyed.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        let mut cats: Vec<String> = keyed.into_iter().map(|(_, lab)| lab).collect();
+        cats.dedup();
+        cats
     } else {
         let mut cats: Vec<String> = values.iter().filter(|v| *v != "\0NA").cloned().collect();
         cats.sort();
@@ -22352,8 +22414,9 @@ pub fn table_primitive(
         .map(|cat| values.iter().filter(|v| *v == cat).count() as i32)
         .collect();
     let mut result = heap.alloc(RObject::Integer(counts));
-    // Structure: dim, dimnames with the tag-derived dimension name, names
-    // mirroring the single dimension exactly as GNU's 1-D table, class.
+    // Structure: dim, dimnames with the tag-derived dimension name, class —
+    // names() reading through the one-dimensional dimnames fallback exactly
+    // as GNU's attrib discipline rather than a materialized attribute.
     let dim_obj = heap.alloc(RObject::Integer(vec![categories.len() as i32]));
     result = copy_with_attrib(heap, interner, result, "dim", dim_obj).map_err(RSignal::from)?;
     let cat_obj = heap.alloc(RObject::String(categories.iter().map(|c| interner.intern_string(c)).collect()));
@@ -22361,8 +22424,6 @@ pub fn table_primitive(
     let dnn = heap.alloc(RObject::String(vec![interner.intern_string(&dim_name)]));
     let dimnames_list = copy_with_attrib(heap, interner, dimnames_list, "names", dnn).map_err(RSignal::from)?;
     result = copy_with_attrib(heap, interner, result, "dimnames", dimnames_list).map_err(RSignal::from)?;
-    let names_obj = heap.alloc(RObject::String(categories.iter().map(|c| interner.intern_string(c)).collect()));
-    result = copy_with_attrib(heap, interner, result, "names", names_obj).map_err(RSignal::from)?;
     let class_obj = heap.alloc(RObject::String(vec![interner.intern_string("table")]));
     copy_with_attrib(heap, interner, result, "class", class_obj).map_err(RSignal::from)
 }

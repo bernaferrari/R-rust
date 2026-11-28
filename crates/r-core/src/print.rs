@@ -353,18 +353,39 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
                 None => Vec::new(),
             },
         };
-        let mut header: Vec<String> = Vec::new();
-        let mut body: Vec<String> = Vec::new();
+        // GNU's named-vector discipline exactly as printvector.c: one
+        // uniform width across the whole table — the wider of the
+        // formatted counts and the category labels — every cell right-
+        // justified inside it and followed by the single-space gap. The
+        // dimnames dimension name prints as the leading title line, an
+        // empty name yielding the blank line the goldens pin.
+        let mut width = 0usize;
+        for count in counts.iter() {
+            width = width.max(count.to_string().len());
+        }
+        for cat in categories.iter() {
+            width = width.max(cat.len());
+        }
+        let mut header = String::new();
+        let mut body = String::new();
         for (index, count) in counts.iter().enumerate() {
             let cat = categories.get(index).cloned().unwrap_or_default();
-            let num = count.to_string();
-            let width = cat.len().max(num.len());
-            header.push(format!("{:>width$}", cat, width = width));
-            body.push(format!("{:>width$}", num, width = width));
+            header.push_str(&format!("{:>width$} ", cat, width = width));
+            body.push_str(&format!("{:>width$} ", count, width = width));
         }
-        // GNU's print.table leads with a blank line exactly as the golden
-        // pins — the margin formatting emits it before the header row.
-        return format!("\n{}\n{}", header.join(" "), body.join(" "));
+        // The title line exactly as printNamedVector — names(dimnames)[1]
+        // printing before the layout whenever present, the table's empty
+        // dimension name drawing the blank line.
+        let title = match crate::attrib::get_attrib(heap, interner, value, "dimnames") {
+            Some(dn) => crate::attrib::get_attrib(heap, interner, dn, "names")
+                .and_then(|n| match heap.object(n) {
+                    Some(RObject::String(vals)) => vals.first().map(|v| interner.string_text(*v).to_string()),
+                    _ => None,
+                }),
+            None => None,
+        };
+        let title_line = title.map(|t| format!("{}\n", t)).unwrap_or_default();
+        return format!("{}{}\n{}", title_line, header.trim_end(), body.trim_end());
     }
     // POSIXct printing: classed epoch seconds display as quoted datetimes
     // carrying the tzone suffix exactly as print.POSIXct.
