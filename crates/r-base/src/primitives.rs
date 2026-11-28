@@ -1770,29 +1770,67 @@ pub fn call_primitive_inner(
             if operands.is_empty() {
                 return Err(EvalError::TypeError("round requires an argument").into());
             }
-            let digits = if operands.len() > 1 {
-                first_real(heap, operands[1]).unwrap_or(if id.0 == ROUND { 0.0 } else { 6.0 }) as i32
-            } else if id.0 == ROUND {
-                0
+            let digits_vec: Vec<i32> = if operands.len() > 1 {
+                match reals_of_value(heap, operands[1]) {
+                    Ok(vals) if !vals.is_empty() => vals.iter().map(|v| *v as i32).collect(),
+                    _ => vec![if id.0 == ROUND { 0 } else { 6 }],
+                }
             } else {
-                6
+                vec![if id.0 == ROUND { 0 } else { 6 }]
             };
-            // GNU's complex rounding exactly: both components round at
-            // the digit position the scalar discipline arranges.
+            let digits = digits_vec[0];
+            // GNU's complex rounding exactly as complex.c: round answers
+            // z_rround — ties-even at the digit position per part, digits
+            // recycling per element — while signif answers z_prec, both
+            // parts scaling by the element's shared maximum magnitude
+            // before the significant-digit rounding.
             if let Some(RObject::Complex(vals)) = heap.object(operands[0]) {
-                let out: Vec<r_core::object::RComplex> = vals.iter().map(|z| {
-                    let part = |v: f64| {
-                        if v.is_nan() || !v.is_finite() {
-                            v
-                        } else if id.0 == ROUND {
-                            round_half_even(v, digits)
-                        } else {
-                            signif_digits(v, digits)
+                let out: Vec<r_core::object::RComplex> = vals.iter().enumerate().map(|(index, z)| {
+                    let el_digits = digits_vec[index % digits_vec.len()];
+                    if z.r.is_nan() || z.i.is_nan() {
+                        return r_core::object::RComplex { r: z.r, i: z.i };
+                    }
+                    if id.0 == ROUND {
+                        let part = |v: f64| {
+                            if v.is_nan() || !v.is_finite() {
+                                v
+                            } else {
+                                round_half_even(v, el_digits)
+                            }
+                        };
+                        r_core::object::RComplex { r: part(z.r), i: part(z.i) }
+                    } else {
+                        // z_prec: the decimal position keys on the larger
+                        // of the two magnitudes — signif(123.456+0.789i, 2)
+                        // rounding the imaginary part at tens to zero
+                        // exactly as GNU's shared scaling arranges.
+                        let mag = z.r.abs().max(z.i.abs());
+                        if mag == 0.0 || !mag.is_finite() {
+                            return r_core::object::RComplex { r: z.r, i: z.i };
                         }
-                    };
-                    r_core::object::RComplex { r: part(z.r), i: part(z.i) }
+                        let exponent = mag.log10().floor() as i32;
+                        let position = exponent - el_digits + 1;
+                        let part = |v: f64| {
+                            if v.is_nan() || !v.is_finite() {
+                                v
+                            } else {
+                                round_half_even(v, -position)
+                            }
+                        };
+                        r_core::object::RComplex { r: part(z.r), i: part(z.i) }
+                    }
                 }).collect();
-                return Ok(heap.alloc(RObject::Complex(out)));
+                let result = heap.alloc(RObject::Complex(out));
+                // GNU's arithmetic attribute discipline exactly: the
+                // rounding family preserves the input's attributes —
+                // structure(z, foo) rounding with foo intact.
+                let attrib = heap.get(operands[0]).map(|slot| slot.attrib).unwrap_or(ValueId::NIL);
+                if attrib != ValueId::NIL {
+                    if let Some(slot) = heap.get_mut(result) {
+                        slot.attrib = attrib;
+                    }
+                }
+                return Ok(result);
             }
             let values = reals_of_value(heap, operands[0]).map_err(RSignal::from)?;
             let out: Vec<f64> = values
@@ -24843,7 +24881,7 @@ pub fn complex_ctor(
     let mut saw_imag = false;
     let mut saw_modulus = false;
     let mut saw_argument = false;
-    let mut positional = 0usize;
+    let mut collected: Vec<(Option<String>, Vec<f64>)> = Vec::new();
     let mut cursor = args;
     for _ in 0..100_000 {
         if cursor == ValueId::NIL {
@@ -24894,40 +24932,118 @@ pub fn complex_ctor(
             }
             None => None,
         };
-        match resolved {
-            Some("length.out") => length_out = reals.first().copied().unwrap_or(0.0) as usize,
-            Some("real") => { real_vals = reals; saw_real = true; }
-            Some("imaginary") => { imag_vals = reals; saw_imag = true; }
-            Some("modulus") => { modulus_vals = reals; saw_modulus = true; }
-            Some("argument") => { argument_vals = reals; saw_argument = true; }
-            _ => {
-                // GNU's closure formals positional order exactly:
-                // length.out, real, imaginary, modulus, argument —
-                // untagged arguments filling successive slots.
-                positional += 1;
-                match positional {
-                    1 => length_out = reals.first().copied().unwrap_or(0.0) as usize,
-                    2 => { real_vals = reals; saw_real = true; }
-                    3 => { imag_vals = reals; saw_imag = true; }
-                    4 => { modulus_vals = reals; saw_modulus = true; }
-                    5 => { argument_vals = reals; saw_argument = true; }
-                    _ => {}
-                }
-            }
-        }
+        let _ = resolved;
+        collected.push((tag_name.clone(), reals));
         cursor = next;
     }
+    // GNU's argument matching exactly: exact-then-partial tagged
+    // resolution consumes its formals first, untagged arguments then
+    // filling the remaining formals in declaration order — complex(1, 1,
+    // length.out = 2) reading the positionals as real and imaginary.
+    let formals = ["length.out", "real", "imaginary", "modulus", "argument"];
+    let mut consumed = [false; 5];
+    let mut untagged: Vec<Vec<f64>> = Vec::new();
+    let mut length_raw: Vec<f64> = Vec::new();
+    let mut saw_length = false;
+    let mut unused: Vec<String> = Vec::new();
+    for (tag_name, reals) in &collected {
+        if let Some(tag) = tag_name {
+            let exact = formals.iter().position(|f| *f == tag);
+            let matches: Vec<&str> = formals.iter().copied().filter(|f| f.starts_with(tag.as_str())).collect();
+            let resolved_pos = match exact {
+                Some(pos) => Some(pos),
+                None if matches.len() == 1 => formals.iter().position(|f| *f == matches[0]),
+                _ => None,
+            };
+            if let Some(pos) = resolved_pos {
+                consumed[pos] = true;
+                match pos {
+                    0 => {
+                        length_out = reals.first().copied().unwrap_or(0.0) as usize;
+                        length_raw = reals.clone();
+                        saw_length = true;
+                    }
+                    1 => { real_vals = reals.clone(); saw_real = true; }
+                    2 => { imag_vals = reals.clone(); saw_imag = true; }
+                    3 => { modulus_vals = reals.clone(); saw_modulus = true; }
+                    _ => { argument_vals = reals.clone(); saw_argument = true; }
+                }
+            } else {
+                // GNU's closure matching exactly: a tag matching no
+                // formal is an unused argument error carrying its
+                // spelling and value.
+                let val_text = reals.first().map(|v| {
+                    if v.fract() == 0.0 && v.is_finite() { format!("{}", *v as i64) } else { format!("{}", v) }
+                }).unwrap_or_default();
+                unused.push(format!("{} = {}", tag, val_text));
+            }
+        } else {
+            untagged.push(reals.clone());
+        }
+    }
+    for reals in untagged {
+        let slot = consumed.iter().position(|c| !c);
+        let Some(pos) = slot else {
+            // Positional arguments beyond the formals are unused exactly
+            // as GNU's closure matching arranges.
+            let val_text = reals.first().map(|v| {
+                if v.fract() == 0.0 && v.is_finite() { format!("{}", *v as i64) } else { format!("{}", v) }
+            }).unwrap_or_default();
+            unused.push(val_text);
+            continue;
+        };
+        consumed[pos] = true;
+        match pos {
+            0 => {
+                length_out = reals.first().copied().unwrap_or(0.0) as usize;
+                length_raw = reals.clone();
+                saw_length = true;
+            }
+            1 => { real_vals = reals; saw_real = true; }
+            2 => { imag_vals = reals; saw_imag = true; }
+            3 => { modulus_vals = reals; saw_modulus = true; }
+            _ => { argument_vals = reals; saw_argument = true; }
+        }
+    }
+    // GNU's validation exactly: unused arguments error before any
+    // construction, the length validation splitting its message across
+    // the Cartesian do_complex path and the polar closure path.
+    if let Some(first) = unused.first() {
+        return Err(EvalError::Condition(format!("unused argument ({first})")).into());
+    }
+    let length_invalid = saw_length && (
+        length_raw.is_empty()
+            || length_raw.first().map(|v| v.is_nan() || *v < 0.0).unwrap_or(false)
+    );
+    if length_invalid && !saw_modulus && !saw_argument {
+        return Err(EvalError::Condition("invalid length".to_string()).into());
+    }
+    if length_invalid && (saw_modulus || saw_argument) {
+        return Err(EvalError::Condition("invalid 'length.out' value".to_string()).into());
+    }
+    let _ = length_raw;
+    let _ = saw_length;
     // GNU's constructor discipline exactly: polar construction whenever
     // modulus or argument appear, the Cartesian form otherwise.
     if saw_modulus || saw_argument {
         let n = length_out.max(argument_vals.len()).max(modulus_vals.len());
         let out: Vec<RComplex> = (0..n)
             .map(|i| {
-                let m = if modulus_vals.is_empty() { 1.0 } else { modulus_vals[i % modulus_vals.len()] };
-                let a = if argument_vals.is_empty() { 0.0 } else { argument_vals[i % argument_vals.len()] };
+                let m = if modulus_vals.is_empty() {
+                    if saw_modulus { f64::from_bits(r_core::object::NA_REAL_BITS) } else { 1.0 }
+                } else { modulus_vals[i % modulus_vals.len()] };
+                let a = if argument_vals.is_empty() {
+                    if saw_argument { f64::from_bits(r_core::object::NA_REAL_BITS) } else { 0.0 }
+                } else { argument_vals[i % argument_vals.len()] };
                 // modulus * exp(1i * argument) exactly as GNU's closure —
                 // the unit exponential carries cosine and sine directly.
-                RComplex { r: m * a.cos(), i: m * a.sin() }
+                // An NA operand propagates as the complex NA rather than
+                // washing out to NaN through the arithmetic.
+                if m.to_bits() == r_core::object::NA_REAL_BITS || a.to_bits() == r_core::object::NA_REAL_BITS {
+                    RComplex { r: f64::from_bits(r_core::object::NA_REAL_BITS), i: 0.0 }
+                } else {
+                    RComplex { r: m * a.cos(), i: m * a.sin() }
+                }
             })
             .collect();
         return Ok(heap.alloc(RObject::Complex(out)));

@@ -16,6 +16,206 @@ use crate::object::{RObject, NA_INTEGER, NA_REAL_BITS};
 /// Format a real scalar exactly as R's 7-significant-digit default.
 /// NA is the dedicated bit pattern; NaN (a different payload) prints as
 /// NaN exactly as GNU distinguishes them.
+/// GNU's scientific() digit analysis exactly as format.c: the exponent
+/// and significant-digit count of one finite nonzero value under the
+/// default digits=7 — alpha rounding through the exact power-of-ten
+/// scaling, trailing zeros trimming the significant count.
+fn gnu_scientific(x: f64) -> (bool, i32, i32, bool) {
+    // Returns (neg, kpower, nsig, roundingwidens).
+    if x == 0.0 {
+        return (false, 0, 1, false);
+    }
+    let neg = x < 0.0;
+    let r = x.abs();
+    const DIGITS: i32 = 7;
+    const TBL: [f64; 23] = [
+        1e00, 1e01, 1e02, 1e03, 1e04, 1e05, 1e06, 1e07, 1e08, 1e09,
+        1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19,
+        1e20, 1e21, 1e22,
+    ];
+    let mut kp = r.log10().floor() as i32 - DIGITS + 1;
+    let mut r_prec = r;
+    if kp.abs() <= 22 {
+        if kp >= 0 {
+            r_prec /= TBL[kp as usize];
+        } else {
+            r_prec *= TBL[(-kp) as usize];
+        }
+    } else {
+        r_prec /= 10f64.powi(kp);
+    }
+    if r_prec < TBL[(DIGITS - 1) as usize] {
+        r_prec *= 10.0;
+        kp -= 1;
+    }
+    let mut alpha = r_prec.round();
+    // nearbyint rounds half-to-even exactly as GNU — f64::round is
+    // half-away, so correct the exact-half boundary cases.
+    if (r_prec - r_prec.floor() - 0.5).abs() < 1e-9 && (r_prec.floor() as i64) % 2 == 1 {
+        // exactly at .5 with odd floor — half-to-even rounds down, not up
+        if r_prec.fract() == 0.5 {
+            alpha = r_prec.floor();
+        }
+    }
+    let mut nsig = DIGITS;
+    for _ in 1..=DIGITS {
+        alpha /= 10.0;
+        if alpha == alpha.floor() {
+            nsig -= 1;
+        } else {
+            break;
+        }
+    }
+    let mut roundingwidens = false;
+    if nsig == 0 && DIGITS > 0 {
+        nsig = 1;
+        kp += 1;
+        roundingwidens = true;
+    }
+    let kpower = kp + DIGITS - 1;
+    (neg, kpower, nsig, roundingwidens)
+}
+
+/// GNU's formatReal width decision exactly as format.c: the uniform
+/// (width, decimals, scientific-flag) triple for printing a whole real
+/// vector — fixed notation whenever its width does not exceed the
+/// scientific width plus scipen, trailing decimals uniform across every
+/// element. nsmall is zero in the print paths the corpus exercises.
+pub fn format_real_params(vals: &[f64]) -> (usize, usize, i32) {
+    let mut naflag = false;
+    let mut nanflag = false;
+    let mut posinf = false;
+    let mut neginf = false;
+    let mut neg = 0i32;
+    let mut mnl = i32::MAX;
+    let mut mxl = i32::MIN;
+    let mut rgt = i32::MIN;
+    let mut mxsl = i32::MIN;
+    let mut mxns = i32::MIN;
+    let mut any_finite = false;
+    for &x in vals {
+        if !x.is_finite() {
+            if x.is_nan() {
+                if x.to_bits() == crate::object::NA_REAL_BITS {
+                    naflag = true;
+                } else {
+                    nanflag = true;
+                }
+            } else if x > 0.0 {
+                posinf = true;
+            } else {
+                neginf = true;
+            }
+        } else {
+            any_finite = true;
+            let (n, kpower, nsig, rw) = gnu_scientific(x);
+            let neg_i = if n { 1 } else { 0 };
+            let mut left = kpower + 1;
+            if rw {
+                left -= 1;
+            }
+            let sleft = neg_i + if left <= 0 { 1 } else { left };
+            let right = nsig - left;
+            if n {
+                neg = 1;
+            }
+            rgt = rgt.max(right);
+            mxl = mxl.max(left);
+            mnl = mnl.min(left);
+            mxsl = mxsl.max(sleft);
+            mxns = mxns.max(nsig);
+        }
+    }
+    if !any_finite {
+        // All non-finite: width answers the widest sentinel alone.
+        let mut w = 0i32;
+        if naflag && w < 2 {
+            w = 2;
+        }
+        if nanflag && w < 3 {
+            w = 3;
+        }
+        if posinf && w < 3 {
+            w = 3;
+        }
+        if neginf && w < 4 {
+            w = 4;
+        }
+        return (w.max(0) as usize, 0, 0);
+    }
+    if rgt < 0 {
+        rgt = 0;
+    }
+    if mxl < 0 {
+        mxsl = 1 + neg;
+    }
+    let mut w_f = mxsl + rgt + if rgt != 0 { 1 } else { 0 };
+    let mut e = if mxl > 100 || mnl <= -99 { 2 } else { 1 };
+    let mut d = mxns - 1;
+    let mut w = neg + if d > 0 { 1 } else { 0 } + d + 4 + e;
+    if w_f <= w + 0 {
+        // scipen = 0 exactly as the default print options pin.
+        e = 0;
+        w = w_f;
+        d = rgt;
+    }
+    let _ = &mut w_f;
+    let _ = &mut e;
+    if naflag && w < 2 {
+        w = 2;
+    }
+    if nanflag && w < 3 {
+        w = 3;
+    }
+    if posinf && w < 3 {
+        w = 3;
+    }
+    if neginf && w < 4 {
+        w = 4;
+    }
+    (w.max(0) as usize, d.max(0) as usize, e)
+}
+
+/// GNU's EncodeReal0 exactly as printutils.c: fixed notation carrying
+/// precisely d decimals — trailing zeros KEPT, the uniformity being the
+/// point — or scientific notation with the C printf %#e shape: d decimal
+/// digits, a signed exponent of at least two digits. Everything right-
+/// justifies inside the width.
+pub fn encode_real(x: f64, w: usize, d: usize, e: i32) -> String {
+    let body = if x.is_nan() {
+        if x.to_bits() == crate::object::NA_REAL_BITS {
+            "NA".to_string()
+        } else {
+            "NaN".to_string()
+        }
+    } else if x.is_infinite() {
+        if x > 0.0 { "Inf".to_string() } else { "-Inf".to_string() }
+    } else if e != 0 {
+        // C's %#w.de shape: mantissa with exactly d decimals — zeros
+        // kept — then e, the sign, and at least two exponent digits.
+        let x = if x == 0.0 { 0.0 } else { x };
+        let exp = if x == 0.0 { 0 } else { x.abs().log10().floor() as i32 };
+        let mantissa = x / 10f64.powi(exp);
+        // Rounding the mantissa can carry into the next decade exactly
+        // as printf arranges — rescale when it does.
+        let rounded = format!("{:.*}", d, mantissa);
+        let (mantissa_final, exp_final) = if rounded.parse::<f64>().unwrap_or(0.0).abs() >= 10.0 {
+            (format!("{:.*}", d, mantissa / 10.0), exp + 1)
+        } else {
+            (rounded, exp)
+        };
+        format!("{}e{}{:02}", mantissa_final, if exp_final < 0 { "-" } else { "+" }, exp_final.abs())
+    } else {
+        let x = if x == 0.0 { 0.0 } else { x };
+        format!("{:.*}", d, x)
+    };
+    if body.len() >= w {
+        body
+    } else {
+        format!("{}{}", " ".repeat(w - body.len()), body)
+    }
+}
+
 pub fn format_real(v: f64) -> String {
     if v.is_nan() {
         return if v.to_bits() == NA_REAL_BITS {
@@ -652,20 +852,60 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
         }
         _ => None,
     };
-    let elements: Vec<String> = (0..length)
-        .map(|i| {
-            if let (Some(dec), RObject::Real(values)) = (uniform_decimals, object) {
-                let v = values[i];
-                if v.is_nan() || v.is_infinite() {
-                    format_real(v)
+    let elements: Vec<String> = match object {
+        // GNU's printvector discipline exactly: real vectors format
+        // through one uniform (width, decimals, scientific) triple
+        // computed across the whole vector — fixed notation keeping its
+        // trailing zeros, the width comparison deciding scientific.
+        RObject::Real(values) => {
+            let (w, d, e) = format_real_params(values);
+            values.iter().map(|&v| encode_real(v, w, d, e).trim_start().to_string()).collect()
+        }
+        // GNU's formatComplex exactly: two independent formatReal passes —
+        // the real parts as one vector, the imaginary magnitudes as
+        // another — the sign printing explicitly between them.
+        RObject::Complex(values) => {
+            let finite: Vec<&crate::object::RComplex> = values
+                .iter()
+                .filter(|z| z.r.to_bits() != crate::object::NA_REAL_BITS && z.i.to_bits() != crate::object::NA_REAL_BITS)
+                .collect();
+            let re_parts: Vec<f64> = finite.iter().map(|z| z.r).collect();
+            let im_parts: Vec<f64> = finite.iter().map(|z| z.i.abs()).collect();
+            let (wr, dr, er) = format_real_params(&re_parts);
+            let (wi, di, ei) = format_real_params(&im_parts);
+            values
+                .iter()
+                .map(|z| {
+                    if z.r.to_bits() == crate::object::NA_REAL_BITS || z.i.to_bits() == crate::object::NA_REAL_BITS {
+                        "NA".to_string()
+                    } else {
+                        let re_text = encode_real(z.r, wr, dr, er);
+                        let im_text = encode_real(z.i.abs(), wi, di, ei);
+                        // GNU's sign decision exactly as printvector.c:
+                        // tmp.i >= 0 in IEEE — negative zero taking the
+                        // plus exactly as EncodeReal0's zero normalization
+                        // arranges.
+                        let sign = if z.i < 0.0 { "-" } else { "+" };
+                        format!("{}{}{}i", re_text, sign, im_text)
+                    }
+                })
+                .collect()
+        }
+        _ => (0..length)
+            .map(|i| {
+                if let (Some(dec), RObject::Real(values)) = (uniform_decimals, object) {
+                    let v = values[i];
+                    if v.is_nan() || v.is_infinite() {
+                        format_real(v)
+                    } else {
+                        fixed_exact(v, dec)
+                    }
                 } else {
-                    fixed_exact(v, dec)
+                    format_element(heap, interner, object, i)
                 }
-            } else {
-                format_element(heap, interner, object, i)
-            }
-        })
-        .collect();
+            })
+            .collect(),
+    };
     let width = if matches!(object, RObject::String(_)) {
         // GNU does not column-align character vectors — quoting delimits.
         0
