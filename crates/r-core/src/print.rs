@@ -1674,7 +1674,7 @@ fn deparse_base(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Strin
                         break;
                     }
                     current = match heap.s4_classes.get(&name) {
-                        Some((_, parent)) => parent.clone(),
+                        Some((_, parent, _validity)) => parent.clone(),
                         None => None,
                     };
                 }

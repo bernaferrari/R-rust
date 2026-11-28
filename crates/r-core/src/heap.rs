@@ -57,7 +57,7 @@ pub type PrimitiveDispatcher =
 
 /// S4 class registry shape — name → (ordered slots with types, contains
 /// parent) exactly as GNU's class table.
-pub type S4ClassTable = std::collections::HashMap<String, (Vec<(String, String)>, Option<String>)>;
+pub type S4ClassTable = std::collections::HashMap<String, (Vec<(String, String)>, Option<String>, Option<crate::id::ValueId>)>;
 
 #[derive(Debug, Default)]
 pub struct Heap {
