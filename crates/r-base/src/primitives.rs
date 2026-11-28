@@ -14803,6 +14803,19 @@ pub fn data_frame_primitive(
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
             _ => None,
         };
+        // GNU's control parameters exactly: check.names, check.rows,
+        // stringsAsFactors, fix.empty.names and row.names steer the
+        // construction — they never become columns.
+        if matches!(
+            tag_name.as_deref(),
+            Some("check.names") | Some("check.rows") | Some("stringsAsFactors") | Some("fix.empty.names") | Some("row.names")
+        ) {
+            if cdr == ValueId::NIL {
+                break;
+            }
+            cursor = cdr;
+            continue;
+        }
         // Data frame arguments splice columnwise exactly as GNU — untagged
         // frames contribute their bare column names, tagged frames prefix
         // each column as tag.name.
