@@ -15615,6 +15615,11 @@ pub fn factor_primitive(
     // empties included — exactly as GNU; otherwise levels derive sorted
     // from the data.
     let mut tagged_levels: Option<Vec<String>> = None;
+    // GNU's exclude semantics exactly: the tagged argument lists values
+    // removed from the level set, NA excluded by default. exclude absent
+    // NA — the empty string, NULL — and missing values materialize as an
+    // explicit NA level printing <NA>.
+    let mut exclude: Option<Vec<String>> = None;
     let mut cursor = args;
     while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let tag_name = match heap.object(tag) {
@@ -15625,17 +15630,28 @@ pub fn factor_primitive(
             let v = eval(heap, interner, car, caller_env)?;
             tagged_levels = Some(string_vec(heap, interner, v));
         }
+        if tag_name.as_deref() == Some("exclude") {
+            let v = eval(heap, interner, car, caller_env)?;
+            let v = force_if_promise(heap, interner, v)?;
+            if v != ValueId::NIL && !matches!(heap.object(v), Some(RObject::Nil)) {
+                exclude = Some(string_vec(heap, interner, v));
+            } else {
+                exclude = Some(Vec::new());
+            }
+        }
         if cdr == ValueId::NIL {
             break;
         }
         cursor = cdr;
     }
-    let levels: Vec<String> = match tagged_levels {
-        Some(ls) => ls.into_iter().filter(|s| s != "\0NA").collect(),
+    let exclude_set = exclude.unwrap_or_else(|| vec!["\0NA".to_string()]);
+    let na_included = !exclude_set.iter().any(|e| e == "\0NA");
+    let mut levels: Vec<String> = match tagged_levels {
+        Some(ls) => ls.into_iter().filter(|s| s != "\0NA" && !exclude_set.contains(s)).collect(),
         None => {
             let mut ls: Vec<String> = texts
                 .iter()
-                .filter(|s| *s != "\0NA")
+                .filter(|s| *s != "\0NA" && !exclude_set.contains(*s))
                 .cloned()
                 .collect();
             ls.sort();
@@ -15643,14 +15659,13 @@ pub fn factor_primitive(
             ls
         }
     };
+    if na_included && texts.iter().any(|s| s == "\0NA") {
+        levels.push("\0NA".to_string());
+    }
     let codes: Vec<i32> = texts
         .iter()
         .map(|s| {
-            if s == "\0NA" {
-                r_core::object::NA_INTEGER
-            } else {
-                levels.iter().position(|l| l == s).map(|p| p as i32 + 1).unwrap_or(r_core::object::NA_INTEGER)
-            }
+            levels.iter().position(|l| l == s).map(|p| p as i32 + 1).unwrap_or(r_core::object::NA_INTEGER)
         })
         .collect();
     let obj = heap.alloc(RObject::Integer(codes));

@@ -1046,6 +1046,10 @@ fn format_factor(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Stri
         },
         None => Vec::new(),
     };
+    // GNU's NA-level rendering exactly: a level that IS the missing
+    // marker — materialized when exclude omits NA — prints <NA> both in
+    // the values and the levels line, distinct from missing codes' NA.
+    let render_level = |l: &String| if l == "\0NA" { "<NA>".to_string() } else { l.clone() };
     let labels: Vec<String> = codes
         .iter()
         .map(|c| {
@@ -1054,7 +1058,7 @@ fn format_factor(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Stri
             } else {
                 levels
                     .get((*c - 1) as usize)
-                    .cloned()
+                    .map(render_level)
                     .unwrap_or_else(|| "NA".to_string())
             }
         })
@@ -1069,7 +1073,7 @@ fn format_factor(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Stri
     out.push_str("\nLevels:");
     for level in &levels {
         out.push(' ');
-        out.push_str(level);
+        out.push_str(&render_level(level));
     }
     out
 }
