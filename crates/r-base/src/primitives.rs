@@ -12912,12 +12912,23 @@ pub fn file_copy_primitive(
         .ok_or(EvalError::TypeError("file.copy source"))?;
     let to = string_operand(heap, interner, operands[1])
         .ok_or(EvalError::TypeError("file.copy target"))?;
-    let ok = match (
-        r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &from),
-        r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &to),
-    ) {
-        (Some(host_from), Some(host_to)) => std::fs::copy(&host_from, &host_to).is_ok(),
-        _ => false,
+    // Copy is the read-write composite exactly as the virtual contract
+    // arranges — bytes travel the same layer either side regardless of
+    // whether the store or the host backs each path.
+    let virtual_mode = heap.browser_files_enabled || heap.browser_files.contains_key(&from) || heap.browser_files.contains_key(&to);
+    let ok = if virtual_mode {
+        match r_core::vfile::read_file(heap, &from) {
+            Ok(bytes) => r_core::vfile::write_file(heap, &to, &bytes).is_ok(),
+            Err(_) => false,
+        }
+    } else {
+        match (
+            r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &from),
+            r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &to),
+        ) {
+            (Some(host_from), Some(host_to)) => std::fs::copy(&host_from, &host_to).is_ok(),
+            _ => false,
+        }
     };
     Ok(heap.alloc(RObject::Logical(vec![if ok { 1 } else { 0 }])))
 }
@@ -12934,12 +12945,29 @@ pub fn file_rename_primitive(
         .ok_or(EvalError::TypeError("file.rename source"))?;
     let to = string_operand(heap, interner, operands[1])
         .ok_or(EvalError::TypeError("file.rename target"))?;
-    let ok = match (
-        r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &from),
-        r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &to),
-    ) {
-        (Some(host_from), Some(host_to)) => std::fs::rename(&host_from, &host_to).is_ok(),
-        _ => false,
+    // Rename is copy-and-remove through the virtual layer exactly as the
+    // store's flat keyspace arranges — bytes move between keys rather
+    // than host inodes.
+    let virtual_mode = heap.browser_files_enabled || heap.browser_files.contains_key(&from) || heap.browser_files.contains_key(&to);
+    let ok = if virtual_mode {
+        match r_core::vfile::read_file(heap, &from) {
+            Ok(bytes) => {
+                if r_core::vfile::write_file(heap, &to, &bytes).is_ok() {
+                    r_core::vfile::remove_file(heap, &from).is_ok()
+                } else {
+                    false
+                }
+            }
+            Err(_) => false,
+        }
+    } else {
+        match (
+            r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &from),
+            r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &to),
+        ) {
+            (Some(host_from), Some(host_to)) => std::fs::rename(&host_from, &host_to).is_ok(),
+            _ => false,
+        }
     };
     Ok(heap.alloc(RObject::Logical(vec![if ok { 1 } else { 0 }])))
 }
