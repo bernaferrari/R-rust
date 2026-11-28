@@ -7,6 +7,7 @@
 //! `%g` exponent window, integral reals without a decimal point, element
 //! separators and the `[1]` positional prefix.
 
+use crate::prim::pairlist_parts;
 use crate::heap::Heap;
 use crate::id::ValueId;
 use crate::intern::SymbolInterner;
@@ -727,11 +728,7 @@ fn format_attribute_blocks(heap: &Heap, interner: &SymbolInterner, value: ValueI
     let factor = is_factor(heap, interner, value);
     let mut out = String::new();
     let mut cursor = chain;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
             _ => String::new(),

@@ -4,6 +4,7 @@
 //! from the flat registry as the second domain module.
 
 #![forbid(unsafe_code)]
+use r_core::prim::pairlist_parts;
 use r_core::prim::*;
 use r_core::primitive_ids::*;
 use r_core::attrib::{get_attrib, string_vec};
@@ -30,11 +31,7 @@ pub fn dpq_primitive(
     let mut positional: Vec<ValueId> = Vec::new();
     let mut named: Vec<(String, ValueId)> = Vec::new();
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let evaluated = eval(heap, interner, car, caller_env)?;
         let value = force_if_promise(heap, interner, evaluated)?;
         match heap.object(tag) {
@@ -607,11 +604,7 @@ pub fn rngkind_primitive(
     let mut values: [Option<ValueId>; 3] = [None, None, None];
     let mut position = 0usize;
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
             _ => None,

@@ -3,6 +3,7 @@
 //! the first domain module of the r-base internal split.
 
 #![forbid(unsafe_code)]
+use r_core::prim::pairlist_parts;
 use r_core::prim::*;
 use r_core::attrib::{get_attrib, string_vec};
 use r_core::eval::{eval, force_if_promise, EvalError, EvalResult};
@@ -2224,11 +2225,7 @@ pub fn curve_primitive(
             Some(RObject::Pairlist { cdr, .. }) => *cdr,
             _ => ValueId::NIL,
         };
-        loop {
-            let (car, cdr, tag) = match heap.object(cursor) {
-                Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-                _ => break,
-            };
+        while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
             let tag_name = match heap.object(tag) {
                 Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
                 _ => None,

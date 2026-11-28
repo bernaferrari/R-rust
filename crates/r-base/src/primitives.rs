@@ -10,6 +10,7 @@
 // Attribute machinery lives in r-core's object model exactly as the DAG
 // requires — re-exported here so the registry's existing paths resolve.
 pub use r_stats::*;
+use r_core::prim::pairlist_parts;
 use r_graphics::*;
 pub use r_core::attrib::{attrib_names, get_attrib, get_attrib_public, is_date_classed, is_posixct_classed, string_vec_pub};
 pub use r_core::prim::*;
@@ -261,11 +262,7 @@ pub fn call_primitive_inner(
             // are performance hints outside the slice.
             let mut parent = caller_env;
             let mut cursor = args;
-            loop {
-                let (car, cdr, tag) = match heap.object(cursor) {
-                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-                    _ => break,
-                };
+            while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
                 let tag_name = match heap.object(tag) {
                     Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
                     _ => None,
@@ -291,11 +288,7 @@ pub fn call_primitive_inner(
             let mut pattern: Option<String> = None;
             let mut positional = 0usize;
             let mut cursor = args;
-            loop {
-                let (car, cdr, tag) = match heap.object(cursor) {
-                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-                    _ => break,
-                };
+            while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
                 positional += 1;
                 let tag_name = match heap.object(tag) {
                     Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
@@ -343,11 +336,7 @@ pub fn call_primitive_inner(
             let mut file_target: Option<String> = None;
             let mut append = false;
             let mut cursor = args;
-            loop {
-                let (car, cdr, tag) = match heap.object(cursor) {
-                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-                    _ => break,
-                };
+            while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
                 let tag_name = match heap.object(tag) {
                     Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
                     _ => None,
@@ -501,11 +490,7 @@ pub fn call_primitive_inner(
         SYS_SETENV => {
             // Tagged pairs name = value exactly as GNU.
             let mut cursor = args;
-            loop {
-                let (car, cdr, tag) = match heap.object(cursor) {
-                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-                    _ => break,
-                };
+            while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
                 let name = match heap.object(tag) {
                     Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
                     _ => None,
@@ -529,11 +514,7 @@ pub fn call_primitive_inner(
             let mut unset_arg = ValueId::NIL;
             let mut positional = 0usize;
             let mut cursor = args;
-            loop {
-                let (car, cdr, tag) = match heap.object(cursor) {
-                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-                    _ => break,
-                };
+            while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
                 positional += 1;
                 let tag_name = match heap.object(tag) {
                     Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
@@ -602,11 +583,7 @@ pub fn call_primitive_inner(
             let mut path_arg = ValueId::NIL;
             let mut cursor = args;
             let mut positional = 0usize;
-            loop {
-                let (car, cdr, tag) = match heap.object(cursor) {
-                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-                    _ => break,
-                };
+            while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
                 positional += 1;
                 let tag_name = match heap.object(tag) {
                     Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
@@ -667,11 +644,7 @@ pub fn call_primitive_inner(
             let mut path_arg = ValueId::NIL;
             let mut cursor = args;
             let mut positional = 0usize;
-            loop {
-                let (car, cdr, tag) = match heap.object(cursor) {
-                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-                    _ => break,
-                };
+            while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
                 positional += 1;
                 let tag_name = match heap.object(tag) {
                     Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
@@ -1203,11 +1176,7 @@ pub fn call_primitive_inner(
             let mut positional: Vec<ValueId> = Vec::new();
             let mut intern = false;
             let mut cursor = args;
-            loop {
-                let (car, cdr, tag) = match heap.object(cursor) {
-                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-                    _ => break,
-                };
+            while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
                 let tag_name = match heap.object(tag) {
                     Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
                     _ => None,
@@ -5401,11 +5370,7 @@ pub fn call_primitive_inner(
             let operands = eval_args(heap, interner, args, caller_env, 1)?;
             let mut tz = "UTC".to_string();
             let mut cursor = args;
-            loop {
-                let (car, cdr, tag) = match heap.object(cursor) {
-                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-                    _ => break,
-                };
+            while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
                 let tag_name = match heap.object(tag) {
                     Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
                     _ => None,
@@ -5859,11 +5824,7 @@ pub fn call_primitive_inner(
             let mut tags: Vec<String> = Vec::new();
             let mut any_tag = false;
             let mut cursor = args;
-            loop {
-                let (car, cdr, tag) = match heap.object(cursor) {
-                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-                    _ => break,
-                };
+            while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
                 let _ = car;
                 match heap.object(tag) {
                     Some(RObject::Symbol { name, .. }) => {
@@ -6367,11 +6328,7 @@ pub fn call_primitive_inner(
             let mut items = Vec::new();
             let mut tags: Vec<Option<String>> = Vec::new();
             let mut cursor = args;
-            loop {
-                let (car, cdr, tag) = match heap.object(cursor) {
-                    Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-                    _ => break,
-                };
+            while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
                 let tag_name = match heap.object(tag) {
                     Some(RObject::Symbol { name, .. }) => {
                         Some(interner.symbol_name(*name).to_string())
@@ -8231,11 +8188,7 @@ pub fn concat_primitive_inner(
     let mut operands = Vec::new();
     let mut tags: Vec<Option<String>> = Vec::new();
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
             _ => None,
@@ -9342,11 +9295,7 @@ pub fn reduction(
     let mut inputs: Vec<ValueId> = Vec::new();
     let mut na_rm = false;
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         if car == ValueId::MISSING {
             return Err(EvalError::Condition(format!(
                 "argument {} is empty",
@@ -9698,11 +9647,7 @@ pub fn paste_primitive(
     let mut sep = default_sep.to_string();
     let mut collapse: Option<String> = None;
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
             _ => None,
@@ -10892,11 +10837,7 @@ pub fn seq_primitive(
     let mut positional: Vec<ValueId> = Vec::new();
     let mut named: Vec<(String, ValueId)> = Vec::new();
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let evaluated = eval(heap, interner, car, caller_env)?;
         let value = force_if_promise(heap, interner, evaluated)?;
         match heap.object(tag) {
@@ -11202,11 +11143,7 @@ pub fn stat_primitive(
     let mut positional: Vec<ValueId> = Vec::new();
     let mut named: Vec<(String, ValueId)> = Vec::new();
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let evaluated = eval(heap, interner, car, caller_env)?;
         let value = force_if_promise(heap, interner, evaluated)?;
         match heap.object(tag) {
@@ -11315,11 +11252,7 @@ pub fn ordering_primitive(
     let mut na_last: Option<bool> = None;
     let mut positional_seen = 0usize;
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         positional_seen += 1;
         if positional_seen == 1 {
             if cdr == ValueId::NIL {
@@ -11673,11 +11606,7 @@ pub fn match_primitive(
     let mut nomatch = r_core::object::NA_INTEGER;
     let mut incomparables: Vec<String> = Vec::new();
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
             _ => None,
@@ -11726,11 +11655,7 @@ pub fn exists_primitive(
     let mut mode_fn = false;
     let mut positional = 0usize;
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         positional += 1;
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
@@ -11932,11 +11857,7 @@ pub fn matrix_primitive(
     let mut positional: Vec<ValueId> = Vec::new();
     let mut named: Vec<(String, ValueId)> = Vec::new();
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let evaluated = eval(heap, interner, car, caller_env)?;
         let value = force_if_promise(heap, interner, evaluated)?;
         match heap.object(tag) {
@@ -12039,11 +11960,7 @@ pub fn rep_dispatch(
     let mut times_hint: usize = 1;
     let mut each_hint: usize = 1;
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
             _ => None,
@@ -12178,11 +12095,7 @@ pub fn rep_dispatch_inner(
     let mut positional: Vec<ValueId> = Vec::new();
     let mut named: Vec<(String, ValueId)> = Vec::new();
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let evaluated = eval(heap, interner, car, caller_env)?;
         let value = force_if_promise(heap, interner, evaluated)?;
         match heap.object(tag) {
@@ -12320,11 +12233,7 @@ pub fn trycatch_primitive(
     let mut positional: Vec<ValueId> = Vec::new();
     let mut named: Vec<(String, ValueId)> = Vec::new();
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => {
                 named.push((interner.symbol_name(*name).to_string(), car));
@@ -12410,11 +12319,7 @@ pub fn structure_primitive(
     let mut positional: Vec<ValueId> = Vec::new();
     let mut tagged: Vec<(String, ValueId)> = Vec::new();
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let evaluated = eval(heap, interner, car, caller_env)?;
         let value = force_if_promise(heap, interner, evaluated)?;
         match heap.object(tag) {
@@ -12730,11 +12635,7 @@ pub fn writelines_primitive(
     let mut sep = "\n".to_string();
     let mut positional = 0usize;
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         positional += 1;
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
@@ -12797,11 +12698,7 @@ pub fn readlines_primitive(
     let mut n_limit: Option<usize> = None;
     let mut positional = 0usize;
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         positional += 1;
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
@@ -12836,11 +12733,7 @@ pub fn readlines_primitive(
     // at the first nul exactly as GNU's C-string line reading.
     let mut skip_nul = false;
     let mut scan = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(scan) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, scan) {
         let is_skip = matches!(heap.object(tag), Some(RObject::Symbol { name, .. }) if interner.symbol_name(*name) == "skipNul");
         if is_skip {
             let evaluated = eval(heap, interner, car, caller_env)?;
@@ -13271,11 +13164,7 @@ pub fn data_frame_primitive(
     let mut names: Vec<String> = Vec::new();
     let mut cursor = args;
     let mut positional = 0usize;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         positional += 1;
         let evaluated = eval(heap, interner, car, caller_env)?;
         let value = force_if_promise(heap, interner, evaluated)?;
@@ -13700,11 +13589,7 @@ pub fn factor_primitive(
     // from the data.
     let mut tagged_levels: Option<Vec<String>> = None;
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
             _ => None,
@@ -14197,11 +14082,7 @@ pub fn grep_primitive(
     let mut fixed = false;
     let mut positional = 0usize;
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         positional += 1;
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
@@ -14344,11 +14225,7 @@ pub fn unique_primitive(
     let mut incomparables_na = false;
     let mut cursor = args;
     let mut positional_seen = 0usize;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         positional_seen += 1;
         if positional_seen > 1 {
             let tag_name = match heap.object(tag) {
@@ -14477,11 +14354,7 @@ pub fn save_primitive(
     let mut positional_mode = false;
     {
         let mut scan = args;
-        loop {
-            let (car, cdr, tag) = match heap.object(scan) {
-                Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-                _ => break,
-            };
+        while let Some((car, cdr, tag)) = pairlist_parts(heap, scan) {
             let untagged = !matches!(heap.object(tag), Some(RObject::Symbol { .. }));
             if untagged && !matches!(heap.object(car), Some(RObject::Symbol { .. })) {
                 positional_mode = true;
@@ -14494,11 +14367,7 @@ pub fn save_primitive(
     }
     let mut positional_seen = 0usize;
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
             _ => None,
@@ -14570,11 +14439,7 @@ pub fn load_primitive(
     let mut envir = caller_env;
     let mut cursor = args;
     let mut positional = 0usize;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         positional += 1;
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
@@ -14627,11 +14492,7 @@ pub fn data_primitive(
     let mut names: Vec<String> = Vec::new();
     let mut envir = caller_env;
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
             _ => None,
@@ -15100,11 +14961,7 @@ pub fn remove_attrib(
     let chain = heap.get(value).map(|slot| slot.attrib).unwrap_or(ValueId::NIL);
     let mut kept: Vec<(String, ValueId)> = Vec::new();
     let mut cursor = chain;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let attr_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
             _ => String::new(),
@@ -15147,11 +15004,7 @@ pub fn array_primitive(
     let mut dimnames_arg = ValueId::NIL;
     let mut positional = 0usize;
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         positional += 1;
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
@@ -15737,11 +15590,7 @@ pub fn with_restarts_primitive(
     // after it are restart handlers.
     let mut entries: Vec<(Option<String>, ValueId)> = Vec::new();
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
             _ => None,
@@ -15852,11 +15701,7 @@ pub fn with_calling_handlers_primitive(
 ) -> EvalResult {
     let mut entries: Vec<(Option<String>, ValueId)> = Vec::new();
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
             _ => None,
@@ -16643,11 +16488,7 @@ pub fn switch_primitive(
     // alternatives follow with their tags.
     let mut cursor = args;
     let mut entries: Vec<(Option<String>, ValueId)> = Vec::new();
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
             _ => None,
@@ -17146,11 +16987,7 @@ pub fn collect_variadic_inputs(
     let mut inputs: Vec<ValueId> = Vec::new();
     let mut na_rm = false;
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let evaluated = eval(heap, interner, car, caller_env)?;
         let value = force_if_promise(heap, interner, evaluated)?;
         let tag_name = match heap.object(tag) {
@@ -18003,11 +17840,7 @@ pub fn sequence_primitive(
     let mut from_arg = ValueId::NIL;
     let mut by_arg = ValueId::NIL;
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
             _ => None,
@@ -19526,11 +19359,7 @@ pub fn writechar_primitive(
     let mut positional: Vec<ValueId> = Vec::new();
     let mut nchars: Option<usize> = None;
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
             _ => None,
@@ -19745,11 +19574,7 @@ pub fn table_primitive(
     let mut dim_name = String::new();
     let mut input = ValueId::NIL;
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         if let Some(RObject::Symbol { name, .. }) = heap.object(tag) {
             dim_name = interner.symbol_name(*name).to_string();
         }
@@ -19831,11 +19656,7 @@ pub fn setclass_primitive(
     let mut contains: Option<String> = None;
     let mut positional = 0usize;
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         positional += 1;
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
@@ -19919,11 +19740,7 @@ pub fn new_s4_primitive(
     let mut supplied: Vec<(String, ValueId)> = Vec::new();
     let mut positional = 0usize;
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         positional += 1;
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
@@ -20128,11 +19945,7 @@ pub fn collect_bin_args(
     let mut positional: Vec<ValueId> = Vec::new();
     let mut named: std::collections::HashMap<String, ValueId> = std::collections::HashMap::new();
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let tag_name = match heap.object(tag) {
             Some(RObject::Symbol { name, .. }) => Some(interner.symbol_name(*name).to_string()),
             _ => None,
@@ -20566,11 +20379,7 @@ pub fn collect_order_args(
     let mut positional: Vec<ValueId> = Vec::new();
     let mut named: Vec<(String, ValueId)> = Vec::new();
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let evaluated = eval(heap, interner, car, caller_env)?;
         let value = force_if_promise(heap, interner, evaluated)?;
         match heap.object(tag) {

@@ -273,11 +273,7 @@ pub fn eval_matched_args(
     // structural exactly as GNU's argument resolution precedes forcing.
     let mut items: Vec<(Option<String>, ValueId)> = Vec::new();
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         let name = if tag == ValueId::NIL {
             None
         } else if let Some(RObject::Symbol { name, .. }) = heap.object(tag) {
@@ -356,11 +352,7 @@ pub fn bind_formals(
     let mut slots: Vec<Option<ValueId>> = vec![None; formals.len()];
     let mut pending: Vec<(Option<String>, ValueId)> = Vec::new();
     let mut cursor = args;
-    loop {
-        let (car, cdr, tag) = match heap.object(cursor) {
-            Some(RObject::Pairlist { car, cdr, tag }) => (*car, *cdr, *tag),
-            _ => break,
-        };
+    while let Some((car, cdr, tag)) = pairlist_parts(heap, cursor) {
         if car == ValueId::MISSING {
             if cdr == ValueId::NIL {
                 break;
@@ -435,4 +427,14 @@ pub fn named_list(
     let result = heap.alloc(RObject::List(items));
     let names_obj = heap.alloc(RObject::String(names));
     copy_with_attrib(heap, interner, result, "names", names_obj).map_err(RSignal::from)
+}
+
+/// Destructure a pairlist node's triple exactly as the cdr-walking idiom
+/// needs — owned copies end the heap borrow at the read, so the loop body
+/// may mutate freely.
+pub fn pairlist_parts(heap: &Heap, value: crate::id::ValueId) -> Option<(crate::id::ValueId, crate::id::ValueId, crate::id::ValueId)> {
+    match heap.object(value) {
+        Some(crate::object::RObject::Pairlist { car, cdr, tag }) => Some((*car, *cdr, *tag)),
+        _ => None,
+    }
 }
