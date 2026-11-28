@@ -12801,15 +12801,12 @@ pub fn file_exists_primitive(
 ) -> EvalResult {
     let operands = eval_args(heap, interner, args, caller_env, 1)?;
     let paths = string_vec(heap, interner, operands[0]);
-    let policy = heap.path_policy.clone();
+    // The virtual layer decides exactly as the write contract arranges —
+    // browser-files hits exist, host resolution governs otherwise. Routing
+    // through vfile keeps existence consistent with writes.
     let out: Vec<i32> = paths
         .iter()
-        .map(|p| {
-            match r_core::path_policy::resolve_host_path(policy.as_ref(), p) {
-                Some(host) if std::path::Path::new(&host).exists() => 1,
-                _ => 0,
-            }
-        })
+        .map(|p| if r_core::vfile::file_exists(heap, p) { 1 } else { 0 })
         .collect();
     Ok(heap.alloc(RObject::Logical(out)))
 }
