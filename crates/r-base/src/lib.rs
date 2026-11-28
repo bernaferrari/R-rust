@@ -8,6 +8,7 @@ pub mod assets;
 pub mod cpoly;
 pub mod datasets;
 pub mod session;
+pub mod strptime;
 pub mod primitives;
 
 pub use primitives::{call_primitive, primitive_id_for_name, primitive_ids, primitive_names};

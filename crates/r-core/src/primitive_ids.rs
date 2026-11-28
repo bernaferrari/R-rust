@@ -736,5 +736,6 @@ pub const PDF_FN: u32 = 705;
 pub const MATCHCALL: u32 = 706;
 pub const AS_NAME: u32 = 707;
 pub const VALIDOBJECT: u32 = 708;
+pub const STRPTIME: u32 = 709;
     pub const ALIST: u32 = 695;
 
