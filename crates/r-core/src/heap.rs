@@ -301,16 +301,14 @@ impl Heap {
         // Admission accounting — the cap crossing sticks because the
         // allocation genuinely happened over budget; boundary collection
         // can reclaim the object afterward without erasing that fact.
-        if let Some(cap) = self.memory_cap_bytes {
-            if self.payload_bytes > cap {
+        if let Some(cap) = self.memory_cap_bytes
+            && self.payload_bytes > cap {
                 self.memory_cap_tripped = true;
             }
-        }
-        if let Some(cap) = self.node_cap {
-            if self.live_count + 1 > cap {
+        if let Some(cap) = self.node_cap
+            && self.live_count + 1 > cap {
                 self.node_cap_tripped = true;
             }
-        }
         match self.free_head {
             Some(free_index) => {
                 let slot_entry = &mut self.slots[free_index as usize];

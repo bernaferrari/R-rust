@@ -20,11 +20,10 @@ pub fn get_attrib(
         }
         match heap.object(cursor) {
             Some(RObject::Pairlist { car, cdr, tag }) => {
-                if let Some(RObject::Symbol { name, .. }) = heap.object(*tag) {
-                    if interner.symbol_name(*name) == attr_name {
+                if let Some(RObject::Symbol { name, .. }) = heap.object(*tag)
+                    && interner.symbol_name(*name) == attr_name {
                         return Some(*car);
                     }
-                }
                 cursor = *cdr;
             }
             _ => return None,

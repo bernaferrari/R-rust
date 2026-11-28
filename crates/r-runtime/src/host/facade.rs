@@ -7,7 +7,6 @@
 //! pure-Rust foundation plan pins.
 
 use super::RValue;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 
 

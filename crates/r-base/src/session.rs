@@ -147,7 +147,7 @@ impl Session {
         for token in tokens {
             self.heap.retained_roots.release(token);
         }
-        return result;
+        result
     }
 
     fn eval_script_loop(&mut self, expressions: &[ValueId]) -> Result<String, SessionError> {
@@ -526,8 +526,8 @@ fn register_baked_packages(heap: &mut Heap, interner: &mut SymbolInterner, base:
             }
         }
         let mut plain = Vec::new();
-        if flate2::read::GzDecoder::new(gzipped).read_to_end(&mut plain).is_ok() {
-            if let Some(manifest) = r_core::rbg1::decode_rds(heap, interner, &plain, base) {
+        if flate2::read::GzDecoder::new(gzipped).read_to_end(&mut plain).is_ok()
+            && let Some(manifest) = r_core::rbg1::decode_rds(heap, interner, &plain, base) {
                 let names: Vec<String> = match heap.object(manifest) {
                     Some(RObject::String(entries)) => entries
                         .iter()
@@ -542,7 +542,6 @@ fn register_baked_packages(heap: &mut Heap, interner: &mut SymbolInterner, base:
                     }
                 }
             }
-        }
         heap.package_registry.insert(package.to_string(), namespace);
     }
     // base resolves through itself — every primitive is already there —
@@ -604,9 +603,8 @@ fn attach_default_packages(heap: &mut Heap, interner: &mut SymbolInterner, base:
         let _ = head;
         head = env;
     }
-    if let Some(first) = chain_envs.first() {
-        if let Some(RObject::Environment { enclos, .. }) = heap.object_mut(user) {
+    if let Some(first) = chain_envs.first()
+        && let Some(RObject::Environment { enclos, .. }) = heap.object_mut(user) {
             *enclos = *first;
         }
-    }
 }

@@ -513,7 +513,7 @@ impl PureSession {
             .set_device_size(f64::from(width), f64::from(height));
         self.session.heap.graphics.clear_scene();
         let before = self.session.heap.graphics.scene().operations().len();
-        self.eval_output(code).map_err(|e| e)?;
+        self.eval_output(code)?;
         let scene = self.session.heap.graphics.scene();
         if scene.operations().len() > before {
             Ok(scene.clone())

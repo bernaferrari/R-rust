@@ -159,7 +159,7 @@ impl<'h, 'i> Parser<'h, 'i> {
 
         self.skip_newlines();
         let body = self.parse_expr()?;
-        let tok_end = if self.pos > 0 {
+        let _tok_end = if self.pos > 0 {
             self.spans
                 .get(self.pos - 1)
                 .map(|&(_, b)| b)

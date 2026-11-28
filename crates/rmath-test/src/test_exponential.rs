@@ -1,7 +1,6 @@
 use crate::comparisons::*;
 
 use r_runtime::nmath::dist::exponential::*;
-use r_runtime::nmath::rng::*;
 
 pub fn run_tests() -> Result<(), String> {
     // dexp tests

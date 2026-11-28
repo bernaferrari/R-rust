@@ -1056,7 +1056,7 @@ pub fn rbeta_inner(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathStat
             };
         }
 
-        let gamma_v = (ms.beta_state.gamma);
+        let gamma_v = ms.beta_state.gamma;
 
         // C: do { ... } while (r + alpha * log(alpha / (b + w)) < t);
         // repeat while that condition holds, return with the current w

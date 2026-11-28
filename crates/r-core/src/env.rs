@@ -187,11 +187,10 @@ pub fn remove(heap: &mut Heap, env: ValueId, sym: SymId) -> Result<bool, EnvErro
     let slot = heap.get_mut(env).ok_or(EnvError::NotAnEnvironment)?;
     match &mut slot.body {
         RObject::Environment { frame, .. } => {
-            if let Some(existing) = frame.get_binding(sym) {
-                if existing.locked {
+            if let Some(existing) = frame.get_binding(sym)
+                && existing.locked {
                     return Err(EnvError::LockedBinding);
                 }
-            }
             Ok(frame.remove(sym).is_some())
         }
         _ => Err(EnvError::NotAnEnvironment),

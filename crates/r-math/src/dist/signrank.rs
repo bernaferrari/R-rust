@@ -8,7 +8,6 @@ use crate::dpq::*;
 use crate::error::*;
 use crate::utils::*;
 use libm::*;
-use std::collections::HashMap;
 use std::os::raw::{c_double, c_int};
 
 // Constants

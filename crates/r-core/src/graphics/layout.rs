@@ -559,7 +559,7 @@ fn nonneg(value: f64, name: &str) -> LayoutResult<()> {
 /// vectors are read elementwise; then lengthCheck applies.
 fn real_values(value: &ParValue, name: &str, n: usize) -> LayoutResult<Vec<f64>> {
     let raw: Vec<f64> = match value {
-        ParValue::Real(values) => values.iter().copied().collect(),
+        ParValue::Real(values) => values.to_vec(),
         ParValue::Integer(values) | ParValue::Logical(values) => {
             values.iter().map(|v| f64::from(*v)).collect()
         }

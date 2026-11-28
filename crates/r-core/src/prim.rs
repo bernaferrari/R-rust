@@ -6,9 +6,7 @@
 //! builtins, so domain crates (r-stats, r-graphics) depend only on
 //! r-core and r-math.
 
-use crate::attrib;
 use crate::eval::{eval, force_if_promise, EvalError, EvalResult, RSignal};
-use crate::graphics::layout::ParValue;
 use crate::heap::Heap;
 use crate::id::ValueId;
 use crate::intern::SymbolInterner;
@@ -392,11 +390,10 @@ pub fn bind_formals(
     }
     let mut iter = positional.into_iter();
     for slot in slots.iter_mut() {
-        if slot.is_none() {
-            if let Some(v) = iter.next() {
+        if slot.is_none()
+            && let Some(v) = iter.next() {
                 *slot = Some(v);
             }
-        }
     }
     Ok(slots)
 }

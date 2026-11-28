@@ -75,21 +75,19 @@ pub fn collect(heap: &mut Heap, roots: &RootSet<'_>) -> GcOutcome {
             .iter()
             .enumerate()
             .filter_map(|(index, state)| {
-                if let SlotState::Occupied(slot) = state {
-                    if slot.gc_mark {
-                        if let RObject::WeakRef { key, value, .. } = &slot.body {
+                if let SlotState::Occupied(slot) = state
+                    && slot.gc_mark
+                        && let RObject::WeakRef { key, value, .. } = &slot.body {
                             return Some((ValueId::new(index as u32, slot.generation), *key, *value));
                         }
-                    }
-                }
                 None
             })
             .collect();
         for (_, key, value) in weakrefs {
             let key_live = key.is_sentinel() || heap.get(key).map(|s| s.gc_mark).unwrap_or(false);
-            if key_live {
-                if let Some(slot) = heap.get_mut(value) {
-                    if !slot.gc_mark {
+            if key_live
+                && let Some(slot) = heap.get_mut(value)
+                    && !slot.gc_mark {
                         slot.gc_mark = true;
                         progress = true;
                         // Trace the newly-marked value's own edges.
@@ -105,8 +103,6 @@ pub fn collect(heap: &mut Heap, roots: &RootSet<'_>) -> GcOutcome {
                             }
                         }
                     }
-                }
-            }
         }
         if !progress {
             break;
@@ -116,9 +112,9 @@ pub fn collect(heap: &mut Heap, roots: &RootSet<'_>) -> GcOutcome {
     // ---------- finalizer discovery ----------
     let mut pending_finalizers = Vec::new();
     for (index, state) in heap.slots.iter().enumerate() {
-        if let SlotState::Occupied(slot) = state {
-            if slot.gc_mark {
-                if let RObject::WeakRef {
+        if let SlotState::Occupied(slot) = state
+            && slot.gc_mark
+                && let RObject::WeakRef {
                     key,
                     finalizer,
                     on_exit,
@@ -133,8 +129,6 @@ pub fn collect(heap: &mut Heap, roots: &RootSet<'_>) -> GcOutcome {
                         ));
                     }
                 }
-            }
-        }
     }
 
     // ---------- sweep ----------

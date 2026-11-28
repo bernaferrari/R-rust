@@ -104,30 +104,27 @@ pub fn eval(
     }
     // The deadline shares the cancellation poll site — one cheap check
     // pair per node against the tree walk's cost.
-    if let Some(deadline) = heap.eval_deadline {
-        if web_time::Instant::now() >= deadline {
+    if let Some(deadline) = heap.eval_deadline
+        && web_time::Instant::now() >= deadline {
             return Err(RSignal::from(EvalError::Condition(
                 "evaluation time limit exceeded".to_string(),
             )));
         }
-    }
     // The memory cap rides the same poll — payload bytes are the heap's
     // pressure measure exactly as the facade's arena accounting measures
     // the old world's occupancy.
-    if let Some(cap) = heap.memory_cap_bytes {
-        if heap.payload_bytes() > cap {
+    if let Some(cap) = heap.memory_cap_bytes
+        && heap.payload_bytes() > cap {
             return Err(RSignal::from(EvalError::Condition(
                 "memory limit exceeded".to_string(),
             )));
         }
-    }
-    if let Some(cap) = heap.node_cap {
-        if heap.live_count() > cap {
+    if let Some(cap) = heap.node_cap
+        && heap.live_count() > cap {
             return Err(RSignal::from(EvalError::Condition(
                 "arena node limit exceeded".to_string(),
             )));
         }
-    }
     heap.eval_depth += 1;
     let result = eval_node(heap, interner, expr, env_id);
     heap.eval_depth -= 1;
@@ -144,13 +141,12 @@ fn eval_node(
     // entry — a relaxed atomic load, nanoseconds against the tree walk —
     // so SIGINT unwinds long evaluation exactly as the legacy world's
     // does. The error text matches the facade's cancellation contract.
-    if let Some(cell) = &heap.cancellation {
-        if cell.load(std::sync::atomic::Ordering::Relaxed) {
+    if let Some(cell) = &heap.cancellation
+        && cell.load(std::sync::atomic::Ordering::Relaxed) {
             return Err(RSignal::from(EvalError::Condition(
                 "operation cancelled".to_string(),
             )));
         }
-    }
     if expr == ValueId::NIL {
         return Ok(ValueId::NIL);
     }
@@ -302,8 +298,8 @@ fn lookup_callable(
         if cursor == ValueId::EMPTY_ENV || cursor.is_sentinel() {
             return Ok(None);
         }
-        if let Some(binding) = env::lookup_in_frame(heap, cursor, sym) {
-            if !binding.active {
+        if let Some(binding) = env::lookup_in_frame(heap, cursor, sym)
+            && !binding.active {
                 let candidate = match heap.object(binding.value) {
                     Some(RObject::Closure { .. }) | Some(RObject::Primitive(_)) => Some(binding.value),
                     Some(RObject::Promise { .. }) => {
@@ -319,7 +315,6 @@ fn lookup_callable(
                     return Ok(Some(value));
                 }
             }
-        }
         match env::enclosure_of(heap, cursor) {
             Some(parent) => cursor = parent,
             None => return Ok(None),
@@ -426,11 +421,10 @@ fn call(
     // (no inner frame claimed it), and never overwrite as the error
     // unwinds through outer frames. Control flow is not a condition
     // and attaches nothing.
-    if let Err(RSignal::Error(_)) = &result {
-        if heap.error_call == ValueId::NIL {
+    if let Err(RSignal::Error(_)) = &result
+        && heap.error_call == ValueId::NIL {
             heap.error_call = call_expr;
         }
-    }
     result
 }
 

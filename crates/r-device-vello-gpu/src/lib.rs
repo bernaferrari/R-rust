@@ -607,7 +607,7 @@ impl GpuRenderer {
             }
         }
         buffer.unmap();
-        for p in rgba.chunks_exact_mut(4) {
+        for p in rgba.as_chunks_mut::<4>().0 {
             if p[3] > 0 && p[3] < 255 {
                 for j in 0..3 {
                     p[j] = ((u32::from(p[j]) * 255 + u32::from(p[3]) / 2) / u32::from(p[3]))

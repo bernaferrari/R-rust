@@ -142,11 +142,10 @@ impl<'h, 'i> Parser<'h, 'i> {
     /// the legacy parser's SETTAG, used when formal arguments and named
     /// call arguments gain their names after construction.
     pub fn set_tag(&mut self, cell: ValueId, tag: ValueId) {
-        if let Some(slot @ RObject::Pairlist { .. }) = self.heap.object_mut(cell) {
-            if let RObject::Pairlist { tag: slot_tag, .. } = slot {
+        if let Some(slot @ RObject::Pairlist { .. }) = self.heap.object_mut(cell)
+            && let RObject::Pairlist { tag: slot_tag, .. } = slot {
                 *slot_tag = tag;
             }
-        }
     }
 
     /// Patch a cell's car in place — used by pipe rewriting exactly as the

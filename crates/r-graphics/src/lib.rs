@@ -5,18 +5,11 @@
 #![forbid(unsafe_code)]
 use r_core::prim::*;
 use r_core::attrib::{get_attrib, string_vec};
-use r_core::attrib;
-use r_core::env;
-use r_core::eval;
 use r_core::eval::{eval, force_if_promise, EvalError, EvalResult};
 use r_core::heap::Heap;
 use r_core::id::ValueId;
 use r_core::intern::SymbolInterner;
 use r_core::object::RObject;
-use r_core::print;
-use r_core::graphics;
-use r_core::civil;
-use r_core::support;
 use r_core::primitive_ids::*;
 use r_core::eval::RSignal;
 
@@ -162,7 +155,7 @@ pub fn par_primitive(
             }
             let old_obj = par_query_obj(heap, interner, name);
             prior.push((name.clone(), old_obj));
-            let value = parvalue_of(heap, interner, *v).ok_or_else(|| {
+            let value = parvalue_of(heap, interner, *v).ok_or({
                 RSignal::Error(EvalError::TypeError("invalid par value"))
             })?;
             heap.graphics.apply(name, &value).map_err(|message| {
@@ -250,7 +243,7 @@ pub fn layout_primitive(
 /// preselected cell.
 pub fn plot_new_primitive(
     heap: &mut Heap,
-    interner: &mut SymbolInterner,
+    _interner: &mut SymbolInterner,
     _args: ValueId,
     _caller_env: ValueId,
 ) -> EvalResult {
@@ -332,7 +325,7 @@ pub fn lines_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    use r_graphics_engine::{Color, DrawOperation, Path, PathCommand, Stroke};
+    use r_graphics_engine::{Color, DrawOperation, Path, PathCommand};
     let slots = eval_matched_args(heap, interner, args, caller_env, &["x", "y", "col"])?;
     let xs = slots[0].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
     let ys = slots[1].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
@@ -416,11 +409,10 @@ pub fn par_stroke(heap: &Heap, color: r_graphics_engine::Color) -> r_graphics_en
     };
     let color = if lty_name == "blank" { TRANSPARENT } else { color };
     let mut stroke = Stroke::new(width.max(0.5), color);
-    if lty_name != "solid" && lty_name != "blank" {
-        if let Some(iv) = intervals {
+    if lty_name != "solid" && lty_name != "blank"
+        && let Some(iv) = intervals {
             stroke.dash_pattern = Some(DashPattern { intervals: iv, offset: 0.0 });
         }
-    }
     stroke
 }
 
@@ -501,7 +493,7 @@ pub fn rect_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    use r_graphics_engine::{Color, DrawOperation, Path, Stroke};
+    use r_graphics_engine::{Color, DrawOperation, Path};
     // Positional order covers GNU's first four exactly; col/border are
     // effectively always named in practice — the density/angle/lty
     // slots of GNU's full signature remain unwired.
@@ -887,7 +879,7 @@ pub fn axis_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    use r_graphics_engine::{Color, DrawOperation, Path, PathCommand, PlotParameters, Point, Stroke, TextAnchor};
+    use r_graphics_engine::{Color, DrawOperation, Path, PathCommand, PlotParameters, Point, TextAnchor};
     let slots = eval_matched_args(heap, interner, args, caller_env, &["side", "at", "labels"])?;
     let side = slots[0]
         .and_then(|v| reals_of_value(heap, v).ok())
@@ -959,7 +951,7 @@ pub fn axis_primitive(
         horizontal,
         [at[0], at[at.len() - 1], (at.len() - 1) as f64],
     );
-    let plot = heap.graphics.layout.regions().plot;
+    let _plot = heap.graphics.layout.regions().plot;
     // One margin line in raster units exactly as the 0.2in portable
     // contract; tcl -0.5 is GNU's outward default.
     let line = 14.4f32;
@@ -1039,7 +1031,7 @@ pub fn box_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    use r_graphics_engine::{Color, DrawOperation, Path, Stroke};
+    use r_graphics_engine::{Color, DrawOperation, Path};
     let _ = eval_matched_args(heap, interner, args, caller_env, &["which"])?;
     let plot = heap.graphics.layout.regions().plot;
     let x = plot[0] as f32;
@@ -1105,26 +1097,22 @@ pub fn title_primitive(
     // xlab centers below the bottom margin at two lines out exactly
     // as mgp's axis-title line approximates; ylab mirrors beside the
     // left margin; main sits in the top margin.
-    if let Some(xlab) = text_of(2) {
-        if !xlab.is_empty() {
+    if let Some(xlab) = text_of(2)
+        && !xlab.is_empty() {
             emit(heap, xlab, center_x, plot[3] as f32 + 2.5 * line, TextAnchor::Middle);
         }
-    }
-    if let Some(ylab) = text_of(3) {
-        if !ylab.is_empty() {
+    if let Some(ylab) = text_of(3)
+        && !ylab.is_empty() {
             emit(heap, ylab, plot[0] as f32 - 2.5 * line, center_y, TextAnchor::Middle);
         }
-    }
-    if let Some(main) = text_of(0) {
-        if !main.is_empty() {
+    if let Some(main) = text_of(0)
+        && !main.is_empty() {
             emit(heap, main, center_x, plot[1] as f32 - 1.0 * line, TextAnchor::Middle);
         }
-    }
-    if let Some(sub) = text_of(1) {
-        if !sub.is_empty() {
+    if let Some(sub) = text_of(1)
+        && !sub.is_empty() {
             emit(heap, sub, center_x, plot[3] as f32 + 3.5 * line, TextAnchor::Middle);
         }
-    }
     Ok(ValueId::NIL)
 }
 
@@ -1281,7 +1269,7 @@ pub fn color_ramp_primitive(
     if n == 0 {
         return Ok(heap.alloc(RObject::String(Vec::new())));
     }
-    let emit = |heap: &mut Heap, interner: &mut SymbolInterner, triples: &[(f64, f64, f64)]| -> Vec<r_core::intern::InternedStr> {
+    let emit = |_heap: &mut Heap, interner: &mut SymbolInterner, triples: &[(f64, f64, f64)]| -> Vec<r_core::intern::InternedStr> {
         triples.iter().map(|&(h, s, v)| {
             let (r, g, b) = gnu_hsv2rgb(h, s, v);
             interner.intern_string(&hex_rgb(r, g, b))
@@ -1353,7 +1341,7 @@ pub fn color_ramp_primitive(
             }
         }
         CM_COLORS => {
-            let even_n = n % 2 == 0;
+            let even_n = n.is_multiple_of(2);
             let k = n / 2;
             let l1 = if even_n { k + 1 - 1 } else { k + 1 };
             let l2 = n - k + if even_n { 1 } else { 0 };
@@ -1490,7 +1478,7 @@ pub fn palette_primitive(
 ) -> EvalResult {
     let slots = eval_matched_args(heap, interner, args, caller_env, &["value"])?;
     let current: Vec<String> = if heap.palette.is_empty() {
-        vec!["black", "#DF536B", "#61D04F", "#2297E6", "#28E2E5", "#CD0BBC", "#F5C710", "gray62"]
+        ["black", "#DF536B", "#61D04F", "#2297E6", "#28E2E5", "#CD0BBC", "#F5C710", "gray62"]
             .iter().map(|s| s.to_string()).collect()
     } else {
         heap.palette.clone()
@@ -1686,9 +1674,9 @@ pub fn rgb2hsv_primitive(
     // separate vectors take the single-channel path.
     let mut triples: Vec<(f64, f64, f64)> = Vec::new();
     let matrix_dim = get_attrib(heap, interner, input, "dim");
-    if let Some(dim_id) = matrix_dim {
-        if let Some(RObject::Integer(dims)) = heap.object(dim_id).cloned() {
-            if dims.len() == 2 && dims[0] == 3 {
+    if let Some(dim_id) = matrix_dim
+        && let Some(RObject::Integer(dims)) = heap.object(dim_id).cloned()
+            && dims.len() == 2 && dims[0] == 3 {
                 let cols = dims[1] as usize;
                 let vals = reals_of_value(heap, input).map_err(RSignal::from)?;
                 for c in 0..cols {
@@ -1698,8 +1686,6 @@ pub fn rgb2hsv_primitive(
                     triples.push((r / max_value, g / max_value, b / max_value));
                 }
             }
-        }
-    }
     if triples.is_empty() {
         let rs = reals_of_value(heap, input).unwrap_or_default();
         let gs = slots[1].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
@@ -2589,7 +2575,7 @@ pub fn pie_primitive(
     if xs.iter().any(|x| x.is_nan() || *x < 0.0) {
         return Err(EvalError::TypeError("'x' values must be positive.").into());
     }
-    let labels: Vec<String> = match slots[1].and_then(|v| heap.object(v).cloned()) {
+    let _labels: Vec<String> = match slots[1].and_then(|v| heap.object(v).cloned()) {
         Some(RObject::String(vals)) => vals.iter().map(|s| interner.string_text(*s).to_string()).collect(),
         _ => (1..=xs.len()).map(|i| i.to_string()).collect(),
     };
@@ -3034,7 +3020,7 @@ pub fn grid_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    let slots = eval_matched_args(heap, interner, args, caller_env, &["nx", "ny", "col", "lty", "lwd", "equilogs"])?;
+    let _slots = eval_matched_args(heap, interner, args, caller_env, &["nx", "ny", "col", "lty", "lwd", "equilogs"])?;
     // Tick positions recomputed over the usr window exactly as the
     // axis cascade does — the lightgray dotted reference lines.
     let usr = match heap.graphics.query("usr") {
@@ -3392,9 +3378,9 @@ pub fn barplot_primitive(
     let mut nrow = 1usize;
     let mut ncol = 0usize;
     let mut vector_input = false;
-    if let Some(dim_id) = get_attrib(heap, interner, input, "dim") {
-        if let Some(RObject::Integer(dims)) = heap.object(dim_id).cloned() {
-            if dims.len() == 2 {
+    if let Some(dim_id) = get_attrib(heap, interner, input, "dim")
+        && let Some(RObject::Integer(dims)) = heap.object(dim_id).cloned()
+            && dims.len() == 2 {
                 nrow = dims[0] as usize;
                 ncol = dims[1] as usize;
                 let vals = reals_of_value(heap, input).map_err(RSignal::from)?;
@@ -3406,8 +3392,6 @@ pub fn barplot_primitive(
                     heights.push(series);
                 }
             }
-        }
-    }
     if heights.is_empty() {
         vector_input = true;
         nrow = 1;
@@ -3548,7 +3532,7 @@ pub fn segments_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    use r_graphics_engine::{Color, DrawOperation, Path, PathCommand, Stroke};
+    use r_graphics_engine::{Color, DrawOperation, Path, PathCommand};
     let slots = eval_matched_args(heap, interner, args, caller_env, &["x0", "y0", "x1", "y1", "col"])?;
     let x0 = slots[0].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
     let y0 = slots[1].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
@@ -3596,7 +3580,7 @@ pub fn abline_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    use r_graphics_engine::{Color, DrawOperation, Path, PathCommand, Stroke};
+    use r_graphics_engine::{Color, DrawOperation, Path, PathCommand};
     let slots = eval_matched_args(heap, interner, args, caller_env, &["a", "b", "h", "v", "col"])?;
     let usr = match heap.graphics.query("usr") {
         Some(r_core::graphics::layout::ParValue::Real(u)) if u.len() == 4 => u,
@@ -3663,7 +3647,7 @@ pub fn polygon_primitive(
     args: ValueId,
     caller_env: ValueId,
 ) -> EvalResult {
-    use r_graphics_engine::{Color, DrawOperation, Path, PathCommand, Stroke};
+    use r_graphics_engine::{Color, DrawOperation, Path, PathCommand};
     let slots = eval_matched_args(heap, interner, args, caller_env, &["x", "y", "col", "border"])?;
     let xs = slots[0].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
     let ys = slots[1].and_then(|v| reals_of_value(heap, v).ok()).unwrap_or_default();
@@ -3681,7 +3665,7 @@ pub fn polygon_primitive(
     };
     // Split at NA exactly as lines does, closing each run.
     let mut run: Vec<(f32, f32)> = Vec::new();
-    let mut emit_run = |heap: &mut Heap, run: &mut Vec<(f32, f32)>| {
+    let emit_run = |heap: &mut Heap, run: &mut Vec<(f32, f32)>| {
         if run.len() >= 2 {
             let mut commands = vec![PathCommand::MoveTo(run[0].0, run[0].1)];
             for &(x, y) in &run[1..] {

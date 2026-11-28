@@ -237,11 +237,10 @@ fn match_concat(nodes: &[Node], chars: &[char], pos: usize) -> Option<usize> {
             None
         }
         Node::Opt(inner) => {
-            if let Some(next) = match_single(inner, chars, pos) {
-                if let Some(end) = match_concat(&nodes[1..], chars, next) {
+            if let Some(next) = match_single(inner, chars, pos)
+                && let Some(end) = match_concat(&nodes[1..], chars, next) {
                     return Some(end);
                 }
-            }
             match_concat(&nodes[1..], chars, pos)
         }
         other => {

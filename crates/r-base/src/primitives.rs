@@ -135,21 +135,19 @@ pub fn call_primitive_inner(
                 };
                 match tag_name.as_deref() {
                     Some("mode") => {
-                        if let Some(RObject::String(vals)) = heap.object(value) {
-                            if let Some(first) = vals.first() {
+                        if let Some(RObject::String(vals)) = heap.object(value)
+                            && let Some(first) = vals.first() {
                                 mode = interner.string_text(*first).to_string();
                             }
-                        }
                     }
                     Some("length") => length = numeric_vector(heap, value).first().copied().unwrap_or(0.0) as usize,
                     _ => {
                         positional += 1;
                         if positional == 1 {
-                            if let Some(RObject::String(vals)) = heap.object(value) {
-                                if let Some(first) = vals.first() {
+                            if let Some(RObject::String(vals)) = heap.object(value)
+                                && let Some(first) = vals.first() {
                                     mode = interner.string_text(*first).to_string();
                                 }
-                            }
                         } else if positional == 2 {
                             length = numeric_vector(heap, value).first().copied().unwrap_or(0.0) as usize;
                         }
@@ -315,11 +313,10 @@ pub fn call_primitive_inner(
                         env = v;
                     }
                     Some("pattern") => {
-                        if let Some(RObject::String(vals)) = heap.object(v) {
-                            if let Some(first) = vals.first() {
+                        if let Some(RObject::String(vals)) = heap.object(v)
+                            && let Some(first) = vals.first() {
                                 pattern = Some(interner.string_text(*first).to_string());
                             }
-                        }
                     }
                     _ => {
                         if positional == 1 {
@@ -358,11 +355,10 @@ pub fn call_primitive_inner(
                 let evaluated = eval(heap, interner, car, caller_env)?;
                 let value = force_if_promise(heap, interner, evaluated)?;
                 if tag_name.as_deref() == Some("sep") {
-                    if let Some(RObject::String(values)) = heap.object(value) {
-                        if !values.is_empty() {
+                    if let Some(RObject::String(values)) = heap.object(value)
+                        && !values.is_empty() {
                             sep = interner.string_text(values[0]).to_string();
                         }
-                    }
                 } else if tag_name.as_deref() == Some("file") {
                     file_target = string_operand(heap, interner, value);
                 } else if tag_name.as_deref() == Some("append") {
@@ -948,11 +944,10 @@ pub fn call_primitive_inner(
                                             }
                                             heap.emit("\n");
                                         }
-                                        if delete {
-                                            if let Some(host) = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), path) {
+                                        if delete
+                                            && let Some(host) = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), path) {
                                                 let _ = std::fs::remove_file(host);
                                             }
-                                        }
                                     }
                                     heap.visible = false;
                                     return Ok(ValueId::NIL);
@@ -1035,11 +1030,10 @@ pub fn call_primitive_inner(
                         message.push_str(&piece);
                     }
                 }
-                if let Some(text) = string_operand(heap, interner, v) {
-                    if string_vec(heap, interner, v).is_empty() {
+                if let Some(text) = string_operand(heap, interner, v)
+                    && string_vec(heap, interner, v).is_empty() {
                         message.push_str(&text);
                     }
-                }
             }
             fire_calling_handlers(heap, interner, "warning", &message, caller_env)?;
             if !heap.warn_suppressed {
@@ -1079,15 +1073,14 @@ pub fn call_primitive_inner(
             // the frame binding is the missing-argument sentinel.
             let raw = raw_args(heap, args);
             let mut missing = false;
-            if let Some(first) = raw.first() {
-                if let Some(RObject::Symbol { name, .. }) = heap.object(*first) {
+            if let Some(first) = raw.first()
+                && let Some(RObject::Symbol { name, .. }) = heap.object(*first) {
                     let sym = *name;
                     missing = match r_core::env::lookup_in_frame(heap, caller_env, sym) {
                         Some(binding) => binding.value == ValueId::MISSING,
                         None => false,
                     };
                 }
-            }
             Ok(heap.alloc(RObject::Logical(vec![missing as i32])))
         }
         PARENT_ENV => {
@@ -1710,11 +1703,10 @@ pub fn call_primitive_inner(
                             if let Some(first) = r.first() {
                                 max_distance = *first;
                             }
-                        } else if let Some(RObject::Integer(iv)) = heap.object(v) {
-                            if let Some(first) = iv.first() {
+                        } else if let Some(RObject::Integer(iv)) = heap.object(v)
+                            && let Some(first) = iv.first() {
                                 max_distance = *first as f64;
                             }
-                        }
                     }
                     _ => {}
                 }
@@ -1927,7 +1919,7 @@ pub fn call_primitive_inner(
                 Some(RObject::Integer(v)) => v.clone(),
                 _ => return Err(EvalError::TypeError("addNA requires a factor").into()),
             };
-            let has_na = codes.iter().any(|c| *c == r_core::object::NA_INTEGER);
+            let has_na = codes.contains(&r_core::object::NA_INTEGER);
             let already = match get_attrib(heap, interner, factored, "levels") {
                 Some(l) => string_vec(heap, interner, l).iter().any(|s| s == "\0NA"),
                 None => false,
@@ -1982,12 +1974,11 @@ pub fn call_primitive_inner(
                         Some(RObject::Pairlist { car, tag, cdr, .. }) => (*car, *tag, *cdr),
                         _ => break,
                     };
-                    if let Some(RObject::Symbol { name, .. }) = heap.object(tag) {
-                        if interner.symbol_name(*name) == "resize" {
+                    if let Some(RObject::Symbol { name, .. }) = heap.object(tag)
+                        && interner.symbol_name(*name) == "resize" {
                             let v = eval(heap, interner, car, caller_env)?;
                             r = logical_scalar(heap, v);
                         }
-                    }
                     cursor = next;
                 }
                 r
@@ -2078,12 +2069,11 @@ pub fn call_primitive_inner(
                     Some(RObject::Pairlist { car, tag, cdr, .. }) => (*car, *tag, *cdr),
                     _ => break,
                 };
-                if let Some(RObject::Symbol { name: tag_sym, .. }) = heap.object(tag) {
-                    if interner.symbol_name(*tag_sym) == "name" {
+                if let Some(RObject::Symbol { name: tag_sym, .. }) = heap.object(tag)
+                    && interner.symbol_name(*tag_sym) == "name" {
                         let v = eval(heap, interner, car, caller_env)?;
                         name = string_operand(heap, interner, v).unwrap_or_default();
                     }
-                }
                 cursor = next;
             }
             let env = if !name.is_empty() {
@@ -2492,7 +2482,7 @@ pub fn call_primitive_inner(
                 Some(RObject::Integer(_)) | Some(RObject::Logical(_))
             );
             let raw: Vec<(f64, bool)> = match heap.object(operands[0]) {
-                Some(RObject::Integer(v)) | Some(RObject::Logical(v)) => {
+                Some(RObject::Integer(_v)) | Some(RObject::Logical(_v)) => {
                     let v = match heap.object(operands[0]) {
                         Some(RObject::Integer(iv)) => iv.clone(),
                         Some(RObject::Logical(lv)) => lv.clone(),
@@ -2641,7 +2631,12 @@ pub fn call_primitive_inner(
                         .iter()
                         .map(|(_, tag)| match heap.object(*tag) {
                             Some(RObject::Symbol { name, .. }) => {
-                                interner.intern_string(&interner.symbol_name(*name).to_string())
+                                // The copy is load-bearing — interning needs
+                                // &mut while symbol_name holds &, so the string
+                                // must materialize first exactly as the borrow
+                                // discipline requires.
+                                let sym = interner.symbol_name(*name).to_string();
+                                interner.intern_string(&sym)
                             }
                             _ => interner.intern_string(""),
                         })
@@ -4090,7 +4085,7 @@ pub fn call_primitive_inner(
             // duplicated — NA itself comparable unless excluded. The scan
             // order decides which twin is flagged: the FIRST occurrence
             // in scan order is canonical, later ones duplicate.
-            let raw = raw_args(heap, args);
+            let _raw = raw_args(heap, args);
             let mut positional: Vec<ValueId> = Vec::new();
             let mut from_last = false;
             let mut incomparables_na = false;
@@ -4158,12 +4153,11 @@ pub fn call_primitive_inner(
             for &i in &order {
                 let is_na_elem = vals[i] == "\0NA";
                 let comparable = !(is_na_elem && incomparables_na);
-                if comparable {
-                    if !seen2.insert(vals[i].as_str()) {
+                if comparable
+                    && !seen2.insert(vals[i].as_str()) {
                         answer = (i + 1) as i32;
                         break;
                     }
-                }
             }
             Ok(heap.alloc(RObject::Integer(vec![answer])))
         }
@@ -4704,7 +4698,7 @@ pub fn call_primitive_inner(
             // rm(x, y) — bare symbols name bindings to remove from the
             // calling environment; list= and envir= follow GNU's exact
             // forms with locked-environment errors surfacing.
-            let raw = raw_args(heap, args);
+            let _raw = raw_args(heap, args);
             let mut target_env = caller_env;
             let mut list_names: Vec<String> = Vec::new();
             let mut positional_exprs: Vec<ValueId> = Vec::new();
@@ -4733,7 +4727,7 @@ pub fn call_primitive_inner(
                 }
                 cursor = next;
             }
-            let mut removal = |heap: &mut Heap, sym| -> Result<(), EvalError> {
+            let removal = |heap: &mut Heap, sym| -> Result<(), EvalError> {
                 match r_core::env::remove(heap, target_env, sym) {
                     Ok(_) => Ok(()),
                     Err(r_core::env::EnvError::LockedEnvironment) => {
@@ -4774,11 +4768,10 @@ pub fn call_primitive_inner(
             if let Some(mode_expr) = raw.get(1).copied() {
                 let evaluated = eval(heap, interner, mode_expr, caller_env)?;
                 let mode_v = force_if_promise(heap, interner, evaluated)?;
-                if let Some(mode) = string_operand(heap, interner, mode_v) {
-                    if mode == "character" {
+                if let Some(mode) = string_operand(heap, interner, mode_v)
+                    && mode == "character" {
                         return coerce_character(heap, interner, stripped);
                     }
-                }
             }
             Ok(stripped)
         }
@@ -5503,8 +5496,8 @@ pub fn call_primitive_inner(
                 Some(RObject::Pairlist { car, tag, .. }) => {
                     // A supplied name must match the sole formal exactly as
                     // GNU's hand-rolled matching in quote.
-                    if *tag != ValueId::NIL {
-                        if let Some(RObject::Symbol { name, .. }) = heap.object(*tag) {
+                    if *tag != ValueId::NIL
+                        && let Some(RObject::Symbol { name, .. }) = heap.object(*tag) {
                             let tag_name = interner.symbol_name(*name).to_string();
                             if tag_name != "expr" {
                                 return Err(EvalError::Condition(format!(
@@ -5513,7 +5506,6 @@ pub fn call_primitive_inner(
                                 .into());
                             }
                         }
-                    }
                     Ok(*car)
                 }
                 _ => Ok(ValueId::NIL),
@@ -5803,7 +5795,7 @@ pub fn call_primitive_inner(
                 Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals
                     .iter()
                     .map(|&v| {
-                        if v == r_core::object::NA_INTEGER || v < 0 || v > 255 {
+                        if v == r_core::object::NA_INTEGER || !(0..=255).contains(&v) {
                             0u8
                         } else {
                             v as u8
@@ -6576,8 +6568,8 @@ pub fn arithmetic(
     // the same primitive as the binary operators. Arity is decided by the
     // call's actual operand count, not by successful prefix extraction.
     let arity = raw_args(heap, args).len();
-    if matches!(op, ADD | SUB) && arity == 1 {
-        if let Ok(unary) = eval_args(heap, interner, args, caller_env, 1) {
+    if matches!(op, ADD | SUB) && arity == 1
+        && let Ok(unary) = eval_args(heap, interner, args, caller_env, 1) {
             // Unary negation of a classed timespan keeps the chain —
             // -difftime negates the value and preserves units exactly as
             // GNU's unary method.
@@ -6631,7 +6623,6 @@ pub fn arithmetic(
                 }
             };
         }
-    }
     let operands = eval_args(heap, interner, args, caller_env, 2)?;
     // The datetime operand lattice: difftime operands rescale into the
     // target unit of the operation — seconds against POSIXct, days
@@ -6966,11 +6957,10 @@ pub fn propagate_attributes(
     let right_len = vector_length(heap, right).unwrap_or(0);
     let source = if left_len >= right_len { left } else { right };
     let chain = heap.get(source).map(|slot| slot.attrib).unwrap_or(ValueId::NIL);
-    if chain != ValueId::NIL {
-        if let Some(slot) = heap.get_mut(result) {
+    if chain != ValueId::NIL
+        && let Some(slot) = heap.get_mut(result) {
             slot.attrib = chain;
         }
-    }
     result
 }
 
@@ -8286,7 +8276,7 @@ pub fn concat_primitive_inner(
     // the class exactly as the method dispatch arranges.
     let first_date = operands.first().map(|v| is_date_classed(heap, interner, *v)).unwrap_or(false);
     let first_posix = operands.first().map(|v| is_posixct_classed(heap, interner, *v)).unwrap_or(false);
-    let first_tzone = if first_posix {
+    let _first_tzone = if first_posix {
         get_attrib(heap, interner, operands[0], "tzone")
             .and_then(|id| match heap.object(id) {
                 Some(RObject::String(vals)) if !vals.is_empty() => Some(interner.string_text(vals[0]).to_string()),
@@ -9434,7 +9424,7 @@ pub fn reduction_fold(
         heap.object(operands[0])
     {
         let mut values = values.clone();
-        if values.iter().any(|v| *v == r_core::object::NA_INTEGER) {
+        if values.contains(&r_core::object::NA_INTEGER) {
             if !na_rm {
                 return Ok(heap.alloc(RObject::Integer(vec![r_core::object::NA_INTEGER])));
             }
@@ -9632,8 +9622,8 @@ pub fn strings_of_value(
 ) -> Result<Vec<r_core::intern::InternedStr>, EvalError> {
     // Factor-classed input coerces through level labels exactly as GNU's
     // character coercion — the codes index the levels attribute.
-    if is_factor(heap, interner, value) {
-        if let Some(levels_id) = get_attrib(heap, interner, value, "levels") {
+    if is_factor(heap, interner, value)
+        && let Some(levels_id) = get_attrib(heap, interner, value, "levels") {
             let levels = string_vec(heap, interner, levels_id);
             if let Some(RObject::Integer(codes)) = heap.object(value) {
                 return Ok(codes
@@ -9651,7 +9641,6 @@ pub fn strings_of_value(
                     .collect());
             }
         }
-    }
     match heap.object(value) {
         Some(RObject::String(values)) => Ok(values.clone()),
         Some(RObject::Nil) | None => Ok(Vec::new()),
@@ -10100,14 +10089,13 @@ pub fn subset2_assign_primitive(
     }
 
     // NULL object: x[['a']] <- v builds a fresh named list exactly as GNU.
-    if object == ValueId::NIL {
-        if let Slot::Name(name) = slot {
+    if object == ValueId::NIL
+        && let Slot::Name(name) = slot {
             let result = heap.alloc(RObject::List(vec![value]));
             let interned = vec![interner.intern_string(&name)];
             let names_vec = heap.alloc(RObject::String(interned));
             return copy_with_attrib(heap, interner, result, "names", names_vec).map_err(RSignal::from);
         }
-    }
 
     // Atomic vectors: single-element replacement with coercion — reuse the
     // [<- core, which already implements GNU's rank promotion and recycling
@@ -10639,7 +10627,7 @@ pub fn simplify_sapply(heap: &mut Heap, results: Vec<ValueId>) -> EvalResult {
                     _ => return Err(EvalError::TypeError("simplify kind drift").into()),
                 }
             }
-            return Ok(heap.alloc(RObject::String(out)));
+            Ok(heap.alloc(RObject::String(out)))
         }
         _ => {
             let mut out = Vec::new();
@@ -10940,14 +10928,13 @@ pub fn seq_primitive(
             }
             _ => None,
         };
-        if let Some(spec) = spec {
-            if is_date_classed(heap, interner, from) || is_posixct_classed(heap, interner, from) {
+        if let Some(spec) = spec
+            && (is_date_classed(heap, interner, from) || is_posixct_classed(heap, interner, from)) {
                 return seq_datetime(
                     heap, interner, from,
                     lookup("to", 1), &spec, lookup("length.out", 3),
                 );
             }
-        }
     }
     let to = lookup("to", 1).ok_or(EvalError::TypeError("seq requires to"))?;
     let from_v = first_real(heap, from).map_err(RSignal::from)?;
@@ -11442,54 +11429,51 @@ pub fn ordering_primitive(
     per_type!(Logical, is_na_int, r_core::object::NA_INTEGER);
     // Character vectors order lexicographically — GNU's C-locale byte order
     // for the slice; the NA sentinel text sorts out exactly as numeric NA.
-    match heap.object(value) {
-        Some(RObject::String(values)) => {
-            let mut out: Vec<String> = values
-                .iter()
-                .map(|v| interner.string_text(*v).to_string())
-                .collect();
-            match op {
-                SORT => {
-                    let na_count = out.iter().filter(|v| *v == "\0NA").count();
-                    out.retain(|v| v != "\0NA");
-                    out.sort();
-                    if decreasing {
-                        out.reverse();
-                    }
-                    match na_last {
-                        Some(true) => {
-                            for _ in 0..na_count {
-                                out.push("\0NA".to_string());
-                            }
-                        }
-                        Some(false) => {
-                            for _ in 0..na_count {
-                                out.insert(0, "\0NA".to_string());
-                            }
-                        }
-                        None => {}
-                    }
+    if let Some(RObject::String(values)) = heap.object(value) {
+        let mut out: Vec<String> = values
+            .iter()
+            .map(|v| interner.string_text(*v).to_string())
+            .collect();
+        match op {
+            SORT => {
+                let na_count = out.iter().filter(|v| *v == "\0NA").count();
+                out.retain(|v| v != "\0NA");
+                out.sort();
+                if decreasing {
+                    out.reverse();
                 }
-                REV => out.reverse(),
-                _ => {
-                    let mut seen: Vec<String> = Vec::new();
-                    out.retain(|v| {
-                        if seen.contains(v) {
-                            false
-                        } else {
-                            seen.push(v.clone());
-                            true
+                match na_last {
+                    Some(true) => {
+                        for _ in 0..na_count {
+                            out.push("\0NA".to_string());
                         }
-                    });
+                    }
+                    Some(false) => {
+                        for _ in 0..na_count {
+                            out.insert(0, "\0NA".to_string());
+                        }
+                    }
+                    None => {}
                 }
             }
-            let interned: Vec<r_core::intern::InternedStr> = out
-                .iter()
-                .map(|s| interner.intern_string(s))
-                .collect();
-            return Ok(heap.alloc(RObject::String(interned)));
+            REV => out.reverse(),
+            _ => {
+                let mut seen: Vec<String> = Vec::new();
+                out.retain(|v| {
+                    if seen.contains(v) {
+                        false
+                    } else {
+                        seen.push(v.clone());
+                        true
+                    }
+                });
+            }
         }
-        _ => {}
+        let interned: Vec<r_core::intern::InternedStr> = out
+            .iter()
+            .map(|s| interner.intern_string(s))
+            .collect();
+        return Ok(heap.alloc(RObject::String(interned)));
     }
     Err(EvalError::TypeError("ordering requires a numeric vector").into())
 }
@@ -11814,13 +11798,12 @@ pub fn ls_primitive(
     pattern: Option<&str>,
 ) -> EvalResult {
     let mut names: Vec<String> = Vec::new();
-    if let Some(RObject::Environment { frame, .. }) = heap.object(env) {
-        if let r_core::object::EnvFrame::List(bindings) = frame {
+    if let Some(RObject::Environment { frame, .. }) = heap.object(env)
+        && let r_core::object::EnvFrame::List(bindings) = frame {
             for (sym, _) in bindings {
                 names.push(interner.symbol_name(*sym).to_string());
             }
         }
-    }
     // GNU hides dot-prefixed bindings unless all.names=TRUE.
     if !all_names {
         names.retain(|n| !n.starts_with('.'));
@@ -12278,18 +12261,15 @@ pub fn rep_per_element(heap: &mut Heap, source: ValueId, schedule: &[usize], eac
     per_type!(Integer);
     per_type!(Real);
     per_type!(Complex);
-    match heap.object(source) {
-        Some(RObject::List(values)) => {
-            let mut out = Vec::new();
-            for (i, value) in values.iter().enumerate() {
-                let count = schedule.get(i).copied().unwrap_or(0) * each;
-                for _ in 0..count {
-                    out.push(*value);
-                }
+    if let Some(RObject::List(values)) = heap.object(source) {
+        let mut out = Vec::new();
+        for (i, value) in values.iter().enumerate() {
+            let count = schedule.get(i).copied().unwrap_or(0) * each;
+            for _ in 0..count {
+                out.push(*value);
             }
-            return Ok(heap.alloc(RObject::List(out)));
         }
-        _ => {}
+        return Ok(heap.alloc(RObject::List(out)));
     }
     per_type!(Logical);
     per_type!(String);
@@ -12592,11 +12572,10 @@ pub fn rowcolnames(
         None => {
             // data.frames carry row.names instead of dimnames — the rows
             // getter reads it directly exactly as GNU.
-            if rows {
-                if let Some(v) = get_attrib(heap, interner, operands[0], "row.names") {
+            if rows
+                && let Some(v) = get_attrib(heap, interner, operands[0], "row.names") {
                     return Ok(v);
                 }
-            }
             return Ok(ValueId::NIL);
         }
     };
@@ -12832,23 +12811,20 @@ pub fn readlines_primitive(
         let v = force_if_promise(heap, interner, evaluated)?;
         match tag_name.as_deref() {
             Some("n") => {
-                if let Some(RObject::Real(vals)) = heap.object(v) {
-                    if !vals.is_empty() {
+                if let Some(RObject::Real(vals)) = heap.object(v)
+                    && !vals.is_empty() {
                         n_limit = Some(vals[0] as usize);
                     }
-                }
             }
             Some("warn") => {}
             _ => {
                 if positional == 1 {
                     con_arg = v;
-                } else if positional == 2 && n_limit.is_none() {
-                    if let Some(RObject::Real(vals)) = heap.object(v) {
-                        if !vals.is_empty() {
+                } else if positional == 2 && n_limit.is_none()
+                    && let Some(RObject::Real(vals)) = heap.object(v)
+                        && !vals.is_empty() {
                             n_limit = Some(vals[0] as usize);
                         }
-                    }
-                }
             }
         }
         if cdr == ValueId::NIL {
@@ -13232,8 +13208,8 @@ pub fn length_assign_primitive(
     }
     let id = remove_attrib(heap, interner, id, "dim").map_err(RSignal::from)?;
     let id = remove_attrib(heap, interner, id, "dimnames").map_err(RSignal::from)?;
-    if let Some(names_id) = get_attrib(heap, interner, id, "names") {
-        if let Some(RObject::String(vals)) = heap.object(names_id) {
+    if let Some(names_id) = get_attrib(heap, interner, id, "names")
+        && let Some(RObject::String(vals)) = heap.object(names_id) {
             let mut vals = vals.clone();
             if vals.len() != target {
                 let empty = interner.intern_string("");
@@ -13242,7 +13218,6 @@ pub fn length_assign_primitive(
                 return copy_with_attrib(heap, interner, id, "names", names_obj).map_err(Into::into);
             }
         }
-    }
     Ok(id)
 }
 
@@ -13743,7 +13718,7 @@ pub fn factor_primitive(
         }
         cursor = cdr;
     }
-    let mut levels: Vec<String> = match tagged_levels {
+    let levels: Vec<String> = match tagged_levels {
         Some(ls) => ls.into_iter().filter(|s| s != "\0NA").collect(),
         None => {
             let mut ls: Vec<String> = texts
@@ -14157,7 +14132,7 @@ pub fn levels_assign_primitive(
     // Surviving levels compact in order; codes remap.
     let mut surviving: Vec<String> = Vec::new();
     let mut position_map: Vec<Option<usize>> = Vec::new(); // old idx -> new 0-based
-    for (i, name) in new_names_raw.iter().enumerate() {
+    for (_i, name) in new_names_raw.iter().enumerate() {
         if name == "\0NA" || name == "NA" && !old_levels.contains(name) {
             position_map.push(None);
         } else {
@@ -14185,7 +14160,7 @@ pub fn levels_assign_primitive(
 pub fn rebuild_factor(
     heap: &mut Heap,
     interner: &mut SymbolInterner,
-    object: ValueId,
+    _object: ValueId,
     new_codes: Vec<i32>,
     new_levels: Vec<String>,
 ) -> EvalResult {
@@ -14391,7 +14366,7 @@ pub fn unique_primitive(
                 Some("incomparables") => {
                     // NA in incomparables means NA values never compare.
                     incomparables_na = match heap.object(v) {
-                        Some(RObject::Logical(vals)) => vals.iter().any(|x| *x == r_core::object::NA_INTEGER),
+                        Some(RObject::Logical(vals)) => vals.contains(&r_core::object::NA_INTEGER),
                         Some(RObject::Real(vals)) => vals.iter().any(|x| x.is_nan()),
                         Some(RObject::String(vals)) => {
                             vals.iter().any(|x| interner.string_text(*x) == "\0NA")
@@ -14579,7 +14554,7 @@ pub fn save_primitive(
     let bytes = r_core::rbg1::encode_save(heap, interner, &bindings);
     let host = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path)
         .ok_or(EvalError::TypeError("save write failed"))?;
-    std::fs::write(&host, bytes).map_err(|e| EvalError::TypeError("save write failed"))?;
+    std::fs::write(&host, bytes).map_err(|_e| EvalError::TypeError("save write failed"))?;
     Ok(ValueId::NIL)
 }
 
@@ -14626,7 +14601,7 @@ pub fn load_primitive(
     let path = file_path.ok_or(EvalError::TypeError("load requires file"))?;
     let host = r_core::path_policy::resolve_host_path(heap.path_policy.as_ref(), &path)
         .ok_or(EvalError::TypeError("load read failed"))?;
-    let bytes = std::fs::read(&host).map_err(|e| EvalError::TypeError("load read failed"))?;
+    let bytes = std::fs::read(&host).map_err(|_e| EvalError::TypeError("load read failed"))?;
     let bindings = r_core::rbg1::decode_save(heap, interner, &bytes, envir)
         .ok_or(EvalError::TypeError("bad save file"))?;
     let mut names: Vec<r_core::intern::InternedStr> = Vec::new();
@@ -14691,7 +14666,7 @@ pub fn data_primitive(
     let mut loaded: Vec<r_core::intern::InternedStr> = Vec::new();
     for name in &names {
         let value = crate::datasets::load_dataset(heap, interner, name, caller_env)
-            .ok_or_else(|| RSignal::Error(EvalError::TypeError("dataset not found")))?;
+            .ok_or(RSignal::Error(EvalError::TypeError("dataset not found")))?;
         let sym = interner.intern_symbol(name);
         r_core::env::define(heap, envir, sym, value)
             .map_err(|_| RSignal::Error(EvalError::TypeError("cannot add binding")))?;
@@ -14864,8 +14839,7 @@ pub fn coerce_character(
             _ => None,
         })
         .unwrap_or(false)
-    {
-        if let Some(RObject::Integer(vals)) = heap.object(value) {
+        && let Some(RObject::Integer(vals)) = heap.object(value) {
             let out: Vec<r_core::intern::InternedStr> = vals
                 .iter()
                 .map(|&v| {
@@ -14878,12 +14852,11 @@ pub fn coerce_character(
                 .collect();
             return Ok(heap.alloc(RObject::String(out)));
         }
-    }
     // Factor-classed input coerces through its level labels exactly as
     // as.character.factor — the integer codes index the levels, missing
     // codes yielding NA.
-    if is_factor(heap, interner, value) {
-        if let Some(levels_id) = get_attrib(heap, interner, value, "levels") {
+    if is_factor(heap, interner, value)
+        && let Some(levels_id) = get_attrib(heap, interner, value, "levels") {
             let levels = string_vec(heap, interner, levels_id);
             if let Some(RObject::Integer(codes)) = heap.object(value) {
                 let out: Vec<r_core::intern::InternedStr> = codes
@@ -14902,7 +14875,6 @@ pub fn coerce_character(
                 return Ok(heap.alloc(RObject::String(out)));
             }
         }
-    }
     // Symbols coerce to their print name exactly as as.character of a
     // name object does in GNU.
     if let Some(RObject::Symbol { name, .. }) = heap.object(value) {
@@ -14948,8 +14920,8 @@ pub fn coerce_character(
             _ => None,
         })
         .unwrap_or(false);
-    if factor_classed {
-        if let Some(RObject::Integer(codes)) = heap.object(value) {
+    if factor_classed
+        && let Some(RObject::Integer(codes)) = heap.object(value) {
             let levels = get_attrib(heap, interner, value, "levels")
                 .and_then(|id| match heap.object(id) {
                     Some(RObject::String(vals)) => Some(vals.clone()),
@@ -14971,7 +14943,6 @@ pub fn coerce_character(
                 .collect();
             return Ok(heap.alloc(RObject::String(out)));
         }
-    }
     // Complex input renders elementwise exactly as as.character of a
     // complex vector — the same formatting print uses.
     if let Some(RObject::Complex(values)) = heap.object(value) {
@@ -15418,9 +15389,9 @@ pub fn xtabs_primitive(
                         _ => None,
                     };
                     let mut found = ValueId::NIL;
-                    if let Some(items) = cols {
-                        if let Some(names_id) = get_attrib(heap, interner, data, "names") {
-                            if let Some(RObject::String(names)) = heap.object(names_id) {
+                    if let Some(items) = cols
+                        && let Some(names_id) = get_attrib(heap, interner, data, "names")
+                            && let Some(RObject::String(names)) = heap.object(names_id) {
                                 for (i, nm) in names.iter().enumerate() {
                                     if interner.string_text(*nm) == want && i < items.len() {
                                         found = items[i];
@@ -15428,8 +15399,6 @@ pub fn xtabs_primitive(
                                     }
                                 }
                             }
-                        }
-                    }
                     found
                 }
                 _ => ValueId::NIL,
@@ -16650,13 +16619,12 @@ pub fn subset_positions(
         Some(RObject::List(vals)) => heap.alloc(RObject::List(positions.iter().map(|&i| vals[i]).collect())),
         _ => return Err(EvalError::TypeError("split requires a vector")),
     };
-    if let Some(names_id) = names_attr {
-        if let Some(RObject::String(names)) = heap.object(names_id) {
+    if let Some(names_id) = names_attr
+        && let Some(RObject::String(names)) = heap.object(names_id) {
             let sliced: Vec<_> = positions.iter().map(|&i| names[i]).collect();
             let sliced_obj = heap.alloc(RObject::String(sliced));
             return copy_with_attrib(heap, interner, out, "names", sliced_obj);
         }
-    }
     Ok(out)
 }
 
@@ -17220,7 +17188,7 @@ pub fn range_primitive(
     let combined = concat_vectors(heap, &inputs).map_err(RSignal::from)?;
     if let Some(RObject::Integer(values)) | Some(RObject::Logical(values)) = heap.object(combined) {
         let mut values = values.clone();
-        if values.iter().any(|v| *v == r_core::object::NA_INTEGER) {
+        if values.contains(&r_core::object::NA_INTEGER) {
             if !na_rm {
                 return Ok(heap.alloc(RObject::Integer(vec![
                     r_core::object::NA_INTEGER,
@@ -18484,9 +18452,9 @@ pub fn as_data_frame_primitive(
         return Ok(x);
     }
     // Matrix path: columns spread exactly as GNU's matrix coercion.
-    if let Some(dim) = get_attrib(heap, interner, x, "dim") {
-        if let Some(RObject::Integer(dims)) = heap.object(dim).cloned() {
-            if dims.len() == 2 {
+    if let Some(dim) = get_attrib(heap, interner, x, "dim")
+        && let Some(RObject::Integer(dims)) = heap.object(dim).cloned()
+            && dims.len() == 2 {
                 let (nr, nc) = (dims[0] as usize, dims[1] as usize);
                 let mut columns: Vec<ValueId> = Vec::new();
                 let mut names: Vec<String> = Vec::new();
@@ -18498,8 +18466,6 @@ pub fn as_data_frame_primitive(
                 }
                 return build_data_frame(heap, interner, columns, names);
             }
-        }
-    }
     // List path: each element a column exactly as as.data.frame.list.
     if let Some(RObject::List(items)) = heap.object(x).cloned() {
         let names: Vec<String> = get_attrib(heap, interner, x, "names")
@@ -18567,7 +18533,7 @@ pub fn merge_primitive(
 ) -> EvalResult {
     let positional = eval_matched_args(heap, interner, args, caller_env,
         &["x", "y", "by", "by.x", "by.y", "all", "all.x", "all.y", "sort", "suffixes"])?;
-    let x = positional.get(0).copied().flatten().unwrap_or(ValueId::NIL);
+    let x = positional.first().copied().flatten().unwrap_or(ValueId::NIL);
     let y = positional.get(1).copied().flatten().unwrap_or(ValueId::NIL);
     if x == ValueId::NIL || y == ValueId::NIL {
         return Err(EvalError::TypeError("merge requires two data frames").into());
@@ -18843,7 +18809,7 @@ pub fn abbreviate_primitive(
 ) -> EvalResult {
     let positional = eval_matched_args(heap, interner, args, caller_env,
         &["names.arg", "minlength", "use.classes", "dot", "strict", "method", "named"])?;
-    let input = positional.get(0).copied().flatten().unwrap_or(ValueId::NIL);
+    let input = positional.first().copied().flatten().unwrap_or(ValueId::NIL);
     let minlength = positional.get(1).copied().flatten()
         .map(|v| reals_of_value(heap, v).map(|r| r.first().copied().unwrap_or(4.0) as usize).unwrap_or(4))
         .unwrap_or(4);
@@ -18896,7 +18862,7 @@ pub fn formatc_primitive(
 ) -> EvalResult {
     let positional = eval_matched_args(heap, interner, args, caller_env,
         &["x", "digits", "width", "format", "flag", "mode", "big.mark", "big.interval", "small.mark", "small.interval", "decimal.mark", "preserve.width", "zero.print", "drop0trailing"])?;
-    let input = positional.get(0).copied().flatten().unwrap_or(ValueId::NIL);
+    let input = positional.first().copied().flatten().unwrap_or(ValueId::NIL);
     let reals = reals_of_value(heap, input).map_err(RSignal::from)?;
     let digits = positional.get(1).copied().flatten()
         .and_then(|v| reals_of_value(heap, v).ok()).and_then(|r| r.first().copied()).unwrap_or(2.0) as usize;
@@ -19168,8 +19134,8 @@ pub fn solve_primitive(
                 lu.swap(col * n + j, col * n + piv);
             }
         }
-        if lu[j * n + j] != 0.0 {
-            if j + 1 < n {
+        if lu[j * n + j] != 0.0
+            && j + 1 < n {
                 let inv = 1.0 / lu[j * n + j];
                 for i in (j + 1)..n {
                     lu[j * n + i] *= inv;
@@ -19180,7 +19146,6 @@ pub fn solve_primitive(
                     }
                 }
             }
-        }
     }
     if singular {
         return Err(EvalError::Condition(
@@ -20004,13 +19969,11 @@ pub fn s4_slot_get(heap: &Heap, interner: &SymbolInterner, obj: ValueId, slot_na
         Some(n) => string_vec(heap, interner, n),
         None => Vec::new(),
     };
-    if let Some(RObject::List(items)) = heap.object(obj) {
-        if let Some(pos) = names.iter().position(|n| n == slot_name) {
-            if let Some(value) = items.get(pos) {
+    if let Some(RObject::List(items)) = heap.object(obj)
+        && let Some(pos) = names.iter().position(|n| n == slot_name)
+            && let Some(value) = items.get(pos) {
                 return Ok(*value);
             }
-        }
-    }
     Err(EvalError::TypeError("slot does not exist").into())
 }
 
@@ -20023,8 +19986,8 @@ pub fn s4_slot_set(heap: &mut Heap, interner: &SymbolInterner, obj: ValueId, slo
     };
     if let Some(RObject::List(items)) = heap.object(obj) {
         let mut items = items.clone();
-        if let Some(pos) = names.iter().position(|n| n == slot_name) {
-            if pos < items.len() {
+        if let Some(pos) = names.iter().position(|n| n == slot_name)
+            && pos < items.len() {
                 items[pos] = value;
                 let chain = heap.get(obj).map(|slot| slot.attrib).unwrap_or(ValueId::NIL);
                 let result = heap.alloc(RObject::List(items));
@@ -20033,7 +19996,6 @@ pub fn s4_slot_set(heap: &mut Heap, interner: &SymbolInterner, obj: ValueId, slo
                 }
                 return Ok(result);
             }
-        }
     }
     Err(EvalError::TypeError("slot does not exist").into())
 }
@@ -20598,7 +20560,7 @@ pub fn flag_lookup(
         .find(|(n, _)| n == name)
         .map(|(_, v)| *v)
         .or_else(|| positional.get(position).copied())
-        .filter(|v| {
+        .filter(|_v| {
             let _ = heap;
             true
         })
@@ -21216,13 +21178,11 @@ pub fn as_matrix_primitive(
     let Some(x) = slots[0] else {
         return Ok(ValueId::NIL);
     };
-    if let Some(dim_id) = get_attrib(heap, interner, x, "dim") {
-        if let Some(RObject::Integer(values)) = heap.object(dim_id) {
-            if values.len() == 2 {
+    if let Some(dim_id) = get_attrib(heap, interner, x, "dim")
+        && let Some(RObject::Integer(values)) = heap.object(dim_id)
+            && values.len() == 2 {
                 return Ok(x);
             }
-        }
-    }
     let len = vector_length(heap, x).unwrap_or(0) as i32;
     let dim_id = heap.alloc(RObject::Integer(vec![len, 1]));
     copy_with_attrib(heap, interner, x, "dim", dim_id).map_err(RSignal::from)
@@ -21503,8 +21463,8 @@ pub fn mapply_primitive(
                 }
                 _ => None,
             };
-            if let Some(names) = direct.or(from_chars) {
-                if names.len() == results.len() {
+            if let Some(names) = direct.or(from_chars)
+                && names.len() == results.len() {
                     let mut named: Vec<ValueId> = Vec::with_capacity(results.len());
                     for element in results.iter() {
                         named.push(*element);
@@ -21515,7 +21475,6 @@ pub fn mapply_primitive(
                     return copy_with_attrib(heap, interner, list, "names", names_obj)
                         .map_err(RSignal::from);
                 }
-            }
         }
     }
     if simplify {
@@ -22200,11 +22159,10 @@ pub fn has_true_tag(
                 _ => None,
             }
         };
-        if tag_name.as_deref() == Some(want) {
-            if let Ok(value) = eval(heap, interner, car, caller_env) {
+        if tag_name.as_deref() == Some(want)
+            && let Ok(value) = eval(heap, interner, car, caller_env) {
                 return logical_scalar(heap, value);
             }
-        }
         cursor = next;
     }
     false
@@ -22288,11 +22246,7 @@ pub fn options_primitive(
     }
     // GNU's visibility discipline: setting options returns invisibly; the
     // pure query form returns visibly.
-    if queried.is_empty() && !previous.is_empty() {
-        heap.visible = false;
-    } else {
-        heap.visible = true;
-    }
+    heap.visible = !(queried.is_empty() && !previous.is_empty());
     let result_set = if !queried.is_empty() { queried } else { previous };
     let items: Vec<ValueId> = result_set.iter().map(|(_, v)| *v).collect();
     let names: Vec<r_core::intern::InternedStr> = result_set
@@ -22499,8 +22453,8 @@ pub fn substitute_primitive(
     let mut used = vec![false; actuals.len()];
     // Pass 1: exact names.
     for (ai, actual) in actuals.iter().enumerate() {
-        if let Some(tag) = &actual.tag {
-            if let Some(fi) = formals.iter().position(|f| f == tag) {
+        if let Some(tag) = &actual.tag
+            && let Some(fi) = formals.iter().position(|f| f == tag) {
                 if exact_taken[fi] || partial_taken[fi] || bound[fi].is_some() {
                     return Err(EvalError::Condition(format!(
                         "formal argument \"{}\" matched by multiple actual arguments",
@@ -22512,7 +22466,6 @@ pub fn substitute_primitive(
                 exact_taken[fi] = true;
                 used[ai] = true;
             }
-        }
     }
     // Pass 2: partial matching among non-exact-bound formals.
     for (ai, actual) in actuals.iter().enumerate() {
@@ -22608,13 +22561,11 @@ pub fn substitute_in_tree(
         // plain bindings and misses leave the symbol standing.
         if matches!(heap.object(env), Some(RObject::Environment { .. })) {
             let sym = interner.intern_symbol(&text);
-            if let Some(binding) = r_core::env::lookup_in_frame(heap, env, sym) {
-                if let Some(RObject::Promise { expr: promise_expr, .. }) = heap.object(binding.value) {
-                    if *promise_expr != ValueId::MISSING {
+            if let Some(binding) = r_core::env::lookup_in_frame(heap, env, sym)
+                && let Some(RObject::Promise { expr: promise_expr, .. }) = heap.object(binding.value)
+                    && *promise_expr != ValueId::MISSING {
                         return *promise_expr;
                     }
-                }
-            }
         }
         return expr;
     }
@@ -22955,13 +22906,12 @@ pub fn matrix_ops_primitive(
 /// and attributes reverse with their elements.
 pub fn reverse_value(heap: &mut Heap, interner: &mut SymbolInterner, value: ValueId) -> EvalResult {
     let names_rev = |heap: &mut Heap, interner: &mut SymbolInterner, result: ValueId, source: ValueId| -> EvalResult {
-        if let Some(names_id) = get_attrib(heap, interner, source, "names") {
-            if let Some(RObject::String(vals)) = heap.object(names_id) {
+        if let Some(names_id) = get_attrib(heap, interner, source, "names")
+            && let Some(RObject::String(vals)) = heap.object(names_id) {
                 let reversed: Vec<_> = vals.iter().rev().copied().collect();
                 let names_obj = heap.alloc(RObject::String(reversed));
                 return copy_with_attrib(heap, interner, result, "names", names_obj).map_err(Into::into);
             }
-        }
         Ok(result)
     };
     match heap.object(value) {
@@ -23136,8 +23086,8 @@ pub fn tanpi_exact(x: f64) -> f64 {
 /// NA-real and NaN doubles, logical NA, the string sentinel.
 pub fn any_na_in_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> bool {
     match heap.object(value) {
-        Some(RObject::Integer(v)) => v.iter().any(|x| *x == r_core::object::NA_INTEGER),
-        Some(RObject::Logical(v)) => v.iter().any(|x| *x == r_core::object::NA_INTEGER),
+        Some(RObject::Integer(v)) => v.contains(&r_core::object::NA_INTEGER),
+        Some(RObject::Logical(v)) => v.contains(&r_core::object::NA_INTEGER),
         Some(RObject::Real(v)) => v.iter().any(|x| x.is_nan()),
         Some(RObject::String(v)) => v.iter().any(|s| {
             interner.string_text(*s).starts_with('\0')
@@ -23502,7 +23452,7 @@ pub fn bquote_splice(
 /// complete.cases row predicate.
 pub fn element_is_na(heap: &Heap, interner: &SymbolInterner, value: ValueId, index: usize) -> bool {
     match heap.object(value) {
-        Some(RObject::Integer(v)) | Some(RObject::Logical(v)) => {
+        Some(RObject::Integer(_v)) | Some(RObject::Logical(_v)) => {
             let v = match heap.object(value) {
                 Some(RObject::Integer(iv)) => iv,
                 Some(RObject::Logical(lv)) => lv,
@@ -23605,8 +23555,8 @@ pub fn margin_summary_impl(
     let result = copy_with_attrib(heap, interner, result, "dim", dim_obj).map_err(RSignal::from)?;
     // Dimnames of the kept dimensions ride exactly as GNU — the list
     // subset in kept order.
-    if let Some(dn) = get_attrib(heap, interner, x, "dimnames") {
-        if let Some(RObject::List(entries)) = heap.object(dn).cloned() {
+    if let Some(dn) = get_attrib(heap, interner, x, "dimnames")
+        && let Some(RObject::List(entries)) = heap.object(dn).cloned() {
             let kept_entries: Vec<ValueId> = kept_indices
                 .iter()
                 .filter_map(|d| entries.get(*d).copied())
@@ -23616,7 +23566,6 @@ pub fn margin_summary_impl(
                 return copy_with_attrib(heap, interner, result, "dimnames", dn_obj).map_err(RSignal::from);
             }
         }
-    }
     Ok(result)
 }
 

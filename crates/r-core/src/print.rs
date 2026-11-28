@@ -33,11 +33,11 @@ pub fn format_real(v: f64) -> String {
     // width does not exceed scientific width plus scipen — a width
     // comparison, not an exponent threshold. digits=7 and scipen=0
     // are the pinned defaults.
-    let (neg, kpower, nsig) = scientific_parts(v);
+    let (_neg, kpower, nsig) = scientific_parts(v);
     let left = kpower + 1;
     let right = nsig - left;
     let rgt = right.max(0);
-    let d = nsig - 1;
+    let _d = nsig - 1;
     if needs_scientific(v) {
         // Scientific exactly as GNU: nsig significant digits in the
         // mantissa, two-digit minimum exponent.
@@ -147,7 +147,7 @@ fn fixed_exact(v: f64, decimals: usize) -> String {
 }
 
 /// One element's display text — the per-type shapes GNU's print uses.
-fn format_element(heap: &Heap, interner: &SymbolInterner, value: &RObject, index: usize) -> String {
+fn format_element(_heap: &Heap, interner: &SymbolInterner, value: &RObject, index: usize) -> String {
     match value {
         RObject::Real(values) => format_real(values[index]),
         RObject::Integer(values) | RObject::Logical(values) => {
@@ -588,8 +588,8 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
     // Matrix layout: a two-length integer dim attribute lays the vector out
     // column-major under [,j] column headers and [i,] row labels exactly as
     // GNU's print.matrix does.
-    if let Some(dim) = dim_attribute(heap, interner, value) {
-        if dim.len() == 2 && dim[0] > 0 && dim[1] > 0 && dim[0] * dim[1] == length as i32 {
+    if let Some(dim) = dim_attribute(heap, interner, value)
+        && dim.len() == 2 && dim[0] > 0 && dim[1] > 0 && dim[0] * dim[1] == length as i32 {
             let (row_names, col_names) = dimnames_of(heap, interner, value);
             return format_matrix_inner(
                 heap,
@@ -601,7 +601,6 @@ pub fn format_value(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> S
                 col_names,
             );
         }
-    }
     // GNU right-justifies every element to the widest element text so the
     // columnar reading holds — NA padding is the visible consequence.
     // Real vectors share one decimal count across all elements — GNU's
@@ -830,7 +829,7 @@ fn format_matrix_inner(
 
 /// The cat-coercion of a scalar: unquoted, NA drops exactly as GNU (NA
 /// contributes nothing to output).
-pub fn format_cat_element(heap: &Heap, interner: &SymbolInterner, value: &RObject, index: usize) -> String {
+pub fn format_cat_element(_heap: &Heap, interner: &SymbolInterner, value: &RObject, index: usize) -> String {
     match value {
         RObject::Real(values) => format_real(values[index]),
         RObject::Integer(values) | RObject::Logical(values) => {
@@ -949,7 +948,7 @@ fn format_data_frame(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> 
         },
         None => Vec::new(),
     };
-    let ncol = items.len();
+    let _ncol = items.len();
     let nrow = items
         .first()
         .and_then(|c| match heap.object(*c) {
@@ -1083,8 +1082,8 @@ fn format_factor(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> Stri
 pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String {
     // S4 objects deparse as their constructing new() call exactly as GNU —
     // class name first, slots in definition order with deparsed values.
-    if let Some(class_text) = s4_class_of(heap, interner, value) {
-        if let Some(RObject::List(items)) = heap.object(value) {
+    if let Some(class_text) = s4_class_of(heap, interner, value)
+        && let Some(RObject::List(items)) = heap.object(value) {
             let items = items.clone();
             let slot_names: Vec<String> = crate::attrib::attrib_names(heap, interner, value);
             let mut parts: Vec<String> = Vec::new();
@@ -1099,7 +1098,6 @@ pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String
             }
             return format!("new(\"{}\"{}{})", class_text, if parts.is_empty() { "" } else { ", " }, parts.join(", "));
         }
-    }
     match heap.object(value) {
         Some(RObject::Symbol { name, .. }) => interner.symbol_name(*name).to_string(),
         Some(RObject::Language { car, cdr, .. }) => {
@@ -1141,13 +1139,12 @@ pub fn deparse(heap: &Heap, interner: &SymbolInterner, value: ValueId) -> String
                 let right = deparse(heap, interner, items[1]);
                 return format!("{}:{}", left, right);
             }
-            if INFIX.contains(&op_text.as_str()) {
-                if items.len() == 2 {
+            if INFIX.contains(&op_text.as_str())
+                && items.len() == 2 {
                     let left = deparse(heap, interner, items[0]);
                     let right = deparse(heap, interner, items[1]);
                     return format!("{} {} {}", left, op_text, right);
                 }
-            }
             // Unary operators hug their operand exactly as GNU — -x,
             /// !x, ~x — no space intervening.
             const UNARY: &[&str] = &["-", "+", "!", "~"];

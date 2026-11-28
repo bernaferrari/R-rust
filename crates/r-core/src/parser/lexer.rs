@@ -1,4 +1,3 @@
-use super::*;
 
 // ---------------------------------------------------------------------------
 // Tokens
@@ -201,7 +200,7 @@ impl Lexer {
 
         // Numbers: digit or .digit
         if ch.is_ascii_digit()
-            || (ch == '.' && self.peek_char_at(1).map_or(false, |c| c.is_ascii_digit()))
+            || (ch == '.' && self.peek_char_at(1).is_some_and(|c| c.is_ascii_digit()))
         {
             return self.read_number();
         }
@@ -655,18 +654,16 @@ impl Lexer {
                         return self.bad_escape();
                     }
                     let mut octal = esc as u32 - '0' as u32;
-                    if let Some(d) = self.peek_char() {
-                        if ('0'..='7').contains(&d) {
+                    if let Some(d) = self.peek_char()
+                        && ('0'..='7').contains(&d) {
                             self.advance();
                             octal = 8 * octal + d as u32 - '0' as u32;
-                            if let Some(e) = self.peek_char() {
-                                if ('0'..='7').contains(&e) {
+                            if let Some(e) = self.peek_char()
+                                && ('0'..='7').contains(&e) {
                                     self.advance();
                                     octal = 8 * octal + e as u32 - '0' as u32;
                                 }
-                            }
                         }
-                    }
                     if octal == 0 || octal > 0xff {
                         return self.bad_escape();
                     }

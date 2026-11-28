@@ -2,6 +2,7 @@
 // ML_WARNING, ML_WARN_return_NAN macros translated to Rust
 
 use core::fmt::Write;
+#[cfg(test)]
 use std::cell::RefCell;
 
 use crate::constants::*;

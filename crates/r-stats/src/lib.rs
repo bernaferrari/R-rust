@@ -75,11 +75,10 @@ pub fn dpq_primitive(
                 return logical_of(heap, v);
             }
         }
-        if let Some(v) = positional.get(position) {
-            if !named.iter().any(|(n, _)| names.contains(&n.as_str())) {
+        if let Some(v) = positional.get(position)
+            && !named.iter().any(|(n, _)| names.contains(&n.as_str())) {
                 return logical_of(heap, *v);
             }
-        }
         Ok(default)
     };
     let x_value = lookup("x", 0)
@@ -478,7 +477,7 @@ pub fn loess_primitive(
     // Parse the formula exactly as y ~ x: the tilde-headed language object
     // with the response as car of cdr and predictor as car of cddr.
     let (mut response, mut predictor) = (ValueId::NIL, ValueId::NIL);
-    if let Some(RObject::Language { car, cdr, .. }) = heap.object(formula) {
+    if let Some(RObject::Language { car: _, cdr, .. }) = heap.object(formula) {
         let mut cursor = *cdr;
         if let Some(RObject::Pairlist { car: c1, cdr: d1, .. }) = heap.object(cursor) {
             response = *c1;
@@ -570,24 +569,19 @@ pub fn predict_primitive(
             _ => None,
         }
     });
-    if class.as_deref() == Some("loess") {
-        if let Some(RObject::List(items)) = heap.object(object) {
-            let names: Vec<String> = match get_attrib(heap, interner, object, "names").and_then(|id| {
+    if class.as_deref() == Some("loess")
+        && let Some(RObject::List(items)) = heap.object(object) {
+            let names: Vec<String> = get_attrib(heap, interner, object, "names").and_then(|id| {
                 match heap.object(id) {
                     Some(RObject::String(entries)) => Some(entries.iter().map(|e| interner.string_text(*e).to_string()).collect()),
                     _ => None,
                 }
-            }) {
-                Some(n) => n,
-                None => Vec::new(),
-            };
-            if let Some(pos) = names.iter().position(|n| n == "fitted") {
-                if let Some(&fitted) = items.get(pos) {
+            }).unwrap_or_default();
+            if let Some(pos) = names.iter().position(|n| n == "fitted")
+                && let Some(&fitted) = items.get(pos) {
                     return Ok(fitted);
                 }
-            }
         }
-    }
     Err(EvalError::TypeError("predict: no method for this object").into())
 }
 
@@ -634,11 +628,10 @@ pub fn rngkind_primitive(
                 if position < 3 { Some(position) } else { None }
             }
         };
-        if let Some(slot) = slot {
-            if values[slot].is_none() {
+        if let Some(slot) = slot
+            && values[slot].is_none() {
                 values[slot] = Some(car);
             }
-        }
         if cdr == ValueId::NIL {
             break;
         }
@@ -776,7 +769,7 @@ pub fn sample_primitive(
         return Ok(heap.alloc(RObject::Integer(Vec::new())));
     }
     // sample.int(n, size, replace): the population is 1:n.
-    let (population, pop_names): (Vec<i64>, Vec<String>) = if int_form {
+    let (population, _pop_names): (Vec<i64>, Vec<String>) = if int_form {
         let n = match heap.object(positional[0]) {
             Some(RObject::Integer(vals)) | Some(RObject::Logical(vals)) => vals.first().copied().unwrap_or(0) as i64,
             Some(RObject::Real(vals)) => vals.first().copied().unwrap_or(0.0) as i64,
@@ -1127,7 +1120,7 @@ pub fn mad_primitive(
     caller_env: ValueId,
 ) -> EvalResult {
     let slots = eval_matched_args(heap, interner, args, caller_env, &["x", "center", "constant"])?;
-    let mut xs: Vec<f64> = slots[0]
+    let xs: Vec<f64> = slots[0]
         .and_then(|v| reals_of_value(heap, v).ok())
         .unwrap_or_default()
         .into_iter()
@@ -1249,11 +1242,11 @@ zoo_primitive!(rbeta_primitive, ["shape1", "shape2"], [1.0, 1.0], |rng: &mut dyn
 zoo_primitive!(rchisq_primitive, ["df"], [1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::chisq::rchisq(rng, ms, ps[0]));
 zoo_primitive!(rt_primitive, ["df"], [1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::t_dist::rt(rng, ms, ps[0]));
 zoo_primitive!(rf_primitive, ["df1", "df2"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::f_dist::rf(rng, ms, ps[0], ps[1]));
-zoo_primitive!(rlnorm_primitive, ["meanlog", "sdlog"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::lnorm::rlnorm(rng, ps[0], ps[1]));
-zoo_primitive!(rlogis_primitive, ["location", "scale"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::logistic::rlogis(rng, ps[0], ps[1]));
-zoo_primitive!(rcauchy_primitive, ["location", "scale"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::cauchy::rcauchy(rng, ps[0], ps[1]));
+zoo_primitive!(rlnorm_primitive, ["meanlog", "sdlog"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, _ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::lnorm::rlnorm(rng, ps[0], ps[1]));
+zoo_primitive!(rlogis_primitive, ["location", "scale"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, _ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::logistic::rlogis(rng, ps[0], ps[1]));
+zoo_primitive!(rcauchy_primitive, ["location", "scale"], [0.0, 1.0], |rng: &mut dyn FnMut() -> f64, _ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::cauchy::rcauchy(rng, ps[0], ps[1]));
 zoo_primitive!(rgeom_primitive, ["prob"], [0.5], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::geometric::rgeom(rng, ms, ps[0]));
-zoo_primitive!(rweibull_primitive, ["shape", "scale"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::weibull::rweibull(rng, ps[0], ps[1]));
+zoo_primitive!(rweibull_primitive, ["shape", "scale"], [1.0, 1.0], |rng: &mut dyn FnMut() -> f64, _ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::weibull::rweibull(rng, ps[0], ps[1]));
 zoo_primitive!(rnbinom_primitive, ["size", "prob"], [1.0, 0.5], |rng: &mut dyn FnMut() -> f64, ms: &mut r_math::state::MathState, ps: &[f64]| r_math::dist::nbinom::rnbinom(rng, ms, ps[0], ps[1]));
 
 /// rgamma(n, shape, rate, scale) — GNU's parameterization exactly: scale

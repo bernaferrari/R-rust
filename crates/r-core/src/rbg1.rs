@@ -362,10 +362,7 @@ pub fn decode_payload(
                 // package registry exactly as the canonical reader resolves
                 // them through the namespace loader.
                 let name = String::from_utf8(node.data.clone()).unwrap_or_default();
-                match heap.package_registry.get(&name).copied() {
-                    Some(env) => env,
-                    None => return None,
-                }
+                heap.package_registry.get(&name).copied()?
             }
             _ => return None,
         };
@@ -517,11 +514,10 @@ pub fn decode_payload(
                 Some(RObject::Symbol { name, .. }) => *name,
                 _ => break,
             };
-            if let Some(slot) = heap.get_mut(id) {
-                if let RObject::Environment { frame, .. } = &mut slot.body {
+            if let Some(slot) = heap.get_mut(id)
+                && let RObject::Environment { frame, .. } = &mut slot.body {
                     frame.insert(sym, car);
                 }
-            }
             cursor = cdr;
         }
     }

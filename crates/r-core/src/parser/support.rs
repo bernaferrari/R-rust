@@ -103,11 +103,10 @@ impl<'h, 'i> Parser<'h, 'i> {
                 Some(RObject::Language { car, cdr, .. }) => (*car, *cdr),
                 _ => continue,
             };
-            if let Some(RObject::Symbol { name, .. }) = self.heap.object(car) {
-                if self.interner.symbol_name(*name) == "=>" {
+            if let Some(RObject::Symbol { name, .. }) = self.heap.object(car)
+                && self.interner.symbol_name(*name) == "=>" {
                     return true;
                 }
-            }
             stack.push(car);
             // Walk the argument chain: each Pairlist cell's car recurses.
             let mut cur = cdr;

@@ -890,7 +890,7 @@ pub fn rgamma_inner(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathSta
     //         x = (s,1/2) -normal deviate.
     // immediate acceptance (i)
     let t = norm_rand(rng, );
-    let state = (*&mut ms.gamma_state);
+    let state = ms.gamma_state;
     let mut x = state.s + 0.5 * t;
     let ret_val = x * x;
     if t >= 0.0 {
@@ -932,7 +932,7 @@ pub fn rgamma_inner(rng: &mut dyn FnMut() -> f64, ms: &mut crate::state::MathSta
         }
     };
 
-    let state = (*&mut ms.gamma_state);
+    let state = ms.gamma_state;
     let q0 = state.q0;
     let s = state.s;
     let s2 = state.s2;

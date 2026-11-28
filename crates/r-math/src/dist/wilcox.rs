@@ -9,7 +9,6 @@ use crate::error::*;
 use crate::special::choose::{choose, lchoose};
 use crate::utils::*;
 use libm::*;
-use std::collections::HashMap;
 use std::os::raw::{c_double, c_int};
 
 const DBL_EPSILON: f64 = 2.220446049250313e-16;
